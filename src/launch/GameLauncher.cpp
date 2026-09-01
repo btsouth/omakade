@@ -121,31 +121,41 @@ LaunchCommand GameLauncher::retroArchCommand(const QString& contentPath, const Q
                                  {QStringLiteral("-L"), corePath, contentPath}};
 }
 
-LaunchCommand GameLauncher::pcsx2Command(const QString& id, bool flatpak) {
+LaunchCommand GameLauncher::pcsx2Command(const QString& id, bool isElf, bool flatpak) {
   if (!validPcsx2Id(id)) {
     return {};
   }
-  // PCSX2 boots a disc image by passing its path directly; --elf is only for ELF files.
-  // Serial-based ids must resolve to the game's disc path (installPath) before launch.
+  // PCSX2 boots a disc image by passing its path directly; ELF entries need -elf <file>.
   if (!id.startsWith(QStringLiteral("path:"))) {
     return {};
   }
   const QString target = id.mid(5);
-  return flatpak ? LaunchCommand{QStringLiteral("flatpak"),
-                                 {QStringLiteral("run"), QStringLiteral("net.pcsx2.PCSX2"),
-                                  QStringLiteral("--"), target}}
-                 : LaunchCommand{QStringLiteral("pcsx2-qt"), {target}};
+  QStringList arguments;
+  if (isElf) {
+    arguments << QStringLiteral("-elf") << target;
+  } else {
+    arguments << target;
+  }
+  if (flatpak) {
+    QStringList flatpakArguments{QStringLiteral("run"), QStringLiteral("net.pcsx2.PCSX2"),
+                                 QStringLiteral("--")};
+    flatpakArguments = flatpakArguments + arguments;
+    return LaunchCommand{QStringLiteral("flatpak"), flatpakArguments};
+  }
+  return LaunchCommand{QStringLiteral("pcsx2-qt"), arguments};
 }
 
-LaunchCommand GameLauncher::ryujinxCommand(const QString& id, bool flatpak) {
+LaunchCommand GameLauncher::ryujinxCommand(const QString& id, const QString& nativeExecutable) {
   if (!validRyujinxId(id)) {
     return {};
   }
   const QString target = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
-  return flatpak ? LaunchCommand{QStringLiteral("flatpak"),
-                                 {QStringLiteral("run"), QStringLiteral("io.github.ryubing.Ryujinx"),
-                                  QStringLiteral("--"), target}}
-                 : LaunchCommand{QStringLiteral("ryujinx-wrapper"), {target}};
+  if (!nativeExecutable.isEmpty()) {
+    return LaunchCommand{nativeExecutable, {target}};
+  }
+  return LaunchCommand{QStringLiteral("flatpak"),
+                       {QStringLiteral("run"), QStringLiteral("io.github.ryubing.Ryujinx"),
+                        QStringLiteral("--"), target}};
 }
 
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
@@ -184,7 +194,7 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
     return launchRetroArch(installPath, launchTarget, flatpak, false);
   }
   if (source.compare(QStringLiteral("PCSX2"), Qt::CaseInsensitive) == 0) {
-    return launchPcsx2(id, flatpak, false);
+    return launchPcsx2(id, launchTarget == QStringLiteral("elf"), flatpak, false);
   }
   if (source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0) {
     return launchRyujinx(id, flatpak, false);
@@ -217,7 +227,7 @@ bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak
     return launchRetroArch({}, {}, flatpak, true);
   }
   if (source.compare(QStringLiteral("PCSX2"), Qt::CaseInsensitive) == 0) {
-    return launchPcsx2(id, flatpak, true);
+    return launchPcsx2(id, false, flatpak, true);
   }
   if (source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0) {
     return launchRyujinx(id, flatpak, true);
@@ -390,7 +400,7 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
   return true;
 }
 
-bool GameLauncher::launchPcsx2(const QString& id, bool flatpak, bool manageOnly) {
+bool GameLauncher::launchPcsx2(const QString& id, bool isElf, bool flatpak, bool manageOnly) {
   const QString executable = flatpak ? QStringLiteral("flatpak") : QStringLiteral("pcsx2-qt");
   if (QStandardPaths::findExecutable(executable).isEmpty()) {
     setError(flatpak ? QStringLiteral("Flatpak is not installed.")
@@ -410,7 +420,7 @@ bool GameLauncher::launchPcsx2(const QString& id, bool flatpak, bool manageOnly)
           ? (flatpak ? LaunchCommand{QStringLiteral("flatpak"),
                                      {QStringLiteral("run"), QStringLiteral("net.pcsx2.PCSX2")}}
                      : LaunchCommand{QStringLiteral("pcsx2-qt"), {}})
-          : pcsx2Command(id, flatpak);
+          : pcsx2Command(id, isElf, flatpak);
   if (!command.isValid()) {
     setError(QStringLiteral("This game has an invalid PCSX2 target."));
     return false;
@@ -424,11 +434,21 @@ bool GameLauncher::launchPcsx2(const QString& id, bool flatpak, bool manageOnly)
 }
 
 bool GameLauncher::launchRyujinx(const QString& id, bool flatpak, bool manageOnly) {
-  const QString executable = flatpak ? QStringLiteral("flatpak") : QStringLiteral("ryujinx-wrapper");
-  if (QStandardPaths::findExecutable(executable).isEmpty()) {
-    setError(flatpak ? QStringLiteral("Flatpak is not installed.")
-                     : QStringLiteral("Ryujinx is not installed."));
-    return false;
+  QString nativeExecutable;
+  if (!flatpak) {
+    // Native installs ship the binary under different names depending on the package.
+    for (const QString& candidate :
+         {QStringLiteral("ryujinx-wrapper"), QStringLiteral("Ryujinx"),
+          QStringLiteral("ryujinx")}) {
+      if (!QStandardPaths::findExecutable(candidate).isEmpty()) {
+        nativeExecutable = candidate;
+        break;
+      }
+    }
+    if (nativeExecutable.isEmpty()) {
+      setError(QStringLiteral("Ryujinx is not installed."));
+      return false;
+    }
   }
   if (flatpak) {
     const QString error =
@@ -443,8 +463,8 @@ bool GameLauncher::launchRyujinx(const QString& id, bool flatpak, bool manageOnl
           ? (flatpak ? LaunchCommand{QStringLiteral("flatpak"),
                                      {QStringLiteral("run"),
                                       QStringLiteral("io.github.ryubing.Ryujinx")}}
-                     : LaunchCommand{QStringLiteral("ryujinx-wrapper"), {}})
-          : ryujinxCommand(id, flatpak);
+                     : LaunchCommand{nativeExecutable, {}})
+          : ryujinxCommand(id, nativeExecutable);
   if (!command.isValid()) {
     setError(QStringLiteral("This game has an invalid Ryujinx target."));
     return false;

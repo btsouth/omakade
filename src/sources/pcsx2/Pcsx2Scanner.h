@@ -13,6 +13,7 @@ struct Pcsx2GameRecord {
   QString region;
   qint64 playtimeSeconds = 0;
   qint64 lastPlayed = 0;
+  bool isElf = false;  // true when PCSX2 classified the entry as an ELF
   bool flatpak = false;
 };
 

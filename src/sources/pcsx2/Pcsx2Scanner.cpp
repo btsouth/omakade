@@ -203,25 +203,32 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
         }
         quint32 rawLength = 0;
         std::memcpy(&rawLength, cache.constData() + offset, sizeof(rawLength));
-        const int length = static_cast<int>(qFromLittleEndian(rawLength));
+        const quint32 length = qFromLittleEndian(rawLength);
         offset += 4;
-        if (length > kMaximumTitleLength * 16 || offset + length > cache.size()) {
+        if (length > static_cast<quint32>(kMaximumTitleLength * 16) ||
+            offset + static_cast<qsizetype>(length) > cache.size()) {
           offset = cache.size() + 1;
           return {};
         }
         const QString value =
-            QString::fromUtf8(cache.constData() + offset, length);
-        offset += length;
+            QString::fromUtf8(cache.constData() + offset, static_cast<qsizetype>(length));
+        offset += static_cast<qsizetype>(length);
         return value;
       };
 
-      const int entryStart = offset;
       const QString path = readString();
       const QString serial = readString();
       const QString title = readString();
       if (hasExtraTitles) {
         readString();
         readString();
+      }
+      if (offset >= cache.size() + 1) {
+        // A string read aborted mid-entry: the cache is malformed.
+        result.warnings.append(
+            QStringLiteral("Malformed cache entry in %1").arg(cachePath));
+        corrupt = true;
+        break;
       }
       if (offset + 1 + 1 + 8 + 8 + 4 + 1 > cache.size() || offset < 0) {
         if (offset != cache.size() + 1) {
@@ -268,6 +275,7 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
       record.serial = serial;
       record.region = regionName(region);
       record.flatpak = flatpak;
+      record.isElf = (type == 2);
       record.coverPath = coverFor(root, filePath, serial, record.title);
       if (type == 0 || type == 1) {
         // Disc entries: playtime is keyed by serial.

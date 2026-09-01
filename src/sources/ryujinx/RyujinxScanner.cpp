@@ -176,6 +176,15 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
       if (expanded.startsWith(QStringLiteral("~/"))) {
         expanded.replace(0, 1, QDir::homePath());
       }
+      const QFileInfo directoryInfo(expanded);
+      if (!directoryInfo.isDir() || !directoryInfo.isReadable()) {
+        // A missing or unreadable directory must not silently empty the library;
+        // flag it so the model keeps its cached games instead of wiping them.
+        result.incomplete = true;
+        result.warnings.append(
+            QStringLiteral("Game directory is unavailable: %1").arg(expanded));
+        continue;
+      }
       QDirIterator romIterator(expanded, QDir::Files, QDirIterator::Subdirectories);
       while (romIterator.hasNext()) {
         const QString filePath = romIterator.next();

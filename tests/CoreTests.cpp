@@ -2605,6 +2605,7 @@ void CoreTests::pcsx2ScannerImportsCacheGamesAndPlaytime() {
   QCOMPARE(result.games.constFirst().playtimeSeconds, 14);
   QCOMPARE(result.games.constFirst().lastPlayed, 1700000500);
   QVERIFY(result.games.constFirst().path.endsWith(QStringLiteral(".iso")));
+  QVERIFY(!result.games.constFirst().isElf);
   QVERIFY(!result.games.constFirst().flatpak);
   QVERIFY(result.games.at(1).flatpak);
 
@@ -2652,6 +2653,23 @@ void CoreTests::malformedPcsx2DataDoesNotReplaceCachedGames() {
   model.refreshFromRoots({root});
   QCOMPARE(model.rowCount(), 1);
   QVERIFY(model.statusText().startsWith(QStringLiteral("PCSX2 scan interrupted")));
+
+  // A 0xFFFFFFFF length must be rejected before int narrowing.
+  createPcsx2Fixture(root);
+  QFile cacheFile(root + QStringLiteral("/cache/gamelist.cache"));
+  QVERIFY(cacheFile.open(QIODevice::ReadOnly));
+  QByteArray malformedCache = cacheFile.readAll();
+  cacheFile.close();
+  QVERIFY(malformedCache.size() > 12);
+  // Overwrite the first string length (path) with 0xFFFFFFFF.
+  malformedCache[8] = '\xff';
+  malformedCache[9] = '\xff';
+  malformedCache[10] = '\xff';
+  malformedCache[11] = '\xff';
+  writeFile(root + QStringLiteral("/cache/gamelist.cache"), malformedCache);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("PCSX2 scan interrupted")));
 }
 
 void CoreTests::pcsx2UnifiedFilterShowsGames() {
@@ -2677,18 +2695,23 @@ void CoreTests::pcsx2UnifiedFilterShowsGames() {
 
 void CoreTests::pcsx2LauncherBuildsSafeCommands() {
   // Serial ids are not launchable: PCSX2 boots disc images by path.
-  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("SLUS-20909"), false).isValid());
-  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("SCUS-97399"), false).isValid());
+  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("SLUS-20909"), false, false).isValid());
+  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("SCUS-97399"), false, false).isValid());
   const LaunchCommand native =
-      GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false);
+      GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false, false);
   QCOMPARE(native.program, QStringLiteral("pcsx2-qt"));
   QCOMPARE(native.arguments, QStringList({QStringLiteral("/games/Crash.iso")}));
   const LaunchCommand flatpak =
-      GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), true);
+      GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments.at(1), QStringLiteral("net.pcsx2.PCSX2"));
   QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/games/Crash.iso"));
-  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("bad;id"), false).isValid());
+  // ELF entries must receive -elf <file>.
+  const LaunchCommand elf =
+      GameLauncher::pcsx2Command(QStringLiteral("path:/games/homebrew.elf"), true, false);
+  QCOMPARE(elf.arguments,
+           QStringList({QStringLiteral("-elf"), QStringLiteral("/games/homebrew.elf")}));
+  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("bad;id"), false, false).isValid());
 }
 
 void CoreTests::ryujinxScannerImportsRomsMetadataAndPlaytime() {
@@ -2747,20 +2770,35 @@ void CoreTests::malformedRyujinxDataDoesNotReplaceCachedGames() {
   model.refreshFromRoots({root});
   QCOMPARE(model.rowCount(), 1);
   QVERIFY(model.statusText().startsWith(QStringLiteral("Ryujinx scan interrupted")));
+
+  // A configured directory that disappeared must keep the cached library.
+  writeFile(root + QStringLiteral("/Config.json"),
+            QStringLiteral("{\"version\":70,\"game_dirs\":[\"%1/missing\"]}")
+                .arg(roms)
+                .toUtf8());
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("Ryujinx scan interrupted")));
 }
 
 void CoreTests::ryujinxLauncherBuildsSafeCommands() {
+  const LaunchCommand wrapper =
+      GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"), QStringLiteral("ryujinx-wrapper"));
+  QCOMPARE(wrapper.program, QStringLiteral("ryujinx-wrapper"));
+  QCOMPARE(wrapper.arguments, QStringList({QStringLiteral("0100ABCD12345678")}));
+  // Native builds may ship the binary under different names.
   const LaunchCommand native =
-      GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"), false);
-  QCOMPARE(native.program, QStringLiteral("ryujinx-wrapper"));
+      GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"), QStringLiteral("Ryujinx"));
+  QCOMPARE(native.program, QStringLiteral("Ryujinx"));
   QCOMPARE(native.arguments, QStringList({QStringLiteral("0100ABCD12345678")}));
   const LaunchCommand flatpak =
-      GameLauncher::ryujinxCommand(QStringLiteral("path:/roms/Zelda.nsp"), true);
+      GameLauncher::ryujinxCommand(QStringLiteral("path:/roms/Zelda.nsp"), QString{});
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments.at(1), QStringLiteral("io.github.ryubing.Ryujinx"));
   QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/roms/Zelda.nsp"));
-  QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("bad;id"), false).isValid());
-  QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("0100abcd12345678"), false).isValid());
+  QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("bad;id"), QStringLiteral("Ryujinx")).isValid());
+  QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("0100abcd12345678"), QStringLiteral("Ryujinx"))
+              .isValid());
 }
 
 QTEST_MAIN(CoreTests)

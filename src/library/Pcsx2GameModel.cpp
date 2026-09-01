@@ -77,7 +77,8 @@ QHash<int, QByteArray> Pcsx2GameModel::roleNames() const {
           {GameRoles::Source, "source"},
           {GameRoles::Runner, "runner"},
           {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"}};
+          {GameRoles::Hidden, "hidden"},
+          {GameRoles::LaunchTarget, "launchTarget"}};
 }
 
 bool Pcsx2GameModel::pcsx2Detected() const { return m_pcsx2Detected; }
@@ -153,14 +154,30 @@ bool Pcsx2GameModel::ensureSchema() {
   if (!query.exec(QStringLiteral(
           "CREATE TABLE IF NOT EXISTS pcsx2_games (game_id TEXT PRIMARY KEY, name TEXT NOT NULL, "
           "path TEXT NOT NULL, serial TEXT, region TEXT, cover_path TEXT, last_played INTEGER NOT "
-          "NULL DEFAULT 0, playtime_seconds INTEGER NOT NULL DEFAULT 0, flatpak INTEGER NOT NULL "
-          "DEFAULT 0, favorite INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, "
-          "observed_at INTEGER NOT NULL)"))) {
+          "NULL DEFAULT 0, playtime_seconds INTEGER NOT NULL DEFAULT 0, is_elf INTEGER NOT NULL "
+          "DEFAULT 0, flatpak INTEGER NOT NULL DEFAULT 0, favorite INTEGER NOT NULL DEFAULT 0, "
+          "hidden INTEGER NOT NULL DEFAULT 0, observed_at INTEGER NOT NULL)"))) {
+    setStatus(QStringLiteral("Could not initialize PCSX2 cache"), query.lastError().text());
     return false;
+  }
+  {
+    QSqlQuery columns(m_database);
+    bool hasIsElf = false;
+    if (columns.exec(QStringLiteral("PRAGMA table_info(pcsx2_games)"))) {
+      while (columns.next()) {
+        hasIsElf = hasIsElf || columns.value(1).toString() == QStringLiteral("is_elf");
+      }
+    }
+    if (!hasIsElf && !query.exec(QStringLiteral(
+                         "ALTER TABLE pcsx2_games ADD COLUMN is_elf INTEGER NOT NULL DEFAULT 0"))) {
+      setStatus(QStringLiteral("Could not migrate PCSX2 cache"), query.lastError().text());
+      return false;
+    }
   }
   if (!query.exec(QStringLiteral(
           "CREATE TABLE IF NOT EXISTS source_state (source TEXT PRIMARY KEY, last_scan INTEGER, "
           "last_error TEXT, paths TEXT NOT NULL DEFAULT '')"))) {
+    setStatus(QStringLiteral("Could not initialize PCSX2 cache"), query.lastError().text());
     return false;
   }
   bool hasPaths = false;
@@ -169,8 +186,15 @@ bool Pcsx2GameModel::ensureSchema() {
       hasPaths = hasPaths || query.value(1).toString() == QStringLiteral("paths");
     }
   }
-  return hasPaths || query.exec(QStringLiteral(
-                         "ALTER TABLE source_state ADD COLUMN paths TEXT NOT NULL DEFAULT ''"));
+  if (hasPaths) {
+    return true;
+  }
+  if (!query.exec(QStringLiteral(
+          "ALTER TABLE source_state ADD COLUMN paths TEXT NOT NULL DEFAULT ''"))) {
+    setStatus(QStringLiteral("Could not migrate PCSX2 cache"), query.lastError().text());
+    return false;
+  }
+  return true;
 }
 
 void Pcsx2GameModel::loadDatabase() {
@@ -178,8 +202,8 @@ void Pcsx2GameModel::loadDatabase() {
   QSqlQuery query(m_database);
   if (!query.exec(QStringLiteral(
           "SELECT game_id, name, path, serial, region, cover_path, last_played, playtime_seconds, "
-          "flatpak, favorite, hidden FROM pcsx2_games WHERE observed_at > 0 ORDER BY name COLLATE "
-          "NOCASE"))) {
+          "is_elf, flatpak, favorite, hidden FROM pcsx2_games WHERE observed_at > 0 ORDER BY name "
+          "COLLATE NOCASE"))) {
     setStatus(QStringLiteral("Could not load cached PCSX2 games"), query.lastError().text());
     return;
   }
@@ -192,10 +216,11 @@ void Pcsx2GameModel::loadDatabase() {
                            .region = query.value(4).toString(),
                            .playtimeSeconds = query.value(7).toLongLong(),
                            .lastPlayed = query.value(6).toLongLong(),
-                           .flatpak = query.value(8).toBool()};
+                           .isElf = query.value(8).toBool(),
+                           .flatpak = query.value(9).toBool()};
     loaded.append({.pcsx2 = record,
-                   .favorite = query.value(9).toBool(),
-                   .hidden = query.value(10).toBool(),
+                   .favorite = query.value(10).toBool(),
+                   .hidden = query.value(11).toBool(),
                    .accentStart = colorFor(record.gameId, 0),
                    .accentEnd = colorFor(record.gameId, 1)});
   }
@@ -236,11 +261,12 @@ void Pcsx2GameModel::applyScan(const Pcsx2ScanResult& result) {
   for (const Pcsx2GameRecord& game : result.games) {
     query.prepare(QStringLiteral(
         "INSERT INTO pcsx2_games(game_id, name, path, serial, region, cover_path, last_played, "
-        "playtime_seconds, flatpak, observed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', "
-        "'now')) ON CONFLICT(game_id) DO UPDATE SET name = excluded.name, path = excluded.path, "
-        "serial = excluded.serial, region = excluded.region, cover_path = excluded.cover_path, "
-        "last_played = excluded.last_played, playtime_seconds = excluded.playtime_seconds, "
-        "flatpak = excluded.flatpak, observed_at = excluded.observed_at"));
+        "playtime_seconds, is_elf, flatpak, observed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        "strftime('%s', 'now')) ON CONFLICT(game_id) DO UPDATE SET name = excluded.name, path = "
+        "excluded.path, serial = excluded.serial, region = excluded.region, cover_path = "
+        "excluded.cover_path, last_played = excluded.last_played, playtime_seconds = "
+        "excluded.playtime_seconds, is_elf = excluded.is_elf, flatpak = excluded.flatpak, "
+        "observed_at = excluded.observed_at"));
     query.addBindValue(game.gameId);
     query.addBindValue(game.title);
     query.addBindValue(game.path);
@@ -249,6 +275,7 @@ void Pcsx2GameModel::applyScan(const Pcsx2ScanResult& result) {
     query.addBindValue(game.coverPath);
     query.addBindValue(game.lastPlayed);
     query.addBindValue(game.playtimeSeconds);
+    query.addBindValue(game.isElf);
     query.addBindValue(game.flatpak);
     okay = okay && query.exec();
   }
@@ -315,6 +342,8 @@ QVariant Pcsx2GameModel::valueForRole(const Game& game, int role) const {
     return QStringLiteral("PCSX2");
   case GameRoles::Runner:
     return game.pcsx2.serial;
+  case GameRoles::LaunchTarget:
+    return game.pcsx2.isElf ? QStringLiteral("elf") : QStringLiteral("disc");
   case GameRoles::Flatpak:
     return game.pcsx2.flatpak;
   case GameRoles::Hidden:

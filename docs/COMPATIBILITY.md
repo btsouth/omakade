@@ -38,8 +38,8 @@ CI. Additional real-user reports expand compatibility coverage after v1.
 ## Contract-tested sources
 
 Lutris native and Flatpak discovery, Heroic native and Flatpak discovery,
-Faugus and RetroArch native and Flatpak discovery, PCSX2 and Ryujinx native
-and Flatpak discovery, and Epic, GOG, and Amazon
+Faugus and RetroArch native and Flatpak discovery, PCSX2 and Ryujinx scanner
+contracts (native and Flatpak roots), and Epic, GOG, and Amazon
 manifests are covered by repeatable local fixtures. These
 paths still need reports from users with those launchers installed before the
 stable release gate can close.

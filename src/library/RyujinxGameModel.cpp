@@ -156,11 +156,13 @@ bool RyujinxGameModel::ensureSchema() {
           "INTEGER NOT NULL DEFAULT 0, cover_path TEXT, flatpak INTEGER NOT NULL DEFAULT 0, "
           "favorite INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, observed_at "
           "INTEGER NOT NULL)"))) {
+    setStatus(QStringLiteral("Could not initialize Ryujinx cache"), query.lastError().text());
     return false;
   }
   if (!query.exec(QStringLiteral(
           "CREATE TABLE IF NOT EXISTS source_state (source TEXT PRIMARY KEY, last_scan INTEGER, "
           "last_error TEXT, paths TEXT NOT NULL DEFAULT '')"))) {
+    setStatus(QStringLiteral("Could not initialize Ryujinx cache"), query.lastError().text());
     return false;
   }
   bool hasPaths = false;
@@ -169,8 +171,15 @@ bool RyujinxGameModel::ensureSchema() {
       hasPaths = hasPaths || query.value(1).toString() == QStringLiteral("paths");
     }
   }
-  return hasPaths || query.exec(QStringLiteral(
-                         "ALTER TABLE source_state ADD COLUMN paths TEXT NOT NULL DEFAULT ''"));
+  if (hasPaths) {
+    return true;
+  }
+  if (!query.exec(QStringLiteral(
+          "ALTER TABLE source_state ADD COLUMN paths TEXT NOT NULL DEFAULT ''"))) {
+    setStatus(QStringLiteral("Could not migrate Ryujinx cache"), query.lastError().text());
+    return false;
+  }
+  return true;
 }
 
 void RyujinxGameModel::loadDatabase() {
