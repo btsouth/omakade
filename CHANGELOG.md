@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added owned Steam games to the library through the Steam Web API, marked
+  NOT INSTALLED and installable through Steam.
+- Added an INSTALLED ONLY setting to hide games that are owned but not installed.
+
 ## 1.2.3
 
 - Restored controller navigation on game details.

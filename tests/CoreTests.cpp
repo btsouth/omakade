@@ -20,6 +20,7 @@
 #include "sources/heroic/HeroicScanner.h"
 #include "sources/lutris/LutrisScanner.h"
 #include "sources/retroarch/RetroArchScanner.h"
+#include "sources/steam/SteamOwnedGames.h"
 #include "sources/steam/SteamScanner.h"
 #include "sources/steam/ValveKeyValues.h"
 #include "theme/OmarchyTheme.h"
@@ -220,6 +221,8 @@ private slots:
   void steamAchievementApiParsesPlayerSchemaAndRarity();
   void steamAchievementApiClassifiesFailures();
   void steamLauncherBuildsSafeUrls();
+  void steamOwnedGamesParseHandlesLibraryToolsAndPrivacy();
+  void steamModelListsOwnedGamesWhenEnabled();
   void lutrisScannerImportsOnlyLaunchableGames();
   void lutrisModelIsRepeatableAndPreservesLocalState();
   void malformedLutrisDataDoesNotReplaceCachedGames();
@@ -507,7 +510,7 @@ void CoreTests::steamModelMigratesVersionOneDatabase() {
     QSqlQuery query(verify);
     QVERIFY(query.exec(QStringLiteral("PRAGMA user_version")));
     QVERIFY(query.next());
-    QCOMPARE(query.value(0).toInt(), 7);
+    QCOMPARE(query.value(0).toInt(), 8);
     QVERIFY(query.exec(QStringLiteral(
         "SELECT paths FROM source_state WHERE source = 'steam'")));
     QVERIFY(query.next());
@@ -637,7 +640,102 @@ void CoreTests::steamLauncherBuildsSafeUrls() {
            QUrl(QStringLiteral("steam://rungameid/440")));
   QCOMPARE(SteamLauncher::manageUrl(QStringLiteral("440")),
            QUrl(QStringLiteral("steam://nav/games/details/440")));
+  QCOMPARE(SteamLauncher::installUrl(QStringLiteral("440")),
+           QUrl(QStringLiteral("steam://install/440")));
   QVERIFY(SteamLauncher::launchUrl(QStringLiteral("440;touch /tmp/nope")).isEmpty());
+  QVERIFY(SteamLauncher::installUrl(QStringLiteral("0")).isEmpty());
+}
+
+void CoreTests::steamOwnedGamesParseHandlesLibraryToolsAndPrivacy() {
+  const QByteArray payload = R"({"response":{"game_count":4,"games":[
+    {"appid":620,"name":"Portal 2","playtime_forever":425,"rtime_last_played":1700000000},
+    {"appid":440,"name":"Team Fortress 2","playtime_forever":0,"rtime_last_played":0},
+    {"appid":961940,"name":"Proton 9.0","playtime_forever":0},
+    {"appid":620,"name":"Portal 2","playtime_forever":425}]}})";
+  const SteamOwnedGamesResult result = SteamOwnedGames::parse(payload);
+  QVERIFY(result.valid);
+  // Proton is filtered as a tool and the duplicate app id is dropped.
+  QCOMPARE(result.games.size(), 2);
+  QCOMPARE(result.games.at(0).title, QStringLiteral("Portal 2"));
+  QCOMPARE(result.games.at(0).appId, QStringLiteral("620"));
+  QCOMPARE(result.games.at(0).playtimeMinutes, 425);
+  QCOMPARE(result.games.at(0).lastPlayed, 1700000000);
+  QCOMPARE(result.games.at(1).title, QStringLiteral("Team Fortress 2"));
+
+  // Steam answers a private "Game details" profile with an empty response object.
+  const SteamOwnedGamesResult privateProfile = SteamOwnedGames::parse(R"({"response":{}})");
+  QVERIFY(!privateProfile.valid);
+  QVERIFY(privateProfile.error.contains(QStringLiteral("Public")));
+
+  const SteamOwnedGamesResult broken = SteamOwnedGames::parse(QByteArrayLiteral("not json"));
+  QVERIFY(!broken.valid);
+  QVERIFY(!broken.error.isEmpty());
+
+  const QUrl url = SteamOwnedGames::requestUrl(QStringLiteral("api.steampowered.com"),
+                                               QByteArrayLiteral("KEY"), QStringLiteral("7656119"));
+  QCOMPARE(url.host(), QStringLiteral("api.steampowered.com"));
+  QCOMPARE(url.path(), QStringLiteral("/IPlayerService/GetOwnedGames/v1/"));
+  QVERIFY(url.query().contains(QStringLiteral("include_appinfo=1")));
+  QVERIFY(url.query().contains(QStringLiteral("steamid=7656119")));
+}
+
+void CoreTests::steamModelListsOwnedGamesWhenEnabled() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/Steam");
+  const QString second = directory.path() + QStringLiteral("/Library");
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  const QString config = directory.path() + QStringLiteral("/config.toml");
+  createSteamFixture(root, second);
+
+  AppSettings settings(config);
+  QVERIFY(settings.steamOwnedGames());
+  {
+    SteamGameModel model(database, &settings);
+    model.refreshFromRoots({root});
+    QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(), 3000);
+    QCOMPARE(model.rowCount(), 2);
+  }
+
+  const QString ownedConnection = QStringLiteral("owned-seed");
+  {
+    QSqlDatabase seed = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), ownedConnection);
+    seed.setDatabaseName(database);
+    QVERIFY(seed.open());
+    QSqlQuery query(seed);
+    QVERIFY(query.exec(
+        QStringLiteral("INSERT INTO games(app_id, title) VALUES('620', 'Portal 2')")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO owned_games(app_id, cover_path, last_played, playtime_minutes, observed_at) "
+        "VALUES('620', NULL, 1700000000, 425, 1700000000)")));
+    seed.close();
+  }
+  QSqlDatabase::removeDatabase(ownedConnection);
+
+  SteamGameModel withOwned(database, &settings);
+  QCOMPARE(withOwned.rowCount(), 3);
+  int ownedRow = -1;
+  for (int row = 0; row < withOwned.rowCount(); ++row) {
+    if (withOwned.get(row).value(QStringLiteral("appId")).toString() == QStringLiteral("620")) {
+      ownedRow = row;
+    }
+  }
+  QVERIFY(ownedRow >= 0);
+  const QVariantMap owned = withOwned.get(ownedRow);
+  QVERIFY(!owned.value(QStringLiteral("installed")).toBool());
+  QCOMPARE(owned.value(QStringLiteral("hours")).toInt(), 7);
+  QVERIFY(owned.value(QStringLiteral("installPath")).toString().isEmpty());
+
+  // Installed games keep the role set, so only the owned entry is marked uninstalled.
+  for (int row = 0; row < withOwned.rowCount(); ++row) {
+    if (row != ownedRow) {
+      QVERIFY(withOwned.get(row).value(QStringLiteral("installed")).toBool());
+    }
+  }
+
+  settings.setSteamOwnedGames(false);
+  SteamGameModel installedOnly(database, &settings);
+  QCOMPARE(installedOnly.rowCount(), 2);
 }
 
 void CoreTests::lutrisScannerImportsOnlyLaunchableGames() {

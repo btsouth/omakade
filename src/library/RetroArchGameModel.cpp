@@ -79,6 +79,7 @@ QHash<int, QByteArray> RetroArchGameModel::roleNames() const {
           {GameRoles::Runner, "runner"},
           {GameRoles::Flatpak, "flatpak"},
           {GameRoles::Hidden, "hidden"},
+          {GameRoles::Installed, "installed"},
           {GameRoles::LaunchTarget, "launchTarget"}};
 }
 
@@ -318,6 +319,8 @@ QVariant RetroArchGameModel::valueForRole(const Game& game, int role) const {
     return record.flatpak;
   case GameRoles::Hidden:
     return game.hidden;
+  case GameRoles::Installed:
+    return true;
   case GameRoles::LaunchTarget:
     return record.corePath;
   default:

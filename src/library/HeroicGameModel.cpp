@@ -90,7 +90,8 @@ QHash<int, QByteArray> HeroicGameModel::roleNames() const {
           {GameRoles::Source, "source"},
           {GameRoles::Runner, "runner"},
           {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"}};
+          {GameRoles::Hidden, "hidden"},
+          {GameRoles::Installed, "installed"}};
 }
 
 bool HeroicGameModel::heroicDetected() const { return m_heroicDetected; }
@@ -327,6 +328,8 @@ QVariant HeroicGameModel::valueForRole(const Game& game, int role) const {
     return game.heroic.flatpak;
   case GameRoles::Hidden:
     return game.hidden;
+  case GameRoles::Installed:
+    return true;
   default:
     return {};
   }

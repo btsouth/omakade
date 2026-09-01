@@ -46,6 +46,7 @@ struct SteamScanResult {
 
 class SteamScanner final {
 public:
+  [[nodiscard]] static bool isTool(const QString& name);
   [[nodiscard]] static QStringList discoverSteamRoots();
   [[nodiscard]] static SteamScanResult scan(const QStringList& steamRoots);
 };

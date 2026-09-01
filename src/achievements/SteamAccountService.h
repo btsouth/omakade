@@ -1,6 +1,7 @@
 #pragma once
 
 #include "achievements/SteamAchievementApi.h"
+#include "sources/steam/SteamOwnedGames.h"
 
 #include <QFutureWatcher>
 #include <QHash>
@@ -42,15 +43,17 @@ public:
   Q_INVOKABLE void removeApiKey();
   Q_INVOKABLE void refreshAchievements(const QString& appId);
   Q_INVOKABLE void refreshAchievementsIfStale(const QString& appId);
+  Q_INVOKABLE void refreshOwnedGames();
 
 signals:
   void accountChanged();
   void busyChanged();
   void statusChanged();
   void achievementsUpdated(const QString& appId);
+  void ownedGamesUpdated();
 
 private:
-  enum class SecretAction { Detect, Store, Remove, LookupForRefresh };
+  enum class SecretAction { Detect, Store, Remove, LookupForRefresh, LookupForOwned };
   struct ApiRequestState {
     QByteArray player;
     QByteArray schema;
@@ -64,6 +67,9 @@ private:
   void beginSecretOperation(SecretAction action, const QByteArray& value = {});
   void finishSecretOperation();
   void startApiRequests(QByteArray apiKey);
+  void startOwnedGamesRequest(QByteArray apiKey);
+  void handleOwnedGamesReply(QNetworkReply* reply);
+  bool persistOwnedGames(const SteamOwnedGamesResult& result);
   void handleApiReply(QNetworkReply* reply);
   void finishApiRequests();
   bool persistAchievements(const SteamAchievementApiResult& result);

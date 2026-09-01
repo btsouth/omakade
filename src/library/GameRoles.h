@@ -34,5 +34,6 @@ enum Role {
   Tags,
   Collections,
   LaunchTarget,
+  Installed,
 };
 }

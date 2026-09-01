@@ -20,6 +20,8 @@ class AppSettings final : public QObject {
       bool retroArchEnabled READ retroArchEnabled WRITE setRetroArchEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool closeAfterLaunch READ closeAfterLaunch WRITE setCloseAfterLaunch NOTIFY
                  closeAfterLaunchChanged)
+  Q_PROPERTY(bool steamOwnedGames READ steamOwnedGames WRITE setSteamOwnedGames NOTIFY
+                 steamOwnedGamesChanged)
 
 public:
   explicit AppSettings(const QString& path = {}, QObject* parent = nullptr);
@@ -44,6 +46,8 @@ public:
   void setRetroArchEnabled(bool value);
   [[nodiscard]] bool closeAfterLaunch() const;
   void setCloseAfterLaunch(bool value);
+  [[nodiscard]] bool steamOwnedGames() const;
+  void setSteamOwnedGames(bool value);
 
 signals:
   void reducedMotionChanged();
@@ -52,6 +56,7 @@ signals:
   void igdbClientIdChanged();
   void sourcesChanged();
   void closeAfterLaunchChanged();
+  void steamOwnedGamesChanged();
 
 private:
   [[nodiscard]] static QString defaultPath();
@@ -69,4 +74,5 @@ private:
   bool m_faugusEnabled = true;
   bool m_retroArchEnabled = true;
   bool m_closeAfterLaunch = false;
+  bool m_steamOwnedGames = true;
 };

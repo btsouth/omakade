@@ -137,6 +137,20 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
   return false;
 }
 
+bool GameLauncher::install(const QString& source, const QString& id) {
+  if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) != 0) {
+    setError(QStringLiteral("%1 does not provide installation from Omakade yet.").arg(source));
+    return false;
+  }
+  const QUrl url = SteamLauncher::installUrl(id);
+  if (!url.isValid() || url.isEmpty() || !QDesktopServices::openUrl(url)) {
+    setError(QStringLiteral("Steam could not start the installation."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
 bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak,
                           const QString& runner) {
   if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) == 0) {

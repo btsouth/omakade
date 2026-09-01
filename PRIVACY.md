@@ -12,6 +12,7 @@ and runtime logs from RetroArch. It never writes into source launcher directorie
 
 Omakade retains:
 
+- Owned Steam games in the same database
 - Library, source records, favorites, hidden state, and achievements in
   `$XDG_DATA_HOME/omakade/library.sqlite3`
 - User-created links between duplicate installations in the same database
@@ -40,6 +41,12 @@ obtain an app access token, then sends the token and client ID to IGDB.
 Omakade may request missing covers and achievement icons from Steam's public
 HTTPS artwork hosts. Responses are size-limited and the artwork cache is
 bounded by the configured limit.
+
+Omakade requests the account's owned games from Valve's documented
+IPlayerService/GetOwnedGames endpoint when a Steam Web API key is stored and the
+owned-games setting is on. It retains the app ID, title, playtime, and last-played
+time for each owned game in `owned_games` in the local library database. Turning
+the setting off hides those entries; removing the API key stops the requests.
 
 Steam Web API requests occur only after the user stores a key. Omakade refreshes
 stale achievement data when Steam game details open or when the user selects

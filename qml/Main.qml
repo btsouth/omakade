@@ -264,6 +264,16 @@ ApplicationWindow {
         }
     }
 
+    function installSelected() {
+        if (DemoMode) {
+            showToast("Demo games cannot be installed")
+        } else if (Launcher.install(selectedInstallation.source, selectedInstallation.appId)) {
+            showToast("Asking Steam to install " + selectedGame.title)
+        } else {
+            showToast(Launcher.lastError)
+        }
+    }
+
     function manageSelected() {
         if (Launcher.manage(selectedInstallation.source, selectedInstallation.appId,
                             selectedInstallation.flatpak || false,
@@ -906,6 +916,7 @@ ApplicationWindow {
                 root.selectedGame = Library.get(root.selectedIndex)
             }
             onPlayRequested: root.playSelected()
+            onInstallRequested: root.installSelected()
             onManageRequested: root.manageSelected()
             onInstallationSelected: installation => root.selectInstallation(installation)
             onLinkRequested: {
@@ -1629,6 +1640,13 @@ ApplicationWindow {
                         text: Preferences.closeAfterLaunch ? "CLOSE AFTER PLAY" : "STAY OPEN"
                         selected: Preferences.closeAfterLaunch
                         onClicked: Preferences.closeAfterLaunch = !Preferences.closeAfterLaunch
+                    }
+                    GlassButton {
+                        Layout.fillWidth: true
+                        compact: true
+                        text: Preferences.steamOwnedGames ? "OWNED STEAM GAMES" : "INSTALLED ONLY"
+                        selected: Preferences.steamOwnedGames
+                        onClicked: Preferences.steamOwnedGames = !Preferences.steamOwnedGames
                     }
                     GlassButton {
                         Layout.fillWidth: true

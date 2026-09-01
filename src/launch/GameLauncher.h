@@ -26,6 +26,7 @@ public:
   Q_INVOKABLE bool launch(const QString& source, const QString& id, bool flatpak = false,
                           const QString& runner = {}, const QString& installPath = {},
                           const QString& launchTarget = {});
+  Q_INVOKABLE bool install(const QString& source, const QString& id);
   Q_INVOKABLE bool manage(const QString& source, const QString& id, bool flatpak = false,
                           const QString& runner = {});
 

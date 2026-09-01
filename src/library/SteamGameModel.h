@@ -50,6 +50,7 @@ public:
   Q_INVOKABLE void toggleHidden(int row);
   Q_INVOKABLE void refresh();
   Q_INVOKABLE void reloadAchievementSummary(const QString& appId);
+  Q_INVOKABLE void reloadOwnedGames();
   void refreshFromRoots(const QStringList& roots);
 
 signals:
@@ -59,6 +60,7 @@ signals:
 private:
   struct Game {
     SteamGameRecord steam;
+    bool installed = true;
     bool favorite = false;
     bool hidden = false;
     int achievementsUnlocked = 0;

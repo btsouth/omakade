@@ -139,6 +139,7 @@ Item {
             required property color accentEnd
             required property string coverMark
             required property string coverPath
+            required property bool installed
 
             width: grid.cellWidth
             height: grid.cellHeight
@@ -159,6 +160,7 @@ Item {
                 accentEnd: delegateRoot.accentEnd
                 coverMark: delegateRoot.coverMark
                 coverPath: delegateRoot.coverPath
+                installed: delegateRoot.installed
                 current: grid.currentIndex === delegateRoot.index
                 focus: current
 

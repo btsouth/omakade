@@ -18,6 +18,7 @@ Item {
     signal backRequested()
     signal favoriteRequested()
     signal playRequested()
+    signal installRequested()
     signal manageRequested()
     signal hiddenRequested()
     signal connectRequested()
@@ -344,10 +345,11 @@ Item {
                     GlassButton {
                         id: playButton
                         objectName: "playButton"
-                        text: "PLAY"
-                        iconText: "▶"
+                        readonly property bool installed: root.game.installed !== false
+                        text: installed ? "PLAY" : "INSTALL"
+                        iconText: installed ? "▶" : "⭳"
                         primary: true
-                        onClicked: root.playRequested()
+                        onClicked: installed ? root.playRequested() : root.installRequested()
                         Component.onCompleted: forceActiveFocus()
                     }
 

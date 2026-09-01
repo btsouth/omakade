@@ -114,6 +114,7 @@ QHash<int, QByteArray> MockGameModel::roleNames() const {
       {GameRoles::Runner, "runner"},
       {GameRoles::Flatpak, "flatpak"},
       {GameRoles::Hidden, "hidden"},
+      {GameRoles::Installed, "installed"},
   };
 }
 
@@ -189,6 +190,8 @@ QVariant MockGameModel::valueForRole(const Game& game, int role) const {
     return false;
   case GameRoles::Hidden:
     return false;
+  case GameRoles::Installed:
+    return true;
   default:
     return {};
   }

@@ -31,6 +31,7 @@ Omakade includes:
 - Optional close-after-launch behavior
 - Collections, tags, completion states, and smart organization filters
 - Local Steam achievements plus optional Web API enrichment
+- Owned Steam games alongside installed ones, with delegated installation
 - Optional IGDB critic aggregates and game-length estimates
 - Local, downloaded, and user-selected cover artwork
 - Explicit linking for games installed through multiple sources
@@ -38,6 +39,11 @@ Omakade includes:
 - Keyboard, mouse, and controller navigation
 
 ![Omakade game details showing playtime, IGDB insights, and Steam achievements](docs/assets/game-details.webp)
+
+Owned Steam games need a Steam Web API key and a Steam ID in Settings, and the
+account's Game details privacy set to Public. Entries that are owned but not
+installed are marked **NOT INSTALLED** and offer Install, which hands off to
+Steam. Turn the whole behaviour off with the INSTALLED ONLY toggle in Settings.
 
 Omakade reads launcher data without modifying it. Core discovery, browsing,
 artwork, and launching work offline. Run `omakade --demo` to explore the UI

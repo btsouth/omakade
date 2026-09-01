@@ -55,6 +55,8 @@ add_library(omakade_core STATIC
   src/metadata/GameInsightsService.h
   src/sources/steam/SteamScanner.cpp
   src/sources/steam/SteamScanner.h
+  src/sources/steam/SteamOwnedGames.cpp
+  src/sources/steam/SteamOwnedGames.h
   src/sources/steam/ValveKeyValues.cpp
   src/sources/steam/ValveKeyValues.h
   src/sources/lutris/LutrisScanner.cpp

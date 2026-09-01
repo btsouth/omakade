@@ -77,7 +77,8 @@ QHash<int, QByteArray> FaugusGameModel::roleNames() const {
           {GameRoles::Source, "source"},
           {GameRoles::Runner, "runner"},
           {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"}};
+          {GameRoles::Hidden, "hidden"},
+          {GameRoles::Installed, "installed"}};
 }
 
 bool FaugusGameModel::faugusDetected() const { return m_faugusDetected; }
@@ -310,6 +311,8 @@ QVariant FaugusGameModel::valueForRole(const Game& game, int role) const {
     return game.faugus.flatpak;
   case GameRoles::Hidden:
     return game.hidden;
+  case GameRoles::Installed:
+    return true;
   default:
     return {};
   }

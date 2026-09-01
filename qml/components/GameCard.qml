@@ -15,6 +15,7 @@ FocusScope {
     required property color accentEnd
     required property string coverMark
     required property string coverPath
+    property bool installed: true
     property bool current: false
 
     signal activated()
@@ -204,6 +205,28 @@ FocusScope {
                 anchors.centerIn: parent
                 text: root.completionStatus.toUpperCase()
                 color: Theme.brightForeground
+                font.family: Theme.fontFamily
+                font.pixelSize: 8
+                font.weight: Font.Bold
+            }
+        }
+
+        Rectangle {
+            visible: !root.installed
+            height: 25
+            width: notInstalledText.implicitWidth + 18
+            radius: 13
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.margins: 9
+            color: root.alpha(Theme.darkerBackground, 0.82)
+            border.color: root.alpha(Theme.brightForeground, 0.20)
+
+            Text {
+                id: notInstalledText
+                anchors.centerIn: parent
+                text: "NOT INSTALLED"
+                color: root.alpha(Theme.brightForeground, 0.75)
                 font.family: Theme.fontFamily
                 font.pixelSize: 8
                 font.weight: Font.Bold

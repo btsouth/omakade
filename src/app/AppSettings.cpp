@@ -127,6 +127,17 @@ void AppSettings::setCloseAfterLaunch(bool value) {
   emit closeAfterLaunchChanged();
 }
 
+bool AppSettings::steamOwnedGames() const { return m_steamOwnedGames; }
+
+void AppSettings::setSteamOwnedGames(bool value) {
+  if (m_steamOwnedGames == value) {
+    return;
+  }
+  m_steamOwnedGames = value;
+  save();
+  emit steamOwnedGamesChanged();
+}
+
 QString AppSettings::defaultPath() {
   return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
          QStringLiteral("/omakade/config.toml");
@@ -171,6 +182,7 @@ void AppSettings::load() {
   m_faugusEnabled = readEnabled(QStringLiteral("faugus_enabled"), true);
   m_retroArchEnabled = readEnabled(QStringLiteral("retroarch_enabled"), true);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
+  m_steamOwnedGames = readEnabled(QStringLiteral("steam_owned_games"), true);
 }
 
 void AppSettings::save() const {
@@ -182,7 +194,8 @@ void AppSettings::save() const {
   file.write(QStringLiteral("reduced_motion = %1\nartwork_cache_limit_mb = %2\nsteam_id = "
                             "\"%3\"\nigdb_client_id = \"%4\"\nsteam_enabled = %5\n"
                             "lutris_enabled = %6\nheroic_enabled = %7\nfaugus_enabled = %8\n"
-                            "retroarch_enabled = %9\nclose_after_launch = %10\n")
+                            "retroarch_enabled = %9\nclose_after_launch = %10\n"
+                            "steam_owned_games = %11\n")
                  .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_artworkCacheLimitMb)
                  .arg(m_steamId)
@@ -193,6 +206,7 @@ void AppSettings::save() const {
                  .arg(m_faugusEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_retroArchEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
+                 .arg(m_steamOwnedGames ? QStringLiteral("true") : QStringLiteral("false"))
                  .toUtf8());
   file.commit();
 }

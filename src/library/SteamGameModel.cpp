@@ -74,6 +74,11 @@ SteamGameModel::SteamGameModel(const QString& databasePath, AppSettings* setting
     emit scanningChanged();
   });
 
+  if (m_settings != nullptr) {
+    connect(m_settings, &AppSettings::steamOwnedGamesChanged, this,
+            &SteamGameModel::reloadOwnedGames);
+  }
+
   const QString path = databasePath.isEmpty() ? defaultDatabasePath() : databasePath;
   if (openDatabase(path) && ensureSchema()) {
     loadDatabase();
@@ -127,6 +132,7 @@ QHash<int, QByteArray> SteamGameModel::roleNames() const {
       {GameRoles::Runner, "runner"},
       {GameRoles::Flatpak, "flatpak"},
       {GameRoles::Hidden, "hidden"},
+      {GameRoles::Installed, "installed"},
   };
 }
 
@@ -224,6 +230,15 @@ void SteamGameModel::reloadAchievementSummary(const QString& appId) {
   }
 }
 
+void SteamGameModel::reloadOwnedGames() {
+  if (!m_database.isOpen()) {
+    return;
+  }
+  loadDatabase();
+  requestMissingCovers();
+  emit statusChanged();
+}
+
 void SteamGameModel::refreshFromRoots(const QStringList& roots) {
   if (m_scanning) {
     return;
@@ -248,7 +263,8 @@ QVariant SteamGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::Subtitle:
     return QStringLiteral("Steam");
   case GameRoles::Description:
-    return QStringLiteral("Installed locally through Steam.");
+    return game.installed ? QStringLiteral("Installed locally through Steam.")
+                          : QStringLiteral("Owned on Steam. Not installed on this machine.");
   case GameRoles::Hours:
     return game.steam.playtimeMinutes / 60;
   case GameRoles::Progress:
@@ -281,8 +297,11 @@ QVariant SteamGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::LogoPath:
     return localUrl(game.steam.logoPath);
   case GameRoles::InstallPath:
-    return QDir(game.steam.libraryPath + QStringLiteral("/steamapps/common"))
-        .absoluteFilePath(game.steam.installDirectory);
+    return game.installed ? QDir(game.steam.libraryPath + QStringLiteral("/steamapps/common"))
+                                .absoluteFilePath(game.steam.installDirectory)
+                          : QString{};
+  case GameRoles::Installed:
+    return game.installed;
   case GameRoles::Source:
     return QStringLiteral("Steam");
   case GameRoles::Runner:
@@ -326,6 +345,10 @@ bool SteamGameModel::ensureSchema() {
                      "library_path TEXT NOT NULL, manifest_path TEXT NOT NULL, cover_path TEXT, "
                      "hero_path TEXT, logo_path TEXT, last_played INTEGER NOT NULL DEFAULT 0, "
                      "playtime_minutes INTEGER NOT NULL DEFAULT 0, observed_at INTEGER NOT NULL)"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS owned_games ("
+                     "app_id TEXT PRIMARY KEY REFERENCES games(app_id), cover_path TEXT, "
+                     "last_played INTEGER NOT NULL DEFAULT 0, playtime_minutes INTEGER NOT NULL "
+                     "DEFAULT 0, observed_at INTEGER NOT NULL)"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS source_state ("
                      "source TEXT PRIMARY KEY, last_scan INTEGER, last_error TEXT, paths TEXT NOT "
                      "NULL DEFAULT '')"),
@@ -366,7 +389,7 @@ bool SteamGameModel::ensureSchema() {
     setStatus(QStringLiteral("Could not update source diagnostics"), query.lastError().text());
     return false;
   }
-  if (schemaVersion < 7 && !query.exec(QStringLiteral("PRAGMA user_version = 7"))) {
+  if (schemaVersion < 8 && !query.exec(QStringLiteral("PRAGMA user_version = 8"))) {
     setStatus(QStringLiteral("Could not update the library database version"),
               query.lastError().text());
     return false;
@@ -394,13 +417,21 @@ void SteamGameModel::loadDatabase() {
   QVector<Game> loaded;
   QVector<QPair<QString, QString>> cachedCoverUpdates;
   QSqlQuery query(m_database);
-  if (!query.exec(QStringLiteral(
-          "SELECT g.app_id, g.title, g.favorite, g.hidden, i.install_dir, i.library_path, "
-          "i.manifest_path, i.cover_path, i.hero_path, i.logo_path, i.last_played, "
-          "i.playtime_minutes, COALESCE(a.unlocked, 0), COALESCE(a.total, 0) FROM games g "
-          "JOIN installations i ON i.app_id = g.app_id LEFT JOIN achievement_summary a ON "
-          "a.app_id = g.app_id "
-          "ORDER BY g.title COLLATE NOCASE"))) {
+  const bool includeOwned = m_settings == nullptr || m_settings->steamOwnedGames();
+  query.prepare(QStringLiteral(
+      "SELECT g.app_id, g.title, g.favorite, g.hidden, COALESCE(i.install_dir, ''), "
+      "COALESCE(i.library_path, ''), COALESCE(i.manifest_path, ''), "
+      "COALESCE(i.cover_path, o.cover_path, ''), COALESCE(i.hero_path, ''), "
+      "COALESCE(i.logo_path, ''), COALESCE(i.last_played, o.last_played, 0), "
+      "COALESCE(i.playtime_minutes, o.playtime_minutes, 0), COALESCE(a.unlocked, 0), "
+      "COALESCE(a.total, 0), i.app_id IS NOT NULL FROM games g "
+      "LEFT JOIN installations i ON i.app_id = g.app_id "
+      "LEFT JOIN owned_games o ON o.app_id = g.app_id "
+      "LEFT JOIN achievement_summary a ON a.app_id = g.app_id "
+      "WHERE i.app_id IS NOT NULL OR (? AND o.app_id IS NOT NULL) "
+      "ORDER BY g.title COLLATE NOCASE"));
+  query.addBindValue(includeOwned);
+  if (!query.exec()) {
     setStatus(QStringLiteral("Could not load the game library"), query.lastError().text());
     return;
   }
@@ -429,6 +460,7 @@ void SteamGameModel::loadDatabase() {
       cachedCoverUpdates.append({steam.appId, cachedCover});
     }
     loaded.append({.steam = steam,
+                   .installed = query.value(14).toBool(),
                    .favorite = query.value(2).toBool(),
                    .hidden = query.value(3).toBool(),
                    .achievementsUnlocked = query.value(12).toInt(),
@@ -706,6 +738,10 @@ void SteamGameModel::applyCover(const QString& appId, const QString& path) {
     if (m_database.isOpen()) {
       QSqlQuery query(m_database);
       query.prepare(QStringLiteral("UPDATE installations SET cover_path = ? WHERE app_id = ?"));
+      query.addBindValue(path);
+      query.addBindValue(appId);
+      query.exec();
+      query.prepare(QStringLiteral("UPDATE owned_games SET cover_path = ? WHERE app_id = ?"));
       query.addBindValue(path);
       query.addBindValue(appId);
       query.exec();

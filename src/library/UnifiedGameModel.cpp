@@ -213,6 +213,7 @@ QHash<int, QByteArray> UnifiedGameModel::roleNames() const {
   roles.insert(GameRoles::Tags, "tags");
   roles.insert(GameRoles::Collections, "collections");
   roles.insert(GameRoles::LaunchTarget, "launchTarget");
+  roles.insert(GameRoles::Installed, "installed");
   return roles;
 }
 

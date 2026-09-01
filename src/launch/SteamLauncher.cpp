@@ -23,9 +23,15 @@ QUrl SteamLauncher::manageUrl(const QString& appId) {
                            : QUrl{};
 }
 
+QUrl SteamLauncher::installUrl(const QString& appId) {
+  return validAppId(appId) ? QUrl(QStringLiteral("steam://install/%1").arg(appId)) : QUrl{};
+}
+
 bool SteamLauncher::launch(const QString& appId) { return open(launchUrl(appId)); }
 
 bool SteamLauncher::manage(const QString& appId) { return open(manageUrl(appId)); }
+
+bool SteamLauncher::install(const QString& appId) { return open(installUrl(appId)); }
 
 bool SteamLauncher::open(const QUrl& url) {
   QString error;

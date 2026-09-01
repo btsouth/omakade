@@ -77,7 +77,8 @@ QHash<int, QByteArray> LutrisGameModel::roleNames() const {
           {GameRoles::Source, "source"},
           {GameRoles::Runner, "runner"},
           {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"}};
+          {GameRoles::Hidden, "hidden"},
+          {GameRoles::Installed, "installed"}};
 }
 
 bool LutrisGameModel::lutrisDetected() const { return m_lutrisDetected; }
@@ -325,6 +326,8 @@ QVariant LutrisGameModel::valueForRole(const Game& game, int role) const {
     return game.lutris.flatpak;
   case GameRoles::Hidden:
     return game.hidden;
+  case GameRoles::Installed:
+    return true;
   default:
     return {};
   }

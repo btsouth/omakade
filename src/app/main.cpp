@@ -150,6 +150,8 @@ int main(int argc, char* argv[]) {
                      [&achievements](const QString& appId) { achievements.load(appId); });
     QObject::connect(steamAccount.get(), &SteamAccountService::achievementsUpdated, steamLibrary,
                      &SteamGameModel::reloadAchievementSummary);
+    QObject::connect(steamAccount.get(), &SteamAccountService::ownedGamesUpdated, steamLibrary,
+                     &SteamGameModel::reloadOwnedGames);
     gameInsights =
         std::make_unique<GameInsightsService>(steamLibrary->databasePath(), &preferences);
   }
