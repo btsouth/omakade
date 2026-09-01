@@ -18,6 +18,8 @@ class AppSettings final : public QObject {
   Q_PROPERTY(bool faugusEnabled READ faugusEnabled WRITE setFaugusEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(
       bool retroArchEnabled READ retroArchEnabled WRITE setRetroArchEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool pcsx2Enabled READ pcsx2Enabled WRITE setPcsx2Enabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool ryujinxEnabled READ ryujinxEnabled WRITE setRyujinxEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool closeAfterLaunch READ closeAfterLaunch WRITE setCloseAfterLaunch NOTIFY
                  closeAfterLaunchChanged)
   Q_PROPERTY(bool sunshineOmakadeApp READ sunshineOmakadeApp WRITE setSunshineOmakadeApp NOTIFY
@@ -46,6 +48,10 @@ public:
   void setFaugusEnabled(bool value);
   [[nodiscard]] bool retroArchEnabled() const;
   void setRetroArchEnabled(bool value);
+  [[nodiscard]] bool pcsx2Enabled() const;
+  void setPcsx2Enabled(bool value);
+  [[nodiscard]] bool ryujinxEnabled() const;
+  void setRyujinxEnabled(bool value);
   [[nodiscard]] bool closeAfterLaunch() const;
   void setCloseAfterLaunch(bool value);
   [[nodiscard]] bool sunshineOmakadeApp() const;
@@ -77,6 +83,8 @@ private:
   bool m_heroicEnabled = true;
   bool m_faugusEnabled = true;
   bool m_retroArchEnabled = true;
+  bool m_pcsx2Enabled = true;
+  bool m_ryujinxEnabled = true;
   bool m_closeAfterLaunch = false;
   bool m_sunshineOmakadeApp = false;
   bool m_sunshineGameApps = false;

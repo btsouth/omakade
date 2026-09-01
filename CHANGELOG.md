@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### PCSX2 and Ryujinx
+
+- Added PCSX2 as a game source: imports disc-based games from the native
+  gamelist cache (v32 and v34) for native and Flatpak installs, with cover
+  art, playtime, last-played, and region metadata, and delegated launching
+  through the owning PCSX2 install. Sources are discovered automatically and
+  appear once the emulator is detected.
+- Added Ryujinx as a game source: discovers XCI, NSP, and NRO games from the
+  configured game directories for native and Flatpak installs, with custom
+  titles, playtime, and last-played metadata, and delegated launching.
+- Added per-source filter chips, status rows, and rescan controls for both
+  emulators in Settings.
+
 ### Steam
 
 - Imported non-Steam shortcuts from `shortcuts.vdf`, including Wine/Proton

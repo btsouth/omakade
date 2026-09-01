@@ -11,6 +11,8 @@
 #include "library/LibraryFilterModel.h"
 #include "library/LutrisGameModel.h"
 #include "library/MockGameModel.h"
+#include "library/Pcsx2GameModel.h"
+#include "library/RyujinxGameModel.h"
 #include "library/RetroArchGameModel.h"
 #include "library/SteamGameModel.h"
 #include "library/UnifiedGameModel.h"
@@ -166,11 +168,15 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<HeroicGameModel> heroicGames;
   std::unique_ptr<FaugusGameModel> faugusGames;
   std::unique_ptr<RetroArchGameModel> retroArchGames;
+  std::unique_ptr<Pcsx2GameModel> pcsx2Games;
+  std::unique_ptr<RyujinxGameModel> ryujinxGames;
   SteamGameModel* steamLibrary = nullptr;
   LutrisGameModel* lutrisLibrary = nullptr;
   HeroicGameModel* heroicLibrary = nullptr;
   FaugusGameModel* faugusLibrary = nullptr;
   RetroArchGameModel* retroArchLibrary = nullptr;
+  Pcsx2GameModel* pcsx2Library = nullptr;
+  RyujinxGameModel* ryujinxLibrary = nullptr;
   QString libraryDatabasePath;
   if (demoMode || stressMode || navigationTest) {
     games =
@@ -188,6 +194,10 @@ int main(int argc, char* argv[]) {
     faugusLibrary = faugusGames.get();
     retroArchGames = std::make_unique<RetroArchGameModel>(steamLibrary->databasePath());
     retroArchLibrary = retroArchGames.get();
+    pcsx2Games = std::make_unique<Pcsx2GameModel>(steamLibrary->databasePath());
+    pcsx2Library = pcsx2Games.get();
+    ryujinxGames = std::make_unique<RyujinxGameModel>(steamLibrary->databasePath());
+    ryujinxLibrary = ryujinxGames.get();
   }
   if (navigationTest) {
     libraryDatabasePath = QStringLiteral(":memory:");
@@ -206,12 +216,20 @@ int main(int argc, char* argv[]) {
   if (retroArchGames != nullptr) {
     unifiedGames.addSourceModel(retroArchGames.get());
   }
+  if (pcsx2Games != nullptr) {
+    unifiedGames.addSourceModel(pcsx2Games.get());
+  }
+  if (ryujinxGames != nullptr) {
+    unifiedGames.addSourceModel(ryujinxGames.get());
+  }
   const auto applySourcePreferences = [&] {
     unifiedGames.setSourceEnabled(QStringLiteral("Steam"), preferences.steamEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Lutris"), preferences.lutrisEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Heroic"), preferences.heroicEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Faugus"), preferences.faugusEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("RetroArch"), preferences.retroArchEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("PCSX2"), preferences.pcsx2Enabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Ryujinx"), preferences.ryujinxEnabled());
   };
   applySourcePreferences();
   QObject::connect(&preferences, &AppSettings::sourcesChanged, &unifiedGames,
@@ -364,6 +382,8 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("HeroicLibrary"), heroicLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("FaugusLibrary"), faugusLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("RetroArchLibrary"), retroArchLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("Pcsx2Library"), pcsx2Library);
+  engine.rootContext()->setContextProperty(QStringLiteral("RyujinxLibrary"), ryujinxLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Launcher"), &launcher);
   engine.rootContext()->setContextProperty(QStringLiteral("Preferences"), &preferences);
   engine.rootContext()->setContextProperty(QStringLiteral("Controller"), &controller);
@@ -998,6 +1018,12 @@ int main(int argc, char* argv[]) {
   }
   if (retroArchLibrary != nullptr && preferences.retroArchEnabled()) {
     QTimer::singleShot(600, retroArchLibrary, &RetroArchGameModel::refresh);
+  }
+  if (pcsx2Library != nullptr && preferences.pcsx2Enabled()) {
+    QTimer::singleShot(650, pcsx2Library, &Pcsx2GameModel::refresh);
+  }
+  if (ryujinxLibrary != nullptr && preferences.ryujinxEnabled()) {
+    QTimer::singleShot(700, ryujinxLibrary, &RyujinxGameModel::refresh);
   }
 
   if (smokeTest && !renderMode) {

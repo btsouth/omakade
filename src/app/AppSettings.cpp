@@ -116,6 +116,28 @@ void AppSettings::setRetroArchEnabled(bool value) {
   emit sourcesChanged();
 }
 
+bool AppSettings::pcsx2Enabled() const { return m_pcsx2Enabled; }
+
+void AppSettings::setPcsx2Enabled(bool value) {
+  if (m_pcsx2Enabled == value) {
+    return;
+  }
+  m_pcsx2Enabled = value;
+  save();
+  emit sourcesChanged();
+}
+
+bool AppSettings::ryujinxEnabled() const { return m_ryujinxEnabled; }
+
+void AppSettings::setRyujinxEnabled(bool value) {
+  if (m_ryujinxEnabled == value) {
+    return;
+  }
+  m_ryujinxEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
 bool AppSettings::closeAfterLaunch() const { return m_closeAfterLaunch; }
 
 void AppSettings::setCloseAfterLaunch(bool value) {
@@ -171,6 +193,8 @@ void AppSettings::load() {
   m_heroicEnabled = readEnabled(QStringLiteral("heroic_enabled"), true);
   m_faugusEnabled = readEnabled(QStringLiteral("faugus_enabled"), true);
   m_retroArchEnabled = readEnabled(QStringLiteral("retroarch_enabled"), true);
+  m_pcsx2Enabled = readEnabled(QStringLiteral("pcsx2_enabled"), true);
+  m_ryujinxEnabled = readEnabled(QStringLiteral("ryujinx_enabled"), true);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_sunshineOmakadeApp = readEnabled(QStringLiteral("sunshine_omakade_app"), false);
   m_sunshineGameApps = readEnabled(QStringLiteral("sunshine_game_apps"), false);
@@ -204,23 +228,36 @@ void AppSettings::save() const {
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
     return;
   }
-  file.write(QStringLiteral("reduced_motion = %1\nartwork_cache_limit_mb = %2\nsteam_id = "
-                            "\"%3\"\nigdb_client_id = \"%4\"\nsteam_enabled = %5\n"
-                            "lutris_enabled = %6\nheroic_enabled = %7\nfaugus_enabled = %8\n"
-                            "retroarch_enabled = %9\nclose_after_launch = %10\n"
-                            "sunshine_omakade_app = %11\nsunshine_game_apps = %12\n")
-                 .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_artworkCacheLimitMb)
-                 .arg(m_steamId)
-                 .arg(m_igdbClientId)
-                 .arg(m_steamEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_lutrisEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_heroicEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_faugusEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_retroArchEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
-                 .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"))
-                 .toUtf8());
+  // Emulator source keys are written only once their state is explicit (detection
+  // completed or the user chose a value); while auto-detection is pending the keys
+  // stay absent so a later emulator installation can still enable its source.
+  QString contents =
+      QStringLiteral("reduced_motion = %1\nartwork_cache_limit_mb = %2\nsteam_id = \"%3\"\n"
+                     "igdb_client_id = \"%4\"\nsteam_enabled = %5\nlutris_enabled = %6\n"
+                     "heroic_enabled = %7\nfaugus_enabled = %8\nretroarch_enabled = %9\n")
+          .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_artworkCacheLimitMb)
+          .arg(m_steamId)
+          .arg(m_igdbClientId)
+          .arg(m_steamEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_lutrisEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_heroicEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_faugusEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_retroArchEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  if (!m_pcsx2Auto) {
+    contents += QStringLiteral("pcsx2_enabled = %1\n")
+                    .arg(m_pcsx2Enabled ? QStringLiteral("true") : QStringLiteral("false"));
+  }
+  if (!m_ryujinxAuto) {
+    contents += QStringLiteral("ryujinx_enabled = %1\n")
+                    .arg(m_ryujinxEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  }
+  contents += QStringLiteral("close_after_launch = %1\n"
+                             "sunshine_omakade_app = %2\nsunshine_game_apps = %3\n")
+                  .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"));
+  file.write(contents.toUtf8());
+
   file.commit();
 }

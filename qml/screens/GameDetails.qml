@@ -404,6 +404,8 @@ Item {
                                  || root.selectedInstallation.source === "Heroic"
                                  || root.selectedInstallation.source === "Faugus"
                                  || root.selectedInstallation.source === "RetroArch"
+                                 || root.selectedInstallation.source === "PCSX2"
+                                 || root.selectedInstallation.source === "Ryujinx"
                         text: "MANAGE IN " + (root.selectedInstallation.source || "LAUNCHER").toUpperCase()
                         onClicked: root.manageRequested()
                     }

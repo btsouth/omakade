@@ -12,6 +12,8 @@
 #include "library/LibraryFilterModel.h"
 #include "library/LutrisGameModel.h"
 #include "library/MockGameModel.h"
+#include "library/Pcsx2GameModel.h"
+#include "library/RyujinxGameModel.h"
 #include "library/RetroArchGameModel.h"
 #include "library/SteamGameModel.h"
 #include "library/SteamOwnedGamesApi.h"
@@ -20,6 +22,8 @@
 #include "metadata/IgdbApi.h"
 #include "sources/faugus/FaugusScanner.h"
 #include "sources/heroic/HeroicScanner.h"
+#include "sources/pcsx2/Pcsx2Scanner.h"
+#include "sources/ryujinx/RyujinxScanner.h"
 #include "sources/lutris/LutrisScanner.h"
 #include "sources/retroarch/RetroArchScanner.h"
 #include "sources/steam/SteamScanner.h"
@@ -358,6 +362,60 @@ void createRetroArchFixture(const QString& root) {
   writeFile(root + QStringLiteral("/playlists/content_history.lpl"),
             R"({"version":"1.5","items":[{"path":"/ignored","label":"Ignored"}]})");
 }
+
+void createPcsx2Fixture(const QString& root, qint64 playedSeconds = 14) {
+  const QString rom = root + QStringLiteral("/roms/Crash Twinsanity (USA).iso");
+  writeFile(rom, "iso");
+  writeFile(root + QStringLiteral("/inis/PCSX2.ini"), "[GameList]\n");
+  const QByteArray pathBytes = rom.toUtf8();
+  QByteArray cache;
+  const auto appendU32 = [&cache](quint32 value) {
+    for (int k = 0; k < 4; ++k) {
+      cache.append(static_cast<char>((value >> (8 * k)) & 0xFF));
+    }
+  };
+  const auto appendU64 = [&cache](quint64 value) {
+    for (int k = 0; k < 8; ++k) {
+      cache.append(static_cast<char>((value >> (8 * k)) & 0xFF));
+    }
+  };
+  cache.append("GLCE");
+  appendU32(32);
+  appendU32(static_cast<quint32>(pathBytes.size()));
+  cache.append(pathBytes);
+  const QByteArray serialBytes = QByteArray("SLUS-20909");
+  appendU32(static_cast<quint32>(serialBytes.size()));
+  cache.append(serialBytes);
+  const QByteArray titleBytes = QByteArray("Crash Twinsanity");
+  appendU32(static_cast<quint32>(titleBytes.size()));
+  cache.append(titleBytes);
+  cache.append('\0');
+  cache.append('\x06');
+  appendU64(123456789ULL);
+  appendU64(1700000000ULL);
+  appendU32(0x1A2B3C4DU);
+  cache.append('\0');
+  writeFile(root + QStringLiteral("/cache/gamelist.cache"), cache);
+
+  const QString playedLine = QStringLiteral("%1 %2 %3\n")
+                                 .arg(QStringLiteral("SLUS-20909"), -32)
+                                 .arg(playedSeconds, 20)
+                                 .arg(1700000500, 20);
+  writeFile(root + QStringLiteral("/inis/playtime.dat"), playedLine.toUtf8());
+}
+
+void createRyujinxFixture(const QString& root, const QString& romDirectory) {
+  writeFile(root + QStringLiteral("/Config.json"),
+            QStringLiteral("{\"version\":70,\"game_dirs\":[\"%1\"]}")
+                .arg(romDirectory)
+                .toUtf8());
+  writeFile(romDirectory + QStringLiteral("/Zelda [0100abcd12345678][v0].nsp"), "rom");
+  writeFile(root + QStringLiteral("/games/0100ABCD12345678/gui"),
+            R"({"TitleName":"Custom Title"})");
+  writeFile(root + QStringLiteral("/games/0100ABCD12345678/time_played"),
+            R"({"playtime":3600,"last_played":"2026-08-30T19:45:10Z"})");
+}
+
 } // namespace
 
 class CoreTests final : public QObject {
@@ -419,6 +477,15 @@ private slots:
   void retroArchModelIsRepeatableAndPreservesLocalState();
   void malformedRetroArchDataDoesNotReplaceCachedGames();
   void retroArchLauncherBuildsSafeCommands();
+  void pcsx2ScannerImportsCacheGamesAndPlaytime();
+  void pcsx2ModelIsRepeatableAndPreservesLocalState();
+  void malformedPcsx2DataDoesNotReplaceCachedGames();
+  void pcsx2UnifiedFilterShowsGames();
+  void pcsx2LauncherBuildsSafeCommands();
+  void ryujinxScannerImportsRomsMetadataAndPlaytime();
+  void ryujinxModelIsRepeatableAndPreservesLocalState();
+  void malformedRyujinxDataDoesNotReplaceCachedGames();
+  void ryujinxLauncherBuildsSafeCommands();
   void launcherReportsInvalidAndStaleTargets();
   void igdbApiBuildsSafeQueriesAndParsesInsights();
   void igdbInsightsLoadFromOfflineCache();
@@ -1888,6 +1955,16 @@ void CoreTests::absentLaunchersPersistEmptySourcePaths() {
     model.refreshFromRoots({});
     QVERIFY(model.errorText().isEmpty());
   }
+  {
+    Pcsx2GameModel model(database);
+    model.refreshFromRoots({});
+    QVERIFY(model.errorText().isEmpty());
+  }
+  {
+    RyujinxGameModel model(database);
+    model.refreshFromRoots({});
+    QVERIFY(model.errorText().isEmpty());
+  }
 
   const QString connection = QStringLiteral("empty-source-paths-") + QUuid::createUuid().toString();
   {
@@ -1897,9 +1974,10 @@ void CoreTests::absentLaunchersPersistEmptySourcePaths() {
     QSqlQuery query(stored);
     QVERIFY(query.exec(QStringLiteral(
         "SELECT COUNT(*) FROM source_state WHERE source IN "
-        "('lutris', 'heroic', 'faugus', 'retroarch') AND paths = '' AND paths IS NOT NULL")));
+        "('lutris', 'heroic', 'faugus', 'retroarch', 'pcsx2', 'ryujinx') AND paths = '' AND paths "
+        "IS NOT NULL")));
     QVERIFY(query.next());
-    QCOMPARE(query.value(0).toInt(), 4);
+    QCOMPARE(query.value(0).toInt(), 6);
   }
   QSqlDatabase::removeDatabase(connection);
 }
@@ -2172,6 +2250,8 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setLutrisEnabled(false);
     settings.setFaugusEnabled(false);
     settings.setRetroArchEnabled(false);
+    settings.setPcsx2Enabled(false);
+    settings.setRyujinxEnabled(false);
     settings.setCloseAfterLaunch(true);
   }
   AppSettings reloaded(path);
@@ -2184,6 +2264,8 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(reloaded.heroicEnabled());
   QVERIFY(!reloaded.faugusEnabled());
   QVERIFY(!reloaded.retroArchEnabled());
+  QVERIFY(!reloaded.pcsx2Enabled());
+  QVERIFY(!reloaded.ryujinxEnabled());
   QVERIFY(reloaded.closeAfterLaunch());
 }
 
@@ -2501,6 +2583,184 @@ void CoreTests::thousandGameSearchStaysResponsive() {
   }
   QVERIFY2(timer.elapsed() < 1000,
            qPrintable(QStringLiteral("100 searches took %1 ms").arg(timer.elapsed())));
+}
+
+
+void CoreTests::pcsx2ScannerImportsCacheGamesAndPlaytime() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/pcsx2");
+  const QString flatpakRoot =
+      directory.path() + QStringLiteral("/.var/app/net.pcsx2.PCSX2/config/PCSX2");
+  createPcsx2Fixture(root);
+  createPcsx2Fixture(flatpakRoot, 0);
+
+  const Pcsx2ScanResult result = Pcsx2Scanner::scan({root, flatpakRoot});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.roots, QStringList({root, flatpakRoot}));
+  QCOMPARE(result.games.size(), 2);
+  QCOMPARE(result.games.constFirst().title, QStringLiteral("Crash Twinsanity"));
+  QCOMPARE(result.games.constFirst().serial, QStringLiteral("SLUS-20909"));
+  QCOMPARE(result.games.constFirst().region, QStringLiteral("NTSC-U"));
+  QCOMPARE(result.games.constFirst().playtimeSeconds, 14);
+  QCOMPARE(result.games.constFirst().lastPlayed, 1700000500);
+  QVERIFY(result.games.constFirst().path.endsWith(QStringLiteral(".iso")));
+  QVERIFY(!result.games.constFirst().flatpak);
+  QVERIFY(result.games.at(1).flatpak);
+
+  // A second ROM without a cache entry (never scanned by PCSX2) must not appear.
+  writeFile(root + QStringLiteral("/roms/Unscanned (USA).chd"), "rom");
+  const Pcsx2ScanResult dropped = Pcsx2Scanner::scan({root});
+  QCOMPARE(dropped.games.size(), 1);
+}
+
+void CoreTests::pcsx2ModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/pcsx2");
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  createPcsx2Fixture(root);
+
+  Pcsx2GameModel model(database);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.detectedPaths(), QStringList({root}));
+  QVERIFY(model.lastScan() > 0);
+  QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(), QStringLiteral("PCSX2"));
+  QCOMPARE(model.data(model.index(0), GameRoles::Hours).toInt(), 0);
+  model.toggleFavorite(0);
+  model.toggleHidden(0);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(model.data(model.index(0), GameRoles::Hidden).toBool());
+
+  Pcsx2GameModel reloaded(database);
+  QCOMPARE(reloaded.detectedPaths(), QStringList({root}));
+  QCOMPARE(reloaded.lastScan(), model.lastScan());
+}
+
+void CoreTests::malformedPcsx2DataDoesNotReplaceCachedGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/pcsx2");
+  createPcsx2Fixture(root);
+  Pcsx2GameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  writeFile(root + QStringLiteral("/cache/gamelist.cache"), "not a cache");
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("PCSX2 scan interrupted")));
+}
+
+void CoreTests::pcsx2UnifiedFilterShowsGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/pcsx2");
+  createPcsx2Fixture(root);
+  Pcsx2GameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  UnifiedGameModel games;
+  games.addSourceModel(&model);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  QCOMPARE(library.rowCount(), 1);
+  library.setSourceFilter(QStringLiteral("PCSX2"));
+  QCOMPARE(library.rowCount(), 1);
+  QCOMPARE(library.get(0).value(QStringLiteral("title")).toString(),
+           QStringLiteral("Crash Twinsanity"));
+  library.setSourceFilter(QStringLiteral("Ryujinx"));
+  QCOMPARE(library.rowCount(), 0);
+}
+
+void CoreTests::pcsx2LauncherBuildsSafeCommands() {
+  // Serial ids are not launchable: PCSX2 boots disc images by path.
+  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("SLUS-20909"), false).isValid());
+  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("SCUS-97399"), false).isValid());
+  const LaunchCommand native =
+      GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false);
+  QCOMPARE(native.program, QStringLiteral("pcsx2-qt"));
+  QCOMPARE(native.arguments, QStringList({QStringLiteral("/games/Crash.iso")}));
+  const LaunchCommand flatpak =
+      GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), true);
+  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
+  QCOMPARE(flatpak.arguments.at(1), QStringLiteral("net.pcsx2.PCSX2"));
+  QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/games/Crash.iso"));
+  QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("bad;id"), false).isValid());
+}
+
+void CoreTests::ryujinxScannerImportsRomsMetadataAndPlaytime() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/ryujinx");
+  const QString roms = directory.path() + QStringLiteral("/switch-roms");
+  createRyujinxFixture(root, roms);
+
+  const RyujinxScanResult result = RyujinxScanner::scan({root});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.roots, QStringList({root}));
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.constFirst().titleId, QStringLiteral("0100ABCD12345678"));
+  QCOMPARE(result.games.constFirst().title, QStringLiteral("Custom Title"));
+  QCOMPARE(result.games.constFirst().playtimeSeconds, 3600);
+  QVERIFY(result.games.constFirst().lastPlayed > 0);
+  QVERIFY(!result.games.constFirst().flatpak);
+}
+
+void CoreTests::ryujinxModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/ryujinx");
+  const QString roms = directory.path() + QStringLiteral("/switch-roms");
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  createRyujinxFixture(root, roms);
+
+  RyujinxGameModel model(database);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.detectedPaths(), QStringList({root}));
+  QVERIFY(model.lastScan() > 0);
+  QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(), QStringLiteral("Ryujinx"));
+  model.toggleFavorite(0);
+  model.toggleHidden(0);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(model.data(model.index(0), GameRoles::Hidden).toBool());
+  RyujinxGameModel reloaded(database);
+  QCOMPARE(reloaded.rowCount(), 1);
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+}
+
+void CoreTests::malformedRyujinxDataDoesNotReplaceCachedGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/ryujinx");
+  const QString roms = directory.path() + QStringLiteral("/switch-roms");
+  createRyujinxFixture(root, roms);
+  RyujinxGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  writeFile(root + QStringLiteral("/Config.json"), "not json");
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("Ryujinx scan interrupted")));
+}
+
+void CoreTests::ryujinxLauncherBuildsSafeCommands() {
+  const LaunchCommand native =
+      GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"), false);
+  QCOMPARE(native.program, QStringLiteral("ryujinx-wrapper"));
+  QCOMPARE(native.arguments, QStringList({QStringLiteral("0100ABCD12345678")}));
+  const LaunchCommand flatpak =
+      GameLauncher::ryujinxCommand(QStringLiteral("path:/roms/Zelda.nsp"), true);
+  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
+  QCOMPARE(flatpak.arguments.at(1), QStringLiteral("io.github.ryubing.Ryujinx"));
+  QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/roms/Zelda.nsp"));
+  QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("bad;id"), false).isValid());
+  QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("0100abcd12345678"), false).isValid());
 }
 
 QTEST_MAIN(CoreTests)

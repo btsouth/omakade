@@ -951,6 +951,26 @@ ApplicationWindow {
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
+                    GlassButton {
+                        text: "PCSX2"
+                        compact: true
+                        visible: Preferences.pcsx2Enabled
+                        selected: Library.sourceFilter === "PCSX2"
+                        onClicked: {
+                            Library.sourceFilter = "PCSX2"
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
+                        text: "RYUJINX"
+                        compact: true
+                        visible: Preferences.ryujinxEnabled
+                        selected: Library.sourceFilter === "Ryujinx"
+                        onClicked: {
+                            Library.sourceFilter = "Ryujinx"
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
                 }
 
                 Text {
@@ -1141,6 +1161,10 @@ ApplicationWindow {
                             ? "Faugus was not found"
                             : Library.sourceFilter === "RetroArch" && RetroArchLibrary && !RetroArchLibrary.retroArchDetected
                             ? "RetroArch was not found"
+                            : Library.sourceFilter === "PCSX2" && Pcsx2Library && !Pcsx2Library.pcsx2Detected
+                            ? "PCSX2 was not found"
+                            : Library.sourceFilter === "Ryujinx" && RyujinxLibrary && !RyujinxLibrary.ryujinxDetected
+                            ? "Ryujinx was not found"
                             : Library.sourceFilter === "Lutris" && LutrisLibrary && !LutrisLibrary.lutrisDetected
                             ? "Lutris was not found"
                             : Library.sourceFilter === "Steam" && SteamLibrary && !SteamLibrary.steamDetected
@@ -1157,18 +1181,28 @@ ApplicationWindow {
                               ? FaugusLibrary.errorText
                               : Library.sourceFilter === "RetroArch" && RetroArchLibrary && RetroArchLibrary.errorText.length > 0
                               ? RetroArchLibrary.errorText
+                              : Library.sourceFilter === "PCSX2" && Pcsx2Library && Pcsx2Library.errorText.length > 0
+                              ? Pcsx2Library.errorText
+                              : Library.sourceFilter === "Ryujinx" && RyujinxLibrary && RyujinxLibrary.errorText.length > 0
+                              ? RyujinxLibrary.errorText
                               : Library.sourceFilter === "Heroic" && HeroicLibrary && HeroicLibrary.errorText.length > 0
                               ? HeroicLibrary.errorText
                               : Library.sourceFilter === "Lutris" && LutrisLibrary && LutrisLibrary.errorText.length > 0
                               ? LutrisLibrary.errorText
                               : SteamLibrary && SteamLibrary.errorText.length > 0
                                 ? SteamLibrary.errorText
-                                : "Install a game in Steam, Lutris, Heroic, Faugus, or RetroArch, then rescan your library."
+                                : "Install a game in Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, or Ryujinx, then rescan your library."
                 onGameActivated: index => root.openGame(index)
                 onFavoriteToggled: index => Library.toggleFavorite(index)
                 onCoverRequested: function(source, appId) {
                     if (source === "Steam" && SteamLibrary) {
                         SteamLibrary.requestCover(appId)
+                    }
+                    if (Pcsx2Library && Preferences.pcsx2Enabled) {
+                        Pcsx2Library.refresh()
+                    }
+                    if (RyujinxLibrary && Preferences.ryujinxEnabled) {
+                        RyujinxLibrary.refresh()
                     }
                 }
                 onRefreshRequested: {
@@ -1661,7 +1695,17 @@ ApplicationWindow {
                           status: RetroArchLibrary ? RetroArchLibrary.statusText : "Unavailable",
                           error: RetroArchLibrary ? RetroArchLibrary.errorText : "",
                           paths: RetroArchLibrary ? RetroArchLibrary.detectedPaths : [],
-                          lastScan: RetroArchLibrary ? RetroArchLibrary.lastScan : 0 }
+                          lastScan: RetroArchLibrary ? RetroArchLibrary.lastScan : 0 },
+                        { name: "PCSX2", enabled: Preferences.pcsx2Enabled,
+                          status: Pcsx2Library ? Pcsx2Library.statusText : "Unavailable",
+                          error: Pcsx2Library ? Pcsx2Library.errorText : "",
+                          paths: Pcsx2Library ? Pcsx2Library.detectedPaths : [],
+                          lastScan: Pcsx2Library ? Pcsx2Library.lastScan : 0 },
+                        { name: "RYUJINX", enabled: Preferences.ryujinxEnabled,
+                          status: RyujinxLibrary ? RyujinxLibrary.statusText : "Unavailable",
+                          error: RyujinxLibrary ? RyujinxLibrary.errorText : "",
+                          paths: RyujinxLibrary ? RyujinxLibrary.detectedPaths : [],
+                          lastScan: RyujinxLibrary ? RyujinxLibrary.lastScan : 0 }
                     ]
                     ColumnLayout {
                         required property var modelData
@@ -1699,6 +1743,14 @@ ApplicationWindow {
                                         Preferences.faugusEnabled = !Preferences.faugusEnabled
                                         nowEnabled = Preferences.faugusEnabled
                                         if (Preferences.faugusEnabled) FaugusLibrary.refresh()
+                                    } else if (modelData.name === "PCSX2") {
+                                        Preferences.pcsx2Enabled = !Preferences.pcsx2Enabled
+                                        nowEnabled = Preferences.pcsx2Enabled
+                                        if (Preferences.pcsx2Enabled) Pcsx2Library.refresh()
+                                    } else if (modelData.name === "RYUJINX") {
+                                        Preferences.ryujinxEnabled = !Preferences.ryujinxEnabled
+                                        nowEnabled = Preferences.ryujinxEnabled
+                                        if (Preferences.ryujinxEnabled) RyujinxLibrary.refresh()
                                     } else {
                                         Preferences.retroArchEnabled = !Preferences.retroArchEnabled
                                         nowEnabled = Preferences.retroArchEnabled
@@ -1718,6 +1770,8 @@ ApplicationWindow {
                                     else if (modelData.name === "LUTRIS") LutrisLibrary.refresh()
                                     else if (modelData.name === "HEROIC") HeroicLibrary.refresh()
                                     else if (modelData.name === "FAUGUS") FaugusLibrary.refresh()
+                                    else if (modelData.name === "PCSX2") Pcsx2Library.refresh()
+                                    else if (modelData.name === "RYUJINX") RyujinxLibrary.refresh()
                                     else RetroArchLibrary.refresh()
                                 }
                             }

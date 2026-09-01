@@ -39,6 +39,10 @@ add_library(omakade_core STATIC
   src/library/LutrisGameModel.h
   src/library/RetroArchGameModel.cpp
   src/library/RetroArchGameModel.h
+  src/library/Pcsx2GameModel.cpp
+  src/library/Pcsx2GameModel.h
+  src/library/RyujinxGameModel.cpp
+  src/library/RyujinxGameModel.h
   src/library/MockGameModel.cpp
   src/library/MockGameModel.h
   src/library/SteamGameModel.cpp
@@ -66,6 +70,10 @@ add_library(omakade_core STATIC
   src/sources/lutris/LutrisScanner.h
   src/sources/retroarch/RetroArchScanner.cpp
   src/sources/retroarch/RetroArchScanner.h
+  src/sources/pcsx2/Pcsx2Scanner.cpp
+  src/sources/pcsx2/Pcsx2Scanner.h
+  src/sources/ryujinx/RyujinxScanner.cpp
+  src/sources/ryujinx/RyujinxScanner.h
   src/sources/heroic/HeroicScanner.cpp
   src/sources/heroic/HeroicScanner.h
   src/sources/faugus/FaugusScanner.cpp
