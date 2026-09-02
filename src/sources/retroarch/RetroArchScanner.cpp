@@ -339,6 +339,7 @@ RetroArchScanResult RetroArchScanner::scan(const QStringList& roots) {
                                       QStringLiteral("Named_Boxarts"), artworkNames),
              .heroPath = artworkPath(paths.thumbnails, artworkPlaylist,
                                      QStringLiteral("Named_Snaps"), artworkNames),
+             .system = database.isEmpty() ? playlistName : database,
              .playtimeSeconds = playtimeSeconds,
              .lastPlayed = lastPlayed,
              .flatpak = flatpak});

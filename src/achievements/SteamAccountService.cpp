@@ -120,6 +120,11 @@ SteamAccountService::SteamAccountService(const QString& databasePath, AppSetting
   loadOwnedGameCount();
   connect(&m_secretWatcher, &QFutureWatcher<SteamSecretResult>::finished, this,
           &SteamAccountService::finishSecretOperation);
+  // Force these schemas' one-time libsecret/GLib type registration to happen here, on the main
+  // thread, rather than racing with GameInsightsService/RetroAchievementsService the first time
+  // each of their own schemas is touched from a background QtConcurrent thread.
+  steamSchema();
+  legacySteamSchema();
   beginSecretOperation(SecretAction::Detect);
 }
 

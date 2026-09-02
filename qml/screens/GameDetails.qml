@@ -15,6 +15,8 @@ Item {
     required property var selectedInstallation
     property bool collectionEditorOpen: false
     property bool navigationEnabled: true
+    readonly property bool achievementSourceIsRetroArch: selectedInstallation.source === "RetroArch"
+    readonly property var achievementAccount: achievementSourceIsRetroArch ? RetroAchievements : SteamAccount
     signal backRequested()
     signal favoriteRequested()
     signal playRequested()
@@ -746,6 +748,7 @@ Item {
                     Layout.topMargin: 12
                     spacing: 9
                     visible: root.selectedInstallation.source === "Steam"
+                             || root.selectedInstallation.source === "RetroArch"
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -788,6 +791,7 @@ Item {
                     Layout.topMargin: 18
                     spacing: 10
                     visible: root.selectedInstallation.source === "Steam"
+                             || root.selectedInstallation.source === "RetroArch"
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -829,15 +833,18 @@ Item {
                             property Item controllerLeftTarget:
                                 achievementSortButton.visible && achievementSortButton.enabled
                                 ? achievementSortButton : null
-                            visible: SteamAccount !== null
+                            visible: root.achievementAccount !== null
                             compact: true
-                            text: SteamAccount && SteamAccount.hasApiKey
-                                  ? (SteamAccount.busy ? "REFRESHING" : "REFRESH STEAM")
-                                  : "CONNECT STEAM"
-                            enabled: !SteamAccount || !SteamAccount.busy
+                            text: root.achievementAccount && root.achievementAccount.hasApiKey
+                                  ? (root.achievementAccount.busy ? "REFRESHING"
+                                     : root.achievementSourceIsRetroArch ? "REFRESH RETROACHIEVEMENTS"
+                                     : "REFRESH STEAM")
+                                  : root.achievementSourceIsRetroArch ? "CONNECT RETROACHIEVEMENTS"
+                                                                       : "CONNECT STEAM"
+                            enabled: !root.achievementAccount || !root.achievementAccount.busy
                             onClicked: {
-                                if (SteamAccount.hasApiKey) {
-                                    SteamAccount.refreshAchievements(
+                                if (root.achievementAccount.hasApiKey) {
+                                    root.achievementAccount.refreshAchievements(
                                                 root.selectedInstallation.appId)
                                 } else {
                                     root.connectRequested()
@@ -864,11 +871,12 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        visible: SteamAccount && SteamAccount.statusText.length > 0
-                        text: SteamAccount ? SteamAccount.statusText : ""
-                        color: SteamAccount && (SteamAccount.state === "invalid-key"
-                                                || SteamAccount.state === "private"
-                                                || SteamAccount.state === "rate-limited")
+                        visible: root.achievementAccount && root.achievementAccount.statusText.length > 0
+                        text: root.achievementAccount ? root.achievementAccount.statusText : ""
+                        color: root.achievementAccount && (root.achievementAccount.state === "invalid-key"
+                                                || root.achievementAccount.state === "private"
+                                                || root.achievementAccount.state === "unsupported"
+                                                || root.achievementAccount.state === "rate-limited")
                                ? Theme.yellow : Theme.mutedText
                         font.family: Theme.fontFamily
                         font.pixelSize: 10
@@ -968,7 +976,8 @@ Item {
                                             text: (unlocked && unlockTime > 0
                                                    ? "UNLOCKED " + Qt.formatDateTime(new Date(unlockTime * 1000), "MMM d, yyyy").toUpperCase() + "  ·  "
                                                    : "")
-                                                  + (rarity > 0 ? rarity.toFixed(1) + "% OF PLAYERS" : "STEAM")
+                                                  + (rarity > 0 ? rarity.toFixed(1) + "% OF PLAYERS"
+                                                     : root.achievementSourceIsRetroArch ? "RETROACHIEVEMENTS" : "STEAM")
                                             color: unlocked ? Theme.accent : root.alpha(Theme.foreground, 0.45)
                                             font.family: Theme.fontFamily
                                             font.pixelSize: 8

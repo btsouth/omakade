@@ -1,4 +1,8 @@
 #include "achievements/AchievementModel.h"
+#include "achievements/RetroAchievementsApi.h"
+#include "achievements/RetroAchievementsHasher.h"
+
+#include <zip.h>
 #include "achievements/SteamAchievementApi.h"
 #include "app/AppSettings.h"
 #include "app/SingleInstance.h"
@@ -273,6 +277,10 @@ private slots:
   void launcherReportsInvalidAndStaleTargets();
   void igdbApiBuildsSafeQueriesAndParsesInsights();
   void igdbInsightsLoadFromOfflineCache();
+  void retroAchievementsHasherAppliesHeaderStripRules();
+  void retroAchievementsHasherReadsZipArchivedRoms();
+  void retroAchievementsApiBuildsUrlsAndParsesResponses();
+  void retroArchModelReadsCachedRetroAchievementsSummary();
   void stressLibraryContainsOneThousandGames();
   void settingsPersistReducedMotionAndCacheLimit();
   void secondInstanceRequestsActivation();
@@ -843,6 +851,10 @@ void CoreTests::achievementModelLoadsLocalSteamCache() {
       QUrl(QStringLiteral("https://steamcdn-a.akamaihd.net.example.com/icon.jpg"))));
   QVERIFY(!AchievementModel::acceptsIconUrl(
       QUrl(QStringLiteral("http://steamcdn-a.akamaihd.net/icon.jpg"))));
+  QVERIFY(AchievementModel::acceptsIconUrl(
+      QUrl(QStringLiteral("https://media.retroachievements.org/Badge/012345.png"))));
+  QVERIFY(!AchievementModel::acceptsIconUrl(
+      QUrl(QStringLiteral("https://media.retroachievements.org.example.com/Badge/x.png"))));
 }
 
 void CoreTests::steamAchievementApiParsesPlayerSchemaAndRarity() {
@@ -1896,6 +1908,269 @@ void CoreTests::igdbInsightsLoadFromOfflineCache() {
   QCOMPARE(insights.completeHours(), 8);
   QCOMPARE(insights.timeSampleCount(), 99);
   QCOMPARE(insights.statusText(), QStringLiteral("Cached IGDB data"));
+}
+
+void CoreTests::retroAchievementsHasherAppliesHeaderStripRules() {
+  QCOMPARE(RetroAchievementsHasher::consoleFor(QStringLiteral("Nintendo - Game Boy")).rule,
+           RetroAchievementsHashRule::WholeFileMd5);
+  QCOMPARE(RetroAchievementsHasher::consoleFor(
+               QStringLiteral("Nintendo - Nintendo Entertainment System"))
+               .rule,
+           RetroAchievementsHashRule::NesHeaderStrip);
+  QCOMPARE(RetroAchievementsHasher::consoleFor(
+               QStringLiteral("Nintendo - Super Nintendo Entertainment System"))
+               .rule,
+           RetroAchievementsHashRule::SnesHeaderStrip);
+  QCOMPARE(RetroAchievementsHasher::consoleFor(QStringLiteral("Sega - Mega Drive - Genesis")).rule,
+           RetroAchievementsHashRule::WholeFileMd5);
+  QCOMPARE(RetroAchievementsHasher::consoleFor(QStringLiteral("Atari - 7800")).rule,
+           RetroAchievementsHashRule::Atari7800HeaderStrip);
+  QCOMPARE(RetroAchievementsHasher::consoleFor(QStringLiteral("Atari - Lynx")).rule,
+           RetroAchievementsHashRule::AtariLynxHeaderStrip);
+  QCOMPARE(RetroAchievementsHasher::consoleFor(QStringLiteral("Sony - PlayStation")).rule,
+           RetroAchievementsHashRule::Unsupported);
+
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QByteArray payload = "PAYLOAD-BYTES";
+  const QByteArray payloadMd5 = QCryptographicHash::hash(payload, QCryptographicHash::Md5).toHex();
+
+  const QString nesHeadered = directory.path() + QStringLiteral("/game.nes");
+  {
+    QFile file(nesHeadered);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray("NES\x1A", 4) + QByteArray(12, '\0') + payload);
+  }
+  QCOMPARE(RetroAchievementsHasher::hashFile(nesHeadered, RetroAchievementsHashRule::NesHeaderStrip)
+               .value_or(QByteArray()),
+           payloadMd5);
+
+  const QString nesHeaderless = directory.path() + QStringLiteral("/plain.nes");
+  {
+    QFile file(nesHeaderless);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(payload);
+  }
+  QCOMPARE(RetroAchievementsHasher::hashFile(nesHeaderless, RetroAchievementsHashRule::NesHeaderStrip)
+               .value_or(QByteArray()),
+           payloadMd5);
+
+  const QString snesHeadered = directory.path() + QStringLiteral("/game.sfc");
+  const QByteArray snesPayload(0x8000, 'A');
+  const QByteArray snesPayloadMd5 =
+      QCryptographicHash::hash(snesPayload, QCryptographicHash::Md5).toHex();
+  {
+    QFile file(snesHeadered);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray(512, 'H') + snesPayload);
+  }
+  QCOMPARE(
+      RetroAchievementsHasher::hashFile(snesHeadered, RetroAchievementsHashRule::SnesHeaderStrip)
+          .value_or(QByteArray()),
+      snesPayloadMd5);
+
+  const QString atari7800Headered = directory.path() + QStringLiteral("/game.a78");
+  {
+    QFile file(atari7800Headered);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray(1, '\x01') + QByteArray("ATARI7800", 9) + QByteArray(118, '\0') +
+              payload);
+  }
+  QCOMPARE(RetroAchievementsHasher::hashFile(atari7800Headered,
+                                             RetroAchievementsHashRule::Atari7800HeaderStrip)
+               .value_or(QByteArray()),
+           payloadMd5);
+
+  const QString lynxHeadered = directory.path() + QStringLiteral("/game.lnx");
+  {
+    QFile file(lynxHeadered);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray("LYNX", 4) + QByteArray(1, '\0') + QByteArray(59, '\0') + payload);
+  }
+  QCOMPARE(
+      RetroAchievementsHasher::hashFile(lynxHeadered, RetroAchievementsHashRule::AtariLynxHeaderStrip)
+          .value_or(QByteArray()),
+      payloadMd5);
+
+  QVERIFY(!RetroAchievementsHasher::hashFile(nesHeadered, RetroAchievementsHashRule::Unsupported)
+               .has_value());
+  QVERIFY(!RetroAchievementsHasher::hashFile(directory.path() + QStringLiteral("/missing.nes"),
+                                             RetroAchievementsHashRule::WholeFileMd5)
+               .has_value());
+}
+
+void CoreTests::retroAchievementsHasherReadsZipArchivedRoms() {
+  // RetroArch stores archived content as "archive.zip#inner/path.rom" (see
+  // RetroArchScanner::runtimeFileName), which is how the overwhelming majority of real RetroArch
+  // libraries store ROMs. The hasher must read the specific zip entry, not the literal path.
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QByteArray payload = "ZIPPED-ROM-BYTES";
+  const QByteArray payloadMd5 = QCryptographicHash::hash(payload, QCryptographicHash::Md5).toHex();
+  const QString archivePath = directory.path() + QStringLiteral("/game.zip");
+  const QString innerName = QStringLiteral("game.gb");
+
+  int errorCode = 0;
+  zip_t* archive = zip_open(archivePath.toUtf8().constData(), ZIP_CREATE | ZIP_TRUNCATE, &errorCode);
+  QVERIFY(archive != nullptr);
+  zip_source_t* source = zip_source_buffer(archive, payload.constData(), payload.size(), 0);
+  QVERIFY(source != nullptr);
+  QVERIFY(zip_file_add(archive, innerName.toUtf8().constData(), source, ZIP_FL_OVERWRITE) >= 0);
+  QCOMPARE(zip_close(archive), 0);
+
+  const QString contentPath = archivePath + QLatin1Char('#') + innerName;
+  QCOMPARE(RetroAchievementsHasher::hashFile(contentPath, RetroAchievementsHashRule::WholeFileMd5)
+               .value_or(QByteArray()),
+           payloadMd5);
+
+  QVERIFY(!RetroAchievementsHasher::hashFile(archivePath + QStringLiteral("#missing-entry.gb"),
+                                             RetroAchievementsHashRule::WholeFileMd5)
+               .has_value());
+  QVERIFY(!RetroAchievementsHasher::hashFile(directory.path() +
+                                                 QStringLiteral("/missing.zip#game.gb"),
+                                             RetroAchievementsHashRule::WholeFileMd5)
+               .has_value());
+}
+
+void CoreTests::retroAchievementsApiBuildsUrlsAndParsesResponses() {
+  const QUrl gameInfoUrl =
+      RetroAchievementsApi::gameInfoAndProgressUrl(QStringLiteral("KEY123"), 1942,
+                                                   QStringLiteral("someuser"));
+  QCOMPARE(gameInfoUrl.host(), QStringLiteral("retroachievements.org"));
+  QVERIFY(gameInfoUrl.query().contains(QStringLiteral("g=1942")));
+  QVERIFY(gameInfoUrl.query().contains(QStringLiteral("u=someuser")));
+  QVERIFY(gameInfoUrl.query().contains(QStringLiteral("y=KEY123")));
+
+  QCOMPARE(RetroAchievementsApi::classifyHttpResponse(0, true), RetroAchievementsApiState::Offline);
+  QCOMPARE(RetroAchievementsApi::classifyHttpResponse(403, false),
+           RetroAchievementsApiState::InvalidKey);
+  QCOMPARE(RetroAchievementsApi::classifyHttpResponse(429, false),
+           RetroAchievementsApiState::RateLimited);
+  QCOMPARE(RetroAchievementsApi::classifyHttpResponse(200, false), RetroAchievementsApiState::Ready);
+
+  QVector<RetroAchievementsConsoleRecord> consoles;
+  QVERIFY(RetroAchievementsApi::parseConsoleIds(
+      R"([{"ID":7,"Name":"NES/Famicom"},{"ID":1,"Name":"Genesis/Mega Drive"}])", &consoles));
+  QCOMPARE(consoles.size(), 2);
+  QCOMPARE(consoles.at(0).id, 7);
+  QCOMPARE(consoles.at(0).name, QStringLiteral("NES/Famicom"));
+
+  // Regression: "Game Boy" is a substring of "Game Boy Color", so naive substring matching must
+  // not let the shorter, unrelated system win just because it's listed first.
+  const QVector<RetroAchievementsConsoleRecord> gameBoyFamily = {
+      {.id = 4, .name = QStringLiteral("Game Boy")},
+      {.id = 5, .name = QStringLiteral("Game Boy Advance")},
+      {.id = 6, .name = QStringLiteral("Game Boy Color")},
+  };
+  QCOMPARE(RetroAchievementsApi::bestConsoleMatch(gameBoyFamily, QStringLiteral("Game Boy Color")),
+           6);
+  QCOMPARE(RetroAchievementsApi::bestConsoleMatch(gameBoyFamily, QStringLiteral("Game Boy")), 4);
+  QCOMPARE(RetroAchievementsApi::bestConsoleMatch(gameBoyFamily, QStringLiteral("PlayStation")), 0);
+
+  QVector<RetroAchievementsHashRecord> games;
+  QVERIFY(RetroAchievementsApi::parseGameList(
+      R"([{"ID":1942,"Title":"Some Game","Hashes":["ABCDEF","abc123"]}])", &games));
+  QCOMPARE(games.size(), 1);
+  QCOMPARE(games.at(0).gameId, qint64(1942));
+  QCOMPARE(games.at(0).md5Hashes.size(), 2);
+  QCOMPARE(games.at(0).md5Hashes.at(0), QStringLiteral("abcdef"));
+
+  const QByteArray progressJson =
+      R"({"ID":1942,"Title":"Some Game","Achievements":{)"
+      R"("111":{"ID":111,"Title":"First","Description":"Do the thing","BadgeName":"012345",)"
+      R"("DateEarned":"2021-01-02 03:04:05"},)"
+      R"("112":{"ID":112,"Title":"Second","Description":"","BadgeName":"012346"}}})";
+  RetroAchievementsProgressResult progress;
+  QString error;
+  QCOMPARE(RetroAchievementsApi::parseGameInfoAndProgress(progressJson, &progress, &error),
+           RetroAchievementsApiState::Ready);
+  QVERIFY(error.isEmpty());
+  QCOMPARE(progress.total, 2);
+  QCOMPARE(progress.unlocked, 1);
+  bool foundUnlocked = false;
+  bool foundLocked = false;
+  for (const RetroAchievementsAchievementRecord& achievement : progress.achievements) {
+    if (achievement.apiName == QStringLiteral("111")) {
+      QVERIFY(achievement.unlocked);
+      QVERIFY(achievement.unlockTime > 0);
+      QVERIFY(achievement.iconUrl.endsWith(QStringLiteral("012345.png")));
+      foundUnlocked = true;
+    } else if (achievement.apiName == QStringLiteral("112")) {
+      QVERIFY(!achievement.unlocked);
+      QVERIFY(achievement.iconUrl.endsWith(QStringLiteral("012346_lock.png")));
+      foundLocked = true;
+    }
+  }
+  QVERIFY(foundUnlocked);
+  QVERIFY(foundLocked);
+
+  RetroAchievementsProgressResult errorResult;
+  QCOMPARE(RetroAchievementsApi::parseGameInfoAndProgress(R"({"Error":"Game not found"})",
+                                                          &errorResult, &error),
+           RetroAchievementsApiState::RemoteError);
+  QCOMPARE(error, QStringLiteral("Game not found"));
+  QCOMPARE(RetroAchievementsApi::parseGameInfoAndProgress("not json", &errorResult, &error),
+           RetroAchievementsApiState::RemoteError);
+}
+
+void CoreTests::retroArchModelReadsCachedRetroAchievementsSummary() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString databasePath = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("retroachievements-cache-fixture");
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(databasePath);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE retroarch_games (game_id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+        "content_path TEXT NOT NULL, core_path TEXT, core_name TEXT, cover_path TEXT, hero_path "
+        "TEXT, system TEXT NOT NULL DEFAULT '', playtime_seconds INTEGER NOT NULL DEFAULT 0, "
+        "last_played INTEGER NOT NULL DEFAULT 0, flatpak INTEGER NOT NULL DEFAULT 0, favorite "
+        "INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, observed_at INTEGER NOT "
+        "NULL)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO retroarch_games(game_id, name, content_path, system, observed_at) VALUES("
+        "'rg-1', 'Test Game', '/tmp/test.gb', 'Nintendo - Game Boy', 1700000000)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE achievement_summary (app_id TEXT PRIMARY KEY, unlocked INTEGER NOT NULL, "
+        "total INTEGER NOT NULL, source TEXT NOT NULL, updated_at INTEGER NOT NULL)")));
+    QVERIFY(query.exec(QStringLiteral("INSERT INTO achievement_summary VALUES('rg-1', 3, 10, "
+                                      "'retroachievements', 1700000000)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE achievements (app_id TEXT NOT NULL, api_name TEXT NOT NULL, title TEXT "
+        "NOT NULL, description TEXT, icon_url TEXT, icon_path TEXT, unlocked INTEGER NOT NULL, "
+        "unlock_time INTEGER NOT NULL, rarity REAL NOT NULL, hidden INTEGER NOT NULL, "
+        "current_progress REAL NOT NULL, maximum_progress REAL NOT NULL, source TEXT NOT NULL, "
+        "PRIMARY KEY(app_id, api_name))")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  RetroArchGameModel model(databasePath);
+  QCOMPARE(model.rowCount(), 1);
+  const QModelIndex row = model.index(0);
+  QCOMPARE(model.data(row, GameRoles::AchievementsUnlocked).toInt(), 3);
+  QCOMPARE(model.data(row, GameRoles::AchievementsTotal).toInt(), 10);
+  QCOMPARE(model.data(row, GameRoles::Progress).toInt(), 30);
+
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(databasePath);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "UPDATE achievement_summary SET unlocked = 10, total = 10 WHERE app_id = 'rg-1'")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  QSignalSpy dataChangedSpy(&model, &RetroArchGameModel::dataChanged);
+  model.reloadAchievementSummary(QStringLiteral("rg-1"));
+  QCOMPARE(dataChangedSpy.count(), 1);
+  QCOMPARE(model.data(row, GameRoles::AchievementsUnlocked).toInt(), 10);
+  QCOMPARE(model.data(row, GameRoles::Progress).toInt(), 100);
 }
 
 void CoreTests::stressLibraryContainsOneThousandGames() {

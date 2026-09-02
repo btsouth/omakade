@@ -236,6 +236,14 @@ ApplicationWindow {
             if (Insights) {
                 Insights.loadSteam(selectedInstallation.appId)
             }
+        } else if (!DemoMode && selectedInstallation.source === "RetroArch") {
+            Achievements.load(selectedInstallation.appId)
+            if (RetroAchievements) {
+                RetroAchievements.refreshAchievementsIfStale(selectedInstallation.appId)
+            }
+            if (Insights) {
+                Insights.loadSteam("")
+            }
         } else {
             Achievements.load("")
             if (Insights) {
@@ -375,6 +383,14 @@ ApplicationWindow {
             }
             if (Insights) {
                 Insights.loadSteam(installation.appId)
+            }
+        } else if (!DemoMode && installation.source === "RetroArch") {
+            Achievements.load(installation.appId)
+            if (RetroAchievements) {
+                RetroAchievements.refreshAchievementsIfStale(installation.appId)
+            }
+            if (Insights) {
+                Insights.loadSteam("")
             }
         } else {
             Achievements.load("")
@@ -1732,6 +1748,108 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     text: "OWNED LIBRARY SYNC REQUIRES PUBLIC STEAM GAME DETAILS"
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 8
+                    wrapMode: Text.Wrap
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: root.alpha(Theme.foreground, 0.12)
+                }
+                Text {
+                    text: "OPTIONAL RETROACHIEVEMENTS CONNECTION"
+                    color: Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: RetroAchievements
+                          ? RetroAchievements.statusText
+                          : "RetroAchievements is unavailable in demo mode."
+                    color: RetroAchievements && (RetroAchievements.state === "invalid-key"
+                                                 || RetroAchievements.state === "unsupported"
+                                                 || RetroAchievements.state === "rate-limited")
+                           ? Theme.yellow : Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10
+                    wrapMode: Text.Wrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    enabled: RetroAchievements !== null
+                    TextField {
+                        id: retroAchievementsUsernameField
+                        property bool controllerNavigation: false
+                        Layout.fillWidth: true
+                        placeholderText: "RetroAchievements username"
+                        text: RetroAchievements ? RetroAchievements.username : ""
+                        color: Theme.foreground
+                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
+                        font.family: Theme.fontFamily
+                        background: Rectangle {
+                            radius: Math.max(5, Theme.cornerRadius)
+                            color: root.alpha(Theme.foreground, 0.045)
+                            border.width: retroAchievementsUsernameField.activeFocus ? 2 : 1
+                            border.color: retroAchievementsUsernameField.activeFocus
+                                          ? Theme.accent
+                                          : root.alpha(Theme.foreground, 0.15)
+                        }
+                    }
+                    GlassButton {
+                        compact: true
+                        text: "SAVE USERNAME"
+                        onClicked: RetroAchievements.setUsername(retroAchievementsUsernameField.text)
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    enabled: RetroAchievements !== null && !RetroAchievements.busy
+                    TextField {
+                        id: retroAchievementsKeyField
+                        property bool controllerNavigation: false
+                        Layout.fillWidth: true
+                        placeholderText: RetroAchievements && RetroAchievements.hasApiKey
+                                         ? "API key stored securely" : "RetroAchievements Web API key"
+                        color: Theme.foreground
+                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
+                        echoMode: TextInput.Password
+                        font.family: Theme.fontFamily
+                        background: Rectangle {
+                            radius: Math.max(5, Theme.cornerRadius)
+                            color: root.alpha(Theme.foreground, 0.045)
+                            border.width: retroAchievementsKeyField.activeFocus ? 2 : 1
+                            border.color: retroAchievementsKeyField.activeFocus
+                                          ? Theme.accent
+                                          : root.alpha(Theme.foreground, 0.15)
+                        }
+                    }
+                    GlassButton {
+                        compact: true
+                        text: "SAVE KEY"
+                        onClicked: {
+                            RetroAchievements.storeApiKey(retroAchievementsKeyField.text)
+                            retroAchievementsKeyField.clear()
+                        }
+                    }
+                    GlassButton {
+                        compact: true
+                        visible: RetroAchievements ? RetroAchievements.hasApiKey : false
+                        text: "REMOVE"
+                        onClicked: RetroAchievements.removeApiKey()
+                    }
+                }
+                GlassButton {
+                    compact: true
+                    text: "GET A KEY FROM RETROACHIEVEMENTS"
+                    onClicked: Qt.openUrlExternally("https://retroachievements.org/settings")
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "SUPPORTS NES, SNES, GENESIS, GAME BOY AND OTHER CARTRIDGE SYSTEMS FIRST; DISC-BASED SYSTEMS ARE NOT MATCHED YET"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 8

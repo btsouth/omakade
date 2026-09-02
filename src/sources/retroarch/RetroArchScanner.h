@@ -12,6 +12,7 @@ struct RetroArchGameRecord {
   QString coreName;
   QString coverPath;
   QString heroPath;
+  QString system;
   qint64 playtimeSeconds = 0;
   qint64 lastPlayed = 0;
   bool flatpak = false;

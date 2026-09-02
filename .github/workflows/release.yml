@@ -18,7 +18,7 @@ jobs:
         run: >-
           pacman -Syu --noconfirm --needed
           appstream base-devel cmake desktop-file-utils git github-cli libsecret
-          ninja pkgconf qt6-base qt6-declarative qt6-imageformats qt6-svg qt6-wayland
+          libzip ninja pkgconf qt6-base qt6-declarative qt6-imageformats qt6-svg qt6-wayland
           sdl3 ttf-dejavu
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

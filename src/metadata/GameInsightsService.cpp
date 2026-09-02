@@ -79,6 +79,10 @@ GameInsightsService::GameInsightsService(const QString& databasePath, AppSetting
   if (m_settings != nullptr) {
     connect(m_settings, &AppSettings::igdbClientIdChanged, this, &GameInsightsService::changed);
   }
+  // Force this schema's one-time libsecret/GLib type registration to happen here, on the main
+  // thread, rather than racing with SteamAccountService/RetroAchievementsService the first time
+  // each of their own schemas is touched from a background QtConcurrent thread.
+  insightsSchema();
   beginSecretOperation(SecretAction::Detect);
 }
 

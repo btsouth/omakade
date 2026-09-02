@@ -5,6 +5,7 @@ project(Omakade VERSION 1.3.0 LANGUAGES CXX)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
+pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +19,12 @@ qt_standard_project_setup(REQUIRES 6.8)
 add_library(omakade_core STATIC
   src/achievements/AchievementModel.cpp
   src/achievements/AchievementModel.h
+  src/achievements/RetroAchievementsApi.cpp
+  src/achievements/RetroAchievementsApi.h
+  src/achievements/RetroAchievementsHasher.cpp
+  src/achievements/RetroAchievementsHasher.h
+  src/achievements/RetroAchievementsService.cpp
+  src/achievements/RetroAchievementsService.h
   src/achievements/SteamAchievementApi.cpp
   src/achievements/SteamAchievementApi.h
   src/achievements/SteamAccountService.cpp
@@ -76,6 +83,7 @@ target_include_directories(omakade_core PUBLIC src)
 target_link_libraries(omakade_core PUBLIC
   PkgConfig::SDL3
   PkgConfig::LIBSECRET
+  PkgConfig::LIBZIP
   Qt6::Concurrent
   Qt6::Core
   Qt6::Gui

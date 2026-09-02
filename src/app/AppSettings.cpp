@@ -61,6 +61,20 @@ void AppSettings::setIgdbClientId(const QString& value) {
   emit igdbClientIdChanged();
 }
 
+QString AppSettings::retroAchievementsUsername() const { return m_retroAchievementsUsername; }
+
+void AppSettings::setRetroAchievementsUsername(const QString& value) {
+  static const QRegularExpression valid(QStringLiteral("^[A-Za-z0-9_-]{2,20}$"));
+  const QString normalized = value.trimmed();
+  if ((!normalized.isEmpty() && !valid.match(normalized).hasMatch()) ||
+      m_retroAchievementsUsername == normalized) {
+    return;
+  }
+  m_retroAchievementsUsername = normalized;
+  save();
+  emit retroAchievementsUsernameChanged();
+}
+
 bool AppSettings::steamEnabled() const { return m_steamEnabled; }
 
 void AppSettings::setSteamEnabled(bool value) {
@@ -160,6 +174,13 @@ void AppSettings::load() {
   if (igdbClientIdMatch.hasMatch()) {
     m_igdbClientId = igdbClientIdMatch.captured(1);
   }
+  const QRegularExpression retroAchievementsUsername(
+      QStringLiteral("(?m)^retroachievements_username\\s*=\\s*\"([A-Za-z0-9_-]{2,20})\"\\s*$"));
+  const QRegularExpressionMatch retroAchievementsUsernameMatch =
+      retroAchievementsUsername.match(contents);
+  if (retroAchievementsUsernameMatch.hasMatch()) {
+    m_retroAchievementsUsername = retroAchievementsUsernameMatch.captured(1);
+  }
   const auto readEnabled = [&contents](const QString& key, bool fallback) {
     const QRegularExpression expression(
         QStringLiteral("(?m)^%1\\s*=\\s*(true|false)\\s*$").arg(key));
@@ -181,13 +202,15 @@ void AppSettings::save() const {
     return;
   }
   file.write(QStringLiteral("reduced_motion = %1\nartwork_cache_limit_mb = %2\nsteam_id = "
-                            "\"%3\"\nigdb_client_id = \"%4\"\nsteam_enabled = %5\n"
-                            "lutris_enabled = %6\nheroic_enabled = %7\nfaugus_enabled = %8\n"
-                            "retroarch_enabled = %9\nclose_after_launch = %10\n")
+                            "\"%3\"\nigdb_client_id = \"%4\"\nretroachievements_username = "
+                            "\"%5\"\nsteam_enabled = %6\n"
+                            "lutris_enabled = %7\nheroic_enabled = %8\nfaugus_enabled = %9\n"
+                            "retroarch_enabled = %10\nclose_after_launch = %11\n")
                  .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_artworkCacheLimitMb)
                  .arg(m_steamId)
                  .arg(m_igdbClientId)
+                 .arg(m_retroAchievementsUsername)
                  .arg(m_steamEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_lutrisEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_heroicEnabled ? QStringLiteral("true") : QStringLiteral("false"))
