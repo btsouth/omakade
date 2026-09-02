@@ -10,7 +10,7 @@
 [Watch the 18-second demo](https://tsouth89.github.io/omakade/assets/omakade-demo.mp4)
 
 Omakade is a fast, local-first game library built for Omarchy. It brings
-installed Steam, Lutris, Heroic, Faugus, RetroArch, Epic, GOG, and Amazon games
+installed Steam, Lutris, Heroic, Faugus, RetroArch, Battle.net, Epic, GOG, and Amazon games
 into one quiet, cover-focused home that follows the active Omarchy theme.
 
 [Project homepage](https://tsouth89.github.io/omakade/) ·
@@ -24,7 +24,8 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 Omakade includes:
 
 - Native and Flatpak Steam, Lutris, Heroic, Faugus, and RetroArch discovery,
-  including games sideloaded into Heroic
+  including games sideloaded into Heroic, plus Battle.net games from Wine,
+  Proton, and Bottles prefixes
 - One-click details and delegated launching through the owning platform
 - Omarchy palette, font, transparency, and live theme updates
 - Search, favorites, hidden games, sorting, and source filters
@@ -100,6 +101,10 @@ RetroArch games come from its configured playlists. Omakade uses local
 RetroArch thumbnails and runtime logs, then launches each game with its assigned
 core. Entries without a core association remain visible and explain how to fix
 launching after you press Play.
+
+Battle.net games come from the Battle.net Agent database inside a Wine, Proton,
+or Bottles prefix. Omakade launches each title through that prefix's Battle.net
+client. Wine, umu-launcher, or Bottles must be installed to play.
 
 ## Build
 

@@ -11,7 +11,7 @@
   <description>
     <p>
       Omakade is a local-first game library for Omarchy. It discovers installed
-      Steam, Lutris, Heroic, Faugus, and RetroArch games, uses local artwork,
+      Steam, Lutris, Heroic, Faugus, RetroArch, and Battle.net games, uses local artwork,
       follows the active Omarchy theme, and delegates launching back to the owning platform.
     </p>
   </description>

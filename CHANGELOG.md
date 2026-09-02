@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Battle.net
+
+- Added Battle.net as a library source. Omakade finds the Windows Battle.net
+  client in Wine, Proton, and Bottles prefixes, imports installed games from
+  `product.db`, and launches them through Battle.net.
+- Downloads missing Battle.net covers and banners from Lutris's public artwork
+  hosts, including Heroes of the Storm.
+
 ## 1.3.1
 
 - Left the library, database, and cover requests alone when a Steam rescan finds the same

@@ -4,6 +4,7 @@
 #include "app/SingleInstance.h"
 #include "input/ControllerInput.h"
 #include "launch/GameLauncher.h"
+#include "library/BattleNetGameModel.h"
 #include "library/FaugusGameModel.h"
 #include "library/HeroicGameModel.h"
 #include "library/LibraryFilterModel.h"
@@ -109,11 +110,13 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<HeroicGameModel> heroicGames;
   std::unique_ptr<FaugusGameModel> faugusGames;
   std::unique_ptr<RetroArchGameModel> retroArchGames;
+  std::unique_ptr<BattleNetGameModel> battleNetGames;
   SteamGameModel* steamLibrary = nullptr;
   LutrisGameModel* lutrisLibrary = nullptr;
   HeroicGameModel* heroicLibrary = nullptr;
   FaugusGameModel* faugusLibrary = nullptr;
   RetroArchGameModel* retroArchLibrary = nullptr;
+  BattleNetGameModel* battleNetLibrary = nullptr;
   QString libraryDatabasePath;
   if (demoMode || stressMode || navigationTest) {
     games =
@@ -131,6 +134,9 @@ int main(int argc, char* argv[]) {
     faugusLibrary = faugusGames.get();
     retroArchGames = std::make_unique<RetroArchGameModel>(steamLibrary->databasePath());
     retroArchLibrary = retroArchGames.get();
+    battleNetGames =
+        std::make_unique<BattleNetGameModel>(steamLibrary->databasePath(), &preferences);
+    battleNetLibrary = battleNetGames.get();
   }
   UnifiedGameModel unifiedGames(libraryDatabasePath);
   unifiedGames.addSourceModel(games.get());
@@ -146,12 +152,16 @@ int main(int argc, char* argv[]) {
   if (retroArchGames != nullptr) {
     unifiedGames.addSourceModel(retroArchGames.get());
   }
+  if (battleNetGames != nullptr) {
+    unifiedGames.addSourceModel(battleNetGames.get());
+  }
   const auto applySourcePreferences = [&] {
     unifiedGames.setSourceEnabled(QStringLiteral("Steam"), preferences.steamEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Lutris"), preferences.lutrisEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Heroic"), preferences.heroicEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Faugus"), preferences.faugusEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("RetroArch"), preferences.retroArchEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Battle.net"), preferences.battleNetEnabled());
   };
   applySourcePreferences();
   QObject::connect(&preferences, &AppSettings::sourcesChanged, &unifiedGames,
@@ -258,6 +268,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("HeroicLibrary"), heroicLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("FaugusLibrary"), faugusLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("RetroArchLibrary"), retroArchLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("BattleNetLibrary"), battleNetLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Launcher"), &launcher);
   engine.rootContext()->setContextProperty(QStringLiteral("Preferences"), &preferences);
   engine.rootContext()->setContextProperty(QStringLiteral("Controller"), &controller);
@@ -391,7 +402,7 @@ int main(int argc, char* argv[]) {
                   fail(QStringLiteral("Controller Left did not reach source filters when tiled"));
                   return;
                 }
-                for (int step = 0; step < 5; ++step) {
+                for (int step = 0; step < 6; ++step) {
                   controller.focusDirectionRequested(Qt::Key_Left);
                 }
                 controller.focusDirectionRequested(Qt::Key_Up);
@@ -425,7 +436,7 @@ int main(int argc, char* argv[]) {
                 fail(QStringLiteral("Controller Down did not reach source filters"));
                 return;
               }
-              for (int step = 0; step < 5; ++step) {
+              for (int step = 0; step < 6; ++step) {
                 controller.focusDirectionRequested(Qt::Key_Left);
               }
               if (!allSources->hasActiveFocus()) {
@@ -809,6 +820,9 @@ int main(int argc, char* argv[]) {
   }
   if (retroArchLibrary != nullptr && preferences.retroArchEnabled()) {
     QTimer::singleShot(600, retroArchLibrary, &RetroArchGameModel::refresh);
+  }
+  if (battleNetLibrary != nullptr && preferences.battleNetEnabled()) {
+    QTimer::singleShot(750, battleNetLibrary, &BattleNetGameModel::refresh);
   }
 
   if (smokeTest && !renderMode) {

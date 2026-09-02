@@ -31,6 +31,8 @@ add_library(omakade_core STATIC
   src/library/LibraryFilterModel.cpp
   src/library/LibraryFilterModel.h
   src/library/GameRoles.h
+  src/library/BattleNetGameModel.cpp
+  src/library/BattleNetGameModel.h
   src/library/FaugusGameModel.cpp
   src/library/FaugusGameModel.h
   src/library/HeroicGameModel.cpp
@@ -68,6 +70,8 @@ add_library(omakade_core STATIC
   src/sources/heroic/HeroicScanner.h
   src/sources/faugus/FaugusScanner.cpp
   src/sources/faugus/FaugusScanner.h
+  src/sources/battlenet/BattleNetScanner.cpp
+  src/sources/battlenet/BattleNetScanner.h
   src/theme/OmarchyTheme.cpp
   src/theme/OmarchyTheme.h
 )

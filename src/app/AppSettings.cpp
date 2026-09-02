@@ -116,6 +116,17 @@ void AppSettings::setRetroArchEnabled(bool value) {
   emit sourcesChanged();
 }
 
+bool AppSettings::battleNetEnabled() const { return m_battleNetEnabled; }
+
+void AppSettings::setBattleNetEnabled(bool value) {
+  if (m_battleNetEnabled == value) {
+    return;
+  }
+  m_battleNetEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
 bool AppSettings::closeAfterLaunch() const { return m_closeAfterLaunch; }
 
 void AppSettings::setCloseAfterLaunch(bool value) {
@@ -171,6 +182,7 @@ void AppSettings::load() {
   m_heroicEnabled = readEnabled(QStringLiteral("heroic_enabled"), true);
   m_faugusEnabled = readEnabled(QStringLiteral("faugus_enabled"), true);
   m_retroArchEnabled = readEnabled(QStringLiteral("retroarch_enabled"), true);
+  m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
 }
 
@@ -183,7 +195,8 @@ void AppSettings::save() const {
   file.write(QStringLiteral("reduced_motion = %1\nartwork_cache_limit_mb = %2\nsteam_id = "
                             "\"%3\"\nigdb_client_id = \"%4\"\nsteam_enabled = %5\n"
                             "lutris_enabled = %6\nheroic_enabled = %7\nfaugus_enabled = %8\n"
-                            "retroarch_enabled = %9\nclose_after_launch = %10\n")
+                            "retroarch_enabled = %9\nbattlenet_enabled = %10\n"
+                            "close_after_launch = %11\n")
                  .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_artworkCacheLimitMb)
                  .arg(m_steamId)
@@ -193,6 +206,7 @@ void AppSettings::save() const {
                  .arg(m_heroicEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_faugusEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_retroArchEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+                 .arg(m_battleNetEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                  .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
                  .toUtf8());
   file.commit();

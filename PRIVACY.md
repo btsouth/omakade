@@ -8,8 +8,9 @@ system, or required online service.
 Omakade reads Steam library manifests, artwork caches, playtime, recent-play
 state, and achievement caches. It also reads installed-game manifests and
 cached artwork from Lutris and Heroic, Heroic's sideloaded game list and play
-timestamps, plus configured playlists, thumbnails, and runtime logs from
-RetroArch. It never writes into source launcher directories.
+timestamps, configured playlists, thumbnails, and runtime logs from RetroArch,
+and Battle.net Agent product databases plus last-played stamps inside Wine,
+Proton, and Bottles prefixes. It never writes into source launcher directories.
 
 Omakade retains:
 
@@ -41,7 +42,8 @@ obtain an app access token, then sends the token and client ID to IGDB.
 ## Network requests
 
 Omakade may request missing covers and achievement icons from Steam's public
-HTTPS artwork hosts. Responses are size-limited and the artwork cache is
+HTTPS artwork hosts, and missing Battle.net covers and banners from Lutris's
+public game-art URLs. Responses are size-limited and the artwork cache is
 bounded by the configured limit.
 
 Steam Web API requests occur only after the user stores a key. Omakade refreshes

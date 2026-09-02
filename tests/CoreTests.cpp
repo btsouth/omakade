@@ -5,6 +5,7 @@
 #include "input/ControllerInput.h"
 #include "launch/GameLauncher.h"
 #include "launch/SteamLauncher.h"
+#include "library/BattleNetGameModel.h"
 #include "library/FaugusGameModel.h"
 #include "library/GameRoles.h"
 #include "library/HeroicGameModel.h"
@@ -17,6 +18,7 @@
 #include "library/UnifiedGameModel.h"
 #include "metadata/GameInsightsService.h"
 #include "metadata/IgdbApi.h"
+#include "sources/battlenet/BattleNetScanner.h"
 #include "sources/faugus/FaugusScanner.h"
 #include "sources/heroic/HeroicScanner.h"
 #include "sources/lutris/LutrisScanner.h"
@@ -45,6 +47,19 @@ void writeFile(const QString& path, const QByteArray& contents) {
   QFile file(path);
   QVERIFY2(file.open(QIODevice::WriteOnly | QIODevice::Truncate), qPrintable(file.errorString()));
   QCOMPARE(file.write(contents), contents.size());
+}
+
+auto redirectCacheHome(const QString& path) {
+  const bool wasSet = qEnvironmentVariableIsSet("XDG_CACHE_HOME");
+  const QByteArray previous = qgetenv("XDG_CACHE_HOME");
+  qputenv("XDG_CACHE_HOME", path.toUtf8());
+  return qScopeGuard([wasSet, previous] {
+    if (wasSet) {
+      qputenv("XDG_CACHE_HOME", previous);
+    } else {
+      qunsetenv("XDG_CACHE_HOME");
+    }
+  });
 }
 
 QByteArray sampleTheme(const QByteArray& accent = "#7aa2f7") {
@@ -179,6 +194,32 @@ void createFaugusFixture(const QString& root) {
   writeFile(root + QStringLiteral("/icons/linux-tool.png"), "icon");
 }
 
+void createBattleNetFixture(const QString& prefix) {
+  writeFile(prefix + QStringLiteral("/drive_c/Program Files (x86)/Battle.net/Battle.net.exe"),
+            "mz");
+  writeFile(prefix + QStringLiteral("/drive_c/Program Files (x86)/World of Warcraft/cover.png"),
+            "cover");
+  writeFile(prefix + QStringLiteral("/drive_c/Program Files (x86)/Overwatch/library_hero.jpg"),
+            "hero");
+  writeFile(prefix + QStringLiteral("/drive_c/Program Files (x86)/Custom/game.exe"), "exe");
+  writeFile(prefix + QStringLiteral("/drive_c/Program Files (x86)/Custom/icon.ico"), "icon");
+  writeFile(prefix + QStringLiteral("/drive_c/users/steamuser/AppData/Roaming/Battle.net/"
+                                    "Battle.net.config"),
+            R"({"Games":{"wow":{"LastPlayed":1700000000},"Pro":{"LastPlayed":1700001000}}})");
+  writeFile(prefix + QStringLiteral("/drive_c/ProgramData/Battle.net/Agent/product.db"),
+            BattleNetScanner::encodeProductDb(
+                {{QStringLiteral("agent"), QStringLiteral("agent"),
+                  QStringLiteral("C:\\ProgramData\\Battle.net\\Agent"), true, true},
+                 {QStringLiteral("wow"), QStringLiteral("wow"),
+                  QStringLiteral("C:\\Program Files (x86)\\World of Warcraft"), true, true},
+                 {QStringLiteral("pro"), QStringLiteral("pro"),
+                  QStringLiteral("C:\\Program Files (x86)\\Overwatch"), true, true},
+                 {QStringLiteral("d3"), QStringLiteral("d3"),
+                  QStringLiteral("C:\\Program Files (x86)\\Diablo III"), false, false},
+                 {QStringLiteral("custom_mod"), QStringLiteral("custom_mod"),
+                  QStringLiteral("C:\\Program Files (x86)\\Custom"), true, true}}));
+}
+
 void createRetroArchFixture(const QString& root) {
   const QString content = root + QStringLiteral("/roms/Sonic & Tails.bin");
   const QString unassigned = root + QStringLiteral("/roms/Unassigned.nes");
@@ -271,6 +312,13 @@ private slots:
   void retroArchModelIsRepeatableAndPreservesLocalState();
   void malformedRetroArchDataDoesNotReplaceCachedGames();
   void retroArchLauncherBuildsSafeCommands();
+  void battleNetScannerImportsInstalledGamesAndArtwork();
+  void battleNetScannerDiscoversKnownPrefixes();
+  void battleNetScannerKeepsInstallsFromSeparatePrefixes();
+  void battleNetModelIsRepeatableAndPreservesLocalState();
+  void malformedBattleNetDataDoesNotReplaceCachedGames();
+  void oversizedBattleNetDatabaseDoesNotReplaceCachedGames();
+  void battleNetLauncherBuildsSafeCommands();
   void launcherReportsInvalidAndStaleTargets();
   void igdbApiBuildsSafeQueriesAndParsesInsights();
   void igdbInsightsLoadFromOfflineCache();
@@ -1635,23 +1683,40 @@ void CoreTests::launcherRefreshesRunAsynchronously() {
   const QString configHome = directory.path() + QStringLiteral("/config");
   qputenv("XDG_DATA_HOME", dataHome.toUtf8());
   qputenv("XDG_CONFIG_HOME", configHome.toUtf8());
+  const auto restoreCacheHome = redirectCacheHome(directory.path() + QStringLiteral("/cache"));
+  Q_UNUSED(restoreCacheHome);
   createLutrisFixture(dataHome + QStringLiteral("/lutris"));
   createHeroicFixture(configHome + QStringLiteral("/heroic"));
   createFaugusFixture(dataHome + QStringLiteral("/faugus-launcher"));
+  createBattleNetFixture(directory.path() + QStringLiteral("/home/.wine"));
+  const bool homeWasSet = qEnvironmentVariableIsSet("HOME");
+  const QByteArray previousHome = qgetenv("HOME");
+  qputenv("HOME", QByteArray(directory.path().toUtf8() + "/home"));
+  const auto restoreHome = qScopeGuard([&] {
+    if (homeWasSet) {
+      qputenv("HOME", previousHome);
+    } else {
+      qunsetenv("HOME");
+    }
+  });
 
   const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
   LutrisGameModel lutris(database);
   HeroicGameModel heroic(database);
   FaugusGameModel faugus(database);
+  BattleNetGameModel battlenet(database);
   lutris.refresh();
   heroic.refresh();
   faugus.refresh();
+  battlenet.refresh();
   QCOMPARE(lutris.statusText(), QStringLiteral("Scanning Lutris library"));
   QCOMPARE(heroic.statusText(), QStringLiteral("Scanning Heroic library"));
   QCOMPARE(faugus.statusText(), QStringLiteral("Scanning Faugus library"));
+  QCOMPARE(battlenet.statusText(), QStringLiteral("Scanning Battle.net library"));
   QTRY_COMPARE_WITH_TIMEOUT(lutris.rowCount(), 1, 3000);
   QTRY_COMPARE_WITH_TIMEOUT(heroic.rowCount(), 4, 3000);
   QTRY_COMPARE_WITH_TIMEOUT(faugus.rowCount(), 3, 3000);
+  QTRY_COMPARE_WITH_TIMEOUT(battlenet.rowCount(), 3, 3000);
 }
 
 void CoreTests::absentLaunchersPersistEmptySourcePaths() {
@@ -1683,6 +1748,11 @@ void CoreTests::absentLaunchersPersistEmptySourcePaths() {
     model.refreshFromRoots({});
     QVERIFY(model.errorText().isEmpty());
   }
+  {
+    BattleNetGameModel model(database);
+    model.refreshFromPrefixes({});
+    QVERIFY(model.errorText().isEmpty());
+  }
 
   const QString connection = QStringLiteral("empty-source-paths-") + QUuid::createUuid().toString();
   {
@@ -1692,9 +1762,10 @@ void CoreTests::absentLaunchersPersistEmptySourcePaths() {
     QSqlQuery query(stored);
     QVERIFY(query.exec(QStringLiteral(
         "SELECT COUNT(*) FROM source_state WHERE source IN "
-        "('lutris', 'heroic', 'faugus', 'retroarch') AND paths = '' AND paths IS NOT NULL")));
+        "('lutris', 'heroic', 'faugus', 'retroarch', 'battlenet') AND paths = '' AND paths IS NOT "
+        "NULL")));
     QVERIFY(query.next());
-    QCOMPARE(query.value(0).toInt(), 4);
+    QCOMPARE(query.value(0).toInt(), 5);
   }
   QSqlDatabase::removeDatabase(connection);
 }
@@ -1856,6 +1927,233 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
   QVERIFY(!launcher.lastError().startsWith(QStringLiteral("The installed files are missing.")));
 }
 
+void CoreTests::battleNetScannerImportsInstalledGamesAndArtwork() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString prefix = directory.path() + QStringLiteral("/wine");
+  createBattleNetFixture(prefix);
+
+  const BattleNetScanResult result = BattleNetScanner::scan({prefix});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.prefixes, QStringList({QDir::cleanPath(prefix)}));
+  QCOMPARE(result.games.size(), 3);
+  QCOMPARE(result.games.at(0).productId, QStringLiteral("wow"));
+  QCOMPARE(result.games.at(0).title, QStringLiteral("World of Warcraft"));
+  QCOMPARE(result.games.at(0).launchCode, QStringLiteral("WoW"));
+  QCOMPARE(result.games.at(0).runner, QStringLiteral("wine"));
+  QCOMPARE(result.games.at(0).lastPlayed, 1700000000);
+  QVERIFY(result.games.at(0).coverPath.endsWith(QStringLiteral("cover.png")));
+  QCOMPARE(result.games.at(1).productId, QStringLiteral("pro"));
+  QCOMPARE(result.games.at(1).title, QStringLiteral("Overwatch 2"));
+  QCOMPARE(result.games.at(1).lastPlayed, 1700001000);
+  QVERIFY(result.games.at(1).heroPath.endsWith(QStringLiteral("library_hero.jpg")));
+  QCOMPARE(result.games.at(2).productId, QStringLiteral("custom_mod"));
+  QCOMPARE(result.games.at(2).title, QStringLiteral("Custom mod"));
+  QVERIFY(result.games.at(2).coverPath.isEmpty());
+  QVERIFY(result.games.at(0).gameId.contains(QStringLiteral("wow@")));
+  QVERIFY(result.games.at(0).gameId != result.games.at(0).productId);
+  QVERIFY(BattleNetScanner::isToolProduct(QStringLiteral("agent")));
+  QVERIFY(BattleNetScanner::isToolProduct(QStringLiteral("bna")));
+  QVERIFY(!BattleNetScanner::isToolProduct(QStringLiteral("wow")));
+  QCOMPARE(BattleNetScanner::slugForProduct(QStringLiteral("hero")),
+           QStringLiteral("heroes-of-the-storm"));
+  QCOMPARE(BattleNetScanner::coverUrl(QStringLiteral("hero")).toString(),
+           QStringLiteral("https://lutris.net/games/cover/heroes-of-the-storm.jpg"));
+  QCOMPARE(BattleNetScanner::heroUrl(QStringLiteral("hero")).toString(),
+           QStringLiteral("https://lutris.net/games/banner/heroes-of-the-storm.jpg"));
+  QVERIFY(BattleNetScanner::coverUrl(QStringLiteral("custom_mod")).isEmpty());
+
+  bool ok = false;
+  const QVector<BattleNetProductInstall> decoded = BattleNetScanner::decodeProductDb(
+      BattleNetScanner::encodeProductDb({{QStringLiteral("wow"), QStringLiteral("wow"),
+                                          QStringLiteral("C:\\Games\\WoW"), true, true}}),
+      &ok);
+  QVERIFY(ok);
+  QCOMPARE(decoded.size(), 1);
+  QCOMPARE(decoded.at(0).productCode, QStringLiteral("wow"));
+  QCOMPARE(decoded.at(0).installPath, QStringLiteral("C:\\Games\\WoW"));
+  QVERIFY(decoded.at(0).installed);
+}
+
+void CoreTests::battleNetScannerDiscoversKnownPrefixes() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const bool homeWasSet = qEnvironmentVariableIsSet("HOME");
+  const bool dataHomeWasSet = qEnvironmentVariableIsSet("XDG_DATA_HOME");
+  const QByteArray previousHome = qgetenv("HOME");
+  const QByteArray previousDataHome = qgetenv("XDG_DATA_HOME");
+  const auto restoreEnvironment = qScopeGuard([&] {
+    if (homeWasSet) {
+      qputenv("HOME", previousHome);
+    } else {
+      qunsetenv("HOME");
+    }
+    if (dataHomeWasSet) {
+      qputenv("XDG_DATA_HOME", previousDataHome);
+    } else {
+      qunsetenv("XDG_DATA_HOME");
+    }
+  });
+  const QString home = directory.path() + QStringLiteral("/home");
+  const QString data = directory.path() + QStringLiteral("/data");
+  qputenv("HOME", home.toUtf8());
+  qputenv("XDG_DATA_HOME", data.toUtf8());
+
+  createBattleNetFixture(home + QStringLiteral("/.wine"));
+  createBattleNetFixture(data + QStringLiteral("/wineprefixes/bnet"));
+  createBattleNetFixture(data + QStringLiteral("/bottles/bottles/Wow"));
+  writeFile(data + QStringLiteral("/bottles/bottles/Wow/bottle.yml"), "Name: Wow\n");
+  createBattleNetFixture(home + QStringLiteral("/Games/battlenet"));
+  const QString steamRoot = home + QStringLiteral("/.local/share/Steam");
+  createBattleNetFixture(steamRoot + QStringLiteral("/steamapps/compatdata/4242/pfx"));
+  writeFile(steamRoot + QStringLiteral("/steamapps/compatdata/4242/version"), "9.0\n");
+  writeFile(steamRoot + QStringLiteral("/steamapps/libraryfolders.vdf"),
+            "\"libraryfolders\"\n{\n\"0\" { \"path\" \"" + steamRoot.toUtf8() + "\" }\n}\n");
+
+  const QStringList prefixes = BattleNetScanner::discoverPrefixes();
+  QVERIFY(prefixes.contains(QDir::cleanPath(home + QStringLiteral("/.wine"))));
+  QVERIFY(prefixes.contains(QDir::cleanPath(data + QStringLiteral("/wineprefixes/bnet"))));
+  QVERIFY(prefixes.contains(QDir::cleanPath(data + QStringLiteral("/bottles/bottles/Wow"))));
+  QVERIFY(prefixes.contains(QDir::cleanPath(home + QStringLiteral("/Games/battlenet"))));
+  QVERIFY(prefixes.contains(
+      QDir::cleanPath(steamRoot + QStringLiteral("/steamapps/compatdata/4242/pfx"))));
+
+  const BattleNetScanResult bottles =
+      BattleNetScanner::scan({data + QStringLiteral("/bottles/bottles/Wow")});
+  QCOMPARE(bottles.games.at(0).runner, QStringLiteral("bottles"));
+  const BattleNetScanResult proton =
+      BattleNetScanner::scan({steamRoot + QStringLiteral("/steamapps/compatdata/4242/pfx")});
+  QCOMPARE(proton.games.at(0).runner, QStringLiteral("proton"));
+}
+
+void CoreTests::battleNetScannerKeepsInstallsFromSeparatePrefixes() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString first = directory.path() + QStringLiteral("/wine");
+  const QString second = directory.path() + QStringLiteral("/proton/pfx");
+  createBattleNetFixture(first);
+  createBattleNetFixture(second);
+  writeFile(directory.path() + QStringLiteral("/proton/version"), "9.0\n");
+
+  const BattleNetScanResult result = BattleNetScanner::scan({first, second});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.games.size(), 6);
+  QStringList wowIds;
+  for (const BattleNetGameRecord& game : result.games) {
+    if (game.productId == QStringLiteral("wow")) {
+      wowIds.append(game.gameId);
+    }
+  }
+  QCOMPARE(wowIds.size(), 2);
+  QVERIFY(wowIds.at(0) != wowIds.at(1));
+  QCOMPARE(BattleNetScanner::productCodeFromId(wowIds.at(0)), QStringLiteral("wow"));
+}
+
+void CoreTests::battleNetModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const auto restoreCacheHome = redirectCacheHome(directory.path() + QStringLiteral("/cache"));
+  Q_UNUSED(restoreCacheHome);
+  const QString prefix = directory.path() + QStringLiteral("/wine");
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  createBattleNetFixture(prefix);
+
+  BattleNetGameModel model(database);
+  model.refreshFromPrefixes({prefix});
+  QCOMPARE(model.rowCount(), 3);
+  QCOMPARE(model.detectedPaths(), QStringList({QDir::cleanPath(prefix)}));
+  QVERIFY(model.lastScan() > 0);
+  QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(),
+           QStringLiteral("Battle.net"));
+  QCOMPARE(model.data(model.index(0), GameRoles::Runner).toString(), QStringLiteral("wine"));
+  QCOMPARE(model.data(model.index(0), GameRoles::LaunchTarget).toString(),
+           QDir::cleanPath(prefix));
+  model.toggleFavorite(0);
+  model.toggleHidden(0);
+  model.refreshFromPrefixes({prefix});
+  QCOMPARE(model.rowCount(), 3);
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(model.data(model.index(0), GameRoles::Hidden).toBool());
+
+  BattleNetGameModel reloaded(database);
+  QCOMPARE(reloaded.detectedPaths(), QStringList({QDir::cleanPath(prefix)}));
+  QCOMPARE(reloaded.lastScan(), model.lastScan());
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+}
+
+void CoreTests::malformedBattleNetDataDoesNotReplaceCachedGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const auto restoreCacheHome = redirectCacheHome(directory.path() + QStringLiteral("/cache"));
+  Q_UNUSED(restoreCacheHome);
+  const QString prefix = directory.path() + QStringLiteral("/wine");
+  createBattleNetFixture(prefix);
+  BattleNetGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromPrefixes({prefix});
+  QCOMPARE(model.rowCount(), 3);
+  writeFile(prefix + QStringLiteral("/drive_c/ProgramData/Battle.net/Agent/product.db"),
+            "not protobuf");
+  model.refreshFromPrefixes({prefix});
+  QCOMPARE(model.rowCount(), 3);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("Battle.net scan interrupted")));
+}
+
+void CoreTests::oversizedBattleNetDatabaseDoesNotReplaceCachedGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const auto restoreCacheHome = redirectCacheHome(directory.path() + QStringLiteral("/cache"));
+  Q_UNUSED(restoreCacheHome);
+  const QString prefix = directory.path() + QStringLiteral("/wine");
+  createBattleNetFixture(prefix);
+  BattleNetGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromPrefixes({prefix});
+  QCOMPARE(model.rowCount(), 3);
+  QFile productDb(prefix + QStringLiteral("/drive_c/ProgramData/Battle.net/Agent/product.db"));
+  QVERIFY(productDb.resize(16LL * 1024 * 1024 + 1));
+  model.refreshFromPrefixes({prefix});
+  QCOMPARE(model.rowCount(), 3);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("Battle.net scan interrupted")));
+}
+
+void CoreTests::battleNetLauncherBuildsSafeCommands() {
+  const QString prefix = QStringLiteral("/tmp/omakade-bnet");
+  const LaunchCommand wine =
+      GameLauncher::battleNetCommand(QStringLiteral("wow"), prefix, QStringLiteral("wine"), false);
+  QCOMPARE(wine.program, QStringLiteral("wine"));
+  QCOMPARE(wine.arguments.constLast(), QStringLiteral("--exec=launch WoW"));
+  QVERIFY(wine.arguments.constFirst().contains(QStringLiteral("Battle.net.exe")));
+  QTemporaryDir bottlesDir;
+  QVERIFY(bottlesDir.isValid());
+  const QString bottlesPrefix = bottlesDir.path() + QStringLiteral("/folder-name");
+  writeFile(bottlesPrefix + QStringLiteral("/bottle.yml"), "Name: Actual Bottle\n");
+  const LaunchCommand bottles = GameLauncher::battleNetCommand(
+      QStringLiteral("pro"), bottlesPrefix, QStringLiteral("bottles"), false);
+  QCOMPARE(bottles.program, QStringLiteral("bottles-cli"));
+  const int bottleFlag = bottles.arguments.indexOf(QStringLiteral("-b"));
+  QVERIFY(bottleFlag >= 0);
+  QCOMPARE(bottles.arguments.at(bottleFlag + 1), QStringLiteral("Actual Bottle"));
+  QCOMPARE(bottles.arguments.constLast(), QStringLiteral("--exec=launch Pro"));
+  const QString scopedId =
+      BattleNetScanner::gameIdFor(QStringLiteral("wow"), prefix);
+  const LaunchCommand scoped =
+      GameLauncher::battleNetCommand(scopedId, prefix, QStringLiteral("wine"), false);
+  QVERIFY(scoped.isValid());
+  QCOMPARE(scoped.arguments.constLast(), QStringLiteral("--exec=launch WoW"));
+  const LaunchCommand proton = GameLauncher::battleNetCommand(
+      QStringLiteral("s2"), prefix, QStringLiteral("proton"), false);
+  QCOMPARE(proton.program, QStringLiteral("umu-run"));
+  QCOMPARE(proton.arguments.constLast(), QStringLiteral("--exec=launch S2"));
+  QVERIFY(!GameLauncher::battleNetCommand(QStringLiteral("bad;id"), prefix, QStringLiteral("wine"),
+                                          false)
+               .isValid());
+  QVERIFY(!GameLauncher::battleNetCommand(QStringLiteral("wow"), QStringLiteral("relative"),
+                                          QStringLiteral("wine"), false)
+               .isValid());
+  QVERIFY(!GameLauncher::battleNetCommand(QStringLiteral("../escape"), prefix,
+                                          QStringLiteral("wine"), false)
+               .isValid());
+}
+
 void CoreTests::launcherReportsInvalidAndStaleTargets() {
   GameLauncher launcher;
   QVERIFY(!launcher.launch(QStringLiteral("Lutris"), QStringLiteral("bad")));
@@ -1866,6 +2164,9 @@ void CoreTests::launcherReportsInvalidAndStaleTargets() {
   QVERIFY(!launcher.launch(QStringLiteral("Steam"), QStringLiteral("440"), false, {},
                            QStringLiteral("/path/that/does/not/exist")));
   QVERIFY(launcher.lastError().startsWith(QStringLiteral("The installed files are missing.")));
+  QVERIFY(!launcher.launch(QStringLiteral("Battle.net"), QStringLiteral("wow;rm"), false,
+                           QStringLiteral("wine"), {}, QStringLiteral("/tmp/omakade-bnet")));
+  QCOMPARE(launcher.lastError(), QStringLiteral("This game has an invalid Battle.net target."));
 }
 
 void CoreTests::igdbApiBuildsSafeQueriesAndParsesInsights() {
@@ -1960,6 +2261,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setLutrisEnabled(false);
     settings.setFaugusEnabled(false);
     settings.setRetroArchEnabled(false);
+    settings.setBattleNetEnabled(false);
     settings.setCloseAfterLaunch(true);
   }
   AppSettings reloaded(path);
@@ -1972,6 +2274,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(reloaded.heroicEnabled());
   QVERIFY(!reloaded.faugusEnabled());
   QVERIFY(!reloaded.retroArchEnabled());
+  QVERIFY(!reloaded.battleNetEnabled());
   QVERIFY(reloaded.closeAfterLaunch());
 }
 

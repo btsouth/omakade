@@ -23,11 +23,13 @@ public:
   [[nodiscard]] static LaunchCommand faugusCommand(const QString& id, bool flatpak);
   [[nodiscard]] static LaunchCommand retroArchCommand(const QString& contentPath,
                                                       const QString& corePath, bool flatpak);
+  [[nodiscard]] static LaunchCommand battleNetCommand(const QString& id, const QString& prefix,
+                                                      const QString& runner, bool flatpak);
   Q_INVOKABLE bool launch(const QString& source, const QString& id, bool flatpak = false,
                           const QString& runner = {}, const QString& installPath = {},
                           const QString& launchTarget = {});
   Q_INVOKABLE bool manage(const QString& source, const QString& id, bool flatpak = false,
-                          const QString& runner = {});
+                          const QString& runner = {}, const QString& launchTarget = {});
   Q_INVOKABLE bool install(const QString& source, const QString& id);
 
 signals:
@@ -39,6 +41,8 @@ private:
   bool launchFaugus(const QString& id, bool flatpak, bool manageOnly);
   bool launchRetroArch(const QString& contentPath, const QString& corePath, bool flatpak,
                        bool manageOnly);
+  bool launchBattleNet(const QString& id, const QString& prefix, const QString& runner,
+                       bool flatpak, bool manageOnly);
   [[nodiscard]] QString flatpakError(const QString& appId, const QString& launcherName) const;
   void setError(const QString& error);
   QString m_lastError;

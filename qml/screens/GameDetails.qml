@@ -378,6 +378,7 @@ Item {
                                  || root.selectedInstallation.source === "Heroic"
                                  || root.selectedInstallation.source === "Faugus"
                                  || root.selectedInstallation.source === "RetroArch"
+                                 || root.selectedInstallation.source === "Battle.net"
                         text: "MANAGE IN " + (root.selectedInstallation.source || "LAUNCHER").toUpperCase()
                         onClicked: root.manageRequested()
                     }

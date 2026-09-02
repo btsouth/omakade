@@ -38,8 +38,9 @@ CI. Additional real-user reports expand compatibility coverage after v1.
 ## Contract-tested sources
 
 Lutris native and Flatpak discovery, Heroic native and Flatpak discovery,
-Faugus and RetroArch native and Flatpak discovery, and Epic, GOG, and Amazon
-manifests are covered by repeatable local fixtures. These
+Faugus and RetroArch native and Flatpak discovery, Epic, GOG, and Amazon
+manifests, and Battle.net product.db discovery across Wine, Proton, and Bottles
+prefixes are covered by repeatable local fixtures. These
 paths still need reports from users with those launchers installed before the
 stable release gate can close.
 
@@ -50,6 +51,7 @@ stable release gate can close.
 - Native and Flatpak Heroic libraries from real users
 - A configured native or Flatpak Faugus library from a real user
 - A configured native or Flatpak RetroArch library from a real user
+- A Battle.net library from a real Wine, Proton, or Bottles prefix
 - Steam Flatpak from a real user
 - Light, scaled, ultrawide, and blur-disabled checks on real displays
 
