@@ -138,6 +138,14 @@ void AppSettings::setRyujinxEnabled(bool value) {
   emit sourcesChanged();
 }
 
+bool AppSettings::pcsx2AutoEnabled() const { return m_pcsx2Auto; }
+
+void AppSettings::setPcsx2AutoEnabled(bool value) { m_pcsx2Auto = value; }
+
+bool AppSettings::ryujinxAutoEnabled() const { return m_ryujinxAuto; }
+
+void AppSettings::setRyujinxAutoEnabled(bool value) { m_ryujinxAuto = value; }
+
 bool AppSettings::closeAfterLaunch() const { return m_closeAfterLaunch; }
 
 void AppSettings::setCloseAfterLaunch(bool value) {
@@ -193,8 +201,14 @@ void AppSettings::load() {
   m_heroicEnabled = readEnabled(QStringLiteral("heroic_enabled"), true);
   m_faugusEnabled = readEnabled(QStringLiteral("faugus_enabled"), true);
   m_retroArchEnabled = readEnabled(QStringLiteral("retroarch_enabled"), true);
-  m_pcsx2Enabled = readEnabled(QStringLiteral("pcsx2_enabled"), true);
-  m_ryujinxEnabled = readEnabled(QStringLiteral("ryujinx_enabled"), true);
+  const QRegularExpression pcsx2Key(
+      QStringLiteral("(?m)^pcsx2_enabled\\s*=\\s*(true|false)\\s*$"));
+  m_pcsx2Auto = !pcsx2Key.match(contents).hasMatch();
+  m_pcsx2Enabled = readEnabled(QStringLiteral("pcsx2_enabled"), false);
+  const QRegularExpression ryujinxKey(
+      QStringLiteral("(?m)^ryujinx_enabled\\s*=\\s*(true|false)\\s*$"));
+  m_ryujinxAuto = !ryujinxKey.match(contents).hasMatch();
+  m_ryujinxEnabled = readEnabled(QStringLiteral("ryujinx_enabled"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_sunshineOmakadeApp = readEnabled(QStringLiteral("sunshine_omakade_app"), false);
   m_sunshineGameApps = readEnabled(QStringLiteral("sunshine_game_apps"), false);

@@ -52,6 +52,12 @@ public:
   void setPcsx2Enabled(bool value);
   [[nodiscard]] bool ryujinxEnabled() const;
   void setRyujinxEnabled(bool value);
+  // True while the user has not written an explicit pcsx2_enabled/ryujinx_enabled key,
+  // letting the app enable the source automatically when its emulator is detected.
+  [[nodiscard]] bool pcsx2AutoEnabled() const;
+  [[nodiscard]] bool ryujinxAutoEnabled() const;
+  void setPcsx2AutoEnabled(bool value);
+  void setRyujinxAutoEnabled(bool value);
   [[nodiscard]] bool closeAfterLaunch() const;
   void setCloseAfterLaunch(bool value);
   [[nodiscard]] bool sunshineOmakadeApp() const;
@@ -83,8 +89,10 @@ private:
   bool m_heroicEnabled = true;
   bool m_faugusEnabled = true;
   bool m_retroArchEnabled = true;
-  bool m_pcsx2Enabled = true;
-  bool m_ryujinxEnabled = true;
+  bool m_pcsx2Enabled = false;
+  bool m_ryujinxEnabled = false;
+  bool m_pcsx2Auto = true;
+  bool m_ryujinxAuto = true;
   bool m_closeAfterLaunch = false;
   bool m_sunshineOmakadeApp = false;
   bool m_sunshineGameApps = false;

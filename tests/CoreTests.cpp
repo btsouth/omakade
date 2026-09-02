@@ -2250,6 +2250,8 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setLutrisEnabled(false);
     settings.setFaugusEnabled(false);
     settings.setRetroArchEnabled(false);
+    QVERIFY(settings.pcsx2AutoEnabled());
+    QVERIFY(settings.ryujinxAutoEnabled());
     settings.setPcsx2Enabled(false);
     settings.setRyujinxEnabled(false);
     settings.setCloseAfterLaunch(true);

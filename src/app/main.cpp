@@ -1019,11 +1019,27 @@ int main(int argc, char* argv[]) {
   if (retroArchLibrary != nullptr && preferences.retroArchEnabled()) {
     QTimer::singleShot(600, retroArchLibrary, &RetroArchGameModel::refresh);
   }
-  if (pcsx2Library != nullptr && preferences.pcsx2Enabled()) {
+  if (pcsx2Library != nullptr) {
+    // Sources start disabled and switch on once their emulator is detected, unless
+    // the user wrote an explicit pcsx2_enabled key.
     QTimer::singleShot(650, pcsx2Library, &Pcsx2GameModel::refresh);
+    QObject::connect(pcsx2Library, &Pcsx2GameModel::statusChanged, pcsx2Library,
+                     [&preferences, pcsx2Library] {
+                       if (pcsx2Library->pcsx2Detected() && preferences.pcsx2AutoEnabled()) {
+                         preferences.setPcsx2AutoEnabled(false);
+                         preferences.setPcsx2Enabled(true);
+                       }
+                     });
   }
-  if (ryujinxLibrary != nullptr && preferences.ryujinxEnabled()) {
+  if (ryujinxLibrary != nullptr) {
     QTimer::singleShot(700, ryujinxLibrary, &RyujinxGameModel::refresh);
+    QObject::connect(ryujinxLibrary, &RyujinxGameModel::statusChanged, ryujinxLibrary,
+                     [&preferences, ryujinxLibrary] {
+                       if (ryujinxLibrary->ryujinxDetected() && preferences.ryujinxAutoEnabled()) {
+                         preferences.setRyujinxAutoEnabled(false);
+                         preferences.setRyujinxEnabled(true);
+                       }
+                     });
   }
 
   if (smokeTest && !renderMode) {
