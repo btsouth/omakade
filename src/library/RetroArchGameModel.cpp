@@ -164,9 +164,10 @@ bool RetroArchGameModel::ensureSchema() {
   }
   // Added after the initial release; existing installs need the column added explicitly since
   // CREATE TABLE IF NOT EXISTS above is a no-op once the table already exists.
-  if (!query.exec(QStringLiteral("SELECT system FROM retroarch_games LIMIT 1"))) {
-    query.exec(QStringLiteral("ALTER TABLE retroarch_games ADD COLUMN system TEXT NOT NULL "
-                              "DEFAULT ''"));
+  if (!query.exec(QStringLiteral("SELECT system FROM retroarch_games LIMIT 1")) &&
+      !query.exec(QStringLiteral("ALTER TABLE retroarch_games ADD COLUMN system TEXT NOT NULL "
+                                 "DEFAULT ''"))) {
+    return false;
   }
   return query.exec(QStringLiteral(
       "CREATE TABLE IF NOT EXISTS source_state (source TEXT PRIMARY KEY, last_scan INTEGER, "

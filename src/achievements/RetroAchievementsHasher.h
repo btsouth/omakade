@@ -14,6 +14,7 @@ enum class RetroAchievementsHashRule {
   WholeFileMd5,
   NesHeaderStrip,
   SnesHeaderStrip,
+  PcEngineHeaderStrip,
   Atari7800HeaderStrip,
   AtariLynxHeaderStrip,
   Unsupported,

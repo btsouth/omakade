@@ -107,6 +107,8 @@ RetroAchievementsService::RetroAchievementsService(const QString& databasePath,
   }
   connect(&m_secretWatcher, &QFutureWatcher<RetroAchievementsSecretResult>::finished, this,
           &RetroAchievementsService::finishSecretOperation);
+  connect(&m_hashWatcher, &QFutureWatcher<std::optional<QByteArray>>::finished, this,
+          &RetroAchievementsService::finishHashing);
   // Force this schema's one-time libsecret/GLib type registration to happen here, on the main
   // thread, rather than racing with SteamAccountService/GameInsightsService the first time each
   // of their own schemas is touched from a background QtConcurrent thread.
@@ -117,6 +119,9 @@ RetroAchievementsService::RetroAchievementsService(const QString& databasePath,
 RetroAchievementsService::~RetroAchievementsService() {
   if (m_secretWatcher.isRunning()) {
     m_secretWatcher.waitForFinished();
+  }
+  if (m_hashWatcher.isRunning()) {
+    m_hashWatcher.waitForFinished();
   }
   m_database.close();
   m_database = {};
@@ -139,12 +144,25 @@ void RetroAchievementsService::setUsername(const QString& username) {
   const QString before = m_settings->retroAchievementsUsername();
   m_settings->setRetroAchievementsUsername(username);
   if (before != m_settings->retroAchievementsUsername()) {
+    // Cached achievement_summary/achievements rows are keyed by app_id, not by account, so a
+    // stale row from the previous account would otherwise look like valid, up-to-date progress
+    // for whichever RetroArch game is opened next.
+    clearCachedAchievements();
     emit accountChanged();
     setStatus(QStringLiteral("local"), QStringLiteral("RetroAchievements username saved"));
   } else if (username.trimmed() != before) {
     setStatus(QStringLiteral("error"),
               QStringLiteral("Enter a valid RetroAchievements username"));
   }
+}
+
+void RetroAchievementsService::clearCachedAchievements() {
+  if (!m_database.isOpen()) {
+    return;
+  }
+  QSqlQuery query(m_database);
+  query.exec(QStringLiteral("DELETE FROM achievements WHERE source = 'retroachievements'"));
+  query.exec(QStringLiteral("DELETE FROM achievement_summary WHERE source = 'retroachievements'"));
 }
 
 bool RetroAchievementsService::reportBusy() {
@@ -312,13 +330,20 @@ void RetroAchievementsService::startRefreshPipeline(QByteArray apiKey) {
         QStringLiteral("RetroAchievements matching isn't supported for this system yet"));
     return;
   }
-  const std::optional<QByteArray> hash =
-      RetroAchievementsHasher::hashFile(m_pending.contentPath, console.rule);
+  m_pending.consoleName = console.raConsoleName;
+  // Hashing reads the whole ROM (or a zip entry) from disk, which can be large, so it runs on a
+  // worker thread rather than blocking the GUI thread here.
+  setStatus(QStringLiteral("refreshing"), QStringLiteral("Hashing the ROM file"));
+  m_hashWatcher.setFuture(QtConcurrent::run(&RetroAchievementsHasher::hashFile,
+                                            m_pending.contentPath, console.rule));
+}
+
+void RetroAchievementsService::finishHashing() {
+  const std::optional<QByteArray> hash = m_hashWatcher.future().result();
   if (!hash.has_value()) {
     fail(QStringLiteral("error"), QStringLiteral("Could not read this ROM file to hash it"));
     return;
   }
-  m_pending.consoleName = console.raConsoleName;
   m_pending.hash = *hash;
 
   QSqlQuery consoleQuery(m_database);

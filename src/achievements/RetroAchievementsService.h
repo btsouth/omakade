@@ -69,8 +69,9 @@ private:
 
   void beginSecretOperation(SecretAction action, const QByteArray& value = {});
   void finishSecretOperation();
+  void clearCachedAchievements();
   void startRefreshPipeline(QByteArray apiKey);
-  void resolveConsoleAndContinue();
+  void finishHashing();
   void tryMatchOrFetchGameList();
   void requestConsoleIds();
   void requestGameList(int consoleId);
@@ -87,6 +88,7 @@ private:
   QSqlDatabase m_database;
   QString m_connectionName;
   QFutureWatcher<RetroAchievementsSecretResult> m_secretWatcher;
+  QFutureWatcher<std::optional<QByteArray>> m_hashWatcher;
   SecretAction m_secretAction = SecretAction::Detect;
   PendingRefresh m_pending;
   QByteArray m_activeApiKey;

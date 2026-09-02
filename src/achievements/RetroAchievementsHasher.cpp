@@ -55,9 +55,9 @@ constexpr ConsoleRule kRules[] = {
     {"lynx", "Atari Lynx", RetroAchievementsHashRule::AtariLynxHeaderStrip},
     {"atari 2600", "Atari 2600", RetroAchievementsHashRule::WholeFileMd5},
     {"2600", "Atari 2600", RetroAchievementsHashRule::WholeFileMd5},
-    {"pc engine", "PC Engine", RetroAchievementsHashRule::WholeFileMd5},
-    {"turbografx", "PC Engine", RetroAchievementsHashRule::WholeFileMd5},
-    {"turbo grafx", "PC Engine", RetroAchievementsHashRule::WholeFileMd5},
+    {"pc engine", "PC Engine", RetroAchievementsHashRule::PcEngineHeaderStrip},
+    {"turbografx", "PC Engine", RetroAchievementsHashRule::PcEngineHeaderStrip},
+    {"turbo grafx", "PC Engine", RetroAchievementsHashRule::PcEngineHeaderStrip},
     {"wonderswan color", "WonderSwan Color", RetroAchievementsHashRule::WholeFileMd5},
     {"wonderswan", "WonderSwan", RetroAchievementsHashRule::WholeFileMd5},
     {"neo geo pocket color", "Neo Geo Pocket Color", RetroAchievementsHashRule::WholeFileMd5},
@@ -170,7 +170,12 @@ std::optional<QByteArray> RetroAchievementsHasher::hashFile(const QString& conte
   case RetroAchievementsHashRule::NesHeaderStrip:
     return hashBytes(bytes, bytes.size() >= 4 && bytes.first(4) == QByteArray("NES\x1A", 4) ? 16 : 0);
   case RetroAchievementsHashRule::SnesHeaderStrip:
-    return hashBytes(bytes, (bytes.size() % 0x8000) == 512 ? 512 : 0);
+    // https://docs.retroachievements.org: header present if size is 512 bytes more than a
+    // multiple of 8KB.
+    return hashBytes(bytes, (bytes.size() % 0x2000) == 512 ? 512 : 0);
+  case RetroAchievementsHashRule::PcEngineHeaderStrip:
+    // Same rule as SNES, but PC Engine ROMs are bank-aligned to 128KB instead of 8KB.
+    return hashBytes(bytes, (bytes.size() % 0x20000) == 512 ? 512 : 0);
   case RetroAchievementsHashRule::Atari7800HeaderStrip: {
     const bool hasHeader = bytes.size() >= 10 && bytes.at(0) == 1 &&
                            bytes.sliced(1, 9) == QByteArray("ATARI7800", 9);

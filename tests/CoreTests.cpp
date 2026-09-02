@@ -1,6 +1,7 @@
 #include "achievements/AchievementModel.h"
 #include "achievements/RetroAchievementsApi.h"
 #include "achievements/RetroAchievementsHasher.h"
+#include "achievements/RetroAchievementsService.h"
 
 #include <zip.h>
 #include "achievements/SteamAchievementApi.h"
@@ -281,6 +282,7 @@ private slots:
   void retroAchievementsHasherReadsZipArchivedRoms();
   void retroAchievementsApiBuildsUrlsAndParsesResponses();
   void retroArchModelReadsCachedRetroAchievementsSummary();
+  void retroAchievementsServiceClearsCacheOnAccountSwitch();
   void stressLibraryContainsOneThousandGames();
   void settingsPersistReducedMotionAndCacheLimit();
   void secondInstanceRequestsActivation();
@@ -1955,8 +1957,10 @@ void CoreTests::retroAchievementsHasherAppliesHeaderStripRules() {
                .value_or(QByteArray()),
            payloadMd5);
 
+  // SNES headers are detected at 8KB (0x2000) granularity, not 32KB — use a payload size that's
+  // a multiple of 8KB but not of 32KB so the test actually distinguishes the two.
   const QString snesHeadered = directory.path() + QStringLiteral("/game.sfc");
-  const QByteArray snesPayload(0x8000, 'A');
+  const QByteArray snesPayload(0x2000, 'A');
   const QByteArray snesPayloadMd5 =
       QCryptographicHash::hash(snesPayload, QCryptographicHash::Md5).toHex();
   {
@@ -1968,6 +1972,27 @@ void CoreTests::retroAchievementsHasherAppliesHeaderStripRules() {
       RetroAchievementsHasher::hashFile(snesHeadered, RetroAchievementsHashRule::SnesHeaderStrip)
           .value_or(QByteArray()),
       snesPayloadMd5);
+
+  // PC Engine uses the same header-strip rule as SNES but at 128KB (0x20000) granularity.
+  const QString pcEngineHeadered = directory.path() + QStringLiteral("/game.pce");
+  const QByteArray pcEnginePayload(0x20000, 'B');
+  const QByteArray pcEnginePayloadMd5 =
+      QCryptographicHash::hash(pcEnginePayload, QCryptographicHash::Md5).toHex();
+  {
+    QFile file(pcEngineHeadered);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray(512, 'H') + pcEnginePayload);
+  }
+  QCOMPARE(RetroAchievementsHasher::hashFile(pcEngineHeadered,
+                                             RetroAchievementsHashRule::PcEngineHeaderStrip)
+               .value_or(QByteArray()),
+           pcEnginePayloadMd5);
+  // A payload that isn't 512 bytes past a 128KB boundary must not be stripped.
+  QCOMPARE(RetroAchievementsHasher::hashFile(nesHeadered, RetroAchievementsHashRule::PcEngineHeaderStrip)
+               .value_or(QByteArray()),
+           QCryptographicHash::hash(QByteArray("NES\x1A", 4) + QByteArray(12, '\0') + payload,
+                                    QCryptographicHash::Md5)
+               .toHex());
 
   const QString atari7800Headered = directory.path() + QStringLiteral("/game.a78");
   {
@@ -2171,6 +2196,73 @@ void CoreTests::retroArchModelReadsCachedRetroAchievementsSummary() {
   QCOMPARE(dataChangedSpy.count(), 1);
   QCOMPARE(model.data(row, GameRoles::AchievementsUnlocked).toInt(), 10);
   QCOMPARE(model.data(row, GameRoles::Progress).toInt(), 100);
+}
+
+void CoreTests::retroAchievementsServiceClearsCacheOnAccountSwitch() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString databasePath = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("retroachievements-account-switch-fixture");
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(databasePath);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE achievement_summary (app_id TEXT PRIMARY KEY, unlocked INTEGER NOT NULL, "
+        "total INTEGER NOT NULL, source TEXT NOT NULL, updated_at INTEGER NOT NULL)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE achievements (app_id TEXT NOT NULL, api_name TEXT NOT NULL, title TEXT "
+        "NOT NULL, description TEXT, icon_url TEXT, icon_path TEXT, unlocked INTEGER NOT NULL, "
+        "unlock_time INTEGER NOT NULL, rarity REAL NOT NULL, hidden INTEGER NOT NULL, "
+        "current_progress REAL NOT NULL, maximum_progress REAL NOT NULL, source TEXT NOT NULL, "
+        "PRIMARY KEY(app_id, api_name))")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  AppSettings settings(directory.path() + QStringLiteral("/config.toml"));
+  RetroAchievementsService service(databasePath, &settings);
+  QTRY_VERIFY_WITH_TIMEOUT(!service.busy(), 2000);
+
+  service.setUsername(QStringLiteral("accountA"));
+  QCOMPARE(service.username(), QStringLiteral("accountA"));
+
+  // Seed progress as if account A had already refreshed this game.
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(databasePath);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("INSERT INTO achievement_summary VALUES('rg-1', 3, 10, "
+                                      "'retroachievements', 1700000000)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO achievements VALUES('rg-1', 'ach-1', 'Title', '', '', '', 1, 1700000000, 0, "
+        "0, 1, 1, 'retroachievements')")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  // Switching to a different account must not leave account A's cached progress behind for
+  // account B to silently reuse.
+  service.setUsername(QStringLiteral("accountB"));
+
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(databasePath);
+    QVERIFY(database.open());
+    QSqlQuery verify(database);
+    QVERIFY(verify.exec(QStringLiteral(
+        "SELECT COUNT(*) FROM achievement_summary WHERE source = 'retroachievements'")));
+    QVERIFY(verify.next());
+    QCOMPARE(verify.value(0).toInt(), 0);
+    QVERIFY(verify.exec(
+        QStringLiteral("SELECT COUNT(*) FROM achievements WHERE source = 'retroachievements'")));
+    QVERIFY(verify.next());
+    QCOMPARE(verify.value(0).toInt(), 0);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
 }
 
 void CoreTests::stressLibraryContainsOneThousandGames() {
