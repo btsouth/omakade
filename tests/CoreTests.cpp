@@ -2252,7 +2252,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setRetroArchEnabled(false);
     QVERIFY(settings.pcsx2AutoEnabled());
     QVERIFY(settings.ryujinxAutoEnabled());
-    settings.setPcsx2Enabled(false);
+    settings.setPcsx2Enabled(false);  // explicit: clears the auto flag
     settings.setRyujinxEnabled(false);
     settings.setCloseAfterLaunch(true);
   }
@@ -2268,7 +2268,27 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(!reloaded.retroArchEnabled());
   QVERIFY(!reloaded.pcsx2Enabled());
   QVERIFY(!reloaded.ryujinxEnabled());
+  QVERIFY(!reloaded.pcsx2AutoEnabled());  // explicit write cleared auto-detection
+  QVERIFY(!reloaded.ryujinxAutoEnabled());
   QVERIFY(reloaded.closeAfterLaunch());
+
+  // A config without emulator keys keeps auto-detection pending and the keys absent
+  // even after unrelated settings change.
+  const QString autoPath = directory.path() + QStringLiteral("/auto.toml");
+  {
+    AppSettings settings(autoPath);
+    settings.setReducedMotion(true);
+  }
+  QFile autoConfig(autoPath);
+  QVERIFY(autoConfig.open(QIODevice::ReadOnly));
+  const QString autoContents = QString::fromUtf8(autoConfig.readAll());
+  autoConfig.close();
+  QVERIFY(!autoContents.contains(QStringLiteral("pcsx2_enabled")));
+  QVERIFY(!autoContents.contains(QStringLiteral("ryujinx_enabled")));
+  AppSettings autoReloaded(autoPath);
+  QVERIFY(autoReloaded.pcsx2AutoEnabled());
+  QVERIFY(autoReloaded.ryujinxAutoEnabled());
+  QVERIFY(!autoReloaded.pcsx2Enabled());
 }
 
 void CoreTests::launchKeysRoundTripAndResolveInstallations() {
@@ -2600,7 +2620,8 @@ void CoreTests::pcsx2ScannerImportsCacheGamesAndPlaytime() {
   const Pcsx2ScanResult result = Pcsx2Scanner::scan({root, flatpakRoot});
   QVERIFY(!result.incomplete);
   QCOMPARE(result.roots, QStringList({root, flatpakRoot}));
-  QCOMPARE(result.games.size(), 2);
+  // The same serial appearing in both roots dedupes to the first discovery.
+  QCOMPARE(result.games.size(), 1);
   QCOMPARE(result.games.constFirst().title, QStringLiteral("Crash Twinsanity"));
   QCOMPARE(result.games.constFirst().serial, QStringLiteral("SLUS-20909"));
   QCOMPARE(result.games.constFirst().region, QStringLiteral("NTSC-U"));
@@ -2609,7 +2630,6 @@ void CoreTests::pcsx2ScannerImportsCacheGamesAndPlaytime() {
   QVERIFY(result.games.constFirst().path.endsWith(QStringLiteral(".iso")));
   QVERIFY(!result.games.constFirst().isElf);
   QVERIFY(!result.games.constFirst().flatpak);
-  QVERIFY(result.games.at(1).flatpak);
 
   // A second ROM without a cache entry (never scanned by PCSX2) must not appear.
   writeFile(root + QStringLiteral("/roms/Unscanned (USA).chd"), "rom");
@@ -2801,6 +2821,16 @@ void CoreTests::ryujinxLauncherBuildsSafeCommands() {
   QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("bad;id"), QStringLiteral("Ryujinx")).isValid());
   QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("0100abcd12345678"), QStringLiteral("Ryujinx"))
               .isValid());
+  // Resolved ROM targets arrive as plain XCI/NSP/NRO paths.
+  const LaunchCommand rom =
+      GameLauncher::ryujinxCommand(QStringLiteral("/roms/Zelda.nsp"), QStringLiteral("Ryujinx"));
+  QCOMPARE(rom.program, QStringLiteral("Ryujinx"));
+  QCOMPARE(rom.arguments, QStringList({QStringLiteral("/roms/Zelda.nsp")}));
+  QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("/roms/Game.xci"), QStringLiteral("Ryujinx"))
+              .isValid());
+  QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("/roms/totally-not-a-rom.txt"),
+                                        QStringLiteral("Ryujinx"))
+               .isValid());
 }
 
 QTEST_MAIN(CoreTests)

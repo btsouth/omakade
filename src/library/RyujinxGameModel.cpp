@@ -77,7 +77,8 @@ QHash<int, QByteArray> RyujinxGameModel::roleNames() const {
           {GameRoles::Source, "source"},
           {GameRoles::Runner, "runner"},
           {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"}};
+          {GameRoles::Hidden, "hidden"},
+          {GameRoles::LaunchTarget, "launchTarget"}};
 }
 
 bool RyujinxGameModel::ryujinxDetected() const { return m_ryujinxDetected; }
@@ -319,6 +320,9 @@ QVariant RyujinxGameModel::valueForRole(const Game& game, int role) const {
     return QStringLiteral("Ryujinx");
   case GameRoles::Runner:
     return game.ryujinx.titleId;
+  case GameRoles::LaunchTarget:
+    // Ryujinx's positional argument must be a ROM file path, never a title id.
+    return game.ryujinx.path;
   case GameRoles::Flatpak:
     return game.ryujinx.flatpak;
   case GameRoles::Hidden:

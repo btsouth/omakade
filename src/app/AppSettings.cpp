@@ -119,7 +119,9 @@ void AppSettings::setRetroArchEnabled(bool value) {
 bool AppSettings::pcsx2Enabled() const { return m_pcsx2Enabled; }
 
 void AppSettings::setPcsx2Enabled(bool value) {
-  if (m_pcsx2Enabled == value) {
+  const bool wasAuto = m_pcsx2Auto;
+  m_pcsx2Auto = false;  // an explicit user choice disables automatic detection
+  if (m_pcsx2Enabled == value && !wasAuto) {
     return;
   }
   m_pcsx2Enabled = value;
@@ -130,7 +132,9 @@ void AppSettings::setPcsx2Enabled(bool value) {
 bool AppSettings::ryujinxEnabled() const { return m_ryujinxEnabled; }
 
 void AppSettings::setRyujinxEnabled(bool value) {
-  if (m_ryujinxEnabled == value) {
+  const bool wasAuto = m_ryujinxAuto;
+  m_ryujinxAuto = false;  // an explicit user choice disables automatic detection
+  if (m_ryujinxEnabled == value && !wasAuto) {
     return;
   }
   m_ryujinxEnabled = value;
@@ -272,6 +276,5 @@ void AppSettings::save() const {
                   .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"));
   file.write(contents.toUtf8());
-
   file.commit();
 }

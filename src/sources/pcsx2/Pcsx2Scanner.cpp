@@ -147,6 +147,8 @@ QStringList Pcsx2Scanner::discoverRoots() {
 
 Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
   Pcsx2ScanResult result;
+  QSet<QString> seenGameIds;
+  QSet<QString> seenPaths;
   for (const QString& root : roots) {
     const QString cachePath = root + QStringLiteral("/cache/gamelist.cache");
     QFile file(cachePath);
@@ -193,7 +195,6 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
     const QHash<QString, PlayedTimeEntry> playedTime = loadPlayedTime(root);
 
     int offset = 8;
-    QSet<QString> seenPaths;
     bool corrupt = false;
     while (offset < cache.size()) {
       auto readString = [&cache, &offset]() -> QString {
@@ -251,16 +252,23 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
       offset += 4; // crc
       const quint8 compatibility = static_cast<quint8>(cache.at(offset));
       offset += 1;
-      if (compatibility > 5) {
+      if (compatibility > 6) {
+        // PCSX2 compatibility ratings run 0 (Unknown) through 6 (Perfect); higher
+        // values indicate a malformed entry, but do not abort the whole cache.
         result.warnings.append(
-            QStringLiteral("Corrupt cache entry in %1").arg(cachePath));
-        corrupt = true;
-        break;
+            QStringLiteral("Unexpected compatibility rating in %1").arg(cachePath));
+        continue;
       }
 
       const QString filePath = QDir::cleanPath(path);
       if (filePath.isEmpty() || title.trimmed().isEmpty() ||
           !isScannableFilename(filePath) || seenPaths.contains(filePath)) {
+        continue;
+      }
+      const QString recordKey =
+          serial.isEmpty() ? QStringLiteral("path:%1").arg(filePath) : serial;
+      if (seenGameIds.contains(recordKey)) {
+        // Same serial (or path) already imported from another root; keep first.
         continue;
       }
       if (!QFileInfo::exists(filePath)) {
@@ -285,6 +293,7 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
       }
       result.games.append(record);
       seenPaths.insert(filePath);
+      seenGameIds.insert(recordKey);
     }
     if (corrupt) {
       result.incomplete = true;

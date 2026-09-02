@@ -87,6 +87,8 @@ QStringList RyujinxScanner::discoverRoots() {
 
 RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
   RyujinxScanResult result;
+  QSet<QString> seenPaths;
+  QSet<QString> seenGameIds;
   for (const QString& root : roots) {
     const QString configPath = root + QStringLiteral("/Config.json");
     QFile configFile(configPath);
@@ -170,7 +172,6 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
       continue;
     }
 
-    QSet<QString> seenPaths;
     for (const QString& configuredDirectory : gameDirectories) {
       QString expanded = configuredDirectory;
       if (expanded.startsWith(QStringLiteral("~/"))) {
@@ -210,8 +211,14 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
         if (title.isEmpty()) {
           continue;
         }
+        const QString recordKey =
+            titleId.isEmpty() ? QStringLiteral("path:%1").arg(filePath) : titleId;
+        if (seenGameIds.contains(recordKey)) {
+          // Same title id already imported from another root; keep first.
+          continue;
+        }
         result.games.append(RyujinxGameRecord{
-            .gameId = titleId.isEmpty() ? QStringLiteral("path:%1").arg(filePath) : titleId,
+            .gameId = recordKey,
             .titleId = titleId,
             .title = title,
             .path = filePath,
@@ -220,6 +227,7 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
             .lastPlayed = lastPlayedFor.value(titleId, 0),
             .flatpak = flatpak});
         seenPaths.insert(filePath);
+        seenGameIds.insert(recordKey);
       }
     }
   }

@@ -35,7 +35,14 @@ bool validRyujinxId(const QString& id) {
     return pathKey.match(id).hasMatch();
   }
   static const QRegularExpression titleId(QStringLiteral("^[0-9A-Fa-f]{16}$"));
-  return titleId.match(id).hasMatch();
+  if (titleId.match(id).hasMatch()) {
+    return true;
+  }
+  // Resolved ROM targets arrive as plain XCI/NSP/NRO paths.
+  static const QRegularExpression romPath(
+      QStringLiteral("^[/\\p{L}0-9 ._()&'\\[\\]-]+\\.(xci|nsp|nro)$"),
+      QRegularExpression::UseUnicodePropertiesOption | QRegularExpression::CaseInsensitiveOption);
+  return romPath.match(id).hasMatch();
 }
 
 bool validHeroicTarget(const QString& id, const QString& runner) {
@@ -197,7 +204,11 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
     return launchPcsx2(id, launchTarget == QStringLiteral("elf"), flatpak, false);
   }
   if (source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0) {
-    return launchRyujinx(id, flatpak, false);
+    // Title-id ids must launch by the stored ROM path; path: ids carry it already.
+    const bool idIsPath = id.startsWith(QStringLiteral("path:"));
+    const QString romTarget =
+        idIsPath ? id : (launchTarget.isEmpty() ? id : launchTarget);
+    return launchRyujinx(romTarget, flatpak, false);
   }
   setError(QStringLiteral("%1 games cannot be launched yet.").arg(source));
   return false;
