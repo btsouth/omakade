@@ -109,11 +109,12 @@ RetroAchievementsService::RetroAchievementsService(const QString& databasePath,
           &RetroAchievementsService::finishSecretOperation);
   connect(&m_hashWatcher, &QFutureWatcher<std::optional<QByteArray>>::finished, this,
           &RetroAchievementsService::finishHashing);
-  // Force this schema's one-time libsecret/GLib type registration to happen here, on the main
-  // thread, rather than racing with SteamAccountService/GameInsightsService the first time each
-  // of their own schemas is touched from a background QtConcurrent thread.
-  retroAchievementsSchema();
-  beginSecretOperation(SecretAction::Detect);
+  if (m_settings != nullptr && !m_settings->retroAchievementsUsername().isEmpty()) {
+    beginSecretOperation(SecretAction::Detect);
+  } else if (m_settings != nullptr) {
+    connect(m_settings, &AppSettings::retroAchievementsUsernameChanged, this,
+            &RetroAchievementsService::startDetectOnUsernameChanged, Qt::QueuedConnection);
+  }
 }
 
 RetroAchievementsService::~RetroAchievementsService() {
@@ -273,6 +274,10 @@ void RetroAchievementsService::beginSecretOperation(SecretAction action,
     secretValue.fill('\0');
     return result;
   }));
+}
+
+void RetroAchievementsService::startDetectOnUsernameChanged() {
+  beginSecretOperation(SecretAction::Detect);
 }
 
 void RetroAchievementsService::finishSecretOperation() {

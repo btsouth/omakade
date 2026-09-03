@@ -68,6 +68,7 @@ private:
   };
 
   void beginSecretOperation(SecretAction action, const QByteArray& value = {});
+  void startDetectOnUsernameChanged();
   void finishSecretOperation();
   void clearCachedAchievements();
   void startRefreshPipeline(QByteArray apiKey);
