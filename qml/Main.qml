@@ -28,6 +28,8 @@ ApplicationWindow {
                                             || (HeroicLibrary ? HeroicLibrary.scanning : false)
                                             || (FaugusLibrary ? FaugusLibrary.scanning : false)
                                             || (RetroArchLibrary ? RetroArchLibrary.scanning : false)
+                                            || (Pcsx2Library ? Pcsx2Library.scanning : false)
+                                            || (RyujinxLibrary ? RyujinxLibrary.scanning : false)
     readonly property int ownedGameCount: SteamAccount
                                           ? SteamAccount.ownedGameCount
                                           : OwnedGameCountOverride
@@ -198,6 +200,8 @@ ApplicationWindow {
         if (HeroicLibrary && Preferences.heroicEnabled) HeroicLibrary.refresh()
         if (FaugusLibrary && Preferences.faugusEnabled) FaugusLibrary.refresh()
         if (RetroArchLibrary && Preferences.retroArchEnabled) RetroArchLibrary.refresh()
+        if (Pcsx2Library && Preferences.pcsx2Enabled) Pcsx2Library.refresh()
+        if (RyujinxLibrary && Preferences.ryujinxEnabled) RyujinxLibrary.refresh()
     }
 
     function focusAboveGrid() {
@@ -952,6 +956,9 @@ ApplicationWindow {
                         }
                     }
                     GlassButton {
+                        id: pcsx2SourceButton
+                        objectName: "pcsx2SourceButton"
+                        property Item controllerDownTarget: statusFilterButton
                         text: "PCSX2"
                         compact: true
                         visible: Preferences.pcsx2Enabled
@@ -962,6 +969,10 @@ ApplicationWindow {
                         }
                     }
                     GlassButton {
+                        id: ryujinxSourceButton
+                        objectName: "ryujinxSourceButton"
+                        property Item controllerDownTarget: statusFilterButton
+                        property Item controllerRightTarget: statusFilterButton
                         text: "RYUJINX"
                         compact: true
                         visible: Preferences.ryujinxEnabled
@@ -1197,12 +1208,6 @@ ApplicationWindow {
                 onCoverRequested: function(source, appId) {
                     if (source === "Steam" && SteamLibrary) {
                         SteamLibrary.requestCover(appId)
-                    }
-                    if (Pcsx2Library && Preferences.pcsx2Enabled) {
-                        Pcsx2Library.refresh()
-                    }
-                    if (RyujinxLibrary && Preferences.ryujinxEnabled) {
-                        RyujinxLibrary.refresh()
                     }
                 }
                 onRefreshRequested: {

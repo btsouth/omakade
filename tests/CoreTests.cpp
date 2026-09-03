@@ -380,7 +380,7 @@ void createPcsx2Fixture(const QString& root, qint64 playedSeconds = 14) {
     }
   };
   cache.append("GLCE");
-  appendU32(32);
+  appendU32(34);  // current PCSX2 writes version 34
   appendU32(static_cast<quint32>(pathBytes.size()));
   cache.append(pathBytes);
   const QByteArray serialBytes = QByteArray("SLUS-20909");
@@ -389,6 +389,11 @@ void createPcsx2Fixture(const QString& root, qint64 playedSeconds = 14) {
   const QByteArray titleBytes = QByteArray("Crash Twinsanity");
   appendU32(static_cast<quint32>(titleBytes.size()));
   cache.append(titleBytes);
+  const QByteArray empty;
+  appendU32(0);  // title_sort (empty)
+  cache.append(empty);
+  appendU32(0);  // title_en (empty)
+  cache.append(empty);
   cache.append('\0');
   cache.append('\x06');
   appendU64(123456789ULL);
@@ -410,10 +415,10 @@ void createRyujinxFixture(const QString& root, const QString& romDirectory) {
                 .arg(romDirectory)
                 .toUtf8());
   writeFile(romDirectory + QStringLiteral("/Zelda [0100abcd12345678][v0].nsp"), "rom");
-  writeFile(root + QStringLiteral("/games/0100ABCD12345678/gui"),
-            R"({"TitleName":"Custom Title"})");
-  writeFile(root + QStringLiteral("/games/0100ABCD12345678/time_played"),
-            R"({"playtime":3600,"last_played":"2026-08-30T19:45:10Z"})");
+  // Real layout: gui is a directory containing metadata.json.
+  writeFile(root + QStringLiteral("/games/0100ABCD12345678/gui/metadata.json"),
+            "{\"title\":\"Custom Title\",\"timespan_played\":3600,"
+            "\"last_played_utc\":\"2026-08-30T19:45:10Z\"}");
 }
 
 } // namespace
@@ -2804,29 +2809,30 @@ void CoreTests::malformedRyujinxDataDoesNotReplaceCachedGames() {
 }
 
 void CoreTests::ryujinxLauncherBuildsSafeCommands() {
+  // Title ids are display metadata only: Ryujinx launches ROM file paths.
+  QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"),
+                                        QStringLiteral("ryujinx-wrapper"))
+               .isValid());
   const LaunchCommand wrapper =
-      GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"), QStringLiteral("ryujinx-wrapper"));
+      GameLauncher::ryujinxCommand(QStringLiteral("/roms/Zelda.nsp"), QStringLiteral("ryujinx-wrapper"));
   QCOMPARE(wrapper.program, QStringLiteral("ryujinx-wrapper"));
-  QCOMPARE(wrapper.arguments, QStringList({QStringLiteral("0100ABCD12345678")}));
+  QCOMPARE(wrapper.arguments, QStringList({QStringLiteral("/roms/Zelda.nsp")}));
   // Native builds may ship the binary under different names.
   const LaunchCommand native =
-      GameLauncher::ryujinxCommand(QStringLiteral("0100ABCD12345678"), QStringLiteral("Ryujinx"));
+      GameLauncher::ryujinxCommand(QStringLiteral("/roms/Zelda.nsp"), QStringLiteral("Ryujinx"));
   QCOMPARE(native.program, QStringLiteral("Ryujinx"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("0100ABCD12345678")}));
+  QCOMPARE(native.arguments, QStringList({QStringLiteral("/roms/Zelda.nsp")}));
   const LaunchCommand flatpak =
       GameLauncher::ryujinxCommand(QStringLiteral("path:/roms/Zelda.nsp"), QString{});
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments.at(1), QStringLiteral("io.github.ryubing.Ryujinx"));
   QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/roms/Zelda.nsp"));
   QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("bad;id"), QStringLiteral("Ryujinx")).isValid());
-  QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("0100abcd12345678"), QStringLiteral("Ryujinx"))
-              .isValid());
-  // Resolved ROM targets arrive as plain XCI/NSP/NRO paths.
-  const LaunchCommand rom =
-      GameLauncher::ryujinxCommand(QStringLiteral("/roms/Zelda.nsp"), QStringLiteral("Ryujinx"));
-  QCOMPARE(rom.program, QStringLiteral("Ryujinx"));
-  QCOMPARE(rom.arguments, QStringList({QStringLiteral("/roms/Zelda.nsp")}));
-  QVERIFY(GameLauncher::ryujinxCommand(QStringLiteral("/roms/Game.xci"), QStringLiteral("Ryujinx"))
+  QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("0100abcd12345678"), QStringLiteral("Ryujinx"))
+               .isValid());
+  // Paths with commas, plus signs, and hashes stay launchable.
+  QVERIFY(GameLauncher::ryujinxCommand(
+              QStringLiteral("/roms/Zelda, Part 2 + [dlc #3].nsp"), QStringLiteral("Ryujinx"))
               .isValid());
   QVERIFY(!GameLauncher::ryujinxCommand(QStringLiteral("/roms/totally-not-a-rom.txt"),
                                         QStringLiteral("Ryujinx"))

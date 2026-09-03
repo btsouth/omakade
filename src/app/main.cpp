@@ -263,6 +263,14 @@ int main(int argc, char* argv[]) {
                  retroArchLibrary != nullptr && preferences.retroArchEnabled()) {
         retroArchLibrary->refresh();
         refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("PCSX2"), Qt::CaseInsensitive) == 0 &&
+                 pcsx2Library != nullptr && preferences.pcsx2Enabled()) {
+        pcsx2Library->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0 &&
+                 ryujinxLibrary != nullptr && preferences.ryujinxEnabled()) {
+        ryujinxLibrary->refresh();
+        refreshStarted = true;
       }
       if (refreshStarted) {
         PlayRequest::waitForInstallation(unifiedGames, key, 15000);

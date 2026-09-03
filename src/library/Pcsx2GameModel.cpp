@@ -27,7 +27,11 @@ Pcsx2GameModel::Pcsx2GameModel(const QString& omakadeDatabasePath, QObject* pare
     : QAbstractListModel(parent),
       m_connectionName(QStringLiteral("omakade-pcsx2-%1").arg(reinterpret_cast<quintptr>(this))) {
   connect(&m_scanWatcher, &QFutureWatcher<Pcsx2ScanResult>::finished, this,
-          [this] { applyScan(m_scanWatcher.result()); });
+          [this] {
+            m_scanning = false;
+            applyScan(m_scanWatcher.result());
+            emit statusChanged();
+          });
   if (openDatabase(omakadeDatabasePath) && ensureSchema()) {
     loadDatabase();
     loadSourceState();
@@ -127,6 +131,7 @@ void Pcsx2GameModel::refresh() {
   if (m_scanWatcher.isRunning()) {
     return;
   }
+  m_scanning = true;
   const QStringList roots = Pcsx2Scanner::discoverRoots();
   setStatus(QStringLiteral("Scanning PCSX2 library"));
   m_scanWatcher.setFuture(QtConcurrent::run([roots] { return Pcsx2Scanner::scan(roots); }));

@@ -10,6 +10,7 @@
 class RyujinxGameModel final : public QAbstractListModel {
   Q_OBJECT
   Q_PROPERTY(bool ryujinxDetected READ ryujinxDetected NOTIFY statusChanged)
+  Q_PROPERTY(bool scanning READ scanning NOTIFY statusChanged)
   Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
   Q_PROPERTY(QString errorText READ errorText NOTIFY statusChanged)
   Q_PROPERTY(QStringList detectedPaths READ detectedPaths NOTIFY statusChanged)
@@ -23,6 +24,7 @@ public:
   [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
   [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
   [[nodiscard]] bool ryujinxDetected() const;
+  [[nodiscard]] bool scanning() const { return m_scanning; }
   [[nodiscard]] QString statusText() const;
   [[nodiscard]] QString errorText() const;
   [[nodiscard]] QStringList detectedPaths() const;
@@ -57,6 +59,7 @@ private:
   QSqlDatabase m_database;
   QString m_connectionName;
   QFutureWatcher<RyujinxScanResult> m_scanWatcher;
+  bool m_scanning = false;
   bool m_ryujinxDetected = false;
   QString m_statusText;
   QString m_errorText;

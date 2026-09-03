@@ -74,12 +74,11 @@ QHash<QString, PlayedTimeEntry> loadPlayedTime(const QString& root) {
 }
 
 QString regionName(quint8 region) {
+  // PCSX2 GameList::Region: 0=NTSC-B, 1=NTSC-C, 2=NTSC-HK, 3=NTSC-J, 4=NTSC-K,
+  // 5=NTSC-T, 6=NTSC-U, 7=Other, 8+ PAL variants.
   switch (region) {
-  case 0:
-  case 1:
-  case 2:
   case 3:
-    return QStringLiteral("NTSC");
+    return QStringLiteral("NTSC-J");
   case 4:
     return QStringLiteral("NTSC-K");
   case 6:
@@ -90,7 +89,7 @@ QString regionName(quint8 region) {
     if (region >= 8) {
       return QStringLiteral("PAL");
     }
-    return QStringLiteral("NTSC-J");
+    return QStringLiteral("NTSC");
   }
 }
 
@@ -182,7 +181,8 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
       result.warnings.append(QStringLiteral("Unrecognized game list cache %1").arg(cachePath));
       continue;
     }
-    if (version != 32 && version != 34) {
+    if (version != 34) {
+      // Current PCSX2 writes version 34; older caches need a PCSX2 rescan first.
       result.warnings.append(QStringLiteral(
           "Unsupported PCSX2 cache version %1; rescan in PCSX2 to refresh").arg(version));
     }

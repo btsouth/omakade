@@ -27,7 +27,11 @@ RyujinxGameModel::RyujinxGameModel(const QString& omakadeDatabasePath, QObject* 
     : QAbstractListModel(parent),
       m_connectionName(QStringLiteral("omakade-ryujinx-%1").arg(reinterpret_cast<quintptr>(this))) {
   connect(&m_scanWatcher, &QFutureWatcher<RyujinxScanResult>::finished, this,
-          [this] { applyScan(m_scanWatcher.result()); });
+          [this] {
+            m_scanning = false;
+            applyScan(m_scanWatcher.result());
+            emit statusChanged();
+          });
   if (openDatabase(omakadeDatabasePath) && ensureSchema()) {
     loadDatabase();
     loadSourceState();
@@ -127,6 +131,7 @@ void RyujinxGameModel::refresh() {
   if (m_scanWatcher.isRunning()) {
     return;
   }
+  m_scanning = true;
   const QStringList roots = RyujinxScanner::discoverRoots();
   setStatus(QStringLiteral("Scanning Ryujinx library"));
   m_scanWatcher.setFuture(QtConcurrent::run([roots] { return RyujinxScanner::scan(roots); }));

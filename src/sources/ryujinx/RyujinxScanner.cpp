@@ -122,8 +122,9 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
     }
     const bool flatpak = root.contains(QStringLiteral("/.var/app/io.github.ryubing.Ryujinx/"));
 
-    // Per-title metadata lives in games/<titleId>/gui ("TitleName") and
-    // time_played ("playtime" seconds, "last_played" ISO-8601).
+    // Real installs: games/<titleId>/gui is a directory containing metadata.json
+    // ("title", "timespan_played", "last_played_utc", plus the legacy
+    // "time_played" and "last_played" keys).
     QHash<QString, QString> displayTitles;
     QHash<QString, qint64> playtimeFor;
     QHash<QString, qint64> lastPlayedFor;
@@ -135,8 +136,41 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
       if (!validTitleId(titleId)) {
         continue;
       }
-      QFile guiFile(entry.filePath() + QStringLiteral("/gui"));
-      if (guiFile.open(QIODevice::ReadOnly)) {
+      const QString guiPath = entry.filePath() + QStringLiteral("/gui");
+      QFile metadataFile(guiPath + QStringLiteral("/metadata.json"));
+      if (metadataFile.open(QIODevice::ReadOnly)) {
+        const QJsonObject metadata =
+            QJsonDocument::fromJson(metadataFile.readAll(), &parseError).object();
+        if (parseError.error == QJsonParseError::NoError) {
+          const QString customTitle = metadata.value(QStringLiteral("title")).toString().trimmed();
+          if (!customTitle.isEmpty()) {
+            displayTitles.insert(titleId, customTitle);
+          }
+          // Newer fields: timespan_played (seconds) and last_played_utc (ISO-8601).
+          qint64 seconds =
+              static_cast<qint64>(metadata.value(QStringLiteral("timespan_played")).toDouble(0));
+          QString lastPlayedIso = metadata.value(QStringLiteral("last_played_utc")).toString();
+          // Legacy fallbacks for older installs.
+          if (seconds <= 0) {
+            seconds = static_cast<qint64>(metadata.value(QStringLiteral("time_played")).toDouble(0));
+          }
+          if (lastPlayedIso.isEmpty()) {
+            lastPlayedIso = metadata.value(QStringLiteral("last_played")).toString();
+          }
+          if (seconds > 0) {
+            playtimeFor.insert(titleId, seconds);
+          }
+          if (!lastPlayedIso.isEmpty()) {
+            const QDateTime parsed = QDateTime::fromString(lastPlayedIso, Qt::ISODate);
+            if (parsed.isValid()) {
+              lastPlayedFor.insert(titleId, parsed.toSecsSinceEpoch());
+            }
+          }
+        }
+      }
+      // Legacy fallback: gui as a plain file with TitleName (older Ryujinx layouts).
+      QFile guiFile(guiPath);
+      if (!metadataFile.exists() && guiFile.open(QIODevice::ReadOnly)) {
         const QJsonObject gui =
             QJsonDocument::fromJson(guiFile.readAll(), &parseError).object();
         if (parseError.error == QJsonParseError::NoError) {
@@ -154,10 +188,10 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
           const qint64 seconds =
               static_cast<qint64>(times.value(QStringLiteral("playtime")).toDouble(0));
           const QString lastPlayedIso = times.value(QStringLiteral("last_played")).toString();
-          if (seconds > 0) {
+          if (seconds > 0 && !playtimeFor.contains(titleId)) {
             playtimeFor.insert(titleId, seconds);
           }
-          if (!lastPlayedIso.isEmpty()) {
+          if (!lastPlayedIso.isEmpty() && !lastPlayedFor.contains(titleId)) {
             const QDateTime parsed = QDateTime::fromString(lastPlayedIso, Qt::ISODate);
             if (parsed.isValid()) {
               lastPlayedFor.insert(titleId, parsed.toSecsSinceEpoch());

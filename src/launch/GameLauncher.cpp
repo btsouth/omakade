@@ -17,30 +17,24 @@ bool validLutrisId(const QString& id) {
 }
 
 bool validPcsx2Id(const QString& id) {
+  // PCSX2 boots a disc image path; accept any non-empty path: key
+  // (existence is checked at launch time), like RetroArch.
   static const QRegularExpression serial(
       QStringLiteral("^[A-Za-z]{4}-[0-9A-Za-z]{5}$"));
   if (serial.match(id).hasMatch()) {
     return true;
   }
-  static const QRegularExpression pathKey(QStringLiteral("^path:[/\\p{L}0-9 ._()&'\\[\\]-]{1,500}$"),
-                                          QRegularExpression::UseUnicodePropertiesOption);
-  return pathKey.match(id).hasMatch();
+  return id.startsWith(QStringLiteral("path:")) && id.size() > 5;
 }
 
 bool validRyujinxId(const QString& id) {
-  if (id.startsWith(QStringLiteral("path:"))) {
-    static const QRegularExpression pathKey(
-        QStringLiteral("^path:[/\\p{L}0-9 ._()&'\\[\\]-]{1,500}$"),
-        QRegularExpression::UseUnicodePropertiesOption);
-    return pathKey.match(id).hasMatch();
-  }
-  static const QRegularExpression titleId(QStringLiteral("^[0-9A-Fa-f]{16}$"));
-  if (titleId.match(id).hasMatch()) {
+  // Ryujinx launches a ROM file path; title ids are display metadata only.
+  // Accept any non-empty path (existence is checked at launch time), like RetroArch.
+  if (id.startsWith(QStringLiteral("path:")) && id.size() > 5) {
     return true;
   }
-  // Resolved ROM targets arrive as plain XCI/NSP/NRO paths.
   static const QRegularExpression romPath(
-      QStringLiteral("^[/\\p{L}0-9 ._()&'\\[\\]-]+\\.(xci|nsp|nro)$"),
+      QStringLiteral("^[/\\p{L}0-9 ._()&',+#!\\[\\]-]{1,500}\\.(xci|nsp|nro)$"),
       QRegularExpression::UseUnicodePropertiesOption | QRegularExpression::CaseInsensitiveOption);
   return romPath.match(id).hasMatch();
 }
