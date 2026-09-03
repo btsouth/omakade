@@ -946,6 +946,7 @@ ApplicationWindow {
                     GlassButton {
                         id: retroArchSourceButton
                         objectName: "retroArchSourceButton"
+                        property Item controllerRightTarget: pcsx2SourceButton
                         text: "RETROARCH"
                         compact: true
                         visible: Preferences.retroArchEnabled
@@ -958,6 +959,8 @@ ApplicationWindow {
                     GlassButton {
                         id: pcsx2SourceButton
                         objectName: "pcsx2SourceButton"
+                        property Item controllerLeftTarget: retroArchSourceButton
+                        property Item controllerRightTarget: ryujinxSourceButton
                         property Item controllerDownTarget: statusFilterButton
                         text: "PCSX2"
                         compact: true
@@ -971,6 +974,7 @@ ApplicationWindow {
                     GlassButton {
                         id: ryujinxSourceButton
                         objectName: "ryujinxSourceButton"
+                        property Item controllerLeftTarget: pcsx2SourceButton
                         property Item controllerDownTarget: statusFilterButton
                         property Item controllerRightTarget: statusFilterButton
                         text: "RYUJINX"
@@ -1017,7 +1021,7 @@ ApplicationWindow {
                     id: sortButton
                     objectName: "sortButton"
                     property Item controllerLeftTarget: root.width < 1040
-                                                         ? retroArchSourceButton
+                                                         ? ryujinxSourceButton
                                                          : hiddenModeButton
                     property Item controllerRightTarget: rescanButton
                     compact: true
