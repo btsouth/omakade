@@ -138,7 +138,8 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
       }
       const QString guiPath = entry.filePath() + QStringLiteral("/gui");
       QFile metadataFile(guiPath + QStringLiteral("/metadata.json"));
-      if (metadataFile.open(QIODevice::ReadOnly)) {
+      if (metadataFile.open(QIODevice::ReadOnly) &&
+          metadataFile.size() <= kMaximumJsonBytes) {
         const QJsonObject metadata =
             QJsonDocument::fromJson(metadataFile.readAll(), &parseError).object();
         if (parseError.error == QJsonParseError::NoError) {

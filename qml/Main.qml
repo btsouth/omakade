@@ -976,7 +976,6 @@ ApplicationWindow {
                         objectName: "ryujinxSourceButton"
                         property Item controllerLeftTarget: pcsx2SourceButton
                         property Item controllerDownTarget: statusFilterButton
-                        property Item controllerRightTarget: statusFilterButton
                         text: "RYUJINX"
                         compact: true
                         visible: Preferences.ryujinxEnabled

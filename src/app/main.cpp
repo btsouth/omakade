@@ -264,11 +264,13 @@ int main(int argc, char* argv[]) {
         retroArchLibrary->refresh();
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("PCSX2"), Qt::CaseInsensitive) == 0 &&
-                 pcsx2Library != nullptr && preferences.pcsx2Enabled()) {
+                 pcsx2Library != nullptr &&
+                 (preferences.pcsx2Enabled() || preferences.pcsx2AutoEnabled())) {
         pcsx2Library->refresh();
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0 &&
-                 ryujinxLibrary != nullptr && preferences.ryujinxEnabled()) {
+                 ryujinxLibrary != nullptr &&
+                 (preferences.ryujinxEnabled() || preferences.ryujinxAutoEnabled())) {
         ryujinxLibrary->refresh();
         refreshStarted = true;
       }

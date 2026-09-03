@@ -182,9 +182,12 @@ Pcsx2ScanResult Pcsx2Scanner::scan(const QStringList& roots) {
       continue;
     }
     if (version != 34) {
-      // Current PCSX2 writes version 34; older caches need a PCSX2 rescan first.
+      // Current PCSX2 writes version 34; parsing an unknown layout would produce
+      // garbage records, so skip this cache and keep whatever is already cached.
       result.warnings.append(QStringLiteral(
           "Unsupported PCSX2 cache version %1; rescan in PCSX2 to refresh").arg(version));
+      result.incomplete = true;
+      continue;
     }
 
     // Entry layout: str path, str serial, str title
