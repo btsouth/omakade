@@ -35,6 +35,8 @@ add_library(omakade_core STATIC
   src/app/SingleInstance.h
   src/input/ControllerInput.cpp
   src/input/ControllerInput.h
+  src/input/CouchCursorManager.cpp
+  src/input/CouchCursorManager.h
   src/library/LibraryFilterModel.cpp
   src/library/LibraryFilterModel.h
   src/library/GameRoles.h

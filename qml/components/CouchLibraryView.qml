@@ -633,7 +633,7 @@ FocusScope {
         orientation: ListView.Horizontal
         spacing: 14 * root.uiScale
         clip: true
-        cacheBuffer: width
+        cacheBuffer: Math.max(0, width)
         model: visible ? root.libraryModel : null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
@@ -835,7 +835,7 @@ FocusScope {
         highlightMoveDuration: Preferences.reducedMotion ? 0 : 90
         boundsBehavior: Flickable.StopAtBounds
         clip: true
-        cacheBuffer: height
+        cacheBuffer: Math.max(0, height)
 
         onCurrentIndexChanged: {
             if (visible) {

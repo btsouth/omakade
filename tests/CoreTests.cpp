@@ -8,6 +8,7 @@
 #include "app/AppSettings.h"
 #include "app/SingleInstance.h"
 #include "input/ControllerInput.h"
+#include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
 #include "launch/SteamLauncher.h"
@@ -47,6 +48,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMouseEvent>
 #include <QScopeGuard>
 #include <QSignalSpy>
 #include <QSqlDatabase>
@@ -56,6 +58,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QUuid>
+#include <QWindow>
 
 #include <SDL3/SDL.h>
 
@@ -566,6 +569,7 @@ private slots:
   void singleInstanceForwardsPlayAndQuitCommands();
   void sunshineIntegrationWritesOnlyItsOwnEntries();
   void secondInstanceRequestsActivation();
+  void couchCursorFollowsInputMode();
   void virtualControllerConnectsAndMapsPrimaryButton();
   void thousandGameSearchStaysResponsive();
 };
@@ -3473,6 +3477,46 @@ void CoreTests::secondInstanceRequestsActivation() {
   SingleInstance secondary(name);
   QVERIFY(!secondary.claimOrNotify());
   QTRY_COMPARE_WITH_TIMEOUT(activation.size(), 1, 1000);
+}
+
+void CoreTests::couchCursorFollowsInputMode() {
+  QWindow window;
+  window.setProperty("couchMode", false);
+  CouchCursorManager cursor(&window, 30);
+
+  QVERIFY(!cursor.cursorHidden());
+  window.setProperty("couchMode", true);
+  cursor.syncCouchMode();
+  QVERIFY(!cursor.cursorHidden());
+  QTRY_VERIFY_WITH_TIMEOUT(cursor.cursorHidden(), 250);
+
+  QMouseEvent move(QEvent::MouseMove, QPointF(20, 20), QPointF(20, 20), Qt::NoButton, Qt::NoButton,
+                   Qt::NoModifier);
+  QCoreApplication::sendEvent(&window, &move);
+  QVERIFY(!cursor.cursorHidden());
+
+  cursor.navigationActivity();
+  QVERIFY(cursor.cursorHidden());
+
+  QMouseEvent stationaryMove(QEvent::MouseMove, QPointF(20, 20), QPointF(20, 20), Qt::NoButton,
+                             Qt::NoButton, Qt::NoModifier);
+  QCoreApplication::sendEvent(&window, &stationaryMove);
+  QVERIFY(cursor.cursorHidden());
+
+  QMouseEvent secondMove(QEvent::MouseMove, QPointF(24, 20), QPointF(24, 20), Qt::NoButton,
+                         Qt::NoButton, Qt::NoModifier);
+  QCoreApplication::sendEvent(&window, &secondMove);
+  QVERIFY(!cursor.cursorHidden());
+
+  QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+  QCoreApplication::sendEvent(&window, &keyPress);
+  QVERIFY(cursor.cursorHidden());
+
+  window.setProperty("couchMode", false);
+  cursor.syncCouchMode();
+  QVERIFY(!cursor.cursorHidden());
+  QTest::qWait(60);
+  QVERIFY(!cursor.cursorHidden());
 }
 
 void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {

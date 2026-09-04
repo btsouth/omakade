@@ -4,6 +4,7 @@
 #include "app/AppSettings.h"
 #include "app/SingleInstance.h"
 #include "input/ControllerInput.h"
+#include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
 #include "streaming/SunshineIntegration.h"
@@ -526,6 +527,18 @@ int main(int argc, char* argv[]) {
 
   auto* rootWindow = qobject_cast<QWindow*>(engine.rootObjects().constFirst());
   if (rootWindow != nullptr) {
+    auto* couchCursor = new CouchCursorManager(rootWindow, 1600, rootWindow);
+    couchCursor->setObjectName(QStringLiteral("couchCursorManager"));
+    QObject::connect(rootWindow, SIGNAL(couchModeChanged()), couchCursor,
+                     SLOT(syncCouchMode()));
+    QObject::connect(&controller, &ControllerInput::keyRequested, couchCursor,
+                     &CouchCursorManager::navigationActivity);
+    QObject::connect(&controller, &ControllerInput::focusDirectionRequested, couchCursor,
+                     &CouchCursorManager::navigationActivity);
+    QObject::connect(&controller, &ControllerInput::favoriteRequested, couchCursor,
+                     &CouchCursorManager::navigationActivity);
+    QObject::connect(&controller, &ControllerInput::toolbarRequested, couchCursor,
+                     &CouchCursorManager::navigationActivity);
     QObject::connect(&controller, &ControllerInput::keyRequested, rootWindow,
                      [&application, rootWindow](int key, int modifiers) {
                        QWindow* target = application.focusWindow();
@@ -652,6 +665,8 @@ int main(int argc, char* argv[]) {
           application.exit(EXIT_FAILURE);
         };
         auto* couch = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchLibrary"));
+        auto* couchCursor =
+            quickWindow->findChild<QObject*>(QStringLiteral("couchCursorManager"));
         auto* strip = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchGameStrip"));
         auto* grid = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchGameGrid"));
         auto* view = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchViewButton"));
@@ -686,6 +701,7 @@ int main(int argc, char* argv[]) {
         QObject* preferences =
             qmlContext(quickWindow)->contextProperty(QStringLiteral("Preferences")).value<QObject*>();
         if (!quickWindow->property("couchMode").toBool() || couch == nullptr ||
+            couchCursor == nullptr ||
             !couch->isVisible() || strip == nullptr || grid == nullptr || view == nullptr ||
             all == nullptr || favorites == nullptr || recent == nullptr || layout == nullptr ||
             favorite == nullptr || settings == nullptr ||
@@ -703,13 +719,17 @@ int main(int argc, char* argv[]) {
         strip->forceActiveFocus();
         controller.keyRequested(Qt::Key_Right, Qt::NoModifier);
         QTimer::singleShot(50, quickWindow,
-                           [quickWindow, &application, &controller, couch, strip, grid, view, all,
-                            favorites, recent, layout, favorite, browse, browsePanel,
+                           [quickWindow, &application, &controller, couch, couchCursor, strip, grid,
+                            view, all, favorites, recent, layout, favorite, browse, browsePanel,
                             browseCategories, browseOptions, search, settings, settingsScroll,
                             keyboard, keyboardGrid, textEntryKeyboard, textEntryGrid, desktopSearch,
                             preferences, fail] {
           if (!strip->hasActiveFocus() || strip->property("currentIndex").toInt() != 1) {
             fail(QStringLiteral("Controller Right did not advance the couch game strip"));
+            return;
+          }
+          if (!couchCursor->property("cursorHidden").toBool()) {
+            fail(QStringLiteral("Controller navigation did not hide the couch cursor"));
             return;
           }
           const auto sendKey = [&controller](int key) {
