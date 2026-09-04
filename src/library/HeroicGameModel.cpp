@@ -6,10 +6,14 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUrl>
 #include <QtConcurrent>
+
+#include <algorithm>
+#include <utility>
 
 namespace {
 QColor colorFor(const QString& key, int offset) {
@@ -101,6 +105,7 @@ QHash<int, QByteArray> HeroicGameModel::roleNames() const {
 }
 
 bool HeroicGameModel::heroicDetected() const { return m_heroicDetected; }
+bool HeroicGameModel::gogDetected() const { return m_gogDetected; }
 QString HeroicGameModel::statusText() const { return m_statusText; }
 QString HeroicGameModel::errorText() const { return m_errorText; }
 QStringList HeroicGameModel::detectedPaths() const { return m_detectedPaths; }
@@ -148,7 +153,7 @@ void HeroicGameModel::refresh() {
   }
   m_scanning = true;
   const QStringList roots = HeroicScanner::discoverRoots();
-  setStatus(QStringLiteral("Scanning Heroic library"));
+  setStatus(QStringLiteral("Scanning Heroic and GOG libraries"));
   m_scanWatcher.setFuture(QtConcurrent::run([roots] { return HeroicScanner::scan(roots); }));
 }
 void HeroicGameModel::refreshFromRoots(const QStringList& roots) {
@@ -235,6 +240,12 @@ void HeroicGameModel::loadDatabase() {
   beginResetModel();
   m_games = loaded;
   endResetModel();
+  m_gogDetected = std::any_of(m_games.cbegin(), m_games.cend(), [](const Game& game) {
+    return game.heroic.runner == QStringLiteral("gog-direct");
+  });
+  m_heroicDetected = std::any_of(m_games.cbegin(), m_games.cend(), [](const Game& game) {
+    return game.heroic.runner != QStringLiteral("gog-direct");
+  });
 }
 
 void HeroicGameModel::loadSourceState() {
@@ -247,15 +258,26 @@ void HeroicGameModel::loadSourceState() {
   m_lastScan = query.value(0).toLongLong();
   m_errorText = query.value(1).toString();
   m_detectedPaths = query.value(2).toString().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-  m_heroicDetected = !m_detectedPaths.isEmpty();
+  m_heroicDetected = std::any_of(m_games.cbegin(), m_games.cend(), [](const Game& game) {
+    return game.heroic.runner != QStringLiteral("gog-direct");
+  });
+  if (!m_heroicDetected) {
+    m_heroicDetected = std::any_of(
+        m_detectedPaths.cbegin(), m_detectedPaths.cend(), [](const QString& path) {
+          return path.endsWith(QStringLiteral("/heroic")) ||
+                 path.contains(QStringLiteral("com.heroicgameslauncher.hgl"));
+        });
+  }
   if (m_lastScan > 0) {
     m_statusText = QStringLiteral("Loaded cached Heroic library");
   }
 }
 
 void HeroicGameModel::applyScan(const HeroicScanResult& result) {
-  m_heroicDetected = !result.roots.isEmpty();
-  if (result.incomplete || (result.roots.isEmpty() && !m_games.isEmpty())) {
+  const bool missingRoots = result.roots.isEmpty() && !m_games.isEmpty();
+  const bool heroicIncomplete = result.incomplete || missingRoots;
+  const bool gogIncomplete = result.gogIncomplete || missingRoots;
+  if (heroicIncomplete && gogIncomplete) {
     setStatus(QStringLiteral("Heroic scan interrupted; kept the cached library"),
               result.warnings.join(QLatin1Char('\n')));
     return;
@@ -266,8 +288,32 @@ void HeroicGameModel::applyScan(const HeroicScanResult& result) {
   }
   const qint64 scanTimestamp = QDateTime::currentSecsSinceEpoch();
   QSqlQuery query(m_database);
-  bool okay = query.exec(QStringLiteral("UPDATE heroic_games SET observed_at = 0"));
+  bool okay = true;
+  if (!heroicIncomplete) {
+    okay = query.exec(QStringLiteral(
+        "UPDATE heroic_games SET observed_at = 0 WHERE runner != 'gog-direct'"));
+  }
+  if (!gogIncomplete) {
+    okay = okay && query.exec(QStringLiteral(
+                         "UPDATE heroic_games SET observed_at = 0 WHERE runner = 'gog-direct'"));
+  }
+  QSet<QString> cachedManagedGogPaths;
+  if (result.managedGogIncomplete) {
+    for (const Game& cached : std::as_const(m_games)) {
+      if (cached.heroic.runner == QStringLiteral("gog")) {
+        cachedManagedGogPaths.insert(QDir::cleanPath(cached.heroic.installPath));
+      }
+    }
+  }
   for (const HeroicGameRecord& game : result.games) {
+    const bool directGog = game.runner == QStringLiteral("gog-direct");
+    if (directGog ? gogIncomplete : heroicIncomplete) {
+      continue;
+    }
+    if (directGog &&
+        cachedManagedGogPaths.contains(QDir::cleanPath(game.installPath))) {
+      continue;
+    }
     query.prepare(QStringLiteral(
         "INSERT INTO heroic_games(game_key, app_id, runner, name, directory, cover_path, "
         "hero_path, flatpak, playtime_minutes, last_played, observed_at) VALUES(?, ?, ?, ?, ?, ?, "
@@ -305,8 +351,12 @@ void HeroicGameModel::applyScan(const HeroicScanResult& result) {
   loadDatabase();
   m_detectedPaths = result.roots;
   m_lastScan = scanTimestamp;
-  setStatus(m_heroicDetected ? QStringLiteral("Imported %1 Heroic game(s)").arg(result.games.size())
-                             : QStringLiteral("Heroic was not found"),
+  setStatus(heroicIncomplete || gogIncomplete
+                ? QStringLiteral("Imported available Heroic/GOG games; kept cached results for "
+                                 "the interrupted source")
+            : !result.roots.isEmpty()
+                ? QStringLiteral("Imported %1 Heroic/GOG game(s)").arg(result.games.size())
+                : QStringLiteral("Heroic or GOG was not found"),
             result.warnings.join(QLatin1Char('\n')));
 }
 
@@ -315,9 +365,13 @@ QVariant HeroicGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::Title:
     return game.heroic.title;
   case GameRoles::Subtitle:
-    return QStringLiteral("Heroic · %1").arg(storeName(game.heroic.runner));
+    return game.heroic.runner == QStringLiteral("gog-direct")
+               ? QStringLiteral("GOG · Direct")
+               : QStringLiteral("Heroic · %1").arg(storeName(game.heroic.runner));
   case GameRoles::Description:
-    return game.heroic.runner == QStringLiteral("sideload")
+    return game.heroic.runner == QStringLiteral("gog-direct")
+               ? QStringLiteral("Installed GOG game.")
+           : game.heroic.runner == QStringLiteral("sideload")
                ? QStringLiteral("Added manually to Heroic.")
                : QStringLiteral("Installed locally through Heroic.");
   case GameRoles::Hours:
@@ -350,7 +404,8 @@ QVariant HeroicGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::InstallPath:
     return game.heroic.installPath;
   case GameRoles::Source:
-    return QStringLiteral("Heroic");
+    return game.heroic.runner == QStringLiteral("gog-direct") ? QStringLiteral("GOG")
+                                                               : QStringLiteral("Heroic");
   case GameRoles::Runner:
     return game.heroic.runner;
   case GameRoles::Flatpak:

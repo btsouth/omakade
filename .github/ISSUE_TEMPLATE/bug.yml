@@ -26,10 +26,14 @@ body:
       label: Game source
       options:
         - Steam
+        - GOG
         - Lutris
         - Heroic
         - Faugus
         - RetroArch
+        - PCSX2
+        - Ryujinx
+        - Battle.net
         - Omakade UI or packaging
     validations:
       required: true

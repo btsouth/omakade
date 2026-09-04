@@ -30,6 +30,8 @@ public:
                                                         QStringLiteral("io.github.ryubing.Ryujinx"));
   [[nodiscard]] static LaunchCommand battleNetCommand(const QString& id, const QString& prefix,
                                                       const QString& runner, bool flatpak);
+  [[nodiscard]] static LaunchCommand gogCommand(const QString& id, const QString& installPath,
+                                                const QString& winePrefix = {});
   Q_INVOKABLE bool launch(const QString& source, const QString& id, bool flatpak = false,
                           const QString& runner = {}, const QString& installPath = {},
                           const QString& launchTarget = {});
@@ -51,6 +53,7 @@ private:
                      bool manageOnly);
   bool launchBattleNet(const QString& id, const QString& prefix, const QString& runner,
                        bool flatpak, bool manageOnly);
+  bool launchGog(const QString& id, const QString& installPath, bool manageOnly);
   [[nodiscard]] QString flatpakError(const QString& appId, const QString& launcherName) const;
   void setError(const QString& error);
   QString m_lastError;

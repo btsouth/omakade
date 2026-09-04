@@ -10,6 +10,7 @@
 class HeroicGameModel final : public QAbstractListModel {
   Q_OBJECT
   Q_PROPERTY(bool heroicDetected READ heroicDetected NOTIFY statusChanged)
+  Q_PROPERTY(bool gogDetected READ gogDetected NOTIFY statusChanged)
   Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
   Q_PROPERTY(QString errorText READ errorText NOTIFY statusChanged)
   Q_PROPERTY(QStringList detectedPaths READ detectedPaths NOTIFY statusChanged)
@@ -24,6 +25,7 @@ public:
   [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
   [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
   [[nodiscard]] bool heroicDetected() const;
+  [[nodiscard]] bool gogDetected() const;
   [[nodiscard]] QString statusText() const;
   [[nodiscard]] QString errorText() const;
   [[nodiscard]] QStringList detectedPaths() const;
@@ -61,6 +63,7 @@ private:
   QFutureWatcher<HeroicScanResult> m_scanWatcher;
   bool m_scanning = false;
   bool m_heroicDetected = false;
+  bool m_gogDetected = false;
   QString m_statusText;
   QString m_errorText;
   QStringList m_detectedPaths;

@@ -36,6 +36,7 @@ class OmarchyTheme final : public QObject {
 public:
   explicit OmarchyTheme(QObject* parent = nullptr);
   OmarchyTheme(QString stateHome, QString configHome, QObject* parent = nullptr);
+  ~OmarchyTheme() override;
 
   [[nodiscard]] bool omarchyAvailable() const;
   [[nodiscard]] QString themeName() const;

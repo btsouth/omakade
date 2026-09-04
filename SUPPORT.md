@@ -8,6 +8,7 @@ Please include these details with a bug report:
   PCSX2, Ryujinx, or Battle.net (and whether Battle.net runs under Wine,
   Proton, or Bottles)
 - The source shown for the affected game
+- `umu-launcher` version for a direct Windows GOG game
 - Steps that reproduce the problem
 
 Open diagnostics with `Ctrl+D` to see library and cache status. Do not post a

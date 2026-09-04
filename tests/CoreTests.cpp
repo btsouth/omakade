@@ -317,7 +317,9 @@ void createHeroicFixture(const QString& root) {
   writeFile(root + QStringLiteral("/gog_store/installed.json"),
             R"({"installed":[{"appName":"12345","install_path":")" +
                 (root + QStringLiteral("/gog-game")).toUtf8() + R"(","is_dlc":false}]})");
-  writeFile(root + QStringLiteral("/gog-game/goggame-12345.info"), R"({"name":"GOG Quest"})");
+  writeFile(root + QStringLiteral("/gog-game/goggame-12345.info"),
+            R"({"name":"GOG Quest","playTasks":[{"isPrimary":true,"type":"FileTask","path":"start.sh","arguments":"--profile \"couch mode\"","workingDir":""}]})");
+  writeFile(root + QStringLiteral("/gog-game/start.sh"), "#!/bin/sh\n");
   writeFile(root + QStringLiteral("/store_cache/gog_library.json"),
             R"({"games":[{"app_name":"12345","title":"GOG Quest","art_square":""}]})");
 
@@ -514,9 +516,12 @@ private slots:
   void organizationPersistsAndFilters();
   void lutrisLauncherBuildsSafeCommands();
   void heroicScannerImportsEpicGogAndAmazon();
+  void gogScannerImportsLooseInstallsAndConfinesLaunchTasks();
   void heroicModelIsRepeatableAndPreservesLocalState();
   void malformedHeroicDataDoesNotReplaceCachedGames();
+  void heroicAndGogScanFailuresAreIsolated();
   void heroicLauncherBuildsSafeCommands();
+  void gogLauncherBuildsSafeCommands();
   void faugusScannerImportsLaunchableGamesAndArtwork();
   void faugusModelIsRepeatableAndPreservesLocalState();
   void malformedFaugusDataDoesNotReplaceCachedGames();
@@ -1797,6 +1802,12 @@ void CoreTests::heroicScannerImportsEpicGogAndAmazon() {
   QCOMPARE(result.games.at(1).runner, QStringLiteral("gog"));
   QCOMPARE(result.games.at(1).title, QStringLiteral("GOG Quest"));
   QCOMPARE(result.games.at(1).playtimeMinutes, 0);
+  const std::optional<GogLaunchTask> launchTask =
+      HeroicScanner::gogLaunchTask(result.games.at(1).installPath, result.games.at(1).appId);
+  QVERIFY(launchTask.has_value());
+  QVERIFY(launchTask->executablePath.endsWith(QStringLiteral("/gog-game/start.sh")));
+  QCOMPARE(launchTask->arguments,
+           QStringList({QStringLiteral("--profile"), QStringLiteral("couch mode")}));
   QCOMPARE(result.games.at(2).runner, QStringLiteral("nile"));
   QCOMPARE(result.games.at(2).title, QStringLiteral("Amazon Trail"));
   // Sideloaded games come from sideload_apps/library.json; uninstalled entries stay out.
@@ -1818,6 +1829,36 @@ void CoreTests::heroicScannerImportsEpicGogAndAmazon() {
   QCOMPARE(sideload.games.at(0).installPath, QStringLiteral("/games/only"));
 }
 
+void CoreTests::gogScannerImportsLooseInstallsAndConfinesLaunchTasks() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/GOG Games");
+  const QString game = root + QStringLiteral("/Signal Hill");
+  writeFile(game + QStringLiteral("/goggame-98765.info"),
+            R"({"name":"Signal Hill","playTasks":[{"type":"FileTask","isPrimary":true,"path":"bin\\game.exe","workingDir":"bin","arguments":"--safe \"two words\""}]})");
+  writeFile(game + QStringLiteral("/bin/game.exe"), "game");
+
+  const HeroicScanResult result = HeroicScanner::scan({root});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.roots, QStringList({root}));
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.at(0).appId, QStringLiteral("98765"));
+  QCOMPARE(result.games.at(0).runner, QStringLiteral("gog-direct"));
+  QCOMPARE(result.games.at(0).title, QStringLiteral("Signal Hill"));
+
+  const QString outside = directory.path() + QStringLiteral("/outside.exe");
+  writeFile(outside, "outside");
+  QVERIFY(QFile::link(outside, game + QStringLiteral("/bin/linked.exe")));
+  writeFile(game + QStringLiteral("/goggame-98765.info"),
+            R"({"name":"Signal Hill","playTasks":[{"type":"FileTask","isPrimary":true,"path":"bin/linked.exe"}]})");
+  QVERIFY(!HeroicScanner::gogLaunchTask(game, QStringLiteral("98765")).has_value());
+
+  writeFile(game + QStringLiteral("/goggame-98765.info"),
+            R"({"name":"Signal Hill","playTasks":[{"type":"FileTask","isPrimary":true,"path":"../escape.exe"}]})");
+  QVERIFY(!HeroicScanner::gogLaunchTask(game, QStringLiteral("98765")).has_value());
+  QVERIFY(!HeroicScanner::gogLaunchTask(game, QStringLiteral("98765;touch")).has_value());
+}
+
 void CoreTests::heroicModelIsRepeatableAndPreservesLocalState() {
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -1828,6 +1869,9 @@ void CoreTests::heroicModelIsRepeatableAndPreservesLocalState() {
   QCOMPARE(model.rowCount(), 4);
   QCOMPARE(model.detectedPaths(), QStringList({root}));
   QVERIFY(model.lastScan() > 0);
+  QVERIFY(model.heroicDetected());
+  QVERIFY(!model.gogDetected());
+  QCOMPARE(model.data(model.index(2), GameRoles::Source).toString(), QStringLiteral("Heroic"));
   QCOMPARE(model.data(model.index(1), GameRoles::AppId).toString(), QStringLiteral("EpicApp"));
   QCOMPARE(model.data(model.index(1), GameRoles::Hours).toInt(), 2);
   QVERIFY(model.data(model.index(1), GameRoles::Recent).toBool());
@@ -1854,7 +1898,43 @@ void CoreTests::malformedHeroicDataDoesNotReplaceCachedGames() {
   writeFile(root + QStringLiteral("/legendaryConfig/legendary/installed.json"), "not json");
   model.refreshFromRoots({root});
   QCOMPARE(model.rowCount(), 4);
-  QVERIFY(model.statusText().startsWith(QStringLiteral("Heroic scan interrupted")));
+  QVERIFY(model.statusText().contains(QStringLiteral("kept cached results")));
+}
+
+void CoreTests::heroicAndGogScanFailuresAreIsolated() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString heroicRoot = directory.path() + QStringLiteral("/heroic");
+  const QString gogRoot = directory.path() + QStringLiteral("/GOG Games");
+  const QString directGame = gogRoot + QStringLiteral("/Direct Quest");
+  createHeroicFixture(heroicRoot);
+  writeFile(directGame + QStringLiteral("/goggame-98765.info"),
+            R"({"name":"Direct Quest","playTasks":[{"type":"FileTask","isPrimary":true,"path":"start.sh"}]})");
+  writeFile(directGame + QStringLiteral("/start.sh"), "#!/bin/sh\n");
+
+  HeroicGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({heroicRoot, gogRoot});
+  QCOMPARE(model.rowCount(), 5);
+  QVERIFY(model.heroicDetected());
+  QVERIFY(model.gogDetected());
+
+  writeFile(heroicRoot + QStringLiteral("/legendaryConfig/legendary/installed.json"),
+            "not json");
+  model.refreshFromRoots({heroicRoot, gogRoot});
+  QCOMPARE(model.rowCount(), 5);
+  QVERIFY(model.statusText().contains(QStringLiteral("kept cached results")));
+
+  createHeroicFixture(heroicRoot);
+  writeFile(heroicRoot + QStringLiteral("/gog_store/installed.json"), "not json");
+  model.refreshFromRoots({heroicRoot, gogRoot});
+  QCOMPARE(model.rowCount(), 5);
+  QVERIFY(model.statusText().contains(QStringLiteral("kept cached results")));
+
+  createHeroicFixture(heroicRoot);
+  writeFile(directGame + QStringLiteral("/goggame-98765.info"), "not json");
+  model.refreshFromRoots({heroicRoot, gogRoot});
+  QCOMPARE(model.rowCount(), 5);
+  QVERIFY(model.statusText().contains(QStringLiteral("kept cached results")));
 }
 
 void CoreTests::heroicLauncherBuildsSafeCommands() {
@@ -1876,6 +1956,36 @@ void CoreTests::heroicLauncherBuildsSafeCommands() {
       QStringLiteral("j661Z9rpxqYRZSp45Jh92i"), QStringLiteral("sideload"), false);
   QVERIFY(sideload.isValid());
   QVERIFY(sideload.arguments.constLast().contains(QStringLiteral("runner=sideload")));
+}
+
+void CoreTests::gogLauncherBuildsSafeCommands() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString nativeGame = directory.path() + QStringLiteral("/native");
+  writeFile(nativeGame + QStringLiteral("/goggame-123.info"),
+            R"({"playTasks":[{"type":"FileTask","isPrimary":true,"path":"start.sh","arguments":"--profile \"living room\""}]})");
+  writeFile(nativeGame + QStringLiteral("/start.sh"), "#!/bin/sh\n");
+  const LaunchCommand native =
+      GameLauncher::gogCommand(QStringLiteral("123"), nativeGame);
+  QVERIFY(native.program.endsWith(QStringLiteral("/native/start.sh")));
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("--profile"), QStringLiteral("living room")}));
+
+  const QString windowsGame = directory.path() + QStringLiteral("/windows");
+  writeFile(windowsGame + QStringLiteral("/goggame-456.info"),
+            R"({"playTasks":[{"type":"FileTask","isPrimary":true,"path":"game.exe","arguments":"-windowed"}]})");
+  writeFile(windowsGame + QStringLiteral("/game.exe"), "game");
+  const QString prefix = directory.path() + QStringLiteral("/prefix");
+  const LaunchCommand windows =
+      GameLauncher::gogCommand(QStringLiteral("456"), windowsGame, prefix);
+  QCOMPARE(windows.program, QStringLiteral("env"));
+  QCOMPARE(windows.arguments.at(0), QStringLiteral("WINEPREFIX=%1").arg(prefix));
+  QCOMPARE(windows.arguments.at(1), QStringLiteral("GAMEID=umu-default"));
+  QCOMPARE(windows.arguments.at(2), QStringLiteral("STORE=gog"));
+  QCOMPARE(windows.arguments.at(3), QStringLiteral("umu-run"));
+  QVERIFY(windows.arguments.at(4).endsWith(QStringLiteral("/windows/game.exe")));
+  QCOMPARE(windows.arguments.at(5), QStringLiteral("-windowed"));
+  QVERIFY(!GameLauncher::gogCommand(QStringLiteral("456;touch"), windowsGame).isValid());
 }
 
 void CoreTests::faugusScannerImportsLaunchableGamesAndArtwork() {
@@ -2019,7 +2129,7 @@ void CoreTests::launcherRefreshesRunAsynchronously() {
   faugus.refresh();
   battlenet.refresh();
   QCOMPARE(lutris.statusText(), QStringLiteral("Scanning Lutris library"));
-  QCOMPARE(heroic.statusText(), QStringLiteral("Scanning Heroic library"));
+  QCOMPARE(heroic.statusText(), QStringLiteral("Scanning Heroic and GOG libraries"));
   QCOMPARE(faugus.statusText(), QStringLiteral("Scanning Faugus library"));
   QCOMPARE(battlenet.statusText(), QStringLiteral("Scanning Battle.net library"));
   QVERIFY(battlenet.scanning());
@@ -2325,6 +2435,7 @@ void CoreTests::battleNetScannerDiscoversKnownPrefixes() {
   createBattleNetFixture(data + QStringLiteral("/bottles/bottles/Wow"));
   writeFile(data + QStringLiteral("/bottles/bottles/Wow/bottle.yml"), "Name: Wow\n");
   createBattleNetFixture(home + QStringLiteral("/Games/battlenet"));
+  writeFile(home + QStringLiteral("/Games/battlenet/version"), "GE-Proton11-6\n");
   const QString steamRoot = home + QStringLiteral("/.local/share/Steam");
   createBattleNetFixture(steamRoot + QStringLiteral("/steamapps/compatdata/4242/pfx"));
   writeFile(steamRoot + QStringLiteral("/steamapps/compatdata/4242/version"), "9.0\n");
@@ -2345,6 +2456,9 @@ void CoreTests::battleNetScannerDiscoversKnownPrefixes() {
   const BattleNetScanResult proton =
       BattleNetScanner::scan({steamRoot + QStringLiteral("/steamapps/compatdata/4242/pfx")});
   QCOMPARE(proton.games.at(0).runner, QStringLiteral("proton"));
+  const BattleNetScanResult omarchy =
+      BattleNetScanner::scan({home + QStringLiteral("/Games/battlenet")});
+  QCOMPARE(omarchy.games.at(0).runner, QStringLiteral("proton"));
 }
 
 void CoreTests::battleNetScannerKeepsInstallsFromSeparatePrefixes() {
@@ -2524,6 +2638,18 @@ void CoreTests::battleNetLauncherBuildsSafeCommands() {
   QCOMPARE(proton.arguments.at(1), QStringLiteral("umu-run"));
   QVERIFY(proton.arguments.at(2).contains(QStringLiteral("Battle.net.exe")));
   QCOMPARE(proton.arguments.constLast(), QStringLiteral("--exec=launch S2"));
+  QTemporaryDir omarchyPrefixDir;
+  QVERIFY(omarchyPrefixDir.isValid());
+  const QString omarchyPrefix = omarchyPrefixDir.path() + QStringLiteral("/battlenet");
+  createBattleNetFixture(omarchyPrefix);
+  writeFile(omarchyPrefix + QStringLiteral("/version"), "GE-Proton11-6\n");
+  const LaunchCommand omarchy = GameLauncher::battleNetCommand(
+      QStringLiteral("wow"), omarchyPrefix, QStringLiteral("proton"), false);
+  QCOMPARE(omarchy.program, QStringLiteral("env"));
+  QVERIFY(omarchy.arguments.contains(QStringLiteral("GAMEID=umu-battlenet")));
+  QVERIFY(omarchy.arguments.contains(QStringLiteral("STORE=battlenet")));
+  QVERIFY(omarchy.arguments.contains(QStringLiteral("PROTONPATH=GE-Proton")));
+  QVERIFY(omarchy.arguments.contains(QStringLiteral("PROTON_VERB=run")));
   QVERIFY(!GameLauncher::battleNetCommand(QStringLiteral("bad;id"), prefix, QStringLiteral("wine"),
                                           false)
                .isValid());
@@ -3083,6 +3209,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setIgdbClientId(QStringLiteral("publicclient123"));
     settings.setSteamEnabled(false);
     settings.setLutrisEnabled(false);
+    settings.setGogEnabled(false);
     settings.setFaugusEnabled(false);
     settings.setRetroArchEnabled(false);
     QVERIFY(settings.pcsx2AutoEnabled());
@@ -3102,6 +3229,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(!reloaded.steamEnabled());
   QVERIFY(!reloaded.lutrisEnabled());
   QVERIFY(reloaded.heroicEnabled());
+  QVERIFY(!reloaded.gogEnabled());
   QVERIFY(!reloaded.faugusEnabled());
   QVERIFY(!reloaded.retroArchEnabled());
   QVERIFY(!reloaded.pcsx2Enabled());

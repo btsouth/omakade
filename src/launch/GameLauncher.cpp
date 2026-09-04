@@ -3,6 +3,7 @@
 #include "launch/SteamLauncher.h"
 #include "sources/FlatpakInstall.h"
 #include "sources/battlenet/BattleNetScanner.h"
+#include "sources/heroic/HeroicScanner.h"
 
 #include <QDesktopServices>
 #include <QDir>
@@ -50,6 +51,11 @@ bool validHeroicTarget(const QString& id, const QString& runner) {
   return appId.match(id).hasMatch() &&
          (runner == QStringLiteral("legendary") || runner == QStringLiteral("gog") ||
           runner == QStringLiteral("nile") || runner == QStringLiteral("sideload"));
+}
+
+bool validGogId(const QString& id) {
+  static const QRegularExpression appId(QStringLiteral("^[0-9]{1,20}$"));
+  return appId.match(id).hasMatch();
 }
 
 bool validFaugusId(const QString& id) {
@@ -250,11 +256,40 @@ LaunchCommand GameLauncher::battleNetCommand(const QString& id, const QString& p
                                     QStringLiteral("-e"), exe, QStringLiteral("--"), execArg}};
   }
   if (runner == QStringLiteral("proton")) {
-    return {QStringLiteral("env"),
-            {QStringLiteral("WINEPREFIX=%1").arg(prefix), QStringLiteral("umu-run"), exe,
-             execArg}};
+    QStringList arguments{QStringLiteral("WINEPREFIX=%1").arg(prefix)};
+    if (QFileInfo(prefix + QStringLiteral("/version")).isFile()) {
+      arguments.append({QStringLiteral("GAMEID=umu-battlenet"),
+                        QStringLiteral("STORE=battlenet"), QStringLiteral("PROTONPATH=GE-Proton"),
+                        QStringLiteral("PROTON_VERB=run")});
+    }
+    arguments.append({QStringLiteral("umu-run"), exe, execArg});
+    return {QStringLiteral("env"), arguments};
   }
   return {QStringLiteral("wine"), {exe, execArg}};
+}
+
+LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& installPath,
+                                       const QString& winePrefix) {
+  if (!validGogId(id)) {
+    return {};
+  }
+  const std::optional<GogLaunchTask> task = HeroicScanner::gogLaunchTask(installPath, id);
+  if (!task.has_value()) {
+    return {};
+  }
+  if (!task->windows) {
+    return {task->executablePath, task->arguments};
+  }
+  const QString prefix =
+      winePrefix.isEmpty()
+          ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
+                QStringLiteral("/omakade/gog-prefixes/") + id
+          : winePrefix;
+  QStringList arguments{QStringLiteral("WINEPREFIX=%1").arg(prefix),
+                        QStringLiteral("GAMEID=umu-default"), QStringLiteral("STORE=gog"),
+                        QStringLiteral("umu-run"), task->executablePath};
+  arguments.append(task->arguments);
+  return {QStringLiteral("env"), arguments};
 }
 
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
@@ -285,6 +320,9 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Heroic"), Qt::CaseInsensitive) == 0) {
     return launchHeroic(id, runner, flatpak, false);
+  }
+  if (source.compare(QStringLiteral("GOG"), Qt::CaseInsensitive) == 0) {
+    return launchGog(id, installPath, false);
   }
   if (source.compare(QStringLiteral("Faugus"), Qt::CaseInsensitive) == 0) {
     return launchFaugus(id, flatpak, false);
@@ -325,6 +363,9 @@ bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Heroic"), Qt::CaseInsensitive) == 0) {
     return launchHeroic(id, runner, flatpak, true);
+  }
+  if (source.compare(QStringLiteral("GOG"), Qt::CaseInsensitive) == 0) {
+    return launchGog(id, {}, true);
   }
   if (source.compare(QStringLiteral("Faugus"), Qt::CaseInsensitive) == 0) {
     return launchFaugus(id, flatpak, true);
@@ -432,6 +473,42 @@ bool GameLauncher::launchHeroic(const QString& id, const QString& runner, bool f
   }
   if (!QProcess::startDetached(command.program, command.arguments)) {
     setError(QStringLiteral("Heroic could not be started. Open Heroic and try again."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
+bool GameLauncher::launchGog(const QString& id, const QString& installPath, bool manageOnly) {
+  if (manageOnly) {
+    if (!QDesktopServices::openUrl(QUrl(QStringLiteral("https://www.gog.com/account")))) {
+      setError(QStringLiteral("GOG could not open your library."));
+      return false;
+    }
+    setError({});
+    return true;
+  }
+  const LaunchCommand command = gogCommand(id, installPath);
+  if (!command.isValid()) {
+    setError(QStringLiteral("This GOG installation does not provide a safe launch task."));
+    return false;
+  }
+  if (command.program == QStringLiteral("env") &&
+      QStandardPaths::findExecutable(QStringLiteral("umu-run")).isEmpty()) {
+    setError(QStringLiteral("Install umu-launcher to run this Windows GOG game."));
+    return false;
+  }
+  if (command.program == QStringLiteral("env")) {
+    const QString prefix = command.arguments.constFirst().mid(QStringLiteral("WINEPREFIX=").size());
+    if (!QDir().mkpath(prefix)) {
+      setError(QStringLiteral("Omakade could not create the GOG Wine prefix."));
+      return false;
+    }
+  }
+  const std::optional<GogLaunchTask> task = HeroicScanner::gogLaunchTask(installPath, id);
+  if (!task.has_value() ||
+      !QProcess::startDetached(command.program, command.arguments, task->workingDirectory)) {
+    setError(QStringLiteral("GOG could not start this game."));
     return false;
   }
   setError({});
@@ -657,9 +734,14 @@ bool GameLauncher::launchBattleNet(const QString& id, const QString& prefix, con
   QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
   environment.insert(QStringLiteral("WINEPREFIX"), QDir::cleanPath(prefix));
   if (protonRunner) {
-    environment.insert(QStringLiteral("GAMEID"), QStringLiteral("0"));
-    environment.insert(QStringLiteral("STEAM_COMPAT_DATA_PATH"),
-                       QFileInfo(prefix + QStringLiteral("/..")).absoluteFilePath());
+    const bool omarchyStyleProton = QFileInfo(prefix + QStringLiteral("/version")).isFile();
+    environment.insert(QStringLiteral("GAMEID"), omarchyStyleProton
+                                                       ? QStringLiteral("umu-battlenet")
+                                                       : QStringLiteral("0"));
+    if (!omarchyStyleProton) {
+      environment.insert(QStringLiteral("STEAM_COMPAT_DATA_PATH"),
+                         QFileInfo(prefix + QStringLiteral("/..")).absoluteFilePath());
+    }
   }
   process.setProcessEnvironment(environment);
   if (!process.startDetached()) {

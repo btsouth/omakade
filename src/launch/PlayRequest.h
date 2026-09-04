@@ -8,7 +8,7 @@ class GameLauncher;
 class UnifiedGameModel;
 
 // Identifies one installation of a game the way Omakade stores it: the source name, the
-// Heroic or Lutris runner (often empty), and the source's own game id. The text form
+// source-specific runner (often empty), and the source's own game id. The text form
 // "Source:runner:id" is what `omakade --play` and Sunshine app entries carry. The id is
 // everything after the second colon, so RetroArch content paths survive unchanged.
 struct LaunchKey {

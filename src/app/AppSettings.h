@@ -17,6 +17,7 @@ class AppSettings final : public QObject {
   Q_PROPERTY(bool steamEnabled READ steamEnabled WRITE setSteamEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool lutrisEnabled READ lutrisEnabled WRITE setLutrisEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool heroicEnabled READ heroicEnabled WRITE setHeroicEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool gogEnabled READ gogEnabled WRITE setGogEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool faugusEnabled READ faugusEnabled WRITE setFaugusEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(
       bool retroArchEnabled READ retroArchEnabled WRITE setRetroArchEnabled NOTIFY sourcesChanged)
@@ -54,6 +55,8 @@ public:
   void setLutrisEnabled(bool value);
   [[nodiscard]] bool heroicEnabled() const;
   void setHeroicEnabled(bool value);
+  [[nodiscard]] bool gogEnabled() const;
+  void setGogEnabled(bool value);
   [[nodiscard]] bool faugusEnabled() const;
   void setFaugusEnabled(bool value);
   [[nodiscard]] bool retroArchEnabled() const;
@@ -107,6 +110,7 @@ private:
   bool m_steamEnabled = true;
   bool m_lutrisEnabled = true;
   bool m_heroicEnabled = true;
+  bool m_gogEnabled = true;
   bool m_faugusEnabled = true;
   bool m_retroArchEnabled = true;
   bool m_pcsx2Enabled = false;

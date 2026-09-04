@@ -8,10 +8,99 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QStandardPaths>
+
+#include <utility>
 
 namespace {
 constexpr qint64 kMaximumJsonBytes = 32 * 1024 * 1024;
+constexpr qint64 kMaximumGogInfoBytes = 2 * 1024 * 1024;
+
+bool validGogId(const QString& appId) {
+  static const QRegularExpression valid(QStringLiteral("^[0-9]{1,20}$"));
+  return valid.match(appId).hasMatch();
+}
+
+QString confinedPath(const QString& root, QString relative) {
+  relative.replace(QLatin1Char('\\'), QLatin1Char('/'));
+  if (relative.isEmpty() || QDir::isAbsolutePath(relative) ||
+      QRegularExpression(QStringLiteral("^[A-Za-z]:")).match(relative).hasMatch()) {
+    return {};
+  }
+  const QString cleanRelative = QDir::cleanPath(relative);
+  if (cleanRelative == QStringLiteral("..") || cleanRelative.startsWith(QStringLiteral("../"))) {
+    return {};
+  }
+  const QString cleanRoot = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
+  const QString resolved = QDir::cleanPath(QDir(cleanRoot).absoluteFilePath(cleanRelative));
+  if (resolved != cleanRoot && !resolved.startsWith(cleanRoot + QLatin1Char('/'))) {
+    return {};
+  }
+  const QString canonicalRoot = QFileInfo(cleanRoot).canonicalFilePath();
+  const QString canonicalResolved = QFileInfo(resolved).canonicalFilePath();
+  if (!canonicalResolved.isEmpty() &&
+      (canonicalRoot.isEmpty() ||
+       (canonicalResolved != canonicalRoot &&
+        !canonicalResolved.startsWith(canonicalRoot + QLatin1Char('/'))))) {
+    return {};
+  }
+  return resolved;
+}
+
+std::optional<GogLaunchTask> readGogLaunchTask(const QString& installPath,
+                                               const QString& appId) {
+  if (!validGogId(appId)) {
+    return std::nullopt;
+  }
+  QFile file(QDir(installPath).filePath(QStringLiteral("goggame-%1.info").arg(appId)));
+  if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 || file.size() > kMaximumGogInfoBytes) {
+    return std::nullopt;
+  }
+  QJsonParseError error;
+  const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+  if (error.error != QJsonParseError::NoError || !document.isObject()) {
+    return std::nullopt;
+  }
+  const QJsonArray tasks = document.object().value(QStringLiteral("playTasks")).toArray();
+  QJsonObject selected;
+  for (const QJsonValue& value : tasks) {
+    const QJsonObject task = value.toObject();
+    if (task.value(QStringLiteral("type")).toString() != QStringLiteral("FileTask")) {
+      continue;
+    }
+    if (selected.isEmpty() || task.value(QStringLiteral("isPrimary")).toBool()) {
+      selected = task;
+    }
+    if (task.value(QStringLiteral("isPrimary")).toBool()) {
+      break;
+    }
+  }
+  const QString executable =
+      confinedPath(installPath, selected.value(QStringLiteral("path")).toString());
+  if (executable.isEmpty() || !QFileInfo(executable).isFile()) {
+    return std::nullopt;
+  }
+  QString workingDirectory = installPath;
+  const QString configuredWorkingDirectory =
+      selected.value(QStringLiteral("workingDir")).toString();
+  if (!configuredWorkingDirectory.isEmpty()) {
+    workingDirectory = confinedPath(installPath, configuredWorkingDirectory);
+    if (workingDirectory.isEmpty() || !QFileInfo(workingDirectory).isDir()) {
+      return std::nullopt;
+    }
+  }
+  const QString suffix = QFileInfo(executable).suffix().toLower();
+  return GogLaunchTask{.executablePath = executable,
+                       .arguments = QProcess::splitCommand(
+                           selected.value(QStringLiteral("arguments")).toString()),
+                       .workingDirectory = workingDirectory,
+                       .windows = suffix == QStringLiteral("exe") ||
+                                  suffix == QStringLiteral("com") ||
+                                  suffix == QStringLiteral("bat") ||
+                                  suffix == QStringLiteral("lnk")};
+}
 
 struct Metadata {
   QString title;
@@ -24,7 +113,8 @@ struct Activity {
   qint64 lastPlayed = 0;
 };
 
-QJsonDocument readJson(const QString& path, HeroicScanResult* result, bool required = true) {
+QJsonDocument readJson(const QString& path, HeroicScanResult* result, bool required = true,
+                       bool managedGogInventory = false) {
   QFile file(path);
   if (!file.exists()) {
     return {};
@@ -32,6 +122,7 @@ QJsonDocument readJson(const QString& path, HeroicScanResult* result, bool requi
   if (!file.open(QIODevice::ReadOnly) || file.size() > kMaximumJsonBytes) {
     if (required) {
       result->incomplete = true;
+      result->managedGogIncomplete = result->managedGogIncomplete || managedGogInventory;
     }
     result->warnings.append(QStringLiteral("Could not read %1").arg(path));
     return {};
@@ -41,6 +132,7 @@ QJsonDocument readJson(const QString& path, HeroicScanResult* result, bool requi
   if (error.error != QJsonParseError::NoError) {
     if (required) {
       result->incomplete = true;
+      result->managedGogIncomplete = result->managedGogIncomplete || managedGogInventory;
     }
     result->warnings.append(
         QStringLiteral("Could not parse %1: %2").arg(path, error.errorString()));
@@ -170,8 +262,10 @@ void scanGog(const QString& root, bool flatpak, const QHash<QString, Activity>& 
   }
   const auto metadata =
       readMetadata(root, QStringLiteral("gog_library.json"), QStringLiteral("games"), result);
-  const QJsonArray games =
-      readJson(path, result).object().value(QStringLiteral("installed")).toArray();
+  const QJsonArray games = readJson(path, result, true, true)
+                               .object()
+                               .value(QStringLiteral("installed"))
+                               .toArray();
   for (const QJsonValue& value : games) {
     const QJsonObject game = value.toObject();
     if (game.value(QStringLiteral("is_dlc")).toBool()) {
@@ -254,6 +348,68 @@ void scanSideload(const QString& root, bool flatpak, const QHash<QString, Activi
                activity.value(appId), flatpak);
   }
 }
+
+bool scanLooseGog(const QString& root, HeroicScanResult* result, QSet<QString>* keys,
+                  const QSet<QString>& managedInstallPaths) {
+  bool foundManifest = false;
+  QStringList directories{root};
+  const QDir rootDirectory(root);
+  for (const QFileInfo& child :
+       rootDirectory.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable)) {
+    directories.append(child.absoluteFilePath());
+  }
+  for (const QString& directory : directories) {
+    if (managedInstallPaths.contains(QDir::cleanPath(directory))) {
+      continue;
+    }
+    const QDir gameDirectory(directory);
+    const QFileInfoList manifests = gameDirectory.entryInfoList(
+        {QStringLiteral("goggame-*.info")}, QDir::Files | QDir::Readable, QDir::Name);
+    foundManifest = foundManifest || !manifests.isEmpty();
+    for (const QFileInfo& manifest : manifests) {
+      static const QRegularExpression idPattern(QStringLiteral("^goggame-([0-9]{1,20})\\.info$"));
+      const QRegularExpressionMatch match = idPattern.match(manifest.fileName());
+      if (!match.hasMatch()) {
+        continue;
+      }
+      const QString appId = match.captured(1);
+      const QString key = QStringLiteral("gog-direct:") + appId;
+      if (keys->contains(key)) {
+        continue;
+      }
+      QFile file(manifest.absoluteFilePath());
+      if (!file.open(QIODevice::ReadOnly) || file.size() <= 0 ||
+          file.size() > kMaximumGogInfoBytes) {
+        result->gogIncomplete = true;
+        result->warnings.append(QStringLiteral("Could not read %1").arg(manifest.absoluteFilePath()));
+        continue;
+      }
+      QJsonParseError error;
+      const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+      const QString title = document.object().value(QStringLiteral("name")).toString().trimmed();
+      if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        result->gogIncomplete = true;
+        result->warnings.append(
+            QStringLiteral("Could not parse GOG manifest %1").arg(manifest.absoluteFilePath()));
+        continue;
+      }
+      if (title.isEmpty() || !readGogLaunchTask(directory, appId).has_value()) {
+        result->warnings.append(
+            QStringLiteral("Could not use GOG manifest %1").arg(manifest.absoluteFilePath()));
+        continue;
+      }
+      result->games.append({.key = key,
+                            .appId = appId,
+                            .runner = QStringLiteral("gog-direct"),
+                            .title = title,
+                            .installPath = directory,
+                            .coverPath = {},
+                            .heroPath = {}});
+      keys->insert(key);
+    }
+  }
+  return foundManifest;
+}
 } // namespace
 
 QStringList HeroicScanner::discoverRoots() {
@@ -261,7 +417,13 @@ QStringList HeroicScanner::discoverRoots() {
   const QString home = QDir::homePath();
   QStringList candidates = {
       config + QStringLiteral("/heroic"),
-      home + QStringLiteral("/.var/app/com.heroicgameslauncher.hgl/config/heroic")};
+      home + QStringLiteral("/.var/app/com.heroicgameslauncher.hgl/config/heroic"),
+      home + QStringLiteral("/GOG Games"), home + QStringLiteral("/Games/GOG"),
+      home + QStringLiteral("/Games/Heroic"), home + QStringLiteral("/Games")};
+  const QString configured = qEnvironmentVariable("OMAKADE_GOG_LIBRARY_PATHS");
+  for (const QString& path : configured.split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
+    candidates.append(QDir::cleanPath(path));
+  }
   candidates.removeDuplicates();
   QStringList roots;
   for (const QString& root : candidates) {
@@ -275,10 +437,12 @@ QStringList HeroicScanner::discoverRoots() {
 HeroicScanResult HeroicScanner::scan(const QStringList& roots) {
   HeroicScanResult result;
   QSet<QString> keys;
+  QStringList validRoots;
   for (const QString& root : roots) {
     if (!QFileInfo(root).isDir()) {
       continue;
     }
+    validRoots.append(root);
     const bool flatpak = root.contains(QStringLiteral("/.var/app/com.heroicgameslauncher.hgl/"));
     const int before = result.games.size();
     const QHash<QString, Activity> activity = readActivity(root, &result);
@@ -296,5 +460,24 @@ HeroicScanResult HeroicScanner::scan(const QStringList& roots) {
       result.roots.append(root);
     }
   }
+  QSet<QString> managedGogInstallPaths;
+  for (const HeroicGameRecord& game : std::as_const(result.games)) {
+    if (game.runner == QStringLiteral("gog")) {
+      managedGogInstallPaths.insert(QDir::cleanPath(game.installPath));
+    }
+  }
+  for (const QString& root : std::as_const(validRoots)) {
+    const int before = result.games.size();
+    const bool foundManifest =
+        scanLooseGog(root, &result, &keys, managedGogInstallPaths);
+    if ((foundManifest || result.games.size() > before) && !result.roots.contains(root)) {
+      result.roots.append(root);
+    }
+  }
   return result;
+}
+
+std::optional<GogLaunchTask> HeroicScanner::gogLaunchTask(const QString& installPath,
+                                                          const QString& appId) {
+  return readGogLaunchTask(installPath, appId);
 }

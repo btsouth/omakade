@@ -108,6 +108,17 @@ void AppSettings::setHeroicEnabled(bool value) {
   emit sourcesChanged();
 }
 
+bool AppSettings::gogEnabled() const { return m_gogEnabled; }
+
+void AppSettings::setGogEnabled(bool value) {
+  if (m_gogEnabled == value) {
+    return;
+  }
+  m_gogEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
 bool AppSettings::faugusEnabled() const { return m_faugusEnabled; }
 
 void AppSettings::setFaugusEnabled(bool value) {
@@ -258,6 +269,7 @@ void AppSettings::load() {
   m_steamEnabled = readEnabled(QStringLiteral("steam_enabled"), true);
   m_lutrisEnabled = readEnabled(QStringLiteral("lutris_enabled"), true);
   m_heroicEnabled = readEnabled(QStringLiteral("heroic_enabled"), true);
+  m_gogEnabled = readEnabled(QStringLiteral("gog_enabled"), true);
   m_faugusEnabled = readEnabled(QStringLiteral("faugus_enabled"), true);
   m_retroArchEnabled = readEnabled(QStringLiteral("retroarch_enabled"), true);
   const QRegularExpression pcsx2Key(
@@ -316,8 +328,8 @@ void AppSettings::save() const {
       QStringLiteral("reduced_motion = %1\nartwork_cache_limit_mb = %2\nsteam_id = \"%3\"\n"
                      "igdb_client_id = \"%4\"\nretroachievements_username = \"%5\"\n"
                      "steam_enabled = %6\nlutris_enabled = %7\nheroic_enabled = %8\n"
-                     "faugus_enabled = %9\nretroarch_enabled = %10\n"
-                     "battlenet_enabled = %11\n")
+                     "gog_enabled = %9\nfaugus_enabled = %10\nretroarch_enabled = %11\n"
+                     "battlenet_enabled = %12\n")
           .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_artworkCacheLimitMb)
           .arg(m_steamId)
@@ -326,6 +338,7 @@ void AppSettings::save() const {
           .arg(m_steamEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_lutrisEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_heroicEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_gogEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_faugusEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_retroArchEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_battleNetEnabled ? QStringLiteral("true") : QStringLiteral("false"));

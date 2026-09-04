@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### GOG
+
+- Added GOG as a first-class source with direct discovery of standard
+  `goggame-*.info` installations and separate source controls and filters.
+- Added direct native Linux launching and Windows launching using UMU, while
+  continuing to delegate Heroic-managed GOG games to Heroic so their launch
+  settings remain intact.
+
 ### Couch Mode
 
 - Added the first dedicated ten-foot library with a large featured game,
@@ -17,6 +25,13 @@
   visual checks for reduced motion, light themes, and opaque surfaces.
 - Made the complete Settings and Sources view wide, readable, and controller
   guided in Couch Mode.
+
+### Interface and reliability
+
+- Cleaned up in-flight Hyprland metric probes during shutdown.
+- Fixed Omarchy Battle.net prefixes being misclassified as Wine instead of
+  Proton, and matched their UMU launch environment. Thanks @TheAirick for the
+  detailed report.
 
 ### Release engineering
 

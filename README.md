@@ -27,7 +27,7 @@ changes made after the latest release.
 Omakade includes:
 
 - Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, and
-  Ryujinx discovery,
+  Ryujinx discovery, plus direct GOG installation discovery,
   including Steam non-Steam shortcuts and games sideloaded into Heroic, plus
   Battle.net games from Wine, Proton, and Bottles prefixes
 - One-click details and delegated launching through the owning platform
@@ -53,6 +53,12 @@ Omakade includes:
 Omakade reads launcher data without modifying it. Core discovery, browsing,
 artwork, and launching work offline. Run `omakade --demo` to explore the UI
 with a deterministic fictional library.
+
+Direct GOG discovery checks `~/GOG Games`, `~/Games/GOG`, `~/Games/Heroic`,
+and immediate game folders under `~/Games`. Set `OMAKADE_GOG_LIBRARY_PATHS`
+to a colon-separated list of additional library roots. Native Linux builds
+launch directly; Windows builds use `umu-run` with an isolated per-game prefix.
+GOG games installed through Heroic continue to launch through Heroic.
 
 ## Install on Omarchy or Arch
 

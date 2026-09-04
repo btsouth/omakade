@@ -39,7 +39,8 @@ CI. Additional real-user reports expand compatibility coverage after v1.
 
 Lutris native and Flatpak discovery, Heroic native and Flatpak discovery,
 Faugus and RetroArch native and Flatpak discovery, PCSX2 and Ryujinx scanner
-contracts (native and Flatpak roots), Epic, GOG, and Amazon manifests, and
+contracts (native and Flatpak roots), direct GOG manifests and launch tasks,
+Epic, GOG, and Amazon manifests, and
 Battle.net product.db discovery across Wine, Proton, and Bottles
 prefixes are covered by repeatable local fixtures. These
 paths still need reports from users with those launchers installed before the

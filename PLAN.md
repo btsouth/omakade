@@ -1,6 +1,6 @@
 # Omakade product and delivery plan
 
-Implementation status: M0 through M5 and M7 are complete. Steam, Lutris,
+Implementation status: M0 through M5 and M7 are complete. Steam, GOG, Lutris,
 Heroic, Faugus, RetroArch, PCSX2, Ryujinx, and Battle.net import, launch
 delegation, source filters, organization, settings, release checks, explicit
 linking, RetroAchievements, and Sunshine/Moonlight integration are implemented.
@@ -9,8 +9,8 @@ M6 is the headline milestone for 1.6.
 ## Product statement
 
 Omakade is a beautiful, local-first game library built for Omarchy. It brings
-installed games from Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx,
-and Battle.net into one coherent place.
+installed games from Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2,
+Ryujinx, and Battle.net into one coherent place.
 It owns discovery, presentation, search, achievements, organization, and the
 launch action. Existing platforms continue to own authentication, installation,
 updates, compatibility tools, cloud saves, DRM, and overlays.
@@ -404,6 +404,19 @@ must not replace local installed-game discovery.
 - Contract-test every supported Heroic release because local formats and launch
   links can change.
 - Keep installation, accounts, Wine settings, and cloud saves in Heroic.
+
+### GOG
+
+- Discover installed games using bounded `goggame-*.info` manifests,
+  including existing Heroic-managed GOG installations.
+- Treat manifest paths as untrusted input and confine executable and working
+  directory resolution to the installation directory.
+- Launch native Linux builds directly and Windows builds using UMU with an
+  isolated per-game prefix.
+- Keep Heroic-managed GOG installs delegated to Heroic so their runner,
+  environment, wrapper, and script settings remain intact.
+- Keep account authentication, purchasing, installation, updates, and cloud
+  saves outside Omakade.
 
 ### Desktop applications and manual games
 

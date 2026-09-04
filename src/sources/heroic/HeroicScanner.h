@@ -4,6 +4,15 @@
 #include <QStringList>
 #include <QVector>
 
+#include <optional>
+
+struct GogLaunchTask {
+  QString executablePath;
+  QStringList arguments;
+  QString workingDirectory;
+  bool windows = false;
+};
+
 struct HeroicGameRecord {
   QString key;
   QString appId;
@@ -22,10 +31,14 @@ struct HeroicScanResult {
   QStringList roots;
   QStringList warnings;
   bool incomplete = false;
+  bool gogIncomplete = false;
+  bool managedGogIncomplete = false;
 };
 
 class HeroicScanner final {
 public:
   [[nodiscard]] static QStringList discoverRoots();
   [[nodiscard]] static HeroicScanResult scan(const QStringList& roots);
+  [[nodiscard]] static std::optional<GogLaunchTask> gogLaunchTask(const QString& installPath,
+                                                                  const QString& appId);
 };

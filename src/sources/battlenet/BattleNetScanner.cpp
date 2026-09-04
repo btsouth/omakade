@@ -371,8 +371,11 @@ QString detectRunner(const QString& prefix) {
     return QStringLiteral("bottles");
   }
   const QFileInfo info(prefix);
-  if (info.fileName() == QStringLiteral("pfx") &&
-      QFileInfo(info.dir().absoluteFilePath(QStringLiteral("version"))).isFile()) {
+  const bool steamStyleProton =
+      info.fileName() == QStringLiteral("pfx") &&
+      QFileInfo(info.dir().absoluteFilePath(QStringLiteral("version"))).isFile();
+  const bool omarchyStyleProton = QFileInfo(prefix + QStringLiteral("/version")).isFile();
+  if (steamStyleProton || omarchyStyleProton) {
     return QStringLiteral("proton");
   }
   return QStringLiteral("wine");

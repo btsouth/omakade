@@ -20,6 +20,7 @@ FocusScope {
         { label: "BATTLE.NET", value: "Battle.net", enabled: Preferences.battleNetEnabled },
         { label: "LUTRIS", value: "Lutris", enabled: Preferences.lutrisEnabled },
         { label: "HEROIC", value: "Heroic", enabled: Preferences.heroicEnabled },
+        { label: "GOG", value: "GOG", enabled: Preferences.gogEnabled },
         { label: "FAUGUS", value: "Faugus", enabled: Preferences.faugusEnabled },
         { label: "RETROARCH", value: "RetroArch", enabled: Preferences.retroArchEnabled },
         { label: "PCSX2", value: "PCSX2", enabled: Preferences.pcsx2Enabled },

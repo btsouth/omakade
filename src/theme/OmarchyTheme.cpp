@@ -47,6 +47,20 @@ OmarchyTheme::OmarchyTheme(QString stateHome, QString configHome, QObject* paren
   reload();
 }
 
+OmarchyTheme::~OmarchyTheme() {
+  for (QProcess* process : findChildren<QProcess*>()) {
+    if (process->state() == QProcess::NotRunning) {
+      continue;
+    }
+    process->disconnect(this);
+    process->terminate();
+    if (!process->waitForFinished(50)) {
+      process->kill();
+      process->waitForFinished(50);
+    }
+  }
+}
+
 bool OmarchyTheme::omarchyAvailable() const { return m_omarchyAvailable; }
 QString OmarchyTheme::themeName() const { return m_themeName; }
 QString OmarchyTheme::mode() const { return m_mode; }

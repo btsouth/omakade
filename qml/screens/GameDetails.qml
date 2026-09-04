@@ -433,6 +433,7 @@ Item {
                         visible: root.selectedInstallation.source === "Steam"
                                  || root.selectedInstallation.source === "Lutris"
                                  || root.selectedInstallation.source === "Heroic"
+                                 || root.selectedInstallation.source === "GOG"
                                  || root.selectedInstallation.source === "Faugus"
                                  || root.selectedInstallation.source === "RetroArch"
                                  || root.selectedInstallation.source === "PCSX2"

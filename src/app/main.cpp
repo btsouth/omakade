@@ -297,6 +297,7 @@ int main(int argc, char* argv[]) {
     unifiedGames.setSourceEnabled(QStringLiteral("Steam"), preferences.steamEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Lutris"), preferences.lutrisEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Heroic"), preferences.heroicEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("GOG"), preferences.gogEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Faugus"), preferences.faugusEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("RetroArch"), preferences.retroArchEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("PCSX2"), preferences.pcsx2Enabled());
@@ -332,6 +333,10 @@ int main(int argc, char* argv[]) {
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Heroic"), Qt::CaseInsensitive) == 0 &&
                  heroicLibrary != nullptr && preferences.heroicEnabled()) {
+        heroicLibrary->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("GOG"), Qt::CaseInsensitive) == 0 &&
+                 heroicLibrary != nullptr && preferences.gogEnabled()) {
         heroicLibrary->refresh();
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Faugus"), Qt::CaseInsensitive) == 0 &&
@@ -1182,7 +1187,7 @@ int main(int argc, char* argv[]) {
                   fail(QStringLiteral("Focused source filter was not revealed"));
                   return;
                 }
-                for (int step = 0; step < 6; ++step) {
+                for (int step = 0; step < 7; ++step) {
                   controller.focusDirectionRequested(Qt::Key_Left);
                 }
                 controller.focusDirectionRequested(Qt::Key_Up);
@@ -1216,7 +1221,7 @@ int main(int argc, char* argv[]) {
                 fail(QStringLiteral("Controller Down did not reach source filters"));
                 return;
               }
-              for (int step = 0; step < 6; ++step) {
+              for (int step = 0; step < 7; ++step) {
                 controller.focusDirectionRequested(Qt::Key_Left);
               }
               if (!allSources->hasActiveFocus()) {
@@ -1722,7 +1727,7 @@ int main(int argc, char* argv[]) {
   if (lutrisLibrary != nullptr && preferences.lutrisEnabled()) {
     QTimer::singleShot(150, lutrisLibrary, &LutrisGameModel::refresh);
   }
-  if (heroicLibrary != nullptr && preferences.heroicEnabled()) {
+  if (heroicLibrary != nullptr && (preferences.heroicEnabled() || preferences.gogEnabled())) {
     QTimer::singleShot(300, heroicLibrary, &HeroicGameModel::refresh);
   }
   if (faugusLibrary != nullptr && preferences.faugusEnabled()) {
