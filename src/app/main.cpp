@@ -738,6 +738,38 @@ int main(int argc, char* argv[]) {
             QTimer::singleShot(30, &eventLoop, &QEventLoop::quit);
             eventLoop.exec();
           };
+          auto* emptyState = couch->findChild<QQuickItem*>(QStringLiteral("couchEmptyState"));
+          QObject* regressionLibrary =
+              qmlContext(quickWindow)->contextProperty(QStringLiteral("Library")).value<QObject*>();
+          if (emptyState == nullptr || regressionLibrary == nullptr) {
+            fail(QStringLiteral("Couch regression fixtures were not available"));
+            return;
+          }
+          strip->setProperty("currentIndex", 7);
+          for (const QString& layoutName : {QStringLiteral("grid"), QStringLiteral("detail")}) {
+            QMetaObject::invokeMethod(couch, "toggleLibraryView");
+            QCoreApplication::processEvents();
+            QQuickItem* activeView = layoutName == QStringLiteral("grid") ? grid : strip;
+            if (activeView->property("currentIndex").toInt() != 7 ||
+                couch->property("currentIndex").toInt() != 7 || !activeView->hasActiveFocus()) {
+              fail(QStringLiteral("Couch layout switch lost selection or focus in %1").arg(layoutName));
+              return;
+            }
+          }
+          regressionLibrary->setProperty("searchText", QStringLiteral("omakade-no-matching-game-regression"));
+          QCoreApplication::processEvents();
+          if (!emptyState->isVisible()) {
+            fail(QStringLiteral("Empty couch library did not show its empty state"));
+            return;
+          }
+          regressionLibrary->setProperty("searchText", QString{});
+          QCoreApplication::processEvents();
+          if (emptyState->isVisible()) {
+            fail(QStringLiteral("Populated couch library retained its empty state"));
+            return;
+          }
+          strip->setProperty("currentIndex", 1);
+          strip->forceActiveFocus();
           const auto focusDescription = [quickWindow] {
             QQuickItem* focused = quickWindow->activeFocusItem();
             QStringList chain;

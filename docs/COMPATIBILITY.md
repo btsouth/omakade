@@ -25,9 +25,11 @@ The current local 1.6 candidate passes all 41 tests in both Debug and Release
 builds. Automated coverage includes Couch Mode detail and grid layouts, focus
 paths, held analog and directional-pad navigation, controller reconnects,
 keyboard and mouse handoff, cursor visibility, and a cached 1,000-game library.
-The maintainer also completed a local controller and visual smoke test.
+Regression coverage also checks selection across layout switches and empty-state
+updates after filtering. The maintainer tested the earlier candidate; the final
+1.6.0 candidate still needs a local controller and visual smoke test.
 
-Independent review, CI on the final pushed commit, the release workflow, and
+CI on the final pushed commit, the release workflow, exact-candidate testing, and
 the real-library reports below remain release gates.
 
 ## Automated visual matrix

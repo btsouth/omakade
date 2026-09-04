@@ -1,48 +1,29 @@
 # Changelog
 
-## Unreleased
-
-### GOG
-
-- Added GOG as a first-class source with direct discovery of standard
-  `goggame-*.info` installations and separate source controls and filters.
-- Added direct native Linux launching and Windows launching using UMU, while
-  continuing to delegate Heroic-managed GOG games to Heroic so their launch
-  settings remain intact.
+## 1.6.0
 
 ### Couch Mode
 
-- Added the first dedicated ten-foot library with a large featured game,
-  horizontal cover browsing, controller hints, and controller-tested focus.
-- Added detail and grid library views with stronger selection treatment,
-  smoother held navigation, and repeat behavior for both analog sticks and the
-  directional pad.
-- Added persistent Couch Mode startup, `omakade --couch`, F11 and controller
-  Start switching, and automatic Couch Mode for Sunshine sessions.
-- Hid the mouse cursor during controller and keyboard use, restored it on real
-  mouse movement, and kept it visible in Desktop Mode.
-- Added controller-driven library search with an on-screen keyboard.
-- Expanded the on-screen keyboard to support controller text entry, case and
-  symbols across game organization, linking, and account settings.
-- Added a couch-native browser for views, sorting, availability, sources,
-  completion status, collections, and tags.
-- Added 1,000-game couch startup and navigation gates, reconnect coverage, and
-  visual checks for reduced motion, light themes, and opaque surfaces.
-- Made the complete Settings and Sources view wide, readable, and controller
-  guided in Couch Mode.
+- Browse your library in detail or grid view with controller navigation,
+  search, filters, and an on-screen keyboard.
+- Open Couch Mode with F11, controller Start, or `omakade --couch`. Sunshine
+  sessions open it automatically, and you can make it your startup view.
+- Hold the stick or directional pad to move through games. Selection stays on
+  the same game when switching layouts.
+- Use a controller throughout Settings and game organization, including text
+  entry, case, and symbols.
+- Hide the cursor during keyboard and controller navigation and restore it
+  when the mouse moves.
 
-### Interface and reliability
+### GOG and compatibility
 
-- Cleaned up in-flight Hyprland metric probes during shutdown.
-- Fixed Omarchy Battle.net prefixes being misclassified as Wine instead of
-  Proton, and matched their UMU launch environment. Thanks @TheAirick for the
-  detailed report.
-
-### Release engineering
-
-- Added native aarch64 CI and release packages alongside x86_64.
-- Added per-architecture SBOMs, vulnerability scanning, checksums, and
-  provenance attestations.
+- Discover and launch direct GOG installations. Native Linux games launch
+  directly; Windows games use UMU with a separate prefix for each game.
+- Keep Heroic-managed GOG games launching through Heroic with their existing
+  settings.
+- Fix Proton detection and launching for Omarchy Battle.net prefixes. Thanks
+  @TheAirick for the report.
+- Add aarch64 packages alongside x86_64, with checksums and provenance.
 
 ## 1.5.0
 

@@ -9,6 +9,7 @@ FocusScope {
     property string viewOverride: ""
     property bool scanning: false
     property int currentIndex: 0
+    property bool updatingGameViews: false
     property var currentGame: ({})
     property var pendingCurrent: null
     property bool searchOpen: false
@@ -56,6 +57,21 @@ FocusScope {
 
     function activeGameView() {
         return root.detailView ? gameStrip : gameGrid
+    }
+
+    function syncGameViews() {
+        // Attaching a model initializes the view's index. Keep that temporary
+        // index from replacing the selected game while switching layouts.
+        const selectedIndex = root.currentIndex
+        root.updatingGameViews = true
+        gameStrip.model = root.detailView ? root.libraryModel : null
+        gameGrid.model = root.detailView ? null : root.libraryModel
+        const view = root.activeGameView()
+        view.currentIndex = selectedIndex
+        if (selectedIndex >= 0) {
+            view.positionViewAtIndex(selectedIndex, GridView.Contain)
+        }
+        root.updatingGameViews = false
     }
 
     function focusGrid() {
@@ -133,14 +149,11 @@ FocusScope {
     }
 
     onCurrentIndexChanged: refreshCurrentGame()
-    onLibraryModelChanged: refreshCurrentGame()
-    onDetailViewChanged: {
-        const view = root.activeGameView()
-        view.currentIndex = root.currentIndex
-        if (root.currentIndex >= 0) {
-            view.positionViewAtIndex(root.currentIndex, GridView.Contain)
-        }
+    onLibraryModelChanged: {
+        syncGameViews()
+        refreshCurrentGame()
     }
+    onDetailViewChanged: syncGameViews()
 
     Connections {
         target: root.libraryModel
@@ -597,9 +610,10 @@ FocusScope {
     }
 
     Column {
+        objectName: "couchEmptyState"
         anchors.centerIn: parent
         spacing: 14 * root.uiScale
-        visible: root.libraryModel.rowCount() === 0
+        visible: root.activeGameView().count === 0
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -634,7 +648,7 @@ FocusScope {
         spacing: 14 * root.uiScale
         clip: true
         cacheBuffer: Math.max(0, width)
-        model: visible ? root.libraryModel : null
+        model: null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
         highlightFollowsCurrentItem: true
@@ -659,7 +673,7 @@ FocusScope {
         boundsBehavior: Flickable.StopAtBounds
 
         onCurrentIndexChanged: {
-            if (visible) {
+            if (visible && !root.updatingGameViews) {
                 root.currentIndex = currentIndex
             }
         }
@@ -827,7 +841,7 @@ FocusScope {
         cellWidth: 212 * root.uiScale
         cellHeight: 350 * root.uiScale
         readonly property int columnCount: Math.max(1, Math.floor(width / cellWidth))
-        model: visible ? root.libraryModel : null
+        model: null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
         highlightFollowsCurrentItem: true
@@ -838,7 +852,7 @@ FocusScope {
         cacheBuffer: Math.max(0, height)
 
         onCurrentIndexChanged: {
-            if (visible) {
+            if (visible && !root.updatingGameViews) {
                 root.currentIndex = currentIndex
             }
         }
@@ -1142,6 +1156,7 @@ FocusScope {
 
     Component.onCompleted: {
         currentIndex = libraryModel.rowCount() > 0 ? 0 : -1
+        syncGameViews()
         refreshCurrentGame()
         Qt.callLater(focusGrid)
     }

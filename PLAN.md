@@ -777,9 +777,8 @@ Gate:
 
 ### M6: Controller-first couch mode
 
-Status: implemented in the local 1.6 candidate and under review. This is a
-dedicated ten-foot experience, not the desktop layout enlarged to fill a
-television.
+Status: implemented in the local 1.6.0 candidate, with review fixes covered by
+regression checks. The dedicated ten-foot interface supports television use.
 
 Deliver:
 
@@ -815,8 +814,9 @@ Candidate status:
 - Detail and grid views, clear selection, held analog and directional-pad
   navigation, cursor handoff, reconnect behavior, and large-library paths have
   automated coverage.
-- The maintainer completed a local controller and visual smoke test. Independent
-  review and the publication checks in `RELEASING.md` remain open.
+- Review findings are fixed and covered by regression checks. The maintainer
+  tested the earlier candidate; final-candidate testing and the publication
+  checks in `RELEASING.md` remain open.
 
 ### M7: Sunshine and Moonlight streaming
 
@@ -851,8 +851,8 @@ Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 1.6 is the couch-mode release. Work is ordered so secondary platform tasks do
 not compromise the quality or completeness of M6:
 
-1. Complete independent review of M6 and close any visual, accessibility,
-   performance, or controller-only findings.
+1. Verify the final M6 candidate locally and close any remaining visual,
+   accessibility, performance, or controller-only findings.
 2. Finish the real-library compatibility matrix in issue 9, prioritizing native
    and Flatpak launcher variants that are only contract-tested today.
 3. Add a supported aarch64 package path for issue 13, using contributor hardware
