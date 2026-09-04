@@ -2,7 +2,7 @@
 
 ## Reference Omarchy system
 
-Verified through September 1, 2026:
+Verified through September 4, 2026:
 
 | Component | Version | Result |
 | --- | --- | --- |
@@ -18,6 +18,17 @@ Verified through September 1, 2026:
 The reference library contains 45 installed Steam games. Theme colors, font,
 launcher transparency, one-click details, keyboard navigation, and the
 controller input path have been exercised on this system.
+
+## 1.6 candidate validation
+
+The current local 1.6 candidate passes all 41 tests in both Debug and Release
+builds. Automated coverage includes Couch Mode detail and grid layouts, focus
+paths, held analog and directional-pad navigation, controller reconnects,
+keyboard and mouse handoff, cursor visibility, and a cached 1,000-game library.
+The maintainer also completed a local controller and visual smoke test.
+
+Independent review, CI on the final pushed commit, the release workflow, and
+the real-library reports below remain release gates.
 
 ## Automated visual matrix
 

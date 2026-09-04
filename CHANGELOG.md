@@ -14,8 +14,13 @@
 
 - Added the first dedicated ten-foot library with a large featured game,
   horizontal cover browsing, controller hints, and controller-tested focus.
+- Added detail and grid library views with stronger selection treatment,
+  smoother held navigation, and repeat behavior for both analog sticks and the
+  directional pad.
 - Added persistent Couch Mode startup, `omakade --couch`, F11 and controller
   Start switching, and automatic Couch Mode for Sunshine sessions.
+- Hid the mouse cursor during controller and keyboard use, restored it on real
+  mouse movement, and kept it visible in Desktop Mode.
 - Added controller-driven library search with an on-screen keyboard.
 - Expanded the on-screen keyboard to support controller text entry, case and
   symbols across game organization, linking, and account settings.

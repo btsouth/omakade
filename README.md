@@ -163,8 +163,10 @@ ctest --preset dev
 
 Use `Ctrl+F` to search, arrow keys to navigate, Enter to open details, Escape
 to return, and F11 to enter or leave Couch Mode. The controller Start button
-does the same. Couch Mode remembers the preferred launch mode. `Ctrl+M` toggles
-reduced motion and `Ctrl+D` opens settings and source diagnostics.
+does the same. Couch Mode offers detail and grid library views and remembers
+the preferred launch mode. Its cursor hides during controller or keyboard use,
+returns on mouse movement, and remains visible in Desktop Mode. `Ctrl+M`
+toggles reduced motion and `Ctrl+D` opens settings and source diagnostics.
 
 ## Local data
 
