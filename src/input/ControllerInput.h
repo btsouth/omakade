@@ -34,6 +34,7 @@ public:
   [[nodiscard]] QString toolbarGlyph() const;
   [[nodiscard]] bool focusNavigation() const;
   void setFocusNavigation(bool enabled);
+  void setInputEnabled(bool enabled);
   void start();
 
 signals:
@@ -72,4 +73,5 @@ private:
   int m_repeatKey = 0;
   bool m_sdlReady = false;
   bool m_focusNavigation = false;
+  bool m_inputEnabled = true;
 };

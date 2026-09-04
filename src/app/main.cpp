@@ -527,6 +527,15 @@ int main(int argc, char* argv[]) {
 
   auto* rootWindow = qobject_cast<QWindow*>(engine.rootObjects().constFirst());
   if (rootWindow != nullptr) {
+    const auto syncControllerFocus = [&application, &controller] {
+      controller.setInputEnabled(application.applicationState() == Qt::ApplicationActive &&
+                                 application.focusWindow() != nullptr);
+    };
+    QObject::connect(&application, &QGuiApplication::applicationStateChanged, &controller,
+                     syncControllerFocus);
+    QObject::connect(&application, &QGuiApplication::focusWindowChanged, &controller,
+                     syncControllerFocus);
+    syncControllerFocus();
     auto* couchCursor = new CouchCursorManager(rootWindow, 1600, rootWindow);
     couchCursor->setObjectName(QStringLiteral("couchCursorManager"));
     QObject::connect(rootWindow, SIGNAL(couchModeChanged()), couchCursor,
@@ -540,13 +549,11 @@ int main(int argc, char* argv[]) {
     QObject::connect(&controller, &ControllerInput::toolbarRequested, couchCursor,
                      &CouchCursorManager::navigationActivity);
     QObject::connect(&controller, &ControllerInput::keyRequested, rootWindow,
-                     [&application, rootWindow](int key, int modifiers) {
+                     [&application](int key, int modifiers) {
                        QWindow* target = application.focusWindow();
-                       if (target == nullptr) {
-                         // A freshly shown fullscreen window may not have compositor focus yet.
-                         // Controller input must still enter Omakade instead of being discarded.
-                         target = rootWindow;
-                         rootWindow->requestActivate();
+                       if (application.applicationState() != Qt::ApplicationActive ||
+                           target == nullptr) {
+                         return;
                        }
                        const auto keyboardModifiers =
                            static_cast<Qt::KeyboardModifiers>(modifiers);

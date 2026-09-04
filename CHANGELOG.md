@@ -12,6 +12,8 @@
   the same game when switching layouts.
 - Use a controller throughout Settings and game organization, including text
   entry, case, and symbols.
+- Let games keep controller focus after launching; ignore controller input while
+  Omakade is in the background.
 - Hide the cursor during keyboard and controller navigation and restore it
   when the mouse moves.
 

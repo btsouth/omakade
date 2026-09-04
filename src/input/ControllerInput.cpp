@@ -101,6 +101,26 @@ void ControllerInput::setFocusNavigation(bool enabled) {
   emit focusNavigationChanged();
 }
 
+void ControllerInput::setInputEnabled(bool enabled) {
+  if (m_inputEnabled == enabled) {
+    return;
+  }
+  m_inputEnabled = enabled;
+  m_repeatTimer.stop();
+  m_repeatTimer.setInterval(kInitialRepeatDelayMs);
+  m_axisX = 0;
+  m_axisY = 0;
+  m_axisKey = 0;
+  m_repeatKey = 0;
+  m_dpadKeys.clear();
+  if (m_sdlReady) {
+    // Do not replay input queued while another application owned focus.
+    SDL_FlushEvent(SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+    SDL_FlushEvent(SDL_EVENT_GAMEPAD_BUTTON_UP);
+    SDL_FlushEvent(SDL_EVENT_GAMEPAD_AXIS_MOTION);
+  }
+}
+
 void ControllerInput::pollEvents() {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
@@ -114,12 +134,19 @@ void ControllerInput::pollEvents() {
       closeController(event.gdevice.which);
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-      handleButtonPressed(event.gbutton.button);
+      if (m_inputEnabled) {
+        handleButtonPressed(event.gbutton.button);
+      }
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
-      handleButtonReleased(event.gbutton.button);
+      if (m_inputEnabled) {
+        handleButtonReleased(event.gbutton.button);
+      }
       break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      if (!m_inputEnabled) {
+        break;
+      }
       if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
         m_axisX = event.gaxis.value;
         updateAxisKey();

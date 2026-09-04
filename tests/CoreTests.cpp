@@ -63,6 +63,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 
 namespace {
 // A launcher-style source that, like Lutris or Heroic, has no Installed role at all.
@@ -3536,6 +3537,21 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   const SDL_JoystickID id = SDL_AttachVirtualJoystick(&description);
   QVERIFY2(id != 0, SDL_GetError());
 
+  // A real controller may be in use while the offscreen suite runs.
+  std::atomic<SDL_JoystickID> testControllerId{id};
+  SDL_SetEventFilter([](void* context, SDL_Event* event) {
+    const auto allowed = static_cast<std::atomic<SDL_JoystickID>*>(context)->load();
+    if (event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ||
+        event->type == SDL_EVENT_GAMEPAD_BUTTON_UP) {
+      return event->gbutton.which == allowed;
+    }
+    if (event->type == SDL_EVENT_GAMEPAD_AXIS_MOTION) {
+      return event->gaxis.which == allowed;
+    }
+    return true;
+  }, &testControllerId);
+  const auto clearEventFilter = qScopeGuard([] { SDL_SetEventFilter(nullptr, nullptr); });
+
   ControllerInput controller;
   controller.start();
   QTRY_VERIFY_WITH_TIMEOUT(controller.connected(), 1000);
@@ -3634,6 +3650,42 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QTest::qWait(300);
   QCOMPARE(focusDirections.size(), leftDirectionsAfterRelease);
 
+  // Losing focus must cancel held navigation and suppress every controller action.
+  QVERIFY(SDL_PushEvent(&dpadDown));
+  QTRY_VERIFY_WITH_TIMEOUT(focusDirections.size() > leftDirectionsAfterRelease, 700);
+  controller.setInputEnabled(false);
+  keys.clear();
+  focusDirections.clear();
+  favorites.clear();
+  toolbar.clear();
+  for (int button : {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST,
+                     SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_WEST,
+                     SDL_GAMEPAD_BUTTON_NORTH, SDL_GAMEPAD_BUTTON_DPAD_RIGHT}) {
+    SDL_Event backgroundButton{};
+    backgroundButton.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+    backgroundButton.gbutton.which = id;
+    backgroundButton.gbutton.button = button;
+    QVERIFY(SDL_PushEvent(&backgroundButton));
+  }
+  QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 20000));
+  SDL_UpdateJoysticks();
+  QTest::qWait(400);
+  QVERIFY(keys.isEmpty());
+  QVERIFY(focusDirections.isEmpty());
+  QVERIFY(favorites.isEmpty());
+  QVERIFY(toolbar.isEmpty());
+
+  // Input already queued on return must not be replayed, nor may an old hold resume.
+  QVERIFY(SDL_PushEvent(&favorite));
+  controller.setInputEnabled(true);
+  QTest::qWait(350);
+  QVERIFY(keys.isEmpty());
+  QVERIFY(focusDirections.isEmpty());
+  QVERIFY(favorites.isEmpty());
+  QVERIFY(toolbar.isEmpty());
+  QVERIFY(SDL_PushEvent(&favorite));
+  QTRY_COMPARE_WITH_TIMEOUT(favorites.size(), 1, 1000);
+
   SDL_CloseJoystick(joystick);
   SDL_Event removed{};
   removed.type = SDL_EVENT_GAMEPAD_REMOVED;
@@ -3647,6 +3699,7 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
 
   const SDL_JoystickID reconnectedId = SDL_AttachVirtualJoystick(&description);
   QVERIFY2(reconnectedId != 0, SDL_GetError());
+  testControllerId.store(reconnectedId);
   QTRY_COMPARE_WITH_TIMEOUT(controller.controllerCount(), connectedCount, 1000);
   SDL_Joystick* reconnectedJoystick = SDL_OpenJoystick(reconnectedId);
   QVERIFY(reconnectedJoystick != nullptr);
