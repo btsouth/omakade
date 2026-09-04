@@ -6,14 +6,20 @@
 
 #include <SDL3/SDL.h>
 
+namespace {
+constexpr int kInitialRepeatDelayMs = 260;
+constexpr int kRepeatIntervalMs = 80;
+} // namespace
+
 ControllerInput::ControllerInput(QObject* parent) : QObject(parent) {
   m_pollTimer.setInterval(8);
   connect(&m_pollTimer, &QTimer::timeout, this, &ControllerInput::pollEvents);
-  m_repeatTimer.setInterval(260);
+  m_repeatTimer.setTimerType(Qt::PreciseTimer);
+  m_repeatTimer.setInterval(kInitialRepeatDelayMs);
   connect(&m_repeatTimer, &QTimer::timeout, this, [this] {
-    if (m_axisKey != 0) {
-      emitDirection(m_axisKey);
-      m_repeatTimer.setInterval(75);
+    if (m_repeatKey != 0) {
+      emitDirection(m_repeatKey);
+      m_repeatTimer.setInterval(kRepeatIntervalMs);
     }
   });
   connect(&m_initWatcher, &QFutureWatcher<InitResult>::finished, this, [this] {
@@ -108,7 +114,10 @@ void ControllerInput::pollEvents() {
       closeController(event.gdevice.which);
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-      handleButton(event.gbutton.button);
+      handleButtonPressed(event.gbutton.button);
+      break;
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+      handleButtonReleased(event.gbutton.button);
       break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
       if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
@@ -160,13 +169,15 @@ void ControllerInput::closeController(SDL_JoystickID id) {
     m_axisX = 0;
     m_axisY = 0;
     m_axisKey = 0;
+    m_dpadKeys.clear();
+    m_repeatKey = 0;
     m_repeatTimer.stop();
-    m_repeatTimer.setInterval(260);
+    m_repeatTimer.setInterval(kInitialRepeatDelayMs);
     emit controllerChanged();
   }
 }
 
-void ControllerInput::handleButton(int button) {
+void ControllerInput::handleButtonPressed(int button) {
   switch (button) {
   case SDL_GAMEPAD_BUTTON_SOUTH:
     emit keyRequested(Qt::Key_Return, Qt::NoModifier);
@@ -184,20 +195,49 @@ void ControllerInput::handleButton(int button) {
     emit keyRequested(Qt::Key_F11, Qt::NoModifier);
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_UP:
-    emitDirection(Qt::Key_Up);
+    setDpadPressed(Qt::Key_Up, true);
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-    emitDirection(Qt::Key_Down);
+    setDpadPressed(Qt::Key_Down, true);
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-    emitDirection(Qt::Key_Left);
+    setDpadPressed(Qt::Key_Left, true);
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-    emitDirection(Qt::Key_Right);
+    setDpadPressed(Qt::Key_Right, true);
     break;
   default:
     break;
   }
+}
+
+void ControllerInput::handleButtonReleased(int button) {
+  switch (button) {
+  case SDL_GAMEPAD_BUTTON_DPAD_UP:
+    setDpadPressed(Qt::Key_Up, false);
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+    setDpadPressed(Qt::Key_Down, false);
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+    setDpadPressed(Qt::Key_Left, false);
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+    setDpadPressed(Qt::Key_Right, false);
+    break;
+  default:
+    break;
+  }
+}
+
+void ControllerInput::setDpadPressed(int key, bool pressed) {
+  m_dpadKeys.removeAll(key);
+  if (pressed) {
+    // If two directions are held, the most recently pressed direction wins. Releasing it
+    // resumes the direction that is still held instead of stopping navigation completely.
+    m_dpadKeys.append(key);
+  }
+  updateRepeatKey();
 }
 
 void ControllerInput::emitDirection(int key) {
@@ -220,11 +260,20 @@ void ControllerInput::updateAxisKey() {
     return;
   }
   m_axisKey = key;
-  if (key == 0) {
-    m_repeatTimer.stop();
-    m_repeatTimer.setInterval(260);
-  } else {
-    emitDirection(key);
+  updateRepeatKey();
+}
+
+void ControllerInput::updateRepeatKey() {
+  const int key = m_dpadKeys.isEmpty() ? m_axisKey : m_dpadKeys.constLast();
+  if (key == m_repeatKey) {
+    return;
+  }
+
+  m_repeatKey = key;
+  m_repeatTimer.stop();
+  m_repeatTimer.setInterval(kInitialRepeatDelayMs);
+  if (m_repeatKey != 0) {
+    emitDirection(m_repeatKey);
     m_repeatTimer.start();
   }
 }

@@ -2,6 +2,7 @@
 
 #include <QFutureWatcher>
 #include <QHash>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -52,9 +53,12 @@ private:
   void pollEvents();
   void openAvailableControllers();
   void closeController(SDL_JoystickID id);
-  void handleButton(int button);
+  void handleButtonPressed(int button);
+  void handleButtonReleased(int button);
+  void setDpadPressed(int key, bool pressed);
   void emitDirection(int key);
   void updateAxisKey();
+  void updateRepeatKey();
   [[nodiscard]] QString buttonLabel(SDL_GamepadButton button, const QString& fallback) const;
 
   QHash<SDL_JoystickID, SDL_Gamepad*> m_controllers;
@@ -64,6 +68,8 @@ private:
   int m_axisX = 0;
   int m_axisY = 0;
   int m_axisKey = 0;
+  QList<int> m_dpadKeys;
+  int m_repeatKey = 0;
   bool m_sdlReady = false;
   bool m_focusNavigation = false;
 };

@@ -631,12 +631,28 @@ FocusScope {
         anchors.bottomMargin: 22 * root.uiScale
         height: 260 * root.uiScale
         orientation: ListView.Horizontal
-        spacing: 18 * root.uiScale
+        spacing: 14 * root.uiScale
         clip: true
+        cacheBuffer: width
         model: visible ? root.libraryModel : null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
-        highlightMoveDuration: Preferences.reducedMotion ? 0 : 130
+        highlightFollowsCurrentItem: true
+        highlight: Item {
+            Rectangle {
+                anchors.top: parent.top
+                anchors.topMargin: root.uiScale
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
+                height: 233 * root.uiScale
+                radius: 16 * root.uiScale
+                color: root.alpha(Theme.accent, 0.18)
+                border.width: 2 * root.uiScale
+                border.color: root.alpha(Theme.accent, 0.72)
+            }
+        }
+        highlightMoveDuration: Preferences.reducedMotion ? 0 : 90
+        highlightResizeDuration: Preferences.reducedMotion ? 0 : 90
         highlightRangeMode: ListView.ApplyRange
         preferredHighlightBegin: width * 0.08
         preferredHighlightEnd: width * 0.72
@@ -678,8 +694,9 @@ FocusScope {
             required property color accentStart
             required property color accentEnd
 
-            width: 146 * root.uiScale
+            width: 160 * root.uiScale
             height: gameStrip.height
+            z: 1
             Accessible.name: title
             Accessible.role: Accessible.ListItem
 
@@ -690,22 +707,11 @@ FocusScope {
             }
 
             Rectangle {
-                anchors.horizontalCenter: cover.horizontalCenter
-                anchors.verticalCenter: cover.verticalCenter
-                width: cover.width + 14 * root.uiScale
-                height: cover.height + 14 * root.uiScale
-                radius: cover.radius + 6 * root.uiScale
-                visible: gameStrip.currentIndex === card.index
-                color: root.alpha(Theme.accent, 0.18)
-                border.width: 2 * root.uiScale
-                border.color: root.alpha(Theme.accent, 0.72)
-            }
-
-            Rectangle {
                 id: cover
                 anchors.top: parent.top
+                anchors.topMargin: 8 * root.uiScale
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width
+                width: 146 * root.uiScale
                 height: width * 1.5
                 radius: 10 * root.uiScale
                 clip: true
@@ -792,7 +798,7 @@ FocusScope {
             opacity: gameStrip.currentIndex === card.index ? 1 : 0.58
             Behavior on opacity {
                 enabled: !Preferences.reducedMotion
-                NumberAnimation { duration: 130; easing.type: Easing.OutCubic }
+                NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
             }
         }
     }
@@ -824,9 +830,12 @@ FocusScope {
         model: visible ? root.libraryModel : null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
-        highlightMoveDuration: Preferences.reducedMotion ? 0 : 110
+        highlightFollowsCurrentItem: true
+        highlight: Item {}
+        highlightMoveDuration: Preferences.reducedMotion ? 0 : 90
         boundsBehavior: Flickable.StopAtBounds
         clip: true
+        cacheBuffer: height
 
         onCurrentIndexChanged: {
             if (visible) {
@@ -872,14 +881,15 @@ FocusScope {
 
             width: 196 * root.uiScale
             height: 330 * root.uiScale
-            scale: current ? 1.035 : 1
+            transformOrigin: Item.TopLeft
+            scale: current ? 1.025 : 1
             z: current ? 2 : 1
             Accessible.name: title
             Accessible.role: Accessible.ListItem
 
             Behavior on scale {
                 enabled: !Preferences.reducedMotion
-                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
             }
 
             Component.onCompleted: {

@@ -3483,7 +3483,10 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   description.naxes = SDL_GAMEPAD_AXIS_COUNT;
   description.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
   description.button_mask = (1U << SDL_GAMEPAD_BUTTON_SOUTH) | (1U << SDL_GAMEPAD_BUTTON_WEST) |
-                            (1U << SDL_GAMEPAD_BUTTON_NORTH);
+                            (1U << SDL_GAMEPAD_BUTTON_NORTH) | (1U << SDL_GAMEPAD_BUTTON_DPAD_UP) |
+                            (1U << SDL_GAMEPAD_BUTTON_DPAD_DOWN) |
+                            (1U << SDL_GAMEPAD_BUTTON_DPAD_LEFT) |
+                            (1U << SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
   description.axis_mask = (1U << SDL_GAMEPAD_AXIS_LEFTX) | (1U << SDL_GAMEPAD_AXIS_LEFTY);
   description.name = "Omakade test controller";
   const SDL_JoystickID id = SDL_AttachVirtualJoystick(&description);
@@ -3548,6 +3551,44 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   SDL_UpdateJoysticks();
   QTRY_VERIFY_WITH_TIMEOUT(!focusDirections.isEmpty(), 1000);
   QCOMPARE(focusDirections.first().at(0).toInt(), static_cast<int>(Qt::Key_Down));
+
+  QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTY, 0));
+  SDL_UpdateJoysticks();
+  QTest::qWait(30);
+  focusDirections.clear();
+  SDL_Event dpadDown{};
+  dpadDown.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+  dpadDown.gbutton.which = id;
+  dpadDown.gbutton.button = SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+  QVERIFY(SDL_PushEvent(&dpadDown));
+  QTRY_VERIFY_WITH_TIMEOUT(focusDirections.size() >= 3, 700);
+  for (const QList<QVariant>& direction : std::as_const(focusDirections)) {
+    QCOMPARE(direction.at(0).toInt(), static_cast<int>(Qt::Key_Right));
+  }
+
+  SDL_Event dpadUp{};
+  dpadUp.type = SDL_EVENT_GAMEPAD_BUTTON_UP;
+  dpadUp.gbutton.which = id;
+  dpadUp.gbutton.button = SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+  QVERIFY(SDL_PushEvent(&dpadUp));
+  QTest::qWait(50);
+  const qsizetype directionsAfterRelease = focusDirections.size();
+  QTest::qWait(300);
+  QCOMPARE(focusDirections.size(), directionsAfterRelease);
+
+  focusDirections.clear();
+  dpadDown.gbutton.button = SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+  QVERIFY(SDL_PushEvent(&dpadDown));
+  QTRY_VERIFY_WITH_TIMEOUT(focusDirections.size() >= 3, 700);
+  for (const QList<QVariant>& direction : std::as_const(focusDirections)) {
+    QCOMPARE(direction.at(0).toInt(), static_cast<int>(Qt::Key_Left));
+  }
+  dpadUp.gbutton.button = SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+  QVERIFY(SDL_PushEvent(&dpadUp));
+  QTest::qWait(50);
+  const qsizetype leftDirectionsAfterRelease = focusDirections.size();
+  QTest::qWait(300);
+  QCOMPARE(focusDirections.size(), leftDirectionsAfterRelease);
 
   SDL_CloseJoystick(joystick);
   SDL_Event removed{};
