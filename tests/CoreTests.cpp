@@ -3076,6 +3076,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     AppSettings settings(path);
     QVERIFY(!settings.closeAfterLaunch());
     QVERIFY(!settings.couchModeEnabled());
+    QCOMPARE(settings.couchLibraryView(), QStringLiteral("detail"));
     settings.setReducedMotion(true);
     settings.setArtworkCacheLimitMb(512);
     settings.setSteamId(QStringLiteral("76561198000000000"));
@@ -3091,6 +3092,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setBattleNetEnabled(false);
     settings.setCloseAfterLaunch(true);
     settings.setCouchModeEnabled(true);
+    settings.setCouchLibraryView(QStringLiteral("grid"));
   }
   AppSettings reloaded(path);
   QVERIFY(reloaded.reducedMotion());
@@ -3109,6 +3111,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(!reloaded.battleNetEnabled());
   QVERIFY(reloaded.closeAfterLaunch());
   QVERIFY(reloaded.couchModeEnabled());
+  QCOMPARE(reloaded.couchLibraryView(), QStringLiteral("grid"));
 
   // A config without emulator keys keeps auto-detection pending and the keys absent
   // even after unrelated settings change.

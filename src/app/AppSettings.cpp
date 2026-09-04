@@ -197,6 +197,18 @@ void AppSettings::setCouchModeEnabled(bool value) {
   emit couchModeEnabledChanged();
 }
 
+QString AppSettings::couchLibraryView() const { return m_couchLibraryView; }
+
+void AppSettings::setCouchLibraryView(const QString& value) {
+  const QString normalized = value == QStringLiteral("grid") ? value : QStringLiteral("detail");
+  if (m_couchLibraryView == normalized) {
+    return;
+  }
+  m_couchLibraryView = normalized;
+  save();
+  emit couchLibraryViewChanged();
+}
+
 QString AppSettings::defaultPath() {
   return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
          QStringLiteral("/omakade/config.toml");
@@ -259,6 +271,12 @@ void AppSettings::load() {
   m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
+  const QRegularExpression couchLibraryView(
+      QStringLiteral("(?m)^couch_library_view\\s*=\\s*\"(detail|grid)\"\\s*$"));
+  const QRegularExpressionMatch couchLibraryViewMatch = couchLibraryView.match(contents);
+  if (couchLibraryViewMatch.hasMatch()) {
+    m_couchLibraryView = couchLibraryViewMatch.captured(1);
+  }
   m_sunshineOmakadeApp = readEnabled(QStringLiteral("sunshine_omakade_app"), false);
   m_sunshineGameApps = readEnabled(QStringLiteral("sunshine_game_apps"), false);
 }
@@ -321,9 +339,11 @@ void AppSettings::save() const {
   }
   contents += QStringLiteral("close_after_launch = %1\n"
                              "couch_mode_enabled = %2\n"
-                             "sunshine_omakade_app = %3\nsunshine_game_apps = %4\n")
+                             "couch_library_view = \"%3\"\n"
+                             "sunshine_omakade_app = %4\nsunshine_game_apps = %5\n")
                   .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_couchModeEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(m_couchLibraryView)
                   .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"));
   file.write(contents.toUtf8());

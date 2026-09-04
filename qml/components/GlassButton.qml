@@ -25,6 +25,7 @@ Button {
     rightPadding: leftPadding
     spacing: 8 * displayScale
     focusPolicy: Qt.StrongFocus
+    KeyNavigation.priority: KeyNavigation.BeforeItem
 
     // Qt only presses a Button on Return or Enter when the platform theme says so. Controller
     // and keyboard confirm must work on every desktop, so handle both keys here.

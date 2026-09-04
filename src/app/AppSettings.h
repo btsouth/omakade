@@ -28,6 +28,8 @@ class AppSettings final : public QObject {
                  closeAfterLaunchChanged)
   Q_PROPERTY(bool couchModeEnabled READ couchModeEnabled WRITE setCouchModeEnabled NOTIFY
                  couchModeEnabledChanged)
+  Q_PROPERTY(QString couchLibraryView READ couchLibraryView WRITE setCouchLibraryView NOTIFY
+                 couchLibraryViewChanged)
   Q_PROPERTY(bool sunshineOmakadeApp READ sunshineOmakadeApp WRITE setSunshineOmakadeApp NOTIFY
                  sunshineChanged)
   Q_PROPERTY(bool sunshineGameApps READ sunshineGameApps WRITE setSunshineGameApps NOTIFY
@@ -72,6 +74,8 @@ public:
   void setCloseAfterLaunch(bool value);
   [[nodiscard]] bool couchModeEnabled() const;
   void setCouchModeEnabled(bool value);
+  [[nodiscard]] QString couchLibraryView() const;
+  void setCouchLibraryView(const QString& value);
   [[nodiscard]] bool sunshineOmakadeApp() const;
   void setSunshineOmakadeApp(bool value);
   [[nodiscard]] bool sunshineGameApps() const;
@@ -86,6 +90,7 @@ signals:
   void sourcesChanged();
   void closeAfterLaunchChanged();
   void couchModeEnabledChanged();
+  void couchLibraryViewChanged();
   void sunshineChanged();
 
 private:
@@ -111,6 +116,7 @@ private:
   bool m_battleNetEnabled = true;
   bool m_closeAfterLaunch = false;
   bool m_couchModeEnabled = false;
+  QString m_couchLibraryView = QStringLiteral("detail");
   bool m_sunshineOmakadeApp = false;
   bool m_sunshineGameApps = false;
 };

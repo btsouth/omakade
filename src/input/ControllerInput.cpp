@@ -9,11 +9,11 @@
 ControllerInput::ControllerInput(QObject* parent) : QObject(parent) {
   m_pollTimer.setInterval(8);
   connect(&m_pollTimer, &QTimer::timeout, this, &ControllerInput::pollEvents);
-  m_repeatTimer.setInterval(320);
+  m_repeatTimer.setInterval(260);
   connect(&m_repeatTimer, &QTimer::timeout, this, [this] {
     if (m_axisKey != 0) {
       emitDirection(m_axisKey);
-      m_repeatTimer.setInterval(90);
+      m_repeatTimer.setInterval(75);
     }
   });
   connect(&m_initWatcher, &QFutureWatcher<InitResult>::finished, this, [this] {
@@ -161,7 +161,7 @@ void ControllerInput::closeController(SDL_JoystickID id) {
     m_axisY = 0;
     m_axisKey = 0;
     m_repeatTimer.stop();
-    m_repeatTimer.setInterval(320);
+    m_repeatTimer.setInterval(260);
     emit controllerChanged();
   }
 }
@@ -222,7 +222,7 @@ void ControllerInput::updateAxisKey() {
   m_axisKey = key;
   if (key == 0) {
     m_repeatTimer.stop();
-    m_repeatTimer.setInterval(320);
+    m_repeatTimer.setInterval(260);
   } else {
     emitDirection(key);
     m_repeatTimer.start();

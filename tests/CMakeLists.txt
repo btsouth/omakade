@@ -46,7 +46,7 @@ add_test(NAME omakade_couch_navigation
   COMMAND omakade --couch --couch-navigation-test --render-size=1920x1080
 )
 set_tests_properties(omakade_couch_navigation PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config-couch-navigation"
   TIMEOUT 30
 )
 
@@ -97,7 +97,7 @@ add_test(NAME omakade_couch_thousand_game_navigation
   COMMAND omakade --couch --stress-test --couch-navigation-test --render-size=1920x1080
 )
 set_tests_properties(omakade_couch_thousand_game_navigation PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE=;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config-thousand-navigation"
   TIMEOUT 10
 )
 
@@ -106,7 +106,7 @@ add_test(NAME omakade_couch_owned_navigation
           --uninstalled-layout-test --render-size=1920x1080
 )
 set_tests_properties(omakade_couch_owned_navigation PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE=;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config-owned-navigation"
   TIMEOUT 10
 )
 set_tests_properties(omakade_controller_navigation_wide PROPERTIES
@@ -165,6 +165,26 @@ foreach(couch_case IN ITEMS 720p 1440p ultrawide 4k)
             --render-size=${couch_size}
   )
   set_tests_properties(omakade_couch_render_${couch_case} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 30
+  )
+endforeach()
+
+foreach(grid_size IN ITEMS 720p 1080p 4k)
+  if(grid_size STREQUAL "720p")
+    set(grid_dimensions 1280x720)
+  elseif(grid_size STREQUAL "1080p")
+    set(grid_dimensions 1920x1080)
+  else()
+    set(grid_dimensions 3840x2160)
+  endif()
+  add_test(NAME omakade_couch_grid_${grid_size}_render
+    COMMAND omakade --couch --owned-layout-test
+            --render-overlay=couch-grid
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-grid-${grid_size}.png
+            --render-size=${grid_dimensions}
+  )
+  set_tests_properties(omakade_couch_grid_${grid_size}_render PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30
   )

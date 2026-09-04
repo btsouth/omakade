@@ -767,10 +767,8 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
-        // Only give the grid focus when nothing has it, so alt-tabbing back does not pull
-        // focus away from a toolbar control or an empty-state button.
-        if (active && root.navigationContainer() === null && !root.activeFocusItem) {
-            Qt.callLater(root.focusLibrary)
+        if (active) {
+            Qt.callLater(root.focusCurrentSurface)
         }
     }
     onClosing: function(close) {
@@ -1470,6 +1468,7 @@ ApplicationWindow {
         enabled: visible && root.navigationContainer() === null
         libraryModel: Library
         scanning: root.libraryScanning
+        viewOverride: CouchLibraryViewOverride
 
         onGameActivated: index => root.openGame(index)
         onFavoriteToggled: function(index) {
@@ -2881,6 +2880,11 @@ ApplicationWindow {
 
     Connections {
         target: Controller
+        function onControllerChanged() {
+            if (Controller.connected && root.couchMode) {
+                Qt.callLater(root.focusCurrentSurface)
+            }
+        }
         function onFocusDirectionRequested(key) {
             const container = root.navigationContainer()
             if (!root.couchMode && !container && !libraryView.gridFocused
