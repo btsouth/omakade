@@ -76,7 +76,11 @@ FocusScope {
             return
         }
         if (root.gridFocused) {
-            viewButton.forceActiveFocus(Qt.TabFocusReason)
+            if (root.detailView) {
+                viewButton.forceActiveFocus(Qt.TabFocusReason)
+            } else {
+                layoutButton.forceActiveFocus(Qt.TabFocusReason)
+            }
         } else {
             focusGrid()
         }
@@ -594,7 +598,7 @@ FocusScope {
     Column {
         anchors.centerIn: parent
         spacing: 14 * root.uiScale
-        visible: gameStrip.count === 0
+        visible: root.libraryModel.rowCount() === 0
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -628,17 +632,20 @@ FocusScope {
         orientation: ListView.Horizontal
         spacing: 18 * root.uiScale
         clip: true
-        model: root.libraryModel
+        model: visible ? root.libraryModel : null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
-        KeyNavigation.up: allButton
         highlightMoveDuration: Preferences.reducedMotion ? 0 : 130
         highlightRangeMode: ListView.ApplyRange
         preferredHighlightBegin: width * 0.08
         preferredHighlightEnd: width * 0.72
         boundsBehavior: Flickable.StopAtBounds
 
-        onCurrentIndexChanged: root.currentIndex = currentIndex
+        onCurrentIndexChanged: {
+            if (visible) {
+                root.currentIndex = currentIndex
+            }
+        }
 
         Keys.onUpPressed: function(event) {
             viewButton.forceActiveFocus(Qt.TabFocusReason)
@@ -813,14 +820,27 @@ FocusScope {
         cellWidth: 212 * root.uiScale
         cellHeight: 350 * root.uiScale
         readonly property int columnCount: Math.max(1, Math.floor(width / cellWidth))
-        model: root.libraryModel
+        model: visible ? root.libraryModel : null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
         highlightMoveDuration: Preferences.reducedMotion ? 0 : 110
         boundsBehavior: Flickable.StopAtBounds
         clip: true
 
-        onCurrentIndexChanged: root.currentIndex = currentIndex
+        onCurrentIndexChanged: {
+            if (visible) {
+                root.currentIndex = currentIndex
+            }
+        }
+
+        Keys.onUpPressed: function(event) {
+            if (currentIndex >= 0 && currentIndex < columnCount) {
+                allButton.forceActiveFocus(Qt.TabFocusReason)
+                event.accepted = true
+            } else {
+                event.accepted = false
+            }
+        }
 
         Keys.onReturnPressed: function(event) {
             if (currentIndex >= 0) {

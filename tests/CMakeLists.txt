@@ -55,6 +55,7 @@ add_test(NAME omakade_couch_thousand_game_startup
 )
 set_tests_properties(omakade_couch_thousand_game_startup PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+  RUN_SERIAL TRUE
   TIMEOUT 5
 )
 

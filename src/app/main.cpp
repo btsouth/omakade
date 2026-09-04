@@ -765,6 +765,18 @@ int main(int argc, char* argv[]) {
             fail(QStringLiteral("Couch layout control did not activate the persistent grid"));
             return;
           }
+          controller.toolbarRequested();
+          QCoreApplication::processEvents();
+          if (!layout->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Controls did not reach the Grid layout action"));
+            return;
+          }
+          controller.toolbarRequested();
+          QCoreApplication::processEvents();
+          if (!grid->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Controls did not return to the game grid"));
+            return;
+          }
           const int gridColumns = grid->property("columnCount").toInt();
           grid->setProperty("currentIndex", gridColumns + 1);
           sendKey(Qt::Key_Up);
