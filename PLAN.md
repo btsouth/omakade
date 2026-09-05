@@ -856,3 +856,48 @@ follow-ups still open:
    and Flatpak launcher variants that are only contract-tested today.
 2. Collect exact-package ARM64 hardware results in issue 13. Both architectures
    pass automated checks; contributor hardware validation remains outstanding.
+
+## Explicitly deferred
+
+- Installing, updating, repairing, or moving games
+- Storefront browsing and purchasing
+- Proton or Wine configuration
+- Cloud-save management
+- Friends, chat, and multiplayer invitations
+- Automatic fuzzy merging across stores
+- Emulator installation and ROM scraping
+- Plugin marketplace or third-party executable plugins
+- Background daemon
+- Mobile companion
+- Cross-device sync
+
+Each item needs a separate product decision. None should enter incidentally while
+building the library.
+
+## Decisions to settle before M0 implementation
+
+Recommended defaults are listed first:
+
+1. **License:** GPL-3.0-or-later, or MIT if permissive reuse is more important.
+2. **Application ID:** reserve a reverse-DNS ID tied to the eventual project
+   organization before packaging.
+3. **Post-launch behavior:** close Omakade after a successful launch, with a
+   future preference to keep it open.
+4. **Controller library:** evaluate SDL 3 against direct Linux input before
+   adding the dependency.
+5. **Brand assets:** create a simple code-native SVG mark that remains legible
+   in the Omarchy launcher and on game-detail surfaces.
+
+## Reference contracts
+
+- Omarchy theming: https://omarchy.org/manual/making-your-own-theme/
+- Omarchy source: https://github.com/basecamp/omarchy
+- Qt Quick: https://doc.qt.io/qt-6/qtquick-index.html
+- Qt SQL and QML models:
+  https://doc.qt.io/qt-6/qtquick-modelviewsdata-sqlmodels.html
+- Steam achievements API:
+  https://partner.steamgames.com/doc/webapi/ISteamUserStats
+- Steam owned games API:
+  https://partner.steamgames.com/doc/webapi/IPlayerService
+- Lutris client and command interface: https://github.com/lutris/lutris
+- Heroic client: https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher
