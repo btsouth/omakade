@@ -38,6 +38,13 @@ x86_64 package also passed upgrade from 1.5.0, removal, reinstall, and smoke tes
 in a disposable Arch container. This does not replace real Omarchy ARM64 hardware
 or native/Flatpak library reports. Those gaps remain open with maintainer approval.
 
+## Main after 1.6.0
+
+The role-name cleanup in PR #28 merged as `2de11d5`. All nine models retain
+identical role IDs and names, and all 41 release tests pass on the integrated
+code. This is an unreleased maintenance change, not an update to the 1.6.0
+packages. It does not add hardware or real-library compatibility evidence.
+
 ## Automated visual matrix
 
 Verified offscreen on August 31, 2026:

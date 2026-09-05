@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Share QML role-name definitions across nine game models without changing
+  their role IDs, names, or behavior.
+
 ## 1.6.0
 
 ### Couch Mode

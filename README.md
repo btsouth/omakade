@@ -9,7 +9,7 @@
 
 [Watch the 18-second demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
 
-Omakade is a fast, local-first game library built for Omarchy. It brings
+Omakade is a Linux game library built for Omarchy. It brings
 installed Steam, Lutris, Heroic, Faugus, RetroArch, Battle.net, Epic, GOG, and Amazon games
 into one quiet, cover-focused home that follows the active Omarchy theme.
 
@@ -41,7 +41,9 @@ Omakade 1.6.0 includes:
 - Explicit linking for games installed through multiple sources
 - ProtonDB and PCGamingWiki shortcuts with actionable launch errors
 - Keyboard, mouse, and controller navigation
-- Controller-first Couch Mode with ten-foot layouts and on-screen search
+- Controller-first Couch Mode with Detail and Grid views, on-screen search,
+  and controller input that stays with your game after launch
+- x86_64 and ARM64 packages, with checksums, SBOMs, and signed provenance
 - Optional Sunshine app export so Moonlight can start Omakade or any installed
   game, plus `--play` and `--quit` commands
 
@@ -54,8 +56,12 @@ with a deterministic fictional library.
 Direct GOG discovery checks `~/GOG Games`, `~/Games/GOG`, `~/Games/Heroic`,
 and immediate game folders under `~/Games`. Set `OMAKADE_GOG_LIBRARY_PATHS`
 to a colon-separated list of additional library roots. Native Linux builds
-launch directly; Windows builds use `umu-run` with an isolated per-game prefix.
+launch directly; Windows game builds run on Linux through `umu-run` with an
+isolated per-game prefix. Omakade itself does not run on Windows.
 GOG games installed through Heroic continue to launch through Heroic.
+
+ARM64 packages pass automated build and lifecycle checks; testing on an Omarchy
+ARM64 device is still open in [issue #13](https://github.com/btsouth/omakade/issues/13).
 
 ## Install on Omarchy or Arch
 
@@ -88,9 +94,10 @@ sudo pacman -U ./omakade-1.6.0-1-x86_64.pkg.tar.zst
 ### Install or upgrade from a browser download
 
 1. Open the [latest release](https://github.com/btsouth/omakade/releases/latest).
-2. Under **Assets**, download `omakade-1.6.0-1-x86_64.pkg.tar.zst` and
-   `SHA256SUMS` into the same folder.
-3. Open a terminal in that folder and run:
+2. Under **Assets**, download `omakade-1.6.0-1-x86_64.pkg.tar.zst` (or
+   `omakade-1.6.0-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
+3. Open a terminal in that folder and run the commands below. On ARM64,
+   replace `x86_64` with `aarch64` in the package filename:
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing

@@ -848,6 +848,10 @@ Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 
 ### After 1.6.0
 
+PR #28 merged shared QML role-name definitions across nine game models. This
+unreleased cleanup preserves all role IDs and names and passes all 41 release
+tests against main. It does not change the published 1.6.0 packages.
+
 Couch Mode, direct GOG support, ARM64 packages, dependency scanning, and release
 SBOMs shipped in 1.6.0. The maintainer approved publication with two validation
 follow-ups still open:

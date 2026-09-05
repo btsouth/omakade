@@ -1,24 +1,23 @@
 # Omakade: an Omarchy-native game library
 
-I built Omakade because launching games was one of the few places where my
-Omarchy desktop stopped feeling cohesive.
+Current project summary for Omarchy discussions. This replaces the early 0.5
+proposal; Omakade is now available through the Omarchy Package Repository.
 
-It is a fast, local-first library for installed Steam, Lutris, and Heroic
-games. It follows the active Omarchy colors, font, rounding, and launcher
-transparency. It supports cover and hero art, local Steam achievements,
-playtime, search, favorites, controllers, custom covers, and explicit duplicate
-linking across launchers.
+Omakade 1.6.0 is a Linux game library with controller-first Couch Mode, Detail
+and Grid views, on-screen search, direct GOG support, and discovery from Steam,
+Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, and Battle.net.
 
-Omakade does not install games, manage accounts, or replace the source
-launchers. It reads their local libraries and delegates Play and Manage back to
-them.
+Native Linux GOG games launch directly. Windows GOG game builds run on Linux
+through UMU; Heroic-managed games keep their Heroic launch settings. Omakade
+does not install games, manage accounts, or replace source launchers.
 
-The current preview is 0.5. I would like feedback on an optional entry under
-Omarchy's gaming install menu once the public package and compatibility report
-are ready. I am not proposing default installation at this stage.
+The release includes x86_64 and ARM64 packages with checksums, SBOMs, and signed
+provenance. Automated checks pass on both architectures. ARM64 hardware testing
+and broader real native/Flatpak library reports remain open.
 
-Project: `PUBLIC_REPOSITORY_URL`
+Omakade remains an independent community project, not an official Omarchy app.
 
-Preview video: `PREVIEW_VIDEO_URL`
-
-Compatibility report: `COMPATIBILITY_REPORT_URL`
+- [Project](https://github.com/btsouth/omakade)
+- [Release 1.6.0](https://github.com/btsouth/omakade/releases/tag/v1.6.0)
+- [Demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
+- [Compatibility report](COMPATIBILITY.md)
