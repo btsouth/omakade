@@ -78,6 +78,7 @@ add_library(omakade_core STATIC
   src/library/UnifiedGameModel.h
   src/launch/GameLauncher.cpp
   src/launch/GameLauncher.h
+  src/launch/LaunchCommand.h
   src/launch/PlayRequest.cpp
   src/launch/PlayRequest.h
   src/launch/SteamLauncher.cpp

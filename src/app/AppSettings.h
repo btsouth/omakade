@@ -33,6 +33,8 @@ class AppSettings final : public QObject {
                  couchModeEnabledChanged)
   Q_PROPERTY(QString couchLibraryView READ couchLibraryView WRITE setCouchLibraryView NOTIFY
                  couchLibraryViewChanged)
+  Q_PROPERTY(int librarySortMode READ librarySortMode WRITE setLibrarySortMode NOTIFY
+                 librarySortModeChanged)
   Q_PROPERTY(bool sunshineOmakadeApp READ sunshineOmakadeApp WRITE setSunshineOmakadeApp NOTIFY
                  sunshineChanged)
   Q_PROPERTY(bool sunshineGameApps READ sunshineGameApps WRITE setSunshineGameApps NOTIFY
@@ -85,6 +87,9 @@ public:
   void setCouchModeEnabled(bool value);
   [[nodiscard]] QString couchLibraryView() const;
   void setCouchLibraryView(const QString& value);
+  // Mirrors LibraryFilterModel::SortMode: 0 title, 1 recently played, 2 playtime.
+  [[nodiscard]] int librarySortMode() const;
+  void setLibrarySortMode(int value);
   [[nodiscard]] bool sunshineOmakadeApp() const;
   void setSunshineOmakadeApp(bool value);
   [[nodiscard]] bool sunshineGameApps() const;
@@ -106,6 +111,7 @@ signals:
   void closeAfterLaunchChanged();
   void couchModeEnabledChanged();
   void couchLibraryViewChanged();
+  void librarySortModeChanged();
   void sunshineChanged();
 
 private:
@@ -137,6 +143,7 @@ private:
   bool m_closeAfterLaunch = false;
   bool m_couchModeEnabled = false;
   QString m_couchLibraryView = QStringLiteral("detail");
+  int m_librarySortMode = 0;
   bool m_sunshineOmakadeApp = false;
   bool m_sunshineGameApps = false;
 };

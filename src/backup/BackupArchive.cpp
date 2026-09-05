@@ -125,7 +125,7 @@ QStringList BackupArchive::settingNames() {
           "pcsx2_auto",        "ryujinx_auto",
           "battlenet_enabled", "close_after_launch",
           "couch_mode",        "couch_library_view",
-          "gog_library_paths"};
+          "library_sort_mode", "gog_library_paths"};
 }
 
 QString BackupArchive::artworkName(const QByteArray& bytes, QString* error) {
@@ -275,6 +275,9 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
     } else if (setting.key() == "couch_library_view") {
       if (!QStringList{"detail", "grid"}.contains(setting.value().toString()))
         return fail(error, "The library view is invalid.");
+    } else if (setting.key() == "library_sort_mode") {
+      if (!QStringList{"title", "recent", "playtime"}.contains(setting.value().toString()))
+        return fail(error, "The library sort order is invalid.");
     } else if (setting.key() == "gog_library_paths") {
       if (!setting.value().isArray() || setting.value().toArray().size() > 64)
         return fail(error, "The GOG folder list is invalid.");

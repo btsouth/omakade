@@ -1477,6 +1477,33 @@ void CoreTests::steamLauncherBuildsSafeUrls() {
            QUrl(QStringLiteral("steam://rungameid/13899108412974694400")));
   QVERIFY(SteamLauncher::launchUrl(QStringLiteral("440;touch /tmp/nope")).isEmpty());
   QVERIFY(SteamLauncher::installUrl(QStringLiteral("440;touch /tmp/nope")).isEmpty());
+
+  // Launches go to the Steam client itself, not the desktop URL handler: some Steam
+  // packages register no steam:// handler and xdg-open would fall back to a browser.
+  // Native Steam is tried first, then Flatpak Steam, so a stale native binary still
+  // reaches an installed Flatpak client.
+  const QUrl launch = SteamLauncher::launchUrl(QStringLiteral("440"));
+  const QList<LaunchCommand> both =
+      SteamLauncher::steamCommands(launch, QStringLiteral("/usr/bin/steam"), true);
+  QCOMPARE(both.size(), 2);
+  QCOMPARE(both.at(0).program, QStringLiteral("/usr/bin/steam"));
+  QCOMPARE(both.at(0).arguments, QStringList{QStringLiteral("steam://rungameid/440")});
+  QCOMPARE(both.at(1).program, QStringLiteral("flatpak"));
+  QCOMPARE(both.at(1).arguments,
+           (QStringList{QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"),
+                        QStringLiteral("steam://rungameid/440")}));
+  const QList<LaunchCommand> nativeOnly =
+      SteamLauncher::steamCommands(launch, QStringLiteral("/usr/bin/steam"), false);
+  QCOMPARE(nativeOnly.size(), 1);
+  QCOMPARE(nativeOnly.at(0).program, QStringLiteral("/usr/bin/steam"));
+  const QList<LaunchCommand> flatpakOnly = SteamLauncher::steamCommands(launch, QString{}, true);
+  QCOMPARE(flatpakOnly.size(), 1);
+  QCOMPARE(flatpakOnly.at(0).program, QStringLiteral("flatpak"));
+  QVERIFY(SteamLauncher::steamCommands(launch, QString{}, false).isEmpty());
+  QVERIFY(SteamLauncher::steamCommands(QUrl(QStringLiteral("https://example.com")),
+                                       QStringLiteral("/usr/bin/steam"), true)
+              .isEmpty());
+  QVERIFY(SteamLauncher::steamCommands(QUrl{}, QStringLiteral("/usr/bin/steam"), true).isEmpty());
 }
 
 void CoreTests::lutrisScannerImportsOnlyLaunchableGames() {
@@ -1660,12 +1687,17 @@ void CoreTests::backupSettingsApplyAtomicallyAndKeepAccounts() {
   QCOMPARE(settings.igdbClientId(), QString("localclient"));
   settings.setSunshineGameApps(true);
   settings.setCouchModeEnabled(true);
-  QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}, {"gog_library_paths", QJsonArray{"/offline/GOG"}}}, false));
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}, {"gog_library_paths", QJsonArray{"/offline/GOG"}},
+                                        {"library_sort_mode", "recent"}}, false));
   QVERIFY(settings.reducedMotion()); QVERIFY(settings.couchModeEnabled());
   QCOMPARE(settings.gogLibraryPaths(), QStringList{"/offline/GOG"});
+  QCOMPARE(settings.librarySortMode(), 1);
+  QVERIFY(!settings.applyBackupSettings({{"library_sort_mode", "random"}}, false));
+  QCOMPARE(settings.librarySortMode(), 1);
   QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}}, true));
   QVERIFY(settings.reducedMotion()); QVERIFY(!settings.couchModeEnabled());
   QVERIFY(settings.gogLibraryPaths().isEmpty());
+  QCOMPARE(settings.librarySortMode(), 0);
   QCOMPARE(settings.steamId(), QString("76561198000000000"));
   QCOMPARE(settings.igdbClientId(), QString("localclient"));
   QCOMPARE(settings.retroAchievementsUsername(), QString("local-user"));
@@ -4201,6 +4233,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     QVERIFY(!settings.closeAfterLaunch());
     QVERIFY(!settings.couchModeEnabled());
     QCOMPARE(settings.couchLibraryView(), QStringLiteral("detail"));
+    QCOMPARE(settings.librarySortMode(), 0);
     settings.setReducedMotion(true);
     settings.setArtworkCacheLimitMb(512);
     settings.setSteamId(QStringLiteral("76561198000000000"));
@@ -4218,6 +4251,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setCloseAfterLaunch(true);
     settings.setCouchModeEnabled(true);
     settings.setCouchLibraryView(QStringLiteral("grid"));
+    settings.setLibrarySortMode(1);
   }
   AppSettings reloaded(path);
   QVERIFY(reloaded.reducedMotion());
@@ -4238,6 +4272,9 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(reloaded.closeAfterLaunch());
   QVERIFY(reloaded.couchModeEnabled());
   QCOMPARE(reloaded.couchLibraryView(), QStringLiteral("grid"));
+  QCOMPARE(reloaded.librarySortMode(), 1);
+  reloaded.setLibrarySortMode(7);  // out of range falls back to title
+  QCOMPARE(reloaded.librarySortMode(), 0);
 
   // A config without emulator keys keeps auto-detection pending and the keys absent
   // even after unrelated settings change.

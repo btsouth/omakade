@@ -67,6 +67,11 @@ AppSettings::AppSettings(const QString& path, QObject* parent)
   load();
 }
 
+namespace {
+const QStringList kSortModeNames = {QStringLiteral("title"), QStringLiteral("recent"),
+                                    QStringLiteral("playtime")};
+}  // namespace
+
 QJsonObject AppSettings::backupSettings() const {
   return {{"reduced_motion", m_reducedMotion}, {"artwork_cache_limit_mb", m_artworkCacheLimitMb},
       {"steam_enabled", m_steamEnabled}, {"lutris_enabled", m_lutrisEnabled},
@@ -76,6 +81,7 @@ QJsonObject AppSettings::backupSettings() const {
       {"pcsx2_auto", m_pcsx2Auto}, {"ryujinx_auto", m_ryujinxAuto},
       {"battlenet_enabled", m_battleNetEnabled}, {"close_after_launch", m_closeAfterLaunch},
       {"couch_mode", m_couchModeEnabled}, {"couch_library_view", m_couchLibraryView},
+      {"library_sort_mode", kSortModeNames.value(m_librarySortMode)},
       {"gog_library_paths", QJsonArray::fromStringList(m_gogLibraryPaths)}};
 }
 
@@ -96,6 +102,8 @@ void AppSettings::assignBackupSettings(const QJsonObject& settings) {
   m_closeAfterLaunch = settings.value("close_after_launch").toBool();
   m_couchModeEnabled = settings.value("couch_mode").toBool();
   m_couchLibraryView = settings.value("couch_library_view").toString();
+  m_librarySortMode =
+      qMax(0, static_cast<int>(kSortModeNames.indexOf(settings.value("library_sort_mode").toString())));
   m_gogLibraryPaths.clear();
   for (const auto& path : settings.value("gog_library_paths").toArray()) {
     const QString normalized = normalizedLibraryPath(path.toString());
@@ -116,7 +124,7 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
   if (!save()) { assignBackupSettings(before); return false; }
   emit reducedMotionChanged(); emit artworkCacheLimitMbChanged(); emit sourcesChanged();
   emit closeAfterLaunchChanged(); emit couchModeEnabledChanged(); emit couchLibraryViewChanged();
-  emit gogLibraryPathsChanged();
+  emit librarySortModeChanged(); emit gogLibraryPathsChanged();
   return true;
 }
 
@@ -329,6 +337,20 @@ void AppSettings::setCouchLibraryView(const QString& value) {
   emit couchLibraryViewChanged();
 }
 
+int AppSettings::librarySortMode() const { return m_librarySortMode; }
+
+void AppSettings::setLibrarySortMode(int value) {
+  if (value < 0 || value >= kSortModeNames.size()) {
+    value = 0;
+  }
+  if (m_librarySortMode == value) {
+    return;
+  }
+  m_librarySortMode = value;
+  save();
+  emit librarySortModeChanged();
+}
+
 QString AppSettings::defaultPath() {
   return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
          QStringLiteral("/omakade/config.toml");
@@ -409,6 +431,12 @@ void AppSettings::load() {
   if (couchLibraryViewMatch.hasMatch()) {
     m_couchLibraryView = couchLibraryViewMatch.captured(1);
   }
+  const QRegularExpression sortMode(
+      QStringLiteral("(?m)^library_sort_mode\\s*=\\s*\"(title|recent|playtime)\"\\s*$"));
+  const QRegularExpressionMatch sortModeMatch = sortMode.match(contents);
+  if (sortModeMatch.hasMatch()) {
+    m_librarySortMode = static_cast<int>(kSortModeNames.indexOf(sortModeMatch.captured(1)));
+  }
   m_sunshineOmakadeApp = readEnabled(QStringLiteral("sunshine_omakade_app"), false);
   m_sunshineGameApps = readEnabled(QStringLiteral("sunshine_game_apps"), false);
 }
@@ -473,12 +501,14 @@ bool AppSettings::save() const {
   contents += QStringLiteral("close_after_launch = %1\n"
                              "couch_mode_enabled = %2\n"
                              "couch_library_view = \"%3\"\n"
+                             "library_sort_mode = \"%6\"\n"
                              "sunshine_omakade_app = %4\nsunshine_game_apps = %5\n")
                   .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_couchModeEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_couchLibraryView)
                   .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
-                  .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"));
+                  .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(kSortModeNames.value(m_librarySortMode));
   contents += QStringLiteral("gog_library_paths = ") +
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))
                                    .toJson(QJsonDocument::Compact)) + QLatin1Char('\n');

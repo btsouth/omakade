@@ -10,6 +10,19 @@
 - Back up personal library choices, settings, and artwork. Preview and merge or
   replace a backup, with recovery if restoring is interrupted.
 - Use the new controls in Desktop and Couch Mode, including controller text entry.
+
+## 1.6.1
+
+- Launch, manage, and install Steam games through the Steam client itself,
+  native first and then Flatpak, and only fall back to the desktop `steam://`
+  URL handler when neither is available. Steam packages that register no
+  handler sent Play to the web browser. Thanks @radiohost-cloud for the report
+  and the Apple Silicon test.
+- Stop matching the Omakade desktop entry when searching for "Steam" or
+  "RetroArch" in the app launcher. Thanks @gmickel for the report.
+- Remember the library sort order between launches.
+- Show every game's cover at the same compact size on the details screen
+  instead of letting portrait covers render larger than landscape ones.
 - Share QML role-name definitions across nine game models without changing
   their role IDs, names, or behavior.
 

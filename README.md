@@ -66,6 +66,11 @@ GOG games installed through Heroic continue to launch through Heroic.
 
 ARM64 packages pass automated build and lifecycle checks; testing on an Omarchy
 ARM64 device is still open in [issue #13](https://github.com/btsouth/omakade/issues/13).
+On Apple Silicon with Asahi Linux, Omakade installs and discovers Steam games,
+but the `fex-steam` wrapper that provides `/usr/bin/steam` can fail to start
+games from any `steam://` request, including Steam's own client. That is a
+wrapper limitation, not something Omakade can work around; see issue #13 for
+the details and workarounds reported so far.
 
 ## Install on Omarchy or Arch
 
