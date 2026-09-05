@@ -4,6 +4,9 @@
 
 - Share QML role-name definitions across nine game models without changing
   their role IDs, names, or behavior.
+- Remember the library sort order between launches.
+- Show every game's cover at the same compact size on the details screen
+  instead of letting portrait covers render larger than landscape ones.
 
 ## 1.6.0
 

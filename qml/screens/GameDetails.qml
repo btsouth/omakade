@@ -169,9 +169,12 @@ Item {
             id: coverSidebar
             anchors.top: parent.top
             anchors.left: parent.left
-            width: Math.max(0, Math.min(root.width * (root.couchMode ? 0.24 : 0.28),
+            // Fixed 2:3 frame so every game shows the same cover size; keep it
+            // compact so the description column stays the focus.
+            width: Math.max(0, Math.min(root.couchMode ? 300 * root.uiScale : 240,
+                                        root.width * (root.couchMode ? 0.2 : 0.22),
                                         (detailsArea.height - reservedControlHeight) / 1.5,
-                                        detailsArea.width * 0.44))
+                                        detailsArea.width * 0.4))
             spacing: 8
             readonly property real reservedControlHeight:
                 (coverActions.visible ? coverActions.implicitHeight + spacing : 0)
@@ -195,7 +198,7 @@ Item {
                     source: root.game.coverPath || ""
                     asynchronous: true
                     cache: false
-                    fillMode: Image.PreserveAspectFit
+                    fillMode: Image.PreserveAspectCrop
                     sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
                     sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
                     opacity: status === Image.Ready ? 1 : 0
