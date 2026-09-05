@@ -79,29 +79,7 @@ QVariant HeroicGameModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> HeroicGameModel::roleNames() const {
-  return {{GameRoles::Title, "title"},
-          {GameRoles::Subtitle, "subtitle"},
-          {GameRoles::Description, "description"},
-          {GameRoles::Hours, "hours"},
-          {GameRoles::Progress, "progress"},
-          {GameRoles::AchievementsUnlocked, "achievementsUnlocked"},
-          {GameRoles::AchievementsTotal, "achievementsTotal"},
-          {GameRoles::Favorite, "favorite"},
-          {GameRoles::Recent, "recent"},
-          {GameRoles::LastPlayed, "lastPlayed"},
-          {GameRoles::AccentStart, "accentStart"},
-          {GameRoles::AccentEnd, "accentEnd"},
-          {GameRoles::CoverMark, "coverMark"},
-          {GameRoles::Year, "year"},
-          {GameRoles::AppId, "appId"},
-          {GameRoles::CoverPath, "coverPath"},
-          {GameRoles::HeroPath, "heroPath"},
-          {GameRoles::LogoPath, "logoPath"},
-          {GameRoles::InstallPath, "installPath"},
-          {GameRoles::Source, "source"},
-          {GameRoles::Runner, "runner"},
-          {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"}};
+  return GameRoles::names();
 }
 
 bool HeroicGameModel::heroicDetected() const { return m_heroicDetected; }
