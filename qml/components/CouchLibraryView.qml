@@ -842,9 +842,9 @@ FocusScope {
         anchors.bottomMargin: 24 * root.uiScale
         anchors.leftMargin: 58 * root.uiScale
         anchors.rightMargin: 58 * root.uiScale
-        cellWidth: 212 * root.uiScale
+        cellWidth: width / columnCount
         cellHeight: 350 * root.uiScale
-        readonly property int columnCount: Math.max(1, Math.floor(width / cellWidth))
+        readonly property int columnCount: Math.max(1, Math.floor(width / (212 * root.uiScale)))
         model: null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
@@ -899,6 +899,7 @@ FocusScope {
 
             width: 196 * root.uiScale
             height: 330 * root.uiScale
+            transform: Translate { x: (gameGrid.cellWidth - gridCard.width) / 2 }
             transformOrigin: Item.TopLeft
             scale: current ? 1.025 : 1
             z: current ? 2 : 1
