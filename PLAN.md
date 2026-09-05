@@ -846,22 +846,18 @@ Gate:
 
 Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 
-### 1.6 priorities
+### Current roadmap, September 5, 2026
 
-1.6 is the couch-mode release. Work is ordered so secondary platform tasks do
-not compromise the quality or completeness of M6:
+Version 1.6.0 shipped on September 5 at `c91b14e`, including Couch Mode,
+direct GOG support, ARM64 packages, dependency scanning, and release SBOMs.
+The earlier milestone sections describe the development history.
 
-1. Verify the final M6 candidate locally and close any remaining visual,
-   accessibility, performance, or controller-only findings.
-2. Finish the real-library compatibility matrix in issue 9, prioritizing native
-   and Flatpak launcher variants that are only contract-tested today.
-3. Add a supported aarch64 package path for issue 13, using contributor hardware
-   to validate the exact release candidate before publication.
-4. Add dependency scanning and a release bill of materials before the project
-   expands beyond its current distribution scope.
-
-New launcher integrations, storefront features, and unrelated interface work
-stay out of 1.6 unless they fix a release-blocking regression.
+The active post-1.6 completion scope and acceptance gates are in
+[COMPLETION-PLAN.md](docs/COMPLETION-PLAN.md), with execution evidence in
+[COMPLETION-PROGRESS.md](docs/COMPLETION-PROGRESS.md). Convenience features
+are local candidate work until maintainer testing and publication approval.
+Real launcher reports (#9) and ARM64 hardware evidence (#13) remain open;
+published packages do not establish hardware compatibility.
 
 ## Explicitly deferred
 

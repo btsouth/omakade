@@ -35,5 +35,7 @@ enum Role {
   Collections,
   LaunchTarget,
   Installed,
+  CustomHero,
+  CustomLogo,
 };
 }

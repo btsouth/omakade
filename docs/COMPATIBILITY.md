@@ -19,18 +19,28 @@ The reference library contains 45 installed Steam games. Theme colors, font,
 launcher transparency, one-click details, keyboard navigation, and the
 controller input path have been exercised on this system.
 
-## 1.6 candidate validation
+## Release and completion status, September 5, 2026
 
-The current local 1.6 candidate passes all 41 tests in both Debug and Release
-builds. Automated coverage includes Couch Mode detail and grid layouts, focus
-paths, held analog and directional-pad navigation, controller reconnects,
-keyboard and mouse handoff, cursor visibility, and a cached 1,000-game library.
-Regression coverage also checks selection across layout switches and empty-state
-updates after filtering. The maintainer tested the earlier candidate; the final
-1.6.0 candidate still needs a local controller and visual smoke test.
+Version 1.6.0 was published at `c91b14e`. The release record in Linear
+SBS-1135 confirms maintainer approval, both architecture builds, lifecycle
+tests, dependency scans, checksums, and signed provenance. ARM64 packages
+are available; M1/Asahi hardware validation and broader real-library reports
+remain open in GitHub #13 and #9 respectively.
 
-CI on the final pushed commit, the release workflow, exact-candidate testing, and
-the real-library reports below remain release gates.
+The unpublished completion worktree on `codex/completion` passes 81 development
+CTest entries, including personal-data migration from the released schema,
+backup recovery, controller flows, offscreen layouts, and a cached large-library
+fixture. These checks are automated evidence. They do not establish physical
+controller, real launcher, ARM64, or final maintainer acceptance. See
+[COMPLETION-PROGRESS.md](COMPLETION-PROGRESS.md) for commands and limitations.
+
+### Historical pre-release 1.6 validation
+
+The earlier 1.6 candidate passed 41 tests in Debug and Release, covering Couch
+Mode layouts, focus, held navigation, reconnects, input handoff, cursor visibility,
+and a cached 1,000-game library. The former pending-publication notes were
+superseded by the released candidate above. The dated reference system and
+source-specific evidence below retain their original scope.
 
 ## Automated visual matrix
 
