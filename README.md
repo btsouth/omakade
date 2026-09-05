@@ -148,6 +148,33 @@ omakade --couch                     # Start directly in Couch Mode
 omakade --quit
 ```
 
+### Use a dedicated TV alongside agent work
+
+The optional [TV gaming skill](skills/omakade-tv-gaming/SKILL.md) guides coding
+agents through reserving a TV workspace, preserving work displays and input,
+routing game audio, and verifying session shutdown. It includes a configurable
+Gamescope launcher that checks the TV and audio sink before opening a game.
+It is a setup guide and helper, not a built-in TV session manager.
+
+Packages install it under `/usr/share/omakade/skills/omakade-tv-gaming`. Add a
+symlink in the skill directory your agent discovers, or copy the folder if you
+want to customize it independently of package updates. For Codex, for example:
+
+```sh
+mkdir -p ~/.codex/skills
+ln -s /usr/share/omakade/skills/omakade-tv-gaming ~/.codex/skills/omakade-tv-gaming
+```
+
+From a source checkout, use the absolute path to `skills/omakade-tv-gaming`
+instead. For agents using a shared skill hub, link it there and add a pointer
+to that agent's local instructions: when setting up, starting or ending a TV
+gaming session, or performing desktop input during a game, read this skill.
+Installing Omakade does not automatically modify agent configuration.
+
+The helper's optional dependencies and machine setup are described in the
+[session guide](skills/omakade-tv-gaming/references/session.md). Workspaces
+separate windows; CPU, RAM and GPU resources remain shared with desktop work.
+
 ## Build
 
 Requirements:
@@ -155,6 +182,7 @@ Requirements:
 - CMake 3.24 or newer
 - Ninja
 - C++20 compiler
+- Python 3 for the test suite
 - Qt 6.8 or newer with Concurrent, Core, Gui, Network, Qml, Quick, Quick
   Controls, SQL, and Test, plus the SVG and image format plugins
 - SDL 3

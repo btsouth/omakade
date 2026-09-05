@@ -56,5 +56,8 @@ jobs:
           test -x stage/usr/bin/omakade
           test -f stage/usr/share/applications/io.github.tsouth89.Omakade.desktop
           test -f stage/usr/share/metainfo/io.github.tsouth89.Omakade.metainfo.xml
+          test -f stage/usr/share/omakade/skills/omakade-tv-gaming/SKILL.md
+          test -f stage/usr/share/omakade/skills/omakade-tv-gaming/references/session.md
+          python stage/usr/share/omakade/skills/omakade-tv-gaming/scripts/omakade-tv-game.py --help
           desktop-file-validate stage/usr/share/applications/io.github.tsouth89.Omakade.desktop
           appstreamcli validate stage/usr/share/metainfo/io.github.tsouth89.Omakade.metainfo.xml
