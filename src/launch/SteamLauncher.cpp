@@ -49,32 +49,35 @@ QUrl SteamLauncher::installUrl(const QString& appId) {
   return validAppId(appId) ? QUrl(QStringLiteral("steam://install/%1").arg(appId)) : QUrl{};
 }
 
-LaunchCommand SteamLauncher::steamCommand(const QUrl& url, const QString& steamExecutable,
-                                          bool flatpakSteamInstalled) {
+QList<LaunchCommand> SteamLauncher::steamCommands(const QUrl& url, const QString& steamExecutable,
+                                                  bool flatpakSteamInstalled) {
   if (!url.isValid() || url.isEmpty() || url.scheme() != QStringLiteral("steam")) {
     return {};
   }
   const QString target = url.toString(QUrl::FullyEncoded);
+  QList<LaunchCommand> commands;
   if (!steamExecutable.isEmpty()) {
-    return LaunchCommand{steamExecutable, {target}};
+    commands.append(LaunchCommand{steamExecutable, {target}});
   }
   if (flatpakSteamInstalled) {
-    return LaunchCommand{
-        QStringLiteral("flatpak"),
-        {QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"), target}};
+    commands.append(
+        LaunchCommand{QStringLiteral("flatpak"),
+                      {QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"), target}});
   }
-  return {};
+  return commands;
 }
 
 bool SteamLauncher::openUrl(const QUrl& url) {
   if (!url.isValid() || url.isEmpty()) {
     return false;
   }
-  const LaunchCommand command =
-      steamCommand(url, QStandardPaths::findExecutable(QStringLiteral("steam")),
-                   flatpakAppInstalled(QStringLiteral("com.valvesoftware.Steam")));
-  if (command.isValid() && QProcess::startDetached(command.program, command.arguments)) {
-    return true;
+  const QList<LaunchCommand> commands =
+      steamCommands(url, QStandardPaths::findExecutable(QStringLiteral("steam")),
+                    flatpakAppInstalled(QStringLiteral("com.valvesoftware.Steam")));
+  for (const LaunchCommand& command : commands) {
+    if (QProcess::startDetached(command.program, command.arguments)) {
+      return true;
+    }
   }
   return QDesktopServices::openUrl(url);
 }

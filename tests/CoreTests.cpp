@@ -1464,21 +1464,30 @@ void CoreTests::steamLauncherBuildsSafeUrls() {
 
   // Launches go to the Steam client itself, not the desktop URL handler: some Steam
   // packages register no steam:// handler and xdg-open would fall back to a browser.
+  // Native Steam is tried first, then Flatpak Steam, so a stale native binary still
+  // reaches an installed Flatpak client.
   const QUrl launch = SteamLauncher::launchUrl(QStringLiteral("440"));
-  const LaunchCommand native =
-      SteamLauncher::steamCommand(launch, QStringLiteral("/usr/bin/steam"), true);
-  QCOMPARE(native.program, QStringLiteral("/usr/bin/steam"));
-  QCOMPARE(native.arguments, QStringList{QStringLiteral("steam://rungameid/440")});
-  const LaunchCommand flatpak = SteamLauncher::steamCommand(launch, QString{}, true);
-  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
-  QCOMPARE(flatpak.arguments,
+  const QList<LaunchCommand> both =
+      SteamLauncher::steamCommands(launch, QStringLiteral("/usr/bin/steam"), true);
+  QCOMPARE(both.size(), 2);
+  QCOMPARE(both.at(0).program, QStringLiteral("/usr/bin/steam"));
+  QCOMPARE(both.at(0).arguments, QStringList{QStringLiteral("steam://rungameid/440")});
+  QCOMPARE(both.at(1).program, QStringLiteral("flatpak"));
+  QCOMPARE(both.at(1).arguments,
            (QStringList{QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"),
                         QStringLiteral("steam://rungameid/440")}));
-  QVERIFY(!SteamLauncher::steamCommand(launch, QString{}, false).isValid());
-  QVERIFY(!SteamLauncher::steamCommand(QUrl(QStringLiteral("https://example.com")),
+  const QList<LaunchCommand> nativeOnly =
+      SteamLauncher::steamCommands(launch, QStringLiteral("/usr/bin/steam"), false);
+  QCOMPARE(nativeOnly.size(), 1);
+  QCOMPARE(nativeOnly.at(0).program, QStringLiteral("/usr/bin/steam"));
+  const QList<LaunchCommand> flatpakOnly = SteamLauncher::steamCommands(launch, QString{}, true);
+  QCOMPARE(flatpakOnly.size(), 1);
+  QCOMPARE(flatpakOnly.at(0).program, QStringLiteral("flatpak"));
+  QVERIFY(SteamLauncher::steamCommands(launch, QString{}, false).isEmpty());
+  QVERIFY(SteamLauncher::steamCommands(QUrl(QStringLiteral("https://example.com")),
                                        QStringLiteral("/usr/bin/steam"), true)
-               .isValid());
-  QVERIFY(!SteamLauncher::steamCommand(QUrl{}, QStringLiteral("/usr/bin/steam"), true).isValid());
+              .isEmpty());
+  QVERIFY(SteamLauncher::steamCommands(QUrl{}, QStringLiteral("/usr/bin/steam"), true).isEmpty());
 }
 
 void CoreTests::lutrisScannerImportsOnlyLaunchableGames() {
