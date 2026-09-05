@@ -3253,6 +3253,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     QVERIFY(!settings.closeAfterLaunch());
     QVERIFY(!settings.couchModeEnabled());
     QCOMPARE(settings.couchLibraryView(), QStringLiteral("detail"));
+    QCOMPARE(settings.librarySortMode(), 0);
     settings.setReducedMotion(true);
     settings.setArtworkCacheLimitMb(512);
     settings.setSteamId(QStringLiteral("76561198000000000"));
@@ -3270,6 +3271,7 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setCloseAfterLaunch(true);
     settings.setCouchModeEnabled(true);
     settings.setCouchLibraryView(QStringLiteral("grid"));
+    settings.setLibrarySortMode(1);
   }
   AppSettings reloaded(path);
   QVERIFY(reloaded.reducedMotion());
@@ -3290,6 +3292,9 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(reloaded.closeAfterLaunch());
   QVERIFY(reloaded.couchModeEnabled());
   QCOMPARE(reloaded.couchLibraryView(), QStringLiteral("grid"));
+  QCOMPARE(reloaded.librarySortMode(), 1);
+  reloaded.setLibrarySortMode(7);  // out of range falls back to title
+  QCOMPARE(reloaded.librarySortMode(), 0);
 
   // A config without emulator keys keeps auto-detection pending and the keys absent
   // even after unrelated settings change.

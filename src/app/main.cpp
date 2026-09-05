@@ -375,6 +375,10 @@ int main(int argc, char* argv[]) {
   }
   LibraryFilterModel library;
   library.setSourceModel(&unifiedGames);
+  library.setSortMode(static_cast<LibraryFilterModel::SortMode>(preferences.librarySortMode()));
+  QObject::connect(&library, &LibraryFilterModel::sortModeChanged, &preferences, [&]() {
+    preferences.setLibrarySortMode(static_cast<int>(library.sortMode()));
+  });
   if (uninstalledLayoutTest) {
     library.setAvailability(LibraryFilterModel::Availability::AllGames);
   }

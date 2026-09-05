@@ -220,6 +220,25 @@ void AppSettings::setCouchLibraryView(const QString& value) {
   emit couchLibraryViewChanged();
 }
 
+namespace {
+const QStringList kSortModeNames = {QStringLiteral("title"), QStringLiteral("recent"),
+                                    QStringLiteral("playtime")};
+}  // namespace
+
+int AppSettings::librarySortMode() const { return m_librarySortMode; }
+
+void AppSettings::setLibrarySortMode(int value) {
+  if (value < 0 || value >= kSortModeNames.size()) {
+    value = 0;
+  }
+  if (m_librarySortMode == value) {
+    return;
+  }
+  m_librarySortMode = value;
+  save();
+  emit librarySortModeChanged();
+}
+
 QString AppSettings::defaultPath() {
   return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
          QStringLiteral("/omakade/config.toml");
@@ -289,6 +308,12 @@ void AppSettings::load() {
   if (couchLibraryViewMatch.hasMatch()) {
     m_couchLibraryView = couchLibraryViewMatch.captured(1);
   }
+  const QRegularExpression sortMode(
+      QStringLiteral("(?m)^library_sort_mode\\s*=\\s*\"(title|recent|playtime)\"\\s*$"));
+  const QRegularExpressionMatch sortModeMatch = sortMode.match(contents);
+  if (sortModeMatch.hasMatch()) {
+    m_librarySortMode = static_cast<int>(kSortModeNames.indexOf(sortModeMatch.captured(1)));
+  }
   m_sunshineOmakadeApp = readEnabled(QStringLiteral("sunshine_omakade_app"), false);
   m_sunshineGameApps = readEnabled(QStringLiteral("sunshine_game_apps"), false);
 }
@@ -353,12 +378,14 @@ void AppSettings::save() const {
   contents += QStringLiteral("close_after_launch = %1\n"
                              "couch_mode_enabled = %2\n"
                              "couch_library_view = \"%3\"\n"
+                             "library_sort_mode = \"%6\"\n"
                              "sunshine_omakade_app = %4\nsunshine_game_apps = %5\n")
                   .arg(m_closeAfterLaunch ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_couchModeEnabled ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_couchLibraryView)
                   .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
-                  .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"));
+                  .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(kSortModeNames.value(m_librarySortMode));
   file.write(contents.toUtf8());
   file.commit();
 }
