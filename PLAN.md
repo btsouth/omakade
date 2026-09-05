@@ -1,10 +1,10 @@
 # Omakade product and delivery plan
 
-Implementation status: M0 through M5 and M7 are complete. Steam, GOG, Lutris,
+Implementation status: M0 through M7 are complete. Steam, GOG, Lutris,
 Heroic, Faugus, RetroArch, PCSX2, Ryujinx, and Battle.net import, launch
 delegation, source filters, organization, settings, release checks, explicit
 linking, RetroAchievements, and Sunshine/Moonlight integration are implemented.
-M6 is the headline milestone for 1.6.
+M6 shipped in 1.6.0; remaining hardware and real-library validation is tracked below.
 
 ## Product statement
 
@@ -777,8 +777,7 @@ Gate:
 
 ### M6: Controller-first couch mode
 
-Status: implemented in the local 1.6.0 candidate, with review fixes covered by
-regression checks. The dedicated ten-foot interface supports television use.
+Status: shipped in 1.6.0, with review fixes covered by regression checks. The dedicated ten-foot interface supports television use.
 
 Deliver:
 
@@ -808,15 +807,16 @@ Gate:
   performance targets
 - Leaving couch mode restores the prior desktop layout and focus position
 
-Candidate status:
+Release status:
 
-- Debug and Release test matrices pass 41 of 41 tests.
+- The exact published candidate passes 41 of 41 release tests locally and on both
+  CI architectures. The preceding candidate also passed all 41 Debug tests.
 - Detail and grid views, clear selection, held analog and directional-pad
   navigation, cursor handoff, reconnect behavior, and large-library paths have
   automated coverage.
-- Review findings are fixed and covered by regression checks. The maintainer
-  tested the earlier candidate; final-candidate testing and the publication
-  checks in `RELEASING.md` remain open.
+- The maintainer tested and approved published commit `c91b14e`. Controller-focus
+  and GOG cache fixes are covered by regression tests. Package lifecycle checks,
+  dependency scans, public checksums, and signed provenance pass.
 
 ### M7: Sunshine and Moonlight streaming
 
@@ -846,64 +846,13 @@ Gate:
 
 Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 
-### 1.6 priorities
+### After 1.6.0
 
-1.6 is the couch-mode release. Work is ordered so secondary platform tasks do
-not compromise the quality or completeness of M6:
+Couch Mode, direct GOG support, ARM64 packages, dependency scanning, and release
+SBOMs shipped in 1.6.0. The maintainer approved publication with two validation
+follow-ups still open:
 
-1. Verify the final M6 candidate locally and close any remaining visual,
-   accessibility, performance, or controller-only findings.
-2. Finish the real-library compatibility matrix in issue 9, prioritizing native
+1. Finish the real-library compatibility matrix in issue 9, prioritizing native
    and Flatpak launcher variants that are only contract-tested today.
-3. Add a supported aarch64 package path for issue 13, using contributor hardware
-   to validate the exact release candidate before publication.
-4. Add dependency scanning and a release bill of materials before the project
-   expands beyond its current distribution scope.
-
-New launcher integrations, storefront features, and unrelated interface work
-stay out of 1.6 unless they fix a release-blocking regression.
-
-## Explicitly deferred
-
-- Installing, updating, repairing, or moving games
-- Storefront browsing and purchasing
-- Proton or Wine configuration
-- Cloud-save management
-- Friends, chat, and multiplayer invitations
-- Automatic fuzzy merging across stores
-- Emulator installation and ROM scraping
-- Plugin marketplace or third-party executable plugins
-- Background daemon
-- Mobile companion
-- Cross-device sync
-
-Each item needs a separate product decision. None should enter incidentally while
-building the library.
-
-## Decisions to settle before M0 implementation
-
-Recommended defaults are listed first:
-
-1. **License:** GPL-3.0-or-later, or MIT if permissive reuse is more important.
-2. **Application ID:** reserve a reverse-DNS ID tied to the eventual project
-   organization before packaging.
-3. **Post-launch behavior:** close Omakade after a successful launch, with a
-   future preference to keep it open.
-4. **Controller library:** evaluate SDL 3 against direct Linux input before
-   adding the dependency.
-5. **Brand assets:** create a simple code-native SVG mark that remains legible
-   in the Omarchy launcher and on game-detail surfaces.
-
-## Reference contracts
-
-- Omarchy theming: https://omarchy.org/manual/making-your-own-theme/
-- Omarchy source: https://github.com/basecamp/omarchy
-- Qt Quick: https://doc.qt.io/qt-6/qtquick-index.html
-- Qt SQL and QML models:
-  https://doc.qt.io/qt-6/qtquick-modelviewsdata-sqlmodels.html
-- Steam achievements API:
-  https://partner.steamgames.com/doc/webapi/ISteamUserStats
-- Steam owned games API:
-  https://partner.steamgames.com/doc/webapi/IPlayerService
-- Lutris client and command interface: https://github.com/lutris/lutris
-- Heroic client: https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher
+2. Collect exact-package ARM64 hardware results in issue 13. Both architectures
+   pass automated checks; contributor hardware validation remains outstanding.

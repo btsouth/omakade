@@ -19,18 +19,24 @@ The reference library contains 45 installed Steam games. Theme colors, font,
 launcher transparency, one-click details, keyboard navigation, and the
 controller input path have been exercised on this system.
 
-## 1.6 candidate validation
+## 1.6 release validation
 
-The current local 1.6 candidate passes all 41 tests in both Debug and Release
-builds. Automated coverage includes Couch Mode detail and grid layouts, focus
-paths, held analog and directional-pad navigation, controller reconnects,
-keyboard and mouse handoff, cursor visibility, and a cached 1,000-game library.
-Regression coverage also checks selection across layout switches and empty-state
-updates after filtering. The maintainer tested the earlier candidate; the final
-1.6.0 candidate still needs a local controller and visual smoke test.
+Published 1.6.0 is commit `c91b14e40437a14849f37c188d5762c12655299e`. The
+maintainer tested the exact installed candidate, including the controller-focus
+fix, and approved publication. All 41 release tests pass locally and on x86_64
+and aarch64 CI. The preceding candidate also passed all 41 Debug tests.
 
-CI on the final pushed commit, the release workflow, exact-candidate testing, and
-the real-library reports below remain release gates.
+Automated coverage includes Couch Mode detail and grid layouts, focus paths,
+held navigation, controller reconnects, keyboard and mouse handoff, cursor
+visibility, and a cached 1,000-game library. Regressions cover layout selection,
+empty states, background controller input, GOG ownership after inventory errors,
+and removing the last direct GOG game.
+
+Both architecture packages passed lifecycle checks and dependency scans. Public
+checksums and provenance were verified against the release commit. The public
+x86_64 package also passed upgrade from 1.5.0, removal, reinstall, and smoke tests
+in a disposable Arch container. This does not replace real Omarchy ARM64 hardware
+or native/Flatpak library reports. Those gaps remain open with maintainer approval.
 
 ## Automated visual matrix
 
