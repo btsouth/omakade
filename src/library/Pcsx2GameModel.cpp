@@ -59,30 +59,9 @@ QVariant Pcsx2GameModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> Pcsx2GameModel::roleNames() const {
-  return {{GameRoles::Title, "title"},
-          {GameRoles::Subtitle, "subtitle"},
-          {GameRoles::Description, "description"},
-          {GameRoles::Hours, "hours"},
-          {GameRoles::Progress, "progress"},
-          {GameRoles::AchievementsUnlocked, "achievementsUnlocked"},
-          {GameRoles::AchievementsTotal, "achievementsTotal"},
-          {GameRoles::Favorite, "favorite"},
-          {GameRoles::Recent, "recent"},
-          {GameRoles::LastPlayed, "lastPlayed"},
-          {GameRoles::AccentStart, "accentStart"},
-          {GameRoles::AccentEnd, "accentEnd"},
-          {GameRoles::CoverMark, "coverMark"},
-          {GameRoles::Year, "year"},
-          {GameRoles::AppId, "appId"},
-          {GameRoles::CoverPath, "coverPath"},
-          {GameRoles::HeroPath, "heroPath"},
-          {GameRoles::LogoPath, "logoPath"},
-          {GameRoles::InstallPath, "installPath"},
-          {GameRoles::Source, "source"},
-          {GameRoles::Runner, "runner"},
-          {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"},
-          {GameRoles::LaunchTarget, "launchTarget"}};
+  auto roles = GameRoles::names();
+  roles.insert(GameRoles::LaunchTarget, "launchTarget");
+  return roles;
 }
 
 bool Pcsx2GameModel::pcsx2Detected() const { return m_pcsx2Detected; }

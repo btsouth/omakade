@@ -1,10 +1,10 @@
 # Omakade product and delivery plan
 
-Implementation status: M0 through M5 and M7 are complete. Steam, GOG, Lutris,
+Implementation status: M0 through M7 are complete. Steam, GOG, Lutris,
 Heroic, Faugus, RetroArch, PCSX2, Ryujinx, and Battle.net import, launch
 delegation, source filters, organization, settings, release checks, explicit
 linking, RetroAchievements, and Sunshine/Moonlight integration are implemented.
-M6 is the headline milestone for 1.6.
+M6 shipped in 1.6.0; remaining hardware and real-library validation is tracked below.
 
 ## Product statement
 
@@ -777,8 +777,7 @@ Gate:
 
 ### M6: Controller-first couch mode
 
-Status: implemented in the local 1.6.0 candidate, with review fixes covered by
-regression checks. The dedicated ten-foot interface supports television use.
+Status: shipped in 1.6.0, with review fixes covered by regression checks. The dedicated ten-foot interface supports television use.
 
 Deliver:
 
@@ -808,15 +807,16 @@ Gate:
   performance targets
 - Leaving couch mode restores the prior desktop layout and focus position
 
-Candidate status:
+Release status:
 
-- Debug and Release test matrices pass 41 of 41 tests.
+- The exact published candidate passes 41 of 41 release tests locally and on both
+  CI architectures. The preceding candidate also passed all 41 Debug tests.
 - Detail and grid views, clear selection, held analog and directional-pad
   navigation, cursor handoff, reconnect behavior, and large-library paths have
   automated coverage.
-- Review findings are fixed and covered by regression checks. The maintainer
-  tested the earlier candidate; final-candidate testing and the publication
-  checks in `RELEASING.md` remain open.
+- The maintainer tested and approved published commit `c91b14e`. Controller-focus
+  and GOG cache fixes are covered by regression tests. Package lifecycle checks,
+  dependency scans, public checksums, and signed provenance pass.
 
 ### M7: Sunshine and Moonlight streaming
 
@@ -858,6 +858,9 @@ The active post-1.6 completion scope and acceptance gates are in
 are local candidate work until maintainer testing and publication approval.
 Real launcher reports (#9) and ARM64 hardware evidence (#13) remain open;
 published packages do not establish hardware compatibility.
+
+The shared QML role-name cleanup from PR #28 is included in the 1.7 candidate.
+It preserves role IDs and names across the existing nine game models.
 
 ## Explicitly deferred
 

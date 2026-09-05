@@ -10,6 +10,8 @@
 - Back up personal library choices, settings, and artwork. Preview and merge or
   replace a backup, with recovery if restoring is interrupted.
 - Use the new controls in Desktop and Couch Mode, including controller text entry.
+- Share QML role-name definitions across nine game models without changing
+  their role IDs, names, or behavior.
 
 ## 1.6.0
 

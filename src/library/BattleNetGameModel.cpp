@@ -148,31 +148,10 @@ QVariant BattleNetGameModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> BattleNetGameModel::roleNames() const {
-  return {{GameRoles::Title, "title"},
-          {GameRoles::Subtitle, "subtitle"},
-          {GameRoles::Description, "description"},
-          {GameRoles::Hours, "hours"},
-          {GameRoles::Progress, "progress"},
-          {GameRoles::AchievementsUnlocked, "achievementsUnlocked"},
-          {GameRoles::AchievementsTotal, "achievementsTotal"},
-          {GameRoles::Favorite, "favorite"},
-          {GameRoles::Recent, "recent"},
-          {GameRoles::LastPlayed, "lastPlayed"},
-          {GameRoles::AccentStart, "accentStart"},
-          {GameRoles::AccentEnd, "accentEnd"},
-          {GameRoles::CoverMark, "coverMark"},
-          {GameRoles::Year, "year"},
-          {GameRoles::AppId, "appId"},
-          {GameRoles::CoverPath, "coverPath"},
-          {GameRoles::HeroPath, "heroPath"},
-          {GameRoles::LogoPath, "logoPath"},
-          {GameRoles::InstallPath, "installPath"},
-          {GameRoles::Source, "source"},
-          {GameRoles::Runner, "runner"},
-          {GameRoles::Flatpak, "flatpak"},
-          {GameRoles::Hidden, "hidden"},
-          {GameRoles::LaunchTarget, "launchTarget"},
-          {GameRoles::Installed, "installed"}};
+  auto roles = GameRoles::names();
+  roles.insert(GameRoles::LaunchTarget, "launchTarget");
+  roles.insert(GameRoles::Installed, "installed");
+  return roles;
 }
 
 bool BattleNetGameModel::battleNetDetected() const { return m_battleNetDetected; }

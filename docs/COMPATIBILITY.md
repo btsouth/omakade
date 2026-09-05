@@ -19,28 +19,40 @@ The reference library contains 45 installed Steam games. Theme colors, font,
 launcher transparency, one-click details, keyboard navigation, and the
 controller input path have been exercised on this system.
 
-## Release and completion status, September 5, 2026
+## 1.6 release validation
 
-Version 1.6.0 was published at `c91b14e`. The release record in Linear
-SBS-1135 confirms maintainer approval, both architecture builds, lifecycle
-tests, dependency scans, checksums, and signed provenance. ARM64 packages
-are available; M1/Asahi hardware validation and broader real-library reports
-remain open in GitHub #13 and #9 respectively.
+Published 1.6.0 is commit `c91b14e40437a14849f37c188d5762c12655299e`. The
+maintainer tested the exact installed candidate, including the controller-focus
+fix, and approved publication. All 41 release tests pass locally and on x86_64
+and aarch64 CI. The preceding candidate also passed all 41 Debug tests.
 
-The unpublished completion worktree on `codex/completion` passes 81 development
-CTest entries, including personal-data migration from the released schema,
-backup recovery, controller flows, offscreen layouts, and a cached large-library
-fixture. These checks are automated evidence. They do not establish physical
-controller, real launcher, ARM64, or final maintainer acceptance. See
-[COMPLETION-PROGRESS.md](COMPLETION-PROGRESS.md) for commands and limitations.
+Automated coverage includes Couch Mode detail and grid layouts, focus paths,
+held navigation, controller reconnects, keyboard and mouse handoff, cursor
+visibility, and a cached 1,000-game library. Regressions cover layout selection,
+empty states, background controller input, GOG ownership after inventory errors,
+and removing the last direct GOG game.
 
-### Historical pre-release 1.6 validation
+Both architecture packages passed lifecycle checks and dependency scans. Public
+checksums and provenance were verified against the release commit. The public
+x86_64 package also passed upgrade from 1.5.0, removal, reinstall, and smoke tests
+in a disposable Arch container. This does not replace real Omarchy ARM64 hardware
+or native/Flatpak library reports. Those gaps remain open with maintainer approval.
 
-The earlier 1.6 candidate passed 41 tests in Debug and Release, covering Couch
-Mode layouts, focus, held navigation, reconnects, input handoff, cursor visibility,
-and a cached 1,000-game library. The former pending-publication notes were
-superseded by the released candidate above. The dated reference system and
-source-specific evidence below retain their original scope.
+## Main after 1.6.0
+
+The role-name cleanup in PR #28 merged as `2de11d5`. All nine models retain
+identical role IDs and names, and all 41 release tests pass on the integrated
+code. This is an unreleased maintenance change, not an update to the 1.6.0
+packages. It does not add hardware or real-library compatibility evidence.
+
+## 1.7 candidate validation
+
+The completion candidate passes 81 automated checks covering personal-data
+migration, backup recovery, controller flows, offscreen layouts, and a cached
+large-library fixture. The maintainer confirmed the installed grid fix looks
+good. Physical controller, broader real-launcher, and native ARM64 validation
+remain separate from these checks. See
+[COMPLETION-PROGRESS.md](COMPLETION-PROGRESS.md) for evidence and limitations.
 
 ## Automated visual matrix
 
