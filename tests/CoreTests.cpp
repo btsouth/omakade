@@ -1461,6 +1461,24 @@ void CoreTests::steamLauncherBuildsSafeUrls() {
            QUrl(QStringLiteral("steam://rungameid/13899108412974694400")));
   QVERIFY(SteamLauncher::launchUrl(QStringLiteral("440;touch /tmp/nope")).isEmpty());
   QVERIFY(SteamLauncher::installUrl(QStringLiteral("440;touch /tmp/nope")).isEmpty());
+
+  // Launches go to the Steam client itself, not the desktop URL handler: some Steam
+  // packages register no steam:// handler and xdg-open would fall back to a browser.
+  const QUrl launch = SteamLauncher::launchUrl(QStringLiteral("440"));
+  const LaunchCommand native =
+      SteamLauncher::steamCommand(launch, QStringLiteral("/usr/bin/steam"), true);
+  QCOMPARE(native.program, QStringLiteral("/usr/bin/steam"));
+  QCOMPARE(native.arguments, QStringList{QStringLiteral("steam://rungameid/440")});
+  const LaunchCommand flatpak = SteamLauncher::steamCommand(launch, QString{}, true);
+  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
+  QCOMPARE(flatpak.arguments,
+           (QStringList{QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"),
+                        QStringLiteral("steam://rungameid/440")}));
+  QVERIFY(!SteamLauncher::steamCommand(launch, QString{}, false).isValid());
+  QVERIFY(!SteamLauncher::steamCommand(QUrl(QStringLiteral("https://example.com")),
+                                       QStringLiteral("/usr/bin/steam"), true)
+               .isValid());
+  QVERIFY(!SteamLauncher::steamCommand(QUrl{}, QStringLiteral("/usr/bin/steam"), true).isValid());
 }
 
 void CoreTests::lutrisScannerImportsOnlyLaunchableGames() {
