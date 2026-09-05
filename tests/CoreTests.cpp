@@ -524,6 +524,8 @@ private slots:
   void heroicModelIsRepeatableAndPreservesLocalState();
   void malformedHeroicDataDoesNotReplaceCachedGames();
   void heroicAndGogScanFailuresAreIsolated();
+  void coldManagedGogFailureDoesNotImportDirectGames();
+  void removingLastDirectGogGameClearsCache();
   void heroicLauncherBuildsSafeCommands();
   void gogLauncherBuildsSafeCommands();
   void faugusScannerImportsLaunchableGamesAndArtwork();
@@ -1940,6 +1942,49 @@ void CoreTests::heroicAndGogScanFailuresAreIsolated() {
   model.refreshFromRoots({heroicRoot, gogRoot});
   QCOMPARE(model.rowCount(), 5);
   QVERIFY(model.statusText().contains(QStringLiteral("kept cached results")));
+}
+
+void CoreTests::coldManagedGogFailureDoesNotImportDirectGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/heroic");
+  createHeroicFixture(root);
+  writeFile(root + QStringLiteral("/gog_store/installed.json"), "not json");
+  const HeroicScanResult result = HeroicScanner::scan({root});
+  QVERIFY(result.managedGogIncomplete);
+  for (const HeroicGameRecord& game : result.games) {
+    QVERIFY(game.runner != QStringLiteral("gog-direct"));
+  }
+  HeroicGameModel model(directory.path() + QStringLiteral("/library.sqlite3"));
+  model.refreshFromRoots({root});
+  QVERIFY(!model.gogDetected());
+  createHeroicFixture(root);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 4);
+  QVERIFY(model.heroicDetected());
+  QVERIFY(!model.gogDetected());
+}
+
+void CoreTests::removingLastDirectGogGameClearsCache() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/GOG Games");
+  const QString game = root + QStringLiteral("/Direct Quest");
+  writeFile(game + QStringLiteral("/goggame-98765.info"),
+            R"({"name":"Direct Quest","playTasks":[{"type":"FileTask","isPrimary":true,"path":"start.sh"}]})");
+  writeFile(game + QStringLiteral("/start.sh"), "#!/bin/sh\n");
+  const QString database = directory.path() + QStringLiteral("/library.sqlite3");
+  HeroicGameModel model(database);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  model.refreshFromRoots({directory.path() + QStringLiteral("/missing")});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(QFile::remove(game + QStringLiteral("/goggame-98765.info")));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 0);
+  QVERIFY(!model.gogDetected());
+  HeroicGameModel reloaded(database);
+  QCOMPARE(reloaded.rowCount(), 0);
 }
 
 void CoreTests::heroicLauncherBuildsSafeCommands() {

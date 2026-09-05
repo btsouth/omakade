@@ -466,7 +466,19 @@ HeroicScanResult HeroicScanner::scan(const QStringList& roots) {
       managedGogInstallPaths.insert(QDir::cleanPath(game.installPath));
     }
   }
+  // Without the managed inventory, ownership of loose manifests is unknown.
+  if (result.managedGogIncomplete) {
+    result.gogIncomplete = true;
+    return result;
+  }
   for (const QString& root : std::as_const(validRoots)) {
+    if (!QDir(root).isReadable()) {
+      result.gogIncomplete = true;
+      result.warnings.append(QStringLiteral("Could not read GOG library %1").arg(root));
+      continue;
+    }
+    // An existing empty directory is a completed scan, including after uninstall.
+    result.gogRoots.append(root);
     const int before = result.games.size();
     const bool foundManifest =
         scanLooseGog(root, &result, &keys, managedGogInstallPaths);

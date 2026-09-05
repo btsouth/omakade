@@ -71,6 +71,9 @@ After that, Omakade updates with normal Omarchy system updates.
 
 ### Install or upgrade from the terminal
 
+These commands are for x86_64. For ARM64, replace `x86_64` with `aarch64`
+in the package filename and download URL.
+
 These commands download Omakade and its checksum into the current directory,
 verify the package, and install it. If Omakade is already installed, `pacman -U`
 upgrades it in place without removing your settings or library data:

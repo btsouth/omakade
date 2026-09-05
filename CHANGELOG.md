@@ -23,6 +23,8 @@
   directly; Windows games use UMU with a separate prefix for each game.
 - Keep Heroic-managed GOG games launching through Heroic with their existing
   settings.
+- Remove uninstalled direct GOG games on rescan and preserve cached entries when
+  a Heroic GOG inventory cannot be read.
 - Fix Proton detection and launching for Omarchy Battle.net prefixes. Thanks
   @TheAirick for the report.
 - Add aarch64 packages alongside x86_64, with checksums and provenance.

@@ -274,11 +274,18 @@ void HeroicGameModel::loadSourceState() {
 }
 
 void HeroicGameModel::applyScan(const HeroicScanResult& result) {
-  const bool missingRoots = result.roots.isEmpty() && !m_games.isEmpty();
-  const bool heroicIncomplete = result.incomplete || missingRoots;
-  const bool gogIncomplete = result.gogIncomplete || missingRoots;
+  const bool missingHeroicRoots = result.roots.isEmpty() &&
+      std::any_of(m_games.cbegin(), m_games.cend(), [](const Game& game) {
+        return game.heroic.runner != QStringLiteral("gog-direct");
+      });
+  const bool missingGogRoots = result.gogRoots.isEmpty() &&
+      std::any_of(m_games.cbegin(), m_games.cend(), [](const Game& game) {
+        return game.heroic.runner == QStringLiteral("gog-direct");
+      });
+  const bool heroicIncomplete = result.incomplete || missingHeroicRoots;
+  const bool gogIncomplete = result.gogIncomplete || missingGogRoots;
   if (heroicIncomplete && gogIncomplete) {
-    setStatus(QStringLiteral("Heroic scan interrupted; kept the cached library"),
+    setStatus(QStringLiteral("Heroic/GOG scan interrupted; kept cached results"),
               result.warnings.join(QLatin1Char('\n')));
     return;
   }

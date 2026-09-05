@@ -29,6 +29,7 @@ struct HeroicGameRecord {
 struct HeroicScanResult {
   QVector<HeroicGameRecord> games;
   QStringList roots;
+  QStringList gogRoots;
   QStringList warnings;
   bool incomplete = false;
   bool gogIncomplete = false;
