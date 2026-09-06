@@ -1,5 +1,7 @@
 #include "library/UnifiedGameModel.h"
 
+#include "library/PersonalDataRules.h"
+
 #include "library/GameRoles.h"
 #include "library/ManualGameModel.h"
 
@@ -65,10 +67,8 @@ QString normalizedCollectionName(const QString& input) {
   if (name.isEmpty() || name.size() > 48) {
     return {};
   }
-  for (const QChar character : name) {
-    if (character.category() == QChar::Other_Control) {
-      return {};
-    }
+  if (PersonalDataRules::hasControlCharacters(name)) {
+    return {};
   }
   return name;
 }
@@ -1014,7 +1014,7 @@ bool UnifiedGameModel::bulkOrganize(const QStringList& identities, const QVarian
     for (const auto& raw : changes.value(field).toString().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
       const QString tag = raw.trimmed().simplified();
       if (tag.size() > 32) return false;
-      for (const auto ch : raw) if (ch.category() == QChar::Other_Control) return false;
+      if (PersonalDataRules::hasControlCharacters(raw)) return false;
       if (!tag.isEmpty() && !unique.contains(tag, Qt::CaseInsensitive)) unique.append(tag);
     }
     if (unique.size() > 20) return false;

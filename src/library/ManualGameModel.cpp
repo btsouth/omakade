@@ -1,4 +1,6 @@
 #include "library/ManualGameModel.h"
+
+#include "library/PersonalDataRules.h"
 #include "library/GameRoles.h"
 
 #include <QColor>
@@ -304,7 +306,7 @@ bool ManualGameModel::validateLaunch(const QString& target, const QString& id, Q
       return fail("The argument list is invalid");
     parsed.append(value.toString());
   }
-  if (parsed.size() > 256 || program.contains(QChar::Null) || cwd.contains(QChar::Null))
+  if (parsed.size() > PersonalDataRules::kMaxManualArguments || program.contains(QChar::Null) || cwd.contains(QChar::Null))
     return fail("The manual launch details are invalid");
   if (executable)
     *executable = program;
@@ -324,8 +326,10 @@ QString ManualGameModel::saveEntry(const QVariantMap& input) {
   const QString id =
       existing.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existing;
   const QString title = input.value("title").toString().trimmed();
-  if (title.isEmpty() || title.size() > 256) {
-    setError("Enter a title up to 256 characters");
+  if (title.isEmpty() || title.size() > PersonalDataRules::kMaxManualTitleLength ||
+      PersonalDataRules::hasControlCharacters(title)) {
+    setError(QStringLiteral("Enter a title up to %1 characters")
+                 .arg(PersonalDataRules::kMaxManualTitleLength));
     return {};
   }
   QVariantMap entry{{"id", id},
