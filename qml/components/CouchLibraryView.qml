@@ -648,7 +648,7 @@ FocusScope {
                 iconText: "▶"
                 primary: true
                 displayScale: Math.max(1, root.uiScale * 1.2)
-                enabled: root.currentIndex >= 0
+                enabled: root.currentIndex >= 0 && root.currentIndex < root.libraryModel.rowCount()
                 onClicked: root.gameActivated(root.currentIndex)
                 KeyNavigation.up: showButton
                 KeyNavigation.right: favoriteButton
@@ -743,13 +743,13 @@ FocusScope {
             event.accepted = true
         }
         Keys.onReturnPressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
             }
             event.accepted = true
         }
         Keys.onEnterPressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
             }
             event.accepted = true
@@ -861,7 +861,7 @@ FocusScope {
                     gameStrip.currentIndex = card.index
                     gameStrip.forceActiveFocus(Qt.MouseFocusReason)
                 }
-                onDoubleClicked: root.gameActivated(card.index)
+                onDoubleClicked: if (card.index >= 0) root.gameActivated(card.index)
             }
 
             opacity: gameStrip.currentIndex === card.index ? 1 : 0.58
@@ -924,13 +924,13 @@ FocusScope {
         }
 
         Keys.onReturnPressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
             }
             event.accepted = true
         }
         Keys.onEnterPressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
             }
             event.accepted = true
@@ -1136,10 +1136,10 @@ FocusScope {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    gameGrid.currentIndex = gridCard.index
+                    if (gridCard.index >= 0) gameGrid.currentIndex = gridCard.index
                     gameGrid.forceActiveFocus(Qt.MouseFocusReason)
                 }
-                onDoubleClicked: root.gameActivated(gridCard.index)
+                onDoubleClicked: if (gridCard.index >= 0) root.gameActivated(gridCard.index)
             }
 
             opacity: gridCard.current ? 1 : 0.72

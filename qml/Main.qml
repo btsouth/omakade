@@ -431,13 +431,61 @@ ApplicationWindow {
     function leaveConsole() {
         if (Library.consoleFilter.length > 0) {
             Library.consoleFilter = ""
-            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+            root.resetLibrarySelection()
+            return true
+        }
+        return false
+    }
+
+    // Both views watch the same library, so a filter change has to settle the selection in
+    // whichever one is on screen.
+    function resetLibrarySelection() {
+        const first = Library.rowCount() > 0 ? 0 : -1
+        libraryView.currentIndex = first
+        couchLibraryView.currentIndex = first
+        couchLibraryView.refreshCurrentGame()
+    }
+
+    // Back walks out of the library the way you walked in: out of a console, then out of a
+    // search, then out of a source, and finally out of anything else still narrowing the view.
+    // Levels that are not active are skipped, so from RetroArch inside Nintendo 64 one press
+    // reaches RetroArch and the next reaches all sources. Returns true when a level was left.
+    function stepBackFilter() {
+        if (root.leaveConsole()) {
+            return true
+        }
+        if (Library.searchText.length > 0) {
+            searchField.text = ""
+            Library.searchText = ""
+            root.resetLibrarySelection()
+            return true
+        }
+        if (Library.sourceFilters.length > 0) {
+            Library.sourceFilters = []
+            root.resetLibrarySelection()
+            return true
+        }
+        // Whatever is left narrowing the view goes together, so back always reaches the whole
+        // library rather than asking for a press per filter.
+        if (Library.completionFilter !== "" || Library.collectionFilter !== ""
+                || Library.tagFilter !== "" || Library.mode !== 0 || Library.availability !== 0) {
+            Library.completionFilter = ""
+            Library.collectionFilter = ""
+            Library.tagFilter = ""
+            Library.mode = 0
+            Library.availability = 0
+            root.resetLibrarySelection()
             return true
         }
         return false
     }
 
     function openGame(index) {
+        // Refuse a row that is not in the library rather than opening an empty page. Every way
+        // in is guarded, so a stale index cannot reach here, and this is the backstop.
+        if (index < 0 || index >= Library.rowCount()) {
+            return
+        }
         root.randomSelection = false
         selectedIndex = index
         selectedGame = Library.get(index)
@@ -970,10 +1018,10 @@ ApplicationWindow {
                 detailsLoader.item.closeCollectionEditor()
             } else if (root.detailOpen) {
                 root.closeDetails()
-            } else if (root.leaveConsole()) {
-            } else if (!root.couchMode && searchField.text.length > 0) {
-                searchField.clear()
-                libraryView.focusGrid()
+            } else if (root.stepBackFilter()) {
+                if (!root.couchMode) {
+                    libraryView.focusGrid()
+                }
             } else if (root.couchMode || !libraryView.gridFocused) {
                 root.focusLibrary()
             }
@@ -1803,6 +1851,7 @@ ApplicationWindow {
                 GlassButton {
                     id: statusFilterButton
                     objectName: "statusFilterButton"
+                    property Item controllerDownTarget: libraryView.focusTarget
                     compact: true
                     text: root.filterLabel("STATUS", Library.completionFilter)
                     selected: Library.completionFilter !== ""
@@ -1812,6 +1861,7 @@ ApplicationWindow {
                 GlassButton {
                     id: collectionFilterButton
                     objectName: "collectionFilterButton"
+                    property Item controllerDownTarget: libraryView.focusTarget
                     compact: true
                     text: root.filterLabel("COLLECTION", Library.collectionFilter,
                                            Library.collectionNames)
@@ -1827,6 +1877,7 @@ ApplicationWindow {
                 GlassButton {
                     id: tagFilterButton
                     objectName: "tagFilterButton"
+                    property Item controllerDownTarget: libraryView.focusTarget
                     compact: true
                     text: root.filterLabel("TAG", Library.tagFilter, Library.tagNames)
                     selected: Library.tagFilter !== ""

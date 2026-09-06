@@ -523,9 +523,13 @@ int main(int argc, char* argv[]) {
   const bool bulkEditorTest = application.arguments().contains(QStringLiteral("--bulk-editor-test"));
   const bool savedFilterTest = application.arguments().contains(QStringLiteral("--saved-filter-test"));
   const bool randomSelectionTest = application.arguments().contains(QStringLiteral("--random-selection-test"));
+  const bool staleSelectionTest =
+      application.arguments().contains(QStringLiteral("--stale-selection-test"));
+  const bool filterBackTest =
+      application.arguments().contains(QStringLiteral("--filter-back-test"));
   const bool artworkEditorTest = application.arguments().contains(QStringLiteral("--artwork-editor-test"));
   const bool manualEditorTest = application.arguments().contains(QStringLiteral("--manual-editor-test"));
-  const bool smokeTest = gogSettingsTest || linkedPreferenceTest || backupEditorTest || bulkEditorTest || savedFilterTest || randomSelectionTest || artworkEditorTest || manualEditorTest || application.arguments().contains(QStringLiteral("--smoke-test"));
+  const bool smokeTest = gogSettingsTest || linkedPreferenceTest || backupEditorTest || bulkEditorTest || savedFilterTest || randomSelectionTest || staleSelectionTest || filterBackTest || artworkEditorTest || manualEditorTest || application.arguments().contains(QStringLiteral("--smoke-test"));
   const bool couchNavigationTest =
       application.arguments().contains(QStringLiteral("--couch-navigation-test"));
   const bool navigationTest = couchNavigationTest ||
@@ -2976,6 +2980,121 @@ int main(int argc, char* argv[]) {
         if (rootWindow->property("detailOpen").toBool()) { fail("Random selection cannot close"); return; }
         application.quit();
       });
+    });
+  } else if (staleSelectionTest) {
+    // Narrowing the library to a single game leaves the grid holding delegates for the hundred
+    // that just left. Moving down from the organize row and pressing A must open the game the
+    // person can see, not one of those, and never a row that is no longer there.
+    QTimer::singleShot(200, &application, [&application, rootWindow, &controller] {
+      const auto fail = [&application](const QString& message) {
+        qCritical().noquote() << message;
+        application.exit(EXIT_FAILURE);
+      };
+      auto* library = qmlContext(rootWindow)
+                          ->contextProperty(QStringLiteral("Library"))
+                          .value<QObject*>();
+      auto* status = rootWindow->findChild<QQuickItem*>(QStringLiteral("statusFilterButton"));
+      if (library == nullptr || status == nullptr) {
+        fail(QStringLiteral("Stale selection test could not find the library controls"));
+        return;
+      }
+      // Narrow a hundred games down to one, the way choosing a source with a single game does.
+      library->setProperty("searchText", QStringLiteral("Black Meridian 3"));
+      QCoreApplication::processEvents();
+      int visible = 0;
+      QMetaObject::invokeMethod(library, "rowCount", Q_RETURN_ARG(int, visible));
+      if (visible != 1) {
+        fail(QStringLiteral("Stale selection fixture expected one visible game, saw %1").arg(visible));
+        return;
+      }
+      QVariantMap shown;
+      QMetaObject::invokeMethod(library, "get", Q_RETURN_ARG(QVariantMap, shown), Q_ARG(int, 0));
+      QTimer::singleShot(200, &application, [&application, rootWindow, &controller, status, shown,
+                                             fail] {
+        status->forceActiveFocus();
+        controller.focusDirectionRequested(Qt::Key_Down);
+        QCoreApplication::processEvents();
+        controller.keyRequested(Qt::Key_Return, Qt::NoModifier);
+        QCoreApplication::processEvents();
+        if (!rootWindow->property("detailOpen").toBool()) {
+          fail(QStringLiteral("Moving down from the organize row could not open a game"));
+          return;
+        }
+        const QVariantMap opened = rootWindow->property("selectedGame").toMap();
+        if (opened.value("title").toString().isEmpty()) {
+          fail(QStringLiteral("Down from the organize row opened a game that is not there"));
+          return;
+        }
+        if (opened.value("appId") != shown.value("appId") ||
+            opened.value("source") != shown.value("source")) {
+          fail(QStringLiteral("Down from the organize row opened %1 rather than the visible %2")
+                   .arg(opened.value("title").toString(), shown.value("title").toString()));
+          return;
+        }
+        application.quit();
+      });
+    });
+  } else if (filterBackTest) {
+    // Back walks out of the library the way you walked in: out of a console, then a search,
+    // then a source, then whatever else is still narrowing the view. Levels that are not
+    // active are skipped, so RetroArch inside Nintendo 64 is two presses from all sources.
+    QTimer::singleShot(200, &application, [&application, rootWindow, &controller] {
+      const auto fail = [&application](const QString& message) {
+        qCritical().noquote() << message;
+        application.exit(EXIT_FAILURE);
+      };
+      auto* library = qmlContext(rootWindow)
+                          ->contextProperty(QStringLiteral("Library"))
+                          .value<QObject*>();
+      if (library == nullptr) {
+        fail(QStringLiteral("Filter back test could not find the library"));
+        return;
+      }
+      const auto back = [&controller] {
+        controller.keyRequested(Qt::Key_Escape, Qt::NoModifier);
+        QCoreApplication::processEvents();
+      };
+      const QString system = QStringLiteral("snes");
+      library->setProperty("sourceFilters", QStringList{QStringLiteral("RetroArch")});
+      library->setProperty("consoleFilter", system);
+      library->setProperty("searchText", QStringLiteral("cart"));
+      QCoreApplication::processEvents();
+      if (library->property("consoleFilter").toString() != system) {
+        fail(QStringLiteral("Filter back fixture could not enter a console"));
+        return;
+      }
+      // Out of the console first, keeping the search and the source.
+      back();
+      if (!library->property("consoleFilter").toString().isEmpty() ||
+          library->property("searchText").toString().isEmpty() ||
+          library->property("sourceFilters").toStringList().isEmpty()) {
+        fail(QStringLiteral("Back did not leave the console on its own"));
+        return;
+      }
+      // Then out of the search, keeping the source.
+      back();
+      if (!library->property("searchText").toString().isEmpty() ||
+          library->property("sourceFilters").toStringList().isEmpty()) {
+        fail(QStringLiteral("Back did not clear the search on its own"));
+        return;
+      }
+      // Then out of the source, reaching the whole library.
+      back();
+      if (!library->property("sourceFilters").toStringList().isEmpty()) {
+        fail(QStringLiteral("Back did not return to all sources"));
+        return;
+      }
+      // Anything else still narrowing the view goes together on the next press.
+      library->setProperty("completionFilter", QStringLiteral("backlog"));
+      library->setProperty("mode", 1);
+      QCoreApplication::processEvents();
+      back();
+      if (!library->property("completionFilter").toString().isEmpty() ||
+          library->property("mode").toInt() != 0) {
+        fail(QStringLiteral("Back did not clear the remaining filters"));
+        return;
+      }
+      application.quit();
     });
   } else if (artworkEditorTest) {
     QTimer::singleShot(150, &application, [&application, rootWindow, &artworkFixture, &controller] {
