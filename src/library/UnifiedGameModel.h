@@ -89,6 +89,9 @@ private:
   QVector<QAbstractItemModel*> m_models;
   QSet<QString> m_disabledSources;
   QVector<SourceRow> m_rows;
+  // The composed library as game keys, so a rebuild can tell whether anything the view can see
+  // actually changed before it throws every card away.
+  QStringList m_rowKeys;
   // Rebuilt with m_rows so linked-game lookups never walk every source model per role.
   QHash<QString, SourceRow> m_rowForKey;
   QHash<QString, QVector<SourceRow>> m_rowsForGroup;
