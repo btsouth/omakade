@@ -557,6 +557,16 @@ void GameMetadata::gridSearch() {
   }
   if (!m_manual && !wantsPortraitCover(m_active.value("system").toString(),
                                        m_active.value("sourceCoverPath").toString())) {
+    // An earlier run may have downloaded a portrait over artwork that should have been kept.
+    // Drop it so the game shows its own art again. A portrait the user picked is stored as a
+    // custom cover, which outranks this and is untouched. The file stays for the ordinary
+    // cache trim to reclaim.
+    auto value = entry(key());
+    if (value.contains("portrait")) {
+      value.remove("portrait");
+      value.remove("gridCoverId");
+      persist(key(), value);
+    }
     finish("IGDB data saved. This game keeps the artwork its source provides.");
     return;
   }
