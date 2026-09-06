@@ -1,5 +1,6 @@
 #include "library/RyujinxGameModel.h"
 
+#include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
 
 #include <QCryptographicHash>
@@ -126,7 +127,7 @@ bool RyujinxGameModel::openDatabase(const QString& path) {
   }
   m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
   m_database.setDatabaseName(path);
-  if (!m_database.open()) {
+  if (!openTunedDatabase(m_database)) {
     setStatus(QStringLiteral("Ryujinx cache unavailable"), m_database.lastError().text());
     return false;
   }
@@ -334,6 +335,8 @@ QVariant RyujinxGameModel::valueForRole(const Game& game, int role) const {
     return game.ryujinx.flatpak;
   case GameRoles::Hidden:
     return game.hidden;
+  case GameRoles::System:
+    return QStringLiteral("switch");
   default:
     return {};
   }

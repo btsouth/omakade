@@ -1,5 +1,7 @@
+#include "metadata/GameMetadata.h"
 #include "library/UnifiedGameModel.h"
 
+#include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
 
 #include <QCryptographicHash>
@@ -152,9 +154,54 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
   if (source.model == nullptr) {
     return {};
   }
+  if (role == GameRoles::MetadataKey) return gameKey(source);
+  if (role == GameRoles::Rating || role == GameRoles::RatingCount || role == GameRoles::Popularity) {
+    const auto metadata = m_metadata ? m_metadata->entry(gameKey(source)) : QVariantMap{};
+    return metadata.value(role == GameRoles::Rating ? "rating" : role == GameRoles::Popularity ? "popularity" : "ratingCount", role == GameRoles::RatingCount ? 0 : -1);
+  }
+  switch (role) {
+  case GameRoles::Linked:
+  case GameRoles::LinkedSources:
+  case GameRoles::CompletionStatus:
+  case GameRoles::Tags:
+  case GameRoles::Collections:
+  case GameRoles::Favorite:
+  case GameRoles::Hidden:
+  case GameRoles::Recent:
+  case GameRoles::LastPlayed:
+  case GameRoles::Hours:
+  case GameRoles::Installed:
+  case GameRoles::Pinned:
+    break;
+  case GameRoles::CoverPath:
+  case GameRoles::CustomCover: {
+    const QString override = m_coverOverrides.value(gameKey(source));
+    if (role == GameRoles::CoverPath && !override.isEmpty() && QFileInfo::exists(override)) {
+      return localUrl(override);
+    }
+    if (role == GameRoles::CustomCover) {
+      return !override.isEmpty() && QFileInfo::exists(override);
+    }
+    if (m_metadata) {
+      const QString portrait = m_metadata->entry(gameKey(source)).value("portrait").toString();
+      if (!portrait.isEmpty() && QFileInfo::exists(portrait)) return localUrl(portrait);
+    }
+    return source.model->index(source.row, 0).data(role);
+  }
+  default:
+    return source.model->index(source.row, 0).data(role);
+  }
   const QVector<SourceRow> members = groupRows(source);
   if (role == GameRoles::Linked) {
     return members.size() > 1;
+  }
+  if (role == GameRoles::Pinned) {
+    for (const SourceRow& member : members) {
+      if (m_organizationForGame.value(gameKey(member)).pinned) {
+        return true;
+      }
+    }
+    return false;
   }
   if (role == GameRoles::LinkedSources) {
     QStringList sources;
@@ -226,19 +273,16 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
     }
     return false;
   }
-  const QString override = m_coverOverrides.value(gameKey(source));
-  if (role == GameRoles::CoverPath && QFileInfo::exists(override)) {
-    return localUrl(override);
-  }
-  if (role == GameRoles::CustomCover) {
-    return QFileInfo::exists(override);
-  }
-  return source.model->index(source.row, 0).data(role);
+  return {};
 }
 
 QHash<int, QByteArray> UnifiedGameModel::roleNames() const {
   QHash<int, QByteArray> roles =
       m_models.isEmpty() ? QHash<int, QByteArray>{} : m_models.constFirst()->roleNames();
+  roles.insert(GameRoles::MetadataKey, "metadataKey");
+  roles.insert(GameRoles::Rating, "rating");
+  roles.insert(GameRoles::RatingCount, "ratingCount");
+  roles.insert(GameRoles::Popularity, "popularity");
   roles.insert(GameRoles::CustomCover, "customCover");
   roles.insert(GameRoles::Linked, "linked");
   roles.insert(GameRoles::LinkedSources, "linkedSources");
@@ -247,6 +291,8 @@ QHash<int, QByteArray> UnifiedGameModel::roleNames() const {
   roles.insert(GameRoles::Collections, "collections");
   roles.insert(GameRoles::LaunchTarget, "launchTarget");
   roles.insert(GameRoles::Installed, "installed");
+  roles.insert(GameRoles::System, "system");
+  roles.insert(GameRoles::IsPortal, "isPortal");
   return roles;
 }
 
@@ -555,6 +601,38 @@ bool UnifiedGameModel::setCompletionStatus(int row, const QString& status) {
   return true;
 }
 
+bool UnifiedGameModel::setPinned(int row, bool pinned) {
+  const SourceRow source = mapRow(row);
+  if (source.model == nullptr || !m_database.isOpen() || !m_database.transaction()) {
+    return false;
+  }
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "INSERT INTO game_organization(source, runner, app_id, completion_status, tags_json, pinned) "
+      "VALUES(?, ?, ?, '', '[]', ?) ON CONFLICT(source, runner, app_id) DO UPDATE SET "
+      "pinned = excluded.pinned"));
+  const QVector<SourceRow> members = groupRows(source);
+  for (const SourceRow& member : members) {
+    const QModelIndex game = member.model->index(member.row, 0);
+    query.bindValue(0, game.data(GameRoles::Source).toString());
+    query.bindValue(1, runnerFor(game));
+    query.bindValue(2, game.data(GameRoles::AppId).toString());
+    query.bindValue(3, pinned ? 1 : 0);
+    if (!query.exec()) {
+      m_database.rollback();
+      return false;
+    }
+  }
+  if (!m_database.commit()) {
+    return false;
+  }
+  for (const SourceRow& member : members) {
+    m_organizationForGame[gameKey(member)].pinned = pinned;
+  }
+  emit dataChanged(index(row), index(row), {GameRoles::Pinned});
+  return true;
+}
+
 bool UnifiedGameModel::setTags(int row, const QString& tags) {
   const SourceRow source = mapRow(row);
   if (source.model == nullptr || !m_database.isOpen()) {
@@ -826,7 +904,7 @@ bool UnifiedGameModel::openArtworkDatabase(const QString& path) {
   m_artworkRoot = QFileInfo(path).absolutePath() + QStringLiteral("/artwork");
   m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
   m_database.setDatabaseName(path);
-  if (!m_database.open()) {
+  if (!openTunedDatabase(m_database)) {
     return false;
   }
   QSqlQuery query(m_database);
@@ -851,8 +929,21 @@ bool UnifiedGameModel::openArtworkDatabase(const QString& path) {
   if (!query.exec(QStringLiteral(
           "CREATE TABLE IF NOT EXISTS game_organization (source TEXT NOT NULL, runner TEXT NOT "
           "NULL, app_id TEXT NOT NULL, completion_status TEXT NOT NULL DEFAULT '', tags_json TEXT "
-          "NOT NULL DEFAULT '[]', PRIMARY KEY(source, runner, app_id))"))) {
+          "NOT NULL DEFAULT '[]', pinned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(source, runner, app_id))"))) {
     return false;
+  }
+  // Libraries created before pinning existed get the column added in place.
+  {
+    QSqlQuery columns(m_database);
+    bool hasPinned = false;
+    if (columns.exec(QStringLiteral("PRAGMA table_info(game_organization)"))) {
+      while (columns.next()) {
+        hasPinned = hasPinned || columns.value(1).toString() == QLatin1String("pinned");
+      }
+    }
+    if (!hasPinned) {
+      query.exec(QStringLiteral("ALTER TABLE game_organization ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"));
+    }
   }
   if (!query.exec(QStringLiteral(
           "CREATE TABLE IF NOT EXISTS collections (name TEXT PRIMARY KEY COLLATE NOCASE, "
@@ -925,7 +1016,7 @@ void UnifiedGameModel::loadOrganization() {
   m_organizationForGame.clear();
   QSqlQuery query(m_database);
   if (!query.exec(QStringLiteral(
-          "SELECT source, runner, app_id, completion_status, tags_json FROM game_organization"))) {
+          "SELECT source, runner, app_id, completion_status, tags_json, pinned FROM game_organization"))) {
     return;
   }
   while (query.next()) {
@@ -938,8 +1029,9 @@ void UnifiedGameModel::loadOrganization() {
         tags.append(value.toString());
       }
     }
-    m_organizationForGame.insert(
-        key, {.status = normalizedStatus(query.value(3).toString()), .tags = tags});
+    m_organizationForGame.insert(key, {.status = normalizedStatus(query.value(3).toString()),
+                                       .tags = tags,
+                                       .pinned = query.value(5).toBool()});
   }
 }
 
@@ -962,4 +1054,14 @@ void UnifiedGameModel::loadCollections() {
                         QChar::Null + query.value(3).toString();
     m_collectionsForGame[key].append(query.value(0).toString());
   }
+}
+
+void UnifiedGameModel::setMetadata(GameMetadata* metadata) {
+  if (m_metadata) disconnect(m_metadata, nullptr, this, nullptr);
+  m_metadata = metadata;
+  if (metadata) connect(metadata, &GameMetadata::entryChanged, this, [this](const QString& key) {
+    for (int row = 0; row < m_rows.size(); ++row) if (gameKey(m_rows.at(row)) == key)
+      emit dataChanged(index(row), index(row), {GameRoles::CoverPath, GameRoles::Rating, GameRoles::RatingCount, GameRoles::Popularity});
+  });
+  if (!m_rows.isEmpty()) emit dataChanged(index(0), index(m_rows.size()-1), {GameRoles::CoverPath, GameRoles::Rating, GameRoles::RatingCount, GameRoles::Popularity});
 }

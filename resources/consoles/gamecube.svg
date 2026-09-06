@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#6366f1"/>
+  <rect x="110" y="180" width="180" height="180" rx="22" fill="#312e81"/><rect x="146" y="216" width="108" height="108" rx="14" fill="#a5b4fc"/>
+  <text x="200" y="520" text-anchor="middle" fill="#a5b4fc" font-family="sans-serif" font-size="34" font-weight="700">GAMECUBE</text>
+</svg>

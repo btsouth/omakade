@@ -1,6 +1,7 @@
 #include "launch/GameLauncher.h"
 
 #include "launch/SteamLauncher.h"
+#include "library/ConsoleCatalog.h"
 #include "sources/FlatpakInstall.h"
 #include "sources/battlenet/BattleNetScanner.h"
 #include "sources/heroic/HeroicScanner.h"
@@ -30,6 +31,49 @@ bool validPcsx2Id(const QString& id) {
     return true;
   }
   return id.startsWith(QStringLiteral("path:")) && id.size() > 5;
+}
+
+bool validLaunchPath(const QString& path, const QStringList& suffixes, bool allowDirectory) {
+  if (path.isEmpty() || path.size() > 4096 || path.contains(QChar::Null)) {
+    return false;
+  }
+  if (allowDirectory && QFileInfo(path).isDir()) {
+    return path.startsWith(QLatin1Char('/'));
+  }
+  const QString suffix = QFileInfo(path).suffix();
+  for (const QString& allowed : suffixes) {
+    if (suffix.compare(allowed, Qt::CaseInsensitive) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool validShadps4Path(const QString& id) {
+  const QString path = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
+  if (path.endsWith(QStringLiteral("/eboot.bin"), Qt::CaseInsensitive) ||
+      QFileInfo(path).fileName().compare(QStringLiteral("eboot.bin"), Qt::CaseInsensitive) == 0) {
+    return path.size() <= 4096 && !path.contains(QChar::Null) && path.startsWith(QLatin1Char('/'));
+  }
+  return validLaunchPath(path, {QStringLiteral("bin"), QStringLiteral("elf")}, true);
+}
+
+bool validDolphinPath(const QString& id) {
+  const QString path = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
+  return path.startsWith(QLatin1Char('/')) &&
+         validLaunchPath(path,
+                         {QStringLiteral("rvz"), QStringLiteral("wia"), QStringLiteral("iso"),
+                          QStringLiteral("gcm"), QStringLiteral("gcz"), QStringLiteral("wbfs"),
+                          QStringLiteral("ciso"), QStringLiteral("dol"), QStringLiteral("elf")},
+                         false);
+}
+
+bool validCemuPath(const QString& id) {
+  const QString path = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
+  return validLaunchPath(path,
+                         {QStringLiteral("wud"), QStringLiteral("wux"), QStringLiteral("wua"),
+                          QStringLiteral("iso"), QStringLiteral("rpx")},
+                         true);
 }
 
 bool validRyujinxId(const QString& id) {
@@ -129,9 +173,63 @@ QString bottlesBottleName(const QString& prefix) {
   }
   return QFileInfo(prefix).fileName();
 }
+
+QString findRetroArchCore(const QStringList& coreNames) {
+  const QString home = QDir::homePath();
+  const QStringList directories = {
+      home + QStringLiteral("/.config/retroarch/cores"),
+      home + QStringLiteral("/.var/app/org.libretro.RetroArch/config/retroarch/cores"),
+      QStringLiteral("/usr/lib/libretro"),
+      QStringLiteral("/usr/lib64/libretro"),
+  };
+  for (const QString& coreName : coreNames) {
+    for (const QString& directory : directories) {
+      const QString path = directory + QLatin1Char('/') + coreName + QStringLiteral(".so");
+      if (QFileInfo::exists(path)) {
+        return path;
+      }
+    }
+  }
+  return {};
+}
+
+QString findStandalone(const QStringList& executables) {
+  for (const QString& executable : executables) {
+    const QString path = QStandardPaths::findExecutable(executable);
+    if (!path.isEmpty()) {
+      return executable;
+    }
+  }
+  return {};
+}
+
+QString romFileName(const QString& contentPath) {
+  const qsizetype archive = contentPath.lastIndexOf(QLatin1Char('#'));
+  return archive >= 0 ? contentPath.mid(archive + 1) : contentPath;
+}
+
+const ConsoleDefinition* consoleForRom(const QString& contentPath) {
+  const QString suffix = QFileInfo(romFileName(contentPath)).suffix();
+  const ConsoleDefinition* byName = ConsoleCatalog::find(suffix);
+  if (byName != nullptr) {
+    return byName;
+  }
+  for (const ConsoleDefinition& console : ConsoleCatalog::all()) {
+    for (const QString& extension : console.extensions) {
+      if (suffix.compare(extension, Qt::CaseInsensitive) == 0) {
+        return &console;
+      }
+    }
+  }
+  return nullptr;
+}
 } // namespace
 
 GameLauncher::GameLauncher(QObject* parent) : QObject(parent) {}
+
+void GameLauncher::setPreferStandaloneEmulators(bool value) {
+  m_preferStandaloneEmulators = value;
+}
 
 QString GameLauncher::lastError() const { return m_lastError; }
 
@@ -191,6 +289,28 @@ LaunchCommand GameLauncher::retroArchCommand(const QString& contentPath, const Q
                                  {QStringLiteral("-L"), corePath, contentPath}};
 }
 
+LaunchCommand GameLauncher::resolvedCartridgeCommand(const QString& contentPath,
+                                                     const QString& corePath, bool flatpak,
+                                                     bool preferStandalone,
+                                                     const QString& standaloneExecutable,
+                                                     const QString& mappedCorePath) {
+  const bool havePlaylistCore =
+      !corePath.trimmed().isEmpty() && corePath != QStringLiteral("DETECT");
+  if (havePlaylistCore) {
+    return retroArchCommand(contentPath, corePath, flatpak);
+  }
+  if (preferStandalone && !standaloneExecutable.isEmpty()) {
+    return LaunchCommand{standaloneExecutable, {contentPath}};
+  }
+  if (!mappedCorePath.isEmpty()) {
+    return retroArchCommand(contentPath, mappedCorePath, flatpak);
+  }
+  if (!standaloneExecutable.isEmpty()) {
+    return LaunchCommand{standaloneExecutable, {contentPath}};
+  }
+  return {};
+}
+
 LaunchCommand GameLauncher::pcsx2Command(const QString& id, bool isElf, bool flatpak) {
   if (!validPcsx2Id(id)) {
     return {};
@@ -229,6 +349,55 @@ LaunchCommand GameLauncher::ryujinxCommand(const QString& id, const QString& nat
   }
   return LaunchCommand{QStringLiteral("flatpak"),
                        {QStringLiteral("run"), flatpakAppId, QStringLiteral("--"), target}};
+}
+
+LaunchCommand GameLauncher::shadps4Command(const QString& path, const QString& nativeExecutable,
+                                           const QString& flatpakAppId) {
+  if (!validShadps4Path(path)) {
+    return {};
+  }
+  const QString target = path.startsWith(QStringLiteral("path:")) ? path.mid(5) : path;
+  if (!nativeExecutable.isEmpty()) {
+    return LaunchCommand{nativeExecutable, {QStringLiteral("-g"), target}};
+  }
+  if (flatpakAppId.isEmpty()) {
+    return {};
+  }
+  return LaunchCommand{QStringLiteral("flatpak"),
+                       {QStringLiteral("run"), flatpakAppId, QStringLiteral("--"),
+                        QStringLiteral("-g"), target}};
+}
+
+// Batch mode (-b) closes Dolphin with the game, so the tile goes to the game and
+// back, not to Dolphin's own window.
+LaunchCommand GameLauncher::dolphinCommand(const QString& path, const QString& nativeExecutable,
+                                           bool flatpak) {
+  if (!validDolphinPath(path)) {
+    return {};
+  }
+  const QString target = path.startsWith(QStringLiteral("path:")) ? path.mid(5) : path;
+  if (flatpak) {
+    return LaunchCommand{QStringLiteral("flatpak"),
+                         {QStringLiteral("run"), QStringLiteral("org.DolphinEmu.dolphin-emu"),
+                          QStringLiteral("-b"), QStringLiteral("-e"), target}};
+  }
+  if (nativeExecutable.isEmpty()) {
+    return {};
+  }
+  return LaunchCommand{nativeExecutable, {QStringLiteral("-b"), QStringLiteral("-e"), target}};
+}
+
+LaunchCommand GameLauncher::cemuCommand(const QString& path, bool flatpak) {
+  if (!validCemuPath(path)) {
+    return {};
+  }
+  const QString target = path.startsWith(QStringLiteral("path:")) ? path.mid(5) : path;
+  if (flatpak) {
+    return LaunchCommand{QStringLiteral("flatpak"),
+                         {QStringLiteral("run"), QStringLiteral("info.cemu.Cemu"),
+                          QStringLiteral("--"), QStringLiteral("-g"), target}};
+  }
+  return LaunchCommand{QStringLiteral("cemu"), {QStringLiteral("-g"), target}};
 }
 
 LaunchCommand GameLauncher::battleNetCommand(const QString& id, const QString& prefix,
@@ -340,6 +509,27 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
         idIsPath ? id : (launchTarget.isEmpty() ? id : launchTarget);
     return launchRyujinx(romTarget, flatpak, runner, false);
   }
+  if (source.compare(QStringLiteral("shadPS4"), Qt::CaseInsensitive) == 0) {
+    const QString target = launchTarget.isEmpty() ? (id.startsWith(QStringLiteral("path:"))
+                                                         ? id.mid(5)
+                                                         : installPath)
+                                                  : launchTarget;
+    return launchShadps4(target, flatpak, runner, false);
+  }
+  if (source.compare(QStringLiteral("Cemu"), Qt::CaseInsensitive) == 0) {
+    const QString target = launchTarget.isEmpty() ? (id.startsWith(QStringLiteral("path:"))
+                                                         ? id.mid(5)
+                                                         : installPath)
+                                                  : launchTarget;
+    return launchCemu(target, flatpak, false);
+  }
+  if (source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0) {
+    const QString target = launchTarget.isEmpty() ? (id.startsWith(QStringLiteral("path:"))
+                                                         ? id.mid(5)
+                                                         : installPath)
+                                                  : launchTarget;
+    return launchDolphin(target, flatpak, false);
+  }
   if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
     return launchBattleNet(id, launchTarget, runner, flatpak, false);
   }
@@ -378,6 +568,15 @@ bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0) {
     return launchRyujinx(id, flatpak, runner, true);
+  }
+  if (source.compare(QStringLiteral("shadPS4"), Qt::CaseInsensitive) == 0) {
+    return launchShadps4(launchTarget.isEmpty() ? id : launchTarget, flatpak, runner, true);
+  }
+  if (source.compare(QStringLiteral("Cemu"), Qt::CaseInsensitive) == 0) {
+    return launchCemu(launchTarget.isEmpty() ? id : launchTarget, flatpak, true);
+  }
+  if (source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0) {
+    return launchDolphin(launchTarget.isEmpty() ? id : launchTarget, flatpak, true);
   }
   if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
     return launchBattleNet(id, launchTarget, runner, flatpak, true);
@@ -553,33 +752,54 @@ bool GameLauncher::launchFaugus(const QString& id, bool flatpak, bool manageOnly
 
 bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& corePath,
                                    bool flatpak, bool manageOnly) {
-  const QString executable = flatpak ? QStringLiteral("flatpak") : QStringLiteral("retroarch");
-  if (QStandardPaths::findExecutable(executable).isEmpty()) {
-    setError(flatpak ? QStringLiteral("Flatpak is not installed.")
-                     : QStringLiteral("RetroArch is not installed."));
-    return false;
-  }
-  if (flatpak) {
-    const QString error =
-        flatpakError(QStringLiteral("org.libretro.RetroArch"), QStringLiteral("RetroArch"));
-    if (!error.isEmpty()) {
-      setError(error);
-      return false;
-    }
-  }
+  const ConsoleDefinition* console = consoleForRom(contentPath);
+  const QString standalone =
+      console == nullptr ? QString{} : findStandalone(console->standaloneExecutables);
+  const QString mappedCore =
+      console == nullptr ? QString{} : findRetroArchCore(console->retroArchCores);
   const LaunchCommand command =
       manageOnly
           ? (flatpak
                  ? LaunchCommand{QStringLiteral("flatpak"),
                                  {QStringLiteral("run"), QStringLiteral("org.libretro.RetroArch")}}
                  : LaunchCommand{QStringLiteral("retroarch"), {}})
-          : retroArchCommand(contentPath, corePath, flatpak);
+          : resolvedCartridgeCommand(contentPath, corePath, flatpak, m_preferStandaloneEmulators,
+                                     standalone, mappedCore);
   if (!command.isValid()) {
-    setError(QStringLiteral("Set a core association for this game in RetroArch, then rescan."));
+    setError(console == nullptr
+                 ? QStringLiteral("Set a core association for this game in RetroArch, then rescan.")
+                 : QStringLiteral("No emulator was found for %1. Install %2 or RetroArch.")
+                       .arg(console->displayName,
+                            console->standaloneExecutables.isEmpty()
+                                ? QStringLiteral("a compatible emulator")
+                                : console->standaloneExecutables.constFirst()));
+    return false;
+  }
+  const bool usesRetroArch = command.program == QStringLiteral("retroarch") ||
+                             command.program == QStringLiteral("flatpak");
+  if (usesRetroArch) {
+    const QString executable = flatpak ? QStringLiteral("flatpak") : QStringLiteral("retroarch");
+    if (QStandardPaths::findExecutable(executable).isEmpty()) {
+      setError(flatpak ? QStringLiteral("Flatpak is not installed.")
+                       : QStringLiteral("RetroArch is not installed."));
+      return false;
+    }
+    if (flatpak) {
+      const QString error =
+          flatpakError(QStringLiteral("org.libretro.RetroArch"), QStringLiteral("RetroArch"));
+      if (!error.isEmpty()) {
+        setError(error);
+        return false;
+      }
+    }
+  } else if (QStandardPaths::findExecutable(command.program).isEmpty()) {
+    setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
   }
   if (!QProcess::startDetached(command.program, command.arguments)) {
-    setError(QStringLiteral("RetroArch could not be started. Open RetroArch and try again."));
+    setError(usesRetroArch
+                 ? QStringLiteral("RetroArch could not be started. Open RetroArch and try again.")
+                 : QStringLiteral("%1 could not be started.").arg(command.program));
     return false;
   }
   setError({});
@@ -666,6 +886,123 @@ bool GameLauncher::launchRyujinx(const QString& id, bool flatpak, const QString&
   }
   if (!QProcess::startDetached(command.program, command.arguments)) {
     setError(QStringLiteral("Ryujinx could not be started. Open Ryujinx and try again."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
+bool GameLauncher::launchShadps4(const QString& path, bool flatpak, const QString& configuredAppId,
+                                 bool manageOnly) {
+  QString nativeExecutable;
+  QString flatpakAppId;
+  if (!flatpak) {
+    for (const QString& candidate :
+         {QStringLiteral("shadps4"), QStringLiteral("shadPS4")}) {
+      if (!QStandardPaths::findExecutable(candidate).isEmpty()) {
+        nativeExecutable = candidate;
+        break;
+      }
+    }
+    if (nativeExecutable.isEmpty()) {
+      setError(QStringLiteral("shadPS4 is not installed."));
+      return false;
+    }
+  }
+  if (flatpak) {
+    flatpakAppId = configuredAppId.isEmpty() ? QStringLiteral("net.shadps4.shadPS4")
+                                             : configuredAppId;
+    const QString error = flatpakError(flatpakAppId, QStringLiteral("shadPS4"));
+    if (!error.isEmpty()) {
+      setError(error);
+      return false;
+    }
+  }
+  const LaunchCommand command =
+      manageOnly
+          ? (flatpak ? LaunchCommand{QStringLiteral("flatpak"),
+                                     {QStringLiteral("run"), flatpakAppId}}
+                     : LaunchCommand{nativeExecutable, {}})
+          : shadps4Command(path, nativeExecutable, flatpakAppId);
+  if (!command.isValid()) {
+    setError(QStringLiteral("This game has an invalid shadPS4 target."));
+    return false;
+  }
+  if (!QProcess::startDetached(command.program, command.arguments)) {
+    setError(QStringLiteral("shadPS4 could not be started. Open shadPS4 and try again."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
+bool GameLauncher::launchDolphin(const QString& path, bool flatpak, bool manageOnly) {
+  QString native;
+  if (!flatpak) {
+    for (const QString& candidate : {QStringLiteral("dolphin-emu"), QStringLiteral("dolphin-emu-nogui")}) {
+      if (!QStandardPaths::findExecutable(candidate).isEmpty()) {
+        native = candidate;
+        break;
+      }
+    }
+    if (native.isEmpty()) {
+      setError(QStringLiteral("Dolphin is not installed."));
+      return false;
+    }
+  } else {
+    const QString error = flatpakError(QStringLiteral("org.DolphinEmu.dolphin-emu"), QStringLiteral("Dolphin"));
+    if (!error.isEmpty()) {
+      setError(error);
+      return false;
+    }
+  }
+  const LaunchCommand command =
+      manageOnly ? (flatpak ? LaunchCommand{QStringLiteral("flatpak"),
+                                            {QStringLiteral("run"), QStringLiteral("org.DolphinEmu.dolphin-emu")}}
+                            : LaunchCommand{native, {}})
+                 : dolphinCommand(path, native, flatpak);
+  if (!command.isValid()) {
+    setError(QStringLiteral("This game has an invalid Dolphin target."));
+    return false;
+  }
+  if (!QProcess::startDetached(command.program, command.arguments)) {
+    setError(QStringLiteral("Dolphin could not be started. Open Dolphin and try again."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
+bool GameLauncher::launchCemu(const QString& path, bool flatpak, bool manageOnly) {
+  if (!flatpak && QStandardPaths::findExecutable(QStringLiteral("cemu")).isEmpty() &&
+      QStandardPaths::findExecutable(QStringLiteral("Cemu")).isEmpty()) {
+    setError(QStringLiteral("Cemu is not installed."));
+    return false;
+  }
+  if (flatpak) {
+    const QString error =
+        flatpakError(QStringLiteral("info.cemu.Cemu"), QStringLiteral("Cemu"));
+    if (!error.isEmpty()) {
+      setError(error);
+      return false;
+    }
+  }
+  const QString native =
+      QStandardPaths::findExecutable(QStringLiteral("cemu")).isEmpty()
+          ? QStringLiteral("Cemu")
+          : QStringLiteral("cemu");
+  const LaunchCommand command =
+      manageOnly
+          ? (flatpak ? LaunchCommand{QStringLiteral("flatpak"),
+                                     {QStringLiteral("run"), QStringLiteral("info.cemu.Cemu")}}
+                     : LaunchCommand{native, {}})
+          : cemuCommand(path, flatpak);
+  if (!command.isValid()) {
+    setError(QStringLiteral("This game has an invalid Cemu target."));
+    return false;
+  }
+  if (!QProcess::startDetached(command.program, command.arguments)) {
+    setError(QStringLiteral("Cemu could not be started. Open Cemu and try again."));
     return false;
   }
   setError({});

@@ -34,6 +34,7 @@ Item {
     readonly property var achievementAccount: achievementSourceIsRetroArch ? RetroAchievements : SteamAccount
     signal backRequested()
     signal favoriteRequested()
+    signal pinRequested()
     signal playRequested()
     signal manageRequested()
     signal hiddenRequested()
@@ -441,6 +442,9 @@ Item {
                                  || root.selectedInstallation.source === "RetroArch"
                                  || root.selectedInstallation.source === "PCSX2"
                                  || root.selectedInstallation.source === "Ryujinx"
+                                 || root.selectedInstallation.source === "shadPS4"
+                                 || root.selectedInstallation.source === "Cemu"
+                                 || root.selectedInstallation.source === "Dolphin"
                                  || root.selectedInstallation.source === "Battle.net"
                         text: "MANAGE IN " + (root.selectedInstallation.source || "LAUNCHER").toUpperCase()
                         onClicked: root.manageRequested()
@@ -454,6 +458,19 @@ Item {
                             gameActions.columns === 2 ? favoriteButton : null
                         text: root.game.hidden ? "UNHIDE" : "HIDE"
                         onClicked: root.hiddenRequested()
+                    }
+
+                    GlassButton {
+                        id: pinButton
+                        objectName: "pinButton"
+                        // Games of a system that lives behind a console card can
+                        // still hold a spot in the main library.
+                        visible: !root.game.isPortal && !!root.game.system
+                                 && Preferences.consolePortalsEnabled
+                                 && Preferences.consoleLayout(root.game.system) === "card"
+                        property Item controllerLeftTarget: hideButton
+                        text: root.game.pinned ? "REMOVE FROM LIBRARY" : "SHOW IN LIBRARY"
+                        onClicked: root.pinRequested()
                     }
                 }
 
@@ -739,6 +756,13 @@ Item {
                             }
                         }
                     }
+                }
+
+                GameMetadataEditor {
+                    game: root.game
+                    couchMode: root.couchMode
+                    uiScale: root.uiScale
+                    onTextEntryRequested: (target, title, password, placeholder) => root.textEntryRequested(target, title, password, placeholder)
                 }
 
                 ColumnLayout {

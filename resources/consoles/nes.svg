@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#1f2933"/>
+  <rect x="0" y="0" width="400" height="86" fill="#ef4444"/>
+  <rect x="48" y="170" width="304" height="180" rx="8" fill="#374151"/>
+  <rect x="80" y="210" width="240" height="16" rx="4" fill="#f87171"/>
+  <rect x="80" y="246" width="140" height="16" rx="4" fill="#9ca3af"/>
+  <text x="200" y="520" text-anchor="middle" fill="#fef2f2" font-family="sans-serif" font-size="34" font-weight="700">NES</text>
+</svg>

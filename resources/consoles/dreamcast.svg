@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#f97316"/>
+  <circle cx="200" cy="270" r="110" fill="#7c2d12"/><path d="M200 160 a110 110 0 0 1 0 220" fill="none" stroke="#fdba74" stroke-width="18"/><circle cx="200" cy="270" r="34" fill="#fdba74"/>
+  <text x="200" y="520" text-anchor="middle" fill="#fdba74" font-family="sans-serif" font-size="30" font-weight="700">SEGA DREAMCAST</text>
+</svg>

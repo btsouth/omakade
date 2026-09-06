@@ -1,5 +1,6 @@
 #include "library/Pcsx2GameModel.h"
 
+#include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
 
 #include <QCryptographicHash>
@@ -126,7 +127,7 @@ bool Pcsx2GameModel::openDatabase(const QString& path) {
   }
   m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
   m_database.setDatabaseName(path);
-  if (!m_database.open()) {
+  if (!openTunedDatabase(m_database)) {
     setStatus(QStringLiteral("PCSX2 cache unavailable"), m_database.lastError().text());
     return false;
   }
@@ -335,6 +336,8 @@ QVariant Pcsx2GameModel::valueForRole(const Game& game, int role) const {
     return game.pcsx2.flatpak;
   case GameRoles::Hidden:
     return game.hidden;
+  case GameRoles::System:
+    return QStringLiteral("ps2");
   default:
     return {};
   }

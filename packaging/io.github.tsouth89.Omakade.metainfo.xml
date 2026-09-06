@@ -26,6 +26,17 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.7.0" date="2026-09-06">
+      <description>
+        <p>Console libraries, redesigned settings, and optional ratings and portrait covers.</p>
+        <ul>
+          <li>Discover GameCube and Wii games with Dolphin, Wii U games with Cemu, and dumped PS4 games with shadPS4.</li>
+          <li>Switch between console cards and individual games on desktop and in Couch Mode.</li>
+          <li>Adjust cover sizes and browse sources from the reorganized settings.</li>
+          <li>Identify games with IGDB, sort by rating, and choose SteamGridDB portrait covers.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.6.1" date="2026-09-05" />
     <release version="1.6.0" date="2026-09-04" />
     <release version="1.5.0" date="2026-09-04" />

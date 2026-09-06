@@ -106,6 +106,7 @@ void ControllerInput::setInputEnabled(bool enabled) {
     return;
   }
   m_inputEnabled = enabled;
+  emit inputEnabledChanged();
   m_repeatTimer.stop();
   m_repeatTimer.setInterval(kInitialRepeatDelayMs);
   m_axisX = 0;
@@ -268,6 +269,7 @@ void ControllerInput::setDpadPressed(int key, bool pressed) {
 }
 
 void ControllerInput::emitDirection(int key) {
+  if (!m_inputEnabled) return;
   if (m_focusNavigation) {
     emit focusDirectionRequested(key);
   } else {
@@ -330,4 +332,8 @@ QString ControllerInput::buttonLabel(SDL_GamepadButton button, const QString& fa
   default:
     return fallback;
   }
+}
+
+void ControllerInput::setWindowFocused(bool focused) {
+  setInputEnabled(focused);
 }

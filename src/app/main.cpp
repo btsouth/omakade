@@ -4,6 +4,7 @@
 #include "app/AppSettings.h"
 #include "app/SingleInstance.h"
 #include "input/ControllerInput.h"
+#include "input/ControllerFocusGuard.h"
 #include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
@@ -16,15 +17,22 @@
 #include "library/MockGameModel.h"
 #include "library/Pcsx2GameModel.h"
 #include "library/RyujinxGameModel.h"
+#include "library/Shadps4GameModel.h"
+#include "library/CemuGameModel.h"
+#include "library/DolphinGameModel.h"
 #include "library/RetroArchGameModel.h"
 #include "library/SteamGameModel.h"
+#include "library/ConsolePortalModel.h"
 #include "library/UnifiedGameModel.h"
 #include "metadata/GameInsightsService.h"
+#include "metadata/GameMetadata.h"
 #include "theme/OmarchyTheme.h"
 
 #include <QAbstractItemModel>
 #include <QDebug>
+#include <QPainter>
 #include <QDir>
+#include <QSet>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QGuiApplication>
@@ -45,6 +53,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QWindow>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <memory>
@@ -126,6 +135,171 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
     });
   });
 }
+// Opens the Super Nintendo portal in the desktop grid and checks that every card the
+// user can see belongs to the console, that no card from the previous view is left
+// behind, and that leaving the console removes the cartridges again. The proxy is
+// covered by core tests; this guards the QML view, which recycles delegates.
+void runConsolePortalTest(QQuickWindow* window, QGuiApplication* application) {
+  const auto fail = [application](const QString& message) {
+    qCritical().noquote() << message;
+    application->exit(EXIT_FAILURE);
+  };
+  auto* library = qobject_cast<QAbstractItemModel*>(
+      qmlContext(window)->contextProperty(QStringLiteral("Library")).value<QObject*>());
+  auto* grid = window->findChild<QQuickItem*>(QStringLiteral("libraryGrid"));
+  if (library == nullptr || grid == nullptr) {
+    fail(QStringLiteral("Console portal test could not find the library grid"));
+    return;
+  }
+  struct VisibleCard {
+    QString title;
+    QString source;
+    QPointF position;
+  };
+  const auto visibleCards = [grid] {
+    QVector<VisibleCard> cards;
+    auto* content = grid->property("contentItem").value<QQuickItem*>();
+    if (content == nullptr) {
+      return cards;
+    }
+    const qreal top = grid->property("contentY").toReal();
+    const qreal bottom = top + grid->height();
+    for (QQuickItem* child : content->childItems()) {
+      if (!child->property("appId").isValid() || !child->isVisible() || child->opacity() <= 0 ||
+          child->y() + child->height() <= top || child->y() >= bottom) {
+        continue;
+      }
+      cards.append({child->property("title").toString(), child->property("source").toString(),
+                    child->position()});
+    }
+    return cards;
+  };
+  const auto portalRow = [library] {
+    int row = -1;
+    QMetaObject::invokeMethod(library, "indexOf", Q_RETURN_ARG(int, row),
+                              Q_ARG(QString, QStringLiteral("RetroArch")), Q_ARG(QString, QString{}),
+                              Q_ARG(QString, QStringLiteral("portal:snes")));
+    return row;
+  };
+  const auto checkConsoleView = [visibleCards, library, grid, fail](const QString& phase) {
+    const QVector<VisibleCard> cards = visibleCards();
+    if (cards.isEmpty()) {
+      qWarning() << "Grid diagnostics" << grid->property("count") << grid->property("contentY")
+                 << grid->property("originY") << grid->property("contentHeight") << grid->height();
+      auto* content = grid->property("contentItem").value<QQuickItem*>();
+      if (content) for (auto* child : content->childItems())
+        if (child->property("appId").isValid()) qWarning() << child->property("title") << child->y() << child->isVisible();
+      fail(QStringLiteral("%1: no cards are visible inside the console").arg(phase));
+      return false;
+    }
+    QSet<QString> positions;
+    for (const VisibleCard& card : cards) {
+      if (card.source != QStringLiteral("RetroArch") ||
+          !card.title.startsWith(QStringLiteral("SNES Cart"))) {
+        fail(QStringLiteral("%1: '%2' from %3 is visible under Super Nintendo")
+                 .arg(phase, card.title, card.source));
+        return false;
+      }
+      const QString key = QStringLiteral("%1,%2").arg(card.position.x()).arg(card.position.y());
+      if (positions.contains(key)) {
+        fail(QStringLiteral("%1: two cards overlap at %2 (stale delegate)").arg(phase, key));
+        return false;
+      }
+      positions.insert(key);
+    }
+    if (library->property("consoleFilter").toString() != QStringLiteral("snes")) {
+      fail(QStringLiteral("%1: the console filter is not set").arg(phase));
+      return false;
+    }
+    return true;
+  };
+  const int firstPortal = portalRow();
+  if (firstPortal < 0) {
+    fail(QStringLiteral("Console portal test could not find the Super Nintendo portal"));
+    return;
+  }
+  QElapsedTimer openTimer;
+  openTimer.start();
+  QMetaObject::invokeMethod(window, "openGame", Q_ARG(QVariant, QVariant(firstPortal)));
+  const qint64 openMs = openTimer.elapsed();
+  qInfo().noquote() << QStringLiteral("Opening the console took %1 ms").arg(openMs);
+  QTimer::singleShot(400, window, [=] {
+    if (openMs > 1000) {
+      fail(QStringLiteral("Opening the console blocked the interface for %1 ms").arg(openMs));
+      return;
+    }
+    if (!checkConsoleView(QStringLiteral("first open"))) {
+      return;
+    }
+    QMetaObject::invokeMethod(window, "leaveConsole");
+    QTimer::singleShot(400, window, [=] {
+      for (const VisibleCard& card : visibleCards()) {
+        if (card.title.startsWith(QStringLiteral("SNES Cart"))) {
+          fail(QStringLiteral("after leaving: cartridge '%1' is still visible").arg(card.title));
+          return;
+        }
+      }
+      const int secondPortal = portalRow();
+      if (secondPortal < 0) {
+        fail(QStringLiteral("after leaving: the Super Nintendo portal is gone"));
+        return;
+      }
+      QMetaObject::invokeMethod(window, "openGame", Q_ARG(QVariant, QVariant(secondPortal)));
+      QTimer::singleShot(400, window, [=] {
+        if (!checkConsoleView(QStringLiteral("second open"))) return;
+        QMetaObject::invokeMethod(window, "leaveConsole");
+        if (application->arguments().contains(QStringLiteral("--expand-scroll-test")))
+          library->setProperty("expandConsoles", true);
+        QTimer::singleShot(150, window, [=] {
+          // Removing the earlier non-emulated rows moves GridView's content origin.
+          QMetaObject::invokeMethod(grid, "positionViewAtEnd");
+          library->setProperty("sourceFilters", QStringList{QStringLiteral("RetroArch")});
+          grid->setProperty("currentIndex", 0);
+          QTimer::singleShot(150, window, [=] {
+            QMetaObject::invokeMethod(grid, "positionViewAtBeginning");
+            const qreal origin = grid->property("originY").toReal();
+            qInfo() << "Filtered grid origin:" << origin;
+            if ((qFuzzyIsNull(origin) && !library->property("expandConsoles").toBool()) || visibleCards().isEmpty()) {
+              fail(QStringLiteral("Wheel regression fixture did not create a shifted visible grid"));
+              return;
+            }
+            const QPointF point = grid->mapToScene(QPointF(grid->width() / 2, grid->height() / 2));
+            QWheelEvent wheel(point, window->mapToGlobal(point), QPoint(), QPoint(0, -120),
+                              Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+            QCoreApplication::sendEvent(window, &wheel);
+            QTimer::singleShot(250, window, [=] {
+              const qreal y = grid->property("contentY").toReal();
+              const qreal first = grid->property("originY").toReal();
+              const qreal last = first + qMax(0.0, grid->property("contentHeight").toReal() - grid->height());
+              if (visibleCards().isEmpty() || y < first - 1 || y > last + 1) {
+                fail(QStringLiteral("Wheel after source filtering hid the cards: y=%1, bounds=%2..%3")
+                         .arg(y).arg(first).arg(last));
+                return;
+              }
+              if (last > first + 1 && y <= first + 1) {
+                fail(QStringLiteral("Wheel did not scroll the expanded collection"));
+                return;
+              }
+              auto* track = window->findChild<QQuickItem*>(QStringLiteral("libraryScrollTrack"));
+              if (last > first + 1 && track) {
+                QMetaObject::invokeMethod(track, "scrollTo", Q_ARG(QVariant, track->height()));
+                QTimer::singleShot(100, window, [=] {
+                  if (visibleCards().isEmpty() || qAbs(grid->property("contentY").toReal() - last) > 1) {
+                    fail(QStringLiteral("Scrollbar after filtering did not reach the visible last row"));
+                    return;
+                  }
+                  application->quit();
+                });
+              } else {
+                application->quit();
+              }
+            });
+          });
+        });
+      });
+    });
+  });
+}
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -184,7 +358,9 @@ int main(int argc, char* argv[]) {
       application.arguments().contains(QStringLiteral("--owned-layout-test"));
   const bool uninstalledLayoutTest =
       application.arguments().contains(QStringLiteral("--uninstalled-layout-test"));
-  const bool demoMode = smokeTest || renderMode ||
+  const bool consolePortalTest =
+      application.arguments().contains(QStringLiteral("--console-portal-test"));
+  const bool demoMode = smokeTest || renderMode || consolePortalTest ||
                         application.arguments().contains(QStringLiteral("--demo"));
   const bool benchmarkMode = application.arguments().contains(QStringLiteral("--benchmark"));
   const QString benchmarkMaxOption = QStringLiteral("--benchmark-max-ms");
@@ -212,12 +388,12 @@ int main(int argc, char* argv[]) {
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
       : couchRequest                     ? QByteArray("activate stream")
                                          : QByteArray("activate");
-  if (!smokeTest && !renderMode && !navigationTest &&
+  if (!smokeTest && !renderMode && !navigationTest && !consolePortalTest &&
       !singleInstance.claimOrNotify(instanceCommand)) {
     return EXIT_SUCCESS;
   }
   const QString settingsPath =
-      navigationTest || renderMode || smokeTest
+      navigationTest || renderMode || smokeTest || consolePortalTest
           ? QDir::tempPath() +
                 QStringLiteral("/omakade-test-%1.toml").arg(QCoreApplication::applicationPid())
           : QString{};
@@ -234,7 +410,11 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<RetroArchGameModel> retroArchGames;
   std::unique_ptr<Pcsx2GameModel> pcsx2Games;
   std::unique_ptr<RyujinxGameModel> ryujinxGames;
+  std::unique_ptr<Shadps4GameModel> shadps4Games;
+  std::unique_ptr<CemuGameModel> cemuGames;
+  std::unique_ptr<DolphinGameModel> dolphinGames;
   std::unique_ptr<BattleNetGameModel> battleNetGames;
+  std::unique_ptr<ConsolePortalModel> consolePortals;
   SteamGameModel* steamLibrary = nullptr;
   LutrisGameModel* lutrisLibrary = nullptr;
   HeroicGameModel* heroicLibrary = nullptr;
@@ -242,11 +422,62 @@ int main(int argc, char* argv[]) {
   RetroArchGameModel* retroArchLibrary = nullptr;
   Pcsx2GameModel* pcsx2Library = nullptr;
   RyujinxGameModel* ryujinxLibrary = nullptr;
+  Shadps4GameModel* shadps4Library = nullptr;
+  CemuGameModel* cemuLibrary = nullptr;
+  DolphinGameModel* dolphinLibrary = nullptr;
   BattleNetGameModel* battleNetLibrary = nullptr;
   QString libraryDatabasePath;
+  std::unique_ptr<QTemporaryDir> consoleFixture;
   if (demoMode || stressMode || navigationTest) {
     games =
         std::make_unique<MockGameModel>(nullptr, stressMode ? 1000 : 100, uninstalledLayoutTest);
+    if (consolePortalTest) {
+      // A few hundred cartridges behind one portal, next to the demo library.
+      consoleFixture = std::make_unique<QTemporaryDir>();
+      const QString root = consoleFixture->filePath(QStringLiteral("retroarch"));
+      QDir().mkpath(root + QStringLiteral("/playlists"));
+      QDir().mkpath(consoleFixture->filePath(QStringLiteral("roms")));
+      const auto writeText = [](const QString& path, const QString& text) {
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+          qFatal("Could not write console fixture %s", qPrintable(path));
+        }
+        file.write(text.toUtf8());
+      };
+      writeText(root + QStringLiteral("/retroarch.cfg"),
+                QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root));
+      QStringList items;
+      // A few sidecar covers in different shapes exercise the cover renderer:
+      // wide box art, tall box art, a square icon, and an exact 2:3 portrait.
+      const QList<QSize> coverShapes = {QSize(300, 200), QSize(120, 320), QSize(200, 200), QSize(200, 300)};
+      for (int index = 0; index < 400; ++index) {
+        const QString rom =
+            consoleFixture->filePath(QStringLiteral("roms/SNES Cart %1.sfc").arg(index, 3, 10, QLatin1Char('0')));
+        writeText(rom, QStringLiteral("sfc"));
+        if (index < coverShapes.size()) {
+          QImage cover(coverShapes.at(index), QImage::Format_RGB32);
+          cover.fill(QColor::fromHsl((index * 90) % 360, 160, 120));
+          QPainter painter(&cover);
+          painter.setPen(Qt::white);
+          painter.drawRect(2, 2, cover.width() - 5, cover.height() - 5);
+          painter.drawText(cover.rect(), Qt::AlignCenter, QStringLiteral("%1x%2").arg(cover.width()).arg(cover.height()));
+          painter.end();
+          cover.save(consoleFixture->filePath(QStringLiteral("roms/SNES Cart %1.png").arg(index, 3, 10, QLatin1Char('0'))));
+        }
+        items.append(QStringLiteral("{\"path\":\"%1\",\"label\":\"SNES Cart %2\",\"db_name\":\"Nintendo - SNES.lpl\"}")
+                         .arg(rom)
+                         .arg(index, 3, 10, QLatin1Char('0')));
+      }
+      writeText(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
+                QStringLiteral("{\"version\":\"1.5\",\"items\":[%1]}").arg(items.join(QLatin1Char(','))));
+      retroArchGames = std::make_unique<RetroArchGameModel>(
+          consoleFixture->filePath(QStringLiteral("omakade.sqlite3")), &preferences);
+      retroArchLibrary = retroArchGames.get();
+      // Folder mode, like an EmuDeck layout: sidecar covers next to the dumps count.
+      retroArchLibrary->refreshFromSources({root}, {consoleFixture->filePath(QStringLiteral("roms")) + QStringLiteral("|snes")});
+      consolePortals = std::make_unique<ConsolePortalModel>();
+      consolePortals->addRomModel(retroArchGames.get());
+    }
   } else {
     auto steam = std::make_unique<SteamGameModel>(QString{}, &preferences);
     steamLibrary = steam.get();
@@ -258,15 +489,37 @@ int main(int argc, char* argv[]) {
     heroicLibrary = heroicGames.get();
     faugusGames = std::make_unique<FaugusGameModel>(steamLibrary->databasePath());
     faugusLibrary = faugusGames.get();
-    retroArchGames = std::make_unique<RetroArchGameModel>(steamLibrary->databasePath());
+    retroArchGames = std::make_unique<RetroArchGameModel>(steamLibrary->databasePath(),
+                                                          &preferences);
     retroArchLibrary = retroArchGames.get();
+    retroArchLibrary->setConfiguredRomFolders(preferences.romFolders());
     pcsx2Games = std::make_unique<Pcsx2GameModel>(steamLibrary->databasePath());
     pcsx2Library = pcsx2Games.get();
     ryujinxGames = std::make_unique<RyujinxGameModel>(steamLibrary->databasePath());
     ryujinxLibrary = ryujinxGames.get();
+    shadps4Games = std::make_unique<Shadps4GameModel>(steamLibrary->databasePath());
+    shadps4Library = shadps4Games.get();
+    cemuGames = std::make_unique<CemuGameModel>(steamLibrary->databasePath());
+    cemuLibrary = cemuGames.get();
+    dolphinGames = std::make_unique<DolphinGameModel>(steamLibrary->databasePath());
+    dolphinLibrary = dolphinGames.get();
     battleNetGames =
         std::make_unique<BattleNetGameModel>(steamLibrary->databasePath(), &preferences);
     battleNetLibrary = battleNetGames.get();
+    consolePortals = std::make_unique<ConsolePortalModel>();
+    consolePortals->addRomModel(retroArchGames.get());
+    consolePortals->addRomModel(dolphinGames.get());
+    consolePortals->addRomModel(ryujinxGames.get());
+    consolePortals->addRomModel(cemuGames.get());
+    consolePortals->addRomModel(pcsx2Games.get());
+    consolePortals->addRomModel(shadps4Games.get());
+  }
+  if (consolePortals != nullptr) {
+    consolePortals->setCardSystems(preferences.cardSystems());
+    QObject::connect(&preferences, &AppSettings::consoleLayoutsChanged, consolePortals.get(),
+                     [&preferences, portals = consolePortals.get()] {
+                       portals->setCardSystems(preferences.cardSystems());
+                     });
   }
   if (navigationTest) {
     libraryDatabasePath = QStringLiteral(":memory:");
@@ -291,8 +544,20 @@ int main(int argc, char* argv[]) {
   if (ryujinxGames != nullptr) {
     unifiedGames.addSourceModel(ryujinxGames.get());
   }
+  if (shadps4Games != nullptr) {
+    unifiedGames.addSourceModel(shadps4Games.get());
+  }
+  if (cemuGames != nullptr) {
+    unifiedGames.addSourceModel(cemuGames.get());
+  }
+  if (dolphinGames != nullptr) {
+    unifiedGames.addSourceModel(dolphinGames.get());
+  }
   if (battleNetGames != nullptr) {
     unifiedGames.addSourceModel(battleNetGames.get());
+  }
+  if (consolePortals != nullptr) {
+    unifiedGames.addSourceModel(consolePortals.get());
   }
   const auto applySourcePreferences = [&] {
     unifiedGames.setSourceEnabled(QStringLiteral("Steam"), preferences.steamEnabled());
@@ -303,6 +568,9 @@ int main(int argc, char* argv[]) {
     unifiedGames.setSourceEnabled(QStringLiteral("RetroArch"), preferences.retroArchEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("PCSX2"), preferences.pcsx2Enabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Ryujinx"), preferences.ryujinxEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("shadPS4"), preferences.shadps4Enabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Cemu"), preferences.cemuEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), preferences.dolphinEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Battle.net"), preferences.battleNetEnabled());
   };
   applySourcePreferences();
@@ -313,6 +581,7 @@ int main(int argc, char* argv[]) {
     // a fresh process has finished rebuilding a missing or stale library cache, so retry after the
     // requested source's asynchronous refresh.
     GameLauncher headlessLauncher;
+    headlessLauncher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
     const LaunchKey key = LaunchKey::parse(playKey);
     QString error;
     if (key.source.compare(QStringLiteral("PCSX2"), Qt::CaseInsensitive) == 0 &&
@@ -321,6 +590,15 @@ int main(int argc, char* argv[]) {
     } else if (key.source.compare(QStringLiteral("Ryujinx"), Qt::CaseInsensitive) == 0 &&
                preferences.ryujinxAutoEnabled()) {
       unifiedGames.setSourceEnabled(QStringLiteral("Ryujinx"), true);
+    } else if (key.source.compare(QStringLiteral("shadPS4"), Qt::CaseInsensitive) == 0 &&
+               preferences.shadps4AutoEnabled()) {
+      unifiedGames.setSourceEnabled(QStringLiteral("shadPS4"), true);
+    } else if (key.source.compare(QStringLiteral("Cemu"), Qt::CaseInsensitive) == 0 &&
+               preferences.cemuAutoEnabled()) {
+      unifiedGames.setSourceEnabled(QStringLiteral("Cemu"), true);
+    } else if (key.source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0 &&
+               preferences.dolphinAutoEnabled()) {
+      unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), true);
     }
     if (PlayRequest::findInstallation(unifiedGames, key, nullptr).isEmpty() && key.isValid()) {
       bool refreshStarted = false;
@@ -358,6 +636,21 @@ int main(int argc, char* argv[]) {
                  (preferences.ryujinxEnabled() || preferences.ryujinxAutoEnabled())) {
         ryujinxLibrary->refresh();
         refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("shadPS4"), Qt::CaseInsensitive) == 0 &&
+                 shadps4Library != nullptr &&
+                 (preferences.shadps4Enabled() || preferences.shadps4AutoEnabled())) {
+        shadps4Library->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("Cemu"), Qt::CaseInsensitive) == 0 &&
+                 cemuLibrary != nullptr &&
+                 (preferences.cemuEnabled() || preferences.cemuAutoEnabled())) {
+        cemuLibrary->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0 &&
+                 dolphinLibrary != nullptr &&
+                 (preferences.dolphinEnabled() || preferences.dolphinAutoEnabled())) {
+        dolphinLibrary->refresh();
+        refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0 &&
                  battleNetLibrary != nullptr && preferences.battleNetEnabled()) {
         battleNetLibrary->refresh();
@@ -375,7 +668,31 @@ int main(int argc, char* argv[]) {
   }
   LibraryFilterModel library;
   library.setSourceModel(&unifiedGames);
+  // Migrate legacy master-off to Games without disabling explicit system overrides.
+  if (!preferences.consolePortalsEnabled()) {
+    preferences.setExpandConsoles(true);
+    preferences.setConsolePortalsEnabled(true);
+  }
+  library.setConsolePortalsEnabled(true);
+  library.setCardSystems(preferences.cardSystems());
+  library.setFixedCardSystems(preferences.fixedCardSystems());
+  library.setConsoleExpandLimit(preferences.consoleExpandLimit());
+  library.setExpandConsoles(preferences.expandConsoles());
   library.setSortMode(static_cast<LibraryFilterModel::SortMode>(preferences.librarySortMode()));
+  QObject::connect(&preferences, &AppSettings::consoleLayoutsChanged, &library,
+                   [&] {
+                     library.setFixedCardSystems(preferences.fixedCardSystems());
+                     library.setCardSystems(preferences.cardSystems());
+                   });
+  QObject::connect(&preferences, &AppSettings::consoleExpandLimitChanged, &library,
+                   [&] { library.setConsoleExpandLimit(preferences.consoleExpandLimit()); });
+  QObject::connect(&preferences, &AppSettings::expandConsolesChanged, &library,
+                   [&] { library.setExpandConsoles(preferences.expandConsoles()); });
+  QObject::connect(&library, &LibraryFilterModel::consoleNavigationChanged, &preferences,
+                   [&] { preferences.setExpandConsoles(library.expandConsoles()); });
+  QObject::connect(&preferences, &AppSettings::consolePortalsEnabledChanged, &library, [&] {
+    library.setConsolePortalsEnabled(preferences.consolePortalsEnabled());
+  });
   QObject::connect(&library, &LibraryFilterModel::sortModeChanged, &preferences, [&]() {
     preferences.setLibrarySortMode(static_cast<int>(library.sortMode()));
   });
@@ -439,6 +756,7 @@ int main(int argc, char* argv[]) {
   }
   std::unique_ptr<SteamAccountService> steamAccount;
   std::unique_ptr<GameInsightsService> gameInsights;
+  std::unique_ptr<GameMetadata> gameMetadata;
   std::unique_ptr<RetroAchievementsService> retroAchievements;
   if (steamLibrary != nullptr) {
     steamAccount =
@@ -451,8 +769,13 @@ int main(int argc, char* argv[]) {
                      &SteamGameModel::reloadOwnedGames);
     gameInsights =
         std::make_unique<GameInsightsService>(steamLibrary->databasePath(), &preferences);
+    gameMetadata = std::make_unique<GameMetadata>(steamLibrary->databasePath(), gameInsights.get());
+    gameMetadata->setLibrary(&unifiedGames);
+    gameMetadata->setCacheLimitMb(preferences.artworkCacheLimitMb());
+    QObject::connect(&preferences, &AppSettings::artworkCacheLimitMbChanged, gameMetadata.get(), [&preferences, metadata = gameMetadata.get()] { metadata->setCacheLimitMb(preferences.artworkCacheLimitMb()); });
+    unifiedGames.setMetadata(gameMetadata.get());
   }
-  if (retroArchLibrary != nullptr) {
+  if (retroArchLibrary != nullptr && steamLibrary != nullptr) {
     retroAchievements = std::make_unique<RetroAchievementsService>(steamLibrary->databasePath(),
                                                                     &preferences);
     QObject::connect(retroAchievements.get(), &RetroAchievementsService::achievementsUpdated,
@@ -467,6 +790,18 @@ int main(int argc, char* argv[]) {
                      [&achievements] { achievements.load(achievements.appId()); });
   }
   GameLauncher launcher;
+  launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
+  QObject::connect(&preferences, &AppSettings::preferStandaloneEmulatorsChanged, &launcher, [&] {
+    launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
+  });
+  if (retroArchLibrary != nullptr) {
+    QObject::connect(&preferences, &AppSettings::romFoldersChanged, retroArchLibrary, [&] {
+      retroArchLibrary->setConfiguredRomFolders(preferences.romFolders());
+      if (preferences.retroArchEnabled()) {
+        retroArchLibrary->refresh();
+      }
+    });
+  }
   std::unique_ptr<SunshineIntegration> sunshine;
   if (steamLibrary != nullptr) {
     sunshine = std::make_unique<SunshineIntegration>(&unifiedGames, &preferences);
@@ -489,6 +824,9 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("RetroArchLibrary"), retroArchLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Pcsx2Library"), pcsx2Library);
   engine.rootContext()->setContextProperty(QStringLiteral("RyujinxLibrary"), ryujinxLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("Shadps4Library"), shadps4Library);
+  engine.rootContext()->setContextProperty(QStringLiteral("CemuLibrary"), cemuLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("DolphinLibrary"), dolphinLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("BattleNetLibrary"), battleNetLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Launcher"), &launcher);
   engine.rootContext()->setContextProperty(QStringLiteral("Preferences"), &preferences);
@@ -498,6 +836,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("RetroAchievements"),
                                            retroAchievements.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Insights"), gameInsights.get());
+  engine.rootContext()->setContextProperty(QStringLiteral("Metadata"), gameMetadata.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"),
                                            (demoMode || stressMode) && !ownedLayoutTest);
@@ -511,7 +850,7 @@ int main(int argc, char* argv[]) {
                                            startInCouchMode);
   engine.rootContext()->setContextProperty(
       QStringLiteral("CouchLibraryViewOverride"),
-      renderOverlay == QStringLiteral("couch-grid") ? QStringLiteral("grid") : QString{});
+      renderOverlay.startsWith(QStringLiteral("couch-grid")) ? QStringLiteral("grid") : QString{});
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &application,
@@ -528,18 +867,17 @@ int main(int argc, char* argv[]) {
     QMetaObject::invokeMethod(engine.rootObjects().constFirst(), "openGame",
                               Q_ARG(QVariant, QVariant(0)));
   }
+  if (consolePortalTest) {
+    if (auto* testWindow = qobject_cast<QQuickWindow*>(engine.rootObjects().constFirst())) {
+      QTimer::singleShot(700, testWindow, [testWindow, &application] {
+        runConsolePortalTest(testWindow, &application);
+      });
+    }
+  }
 
   auto* rootWindow = qobject_cast<QWindow*>(engine.rootObjects().constFirst());
   if (rootWindow != nullptr) {
-    const auto syncControllerFocus = [&application, &controller] {
-      controller.setInputEnabled(application.applicationState() == Qt::ApplicationActive &&
-                                 application.focusWindow() != nullptr);
-    };
-    QObject::connect(&application, &QGuiApplication::applicationStateChanged, &controller,
-                     syncControllerFocus);
-    QObject::connect(&application, &QGuiApplication::focusWindowChanged, &controller,
-                     syncControllerFocus);
-    syncControllerFocus();
+    new ControllerFocusGuard(&controller, rootWindow);
     auto* couchCursor = new CouchCursorManager(rootWindow, 1600, rootWindow);
     couchCursor->setObjectName(QStringLiteral("couchCursorManager"));
     QObject::connect(rootWindow, SIGNAL(couchModeChanged()), couchCursor,
@@ -553,10 +891,10 @@ int main(int argc, char* argv[]) {
     QObject::connect(&controller, &ControllerInput::toolbarRequested, couchCursor,
                      &CouchCursorManager::navigationActivity);
     QObject::connect(&controller, &ControllerInput::keyRequested, rootWindow,
-                     [&application](int key, int modifiers) {
+                     [&application, &controller, rootWindow](int key, int modifiers) {
                        QWindow* target = application.focusWindow();
-                       if (application.applicationState() != Qt::ApplicationActive ||
-                           target == nullptr) {
+                       if (!controller.inputEnabled() || application.applicationState() != Qt::ApplicationActive ||
+                           !ControllerFocusGuard::ownsWindow(rootWindow, target)) {
                          return;
                        }
                        const auto keyboardModifiers =
@@ -597,11 +935,19 @@ int main(int argc, char* argv[]) {
       quickWindow->resize(requestedRenderSize);
     }
     if (renderMode) {
+      if (renderOverlay == QStringLiteral("couch-grid-small")) preferences.setCouchCoverSize(60);
+      if (renderOverlay == QStringLiteral("couch-grid-large")) preferences.setCouchCoverSize(160);
       // `--render-overlay=settings|picker` opens an overlay so visual checks can cover it.
-      if (renderOverlay == QStringLiteral("settings") ||
+      if (renderOverlay.startsWith(QStringLiteral("settings")) ||
           renderOverlay == QStringLiteral("couch-settings-top") ||
           renderOverlay == QStringLiteral("couch-settings-bottom")) {
         quickWindow->setProperty("diagnosticsOpen", true);
+        if (renderOverlay.startsWith("settings-")) {
+          auto* page = quickWindow->findChild<QQuickItem*>("settingsOverlay");
+          const QStringList sections{"sources", "library", "connections", "controls", "about"};
+          const int section = sections.indexOf(renderOverlay.mid(9));
+          if (page && section >= 0) page->setProperty("section", section);
+        }
         if (renderOverlay == QStringLiteral("settings") ||
             renderOverlay == QStringLiteral("couch-settings-bottom")) {
           QTimer::singleShot(400, quickWindow, [quickWindow] {
@@ -615,6 +961,13 @@ int main(int argc, char* argv[]) {
             }
           });
         }
+      } else if (renderOverlay.startsWith(QStringLiteral("cover-size"))) {
+        if (renderOverlay.endsWith("small")) preferences.setCoverSize(60);
+        if (renderOverlay.endsWith("large")) preferences.setCoverSize(160);
+        QTimer::singleShot(100, quickWindow, [quickWindow] {
+          auto* popup = quickWindow->findChild<QObject*>(QStringLiteral("coverSizePopup"));
+          if (popup) QMetaObject::invokeMethod(popup, "open");
+        });
       } else if (renderOverlay == QStringLiteral("picker")) {
         QMetaObject::invokeMethod(
             quickWindow, "openFilterPicker", Q_ARG(QVariant, QStringLiteral("collection")),
@@ -639,7 +992,26 @@ int main(int argc, char* argv[]) {
               Q_ARG(QVariant, QStringLiteral("Enter a value")));
         }
       }
-      QTimer::singleShot(900, quickWindow, [quickWindow, screenshotPath, &application] {
+      QTimer::singleShot(900, quickWindow, [quickWindow, screenshotPath, renderOverlay, &application] {
+        if (renderOverlay.startsWith(QStringLiteral("couch-grid"))) {
+          auto* grid = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchGameGrid"));
+          auto* content = grid ? grid->property("contentItem").value<QQuickItem*>() : nullptr;
+          QQuickItem *first = nullptr, *last = nullptr;
+          const int columns = grid ? grid->property("columnCount").toInt() : 0;
+          if (content) for (auto* card : content->childItems()) {
+            if (!card->property("title").isValid()) continue;
+            const int index = card->property("index").toInt();
+            if (index == 0) first = card;
+            if (index == columns - 1) last = card;
+          }
+          const qreal left = first ? first->mapToItem(grid, QPointF(0, 0)).x() : -1;
+          const qreal right = last ? grid->width() - last->mapToItem(grid, QPointF(last->width(), 0)).x() : -1;
+          if (!first || !last || left < 0 || right < 0 || qAbs(left - right) > 2) {
+            qCritical() << "Couch grid is not centered: left/right margins" << left << right;
+            application.exit(EXIT_FAILURE);
+            return;
+          }
+        }
         const QImage screenshot = quickWindow->grabWindow();
         if (screenshot.isNull() || !screenshot.save(screenshotPath)) {
           qCritical() << "Could not save screenshot to" << screenshotPath;
@@ -652,10 +1024,10 @@ int main(int argc, char* argv[]) {
     QObject::connect(
         quickWindow, &QQuickWindow::frameSwapped, &application,
         [&application, &controller, &startupTimer, benchmarkMode, benchmarkLimitSupplied,
-         benchmarkMaxMs, renderMode, navigationTest, smokeTest] {
+         benchmarkMaxMs, renderMode, navigationTest, smokeTest, consolePortalTest] {
           const qint64 firstFrameMs = startupTimer.elapsed();
           qInfo() << "First frame in" << firstFrameMs << "ms";
-          if (!renderMode && !navigationTest && !smokeTest && !benchmarkMode) {
+          if (!renderMode && !navigationTest && !smokeTest && !benchmarkMode && !consolePortalTest) {
             controller.start();
           }
           if (benchmarkMode) {
@@ -815,7 +1187,12 @@ int main(int argc, char* argv[]) {
             return;
           }
           sendKey(Qt::Key_Up);
-          const QList<QQuickItem*> detailToolbarPath = {all, favorites, recent, layout};
+          auto* consoleView = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchConsoleViewButton"));
+          if (!consoleView) {
+            fail(QStringLiteral("Couch console view toggle is missing"));
+            return;
+          }
+          const QList<QQuickItem*> detailToolbarPath = {all, favorites, recent, consoleView, layout};
           for (int step = 0; step < detailToolbarPath.size(); ++step) {
             if (!detailToolbarPath.at(step)->hasActiveFocus()) {
               fail(QStringLiteral("Controller detail toolbar step %1 failed; focus=%2")
@@ -853,13 +1230,26 @@ int main(int argc, char* argv[]) {
             return;
           }
           sendKey(Qt::Key_Up);
-          const QList<QQuickItem*> toolbarPath = {all, favorites, recent, layout, browse};
+          const QList<QQuickItem*> toolbarPath = {all, favorites, recent, consoleView, layout, browse};
           for (int step = 0; step < toolbarPath.size(); ++step) {
             if (!toolbarPath.at(step)->hasActiveFocus()) {
               fail(QStringLiteral("Controller grid toolbar step %1 failed; focus=%2")
                        .arg(step)
                        .arg(focusDescription()));
               return;
+            }
+            if (toolbarPath.at(step) == consoleView) {
+              const bool expanded = regressionLibrary->property("expandConsoles").toBool();
+              sendKey(Qt::Key_Return);
+              if (regressionLibrary->property("expandConsoles").toBool() == expanded || !consoleView->hasActiveFocus()) {
+                fail(QStringLiteral("Couch console toggle did not switch view and retain controller focus"));
+                return;
+              }
+              sendKey(Qt::Key_Return);
+              if (regressionLibrary->property("expandConsoles").toBool() != expanded) {
+                fail(QStringLiteral("Couch console toggle did not restore the previous view"));
+                return;
+              }
             }
             if (step + 1 < toolbarPath.size()) {
               sendKey(Qt::Key_Right);
@@ -876,11 +1266,34 @@ int main(int argc, char* argv[]) {
             fail(QStringLiteral("Controller Right did not reach couch Browse options"));
             return;
           }
-          sendKey(Qt::Key_Down);
-          sendKey(Qt::Key_Return);
           QObject* library =
               qmlContext(quickWindow)->contextProperty(QStringLiteral("Library")).value<QObject*>();
-          if (library == nullptr || library->property("mode").toInt() != 1) {
+          sendKey(Qt::Key_Down);
+          sendKey(Qt::Key_Return);
+          if (!library || library->property("sourceFilter").toString() != QStringLiteral("Emulated") ||
+              library->property("sourceFilters").toStringList() != library->property("emulatorSources").toStringList()) {
+            fail(QStringLiteral("Couch Browse did not select all emulated sources"));
+            return;
+          }
+          sendKey(Qt::Key_Escape);
+          sendKey(Qt::Key_Return);
+          sendKey(Qt::Key_Right);
+          if (!browseOptions->hasActiveFocus() || browseOptions->property("currentIndex").toInt() != 1) {
+            fail(QStringLiteral("Reopening Couch Browse did not highlight Emulated"));
+            return;
+          }
+          sendKey(Qt::Key_Up);
+          sendKey(Qt::Key_Return);
+          if (!library->property("sourceFilters").toStringList().isEmpty()) {
+            fail(QStringLiteral("Couch All Sources did not clear the Emulated filter"));
+            return;
+          }
+          sendKey(Qt::Key_Left);
+          sendKey(Qt::Key_Down);
+          sendKey(Qt::Key_Right);
+          sendKey(Qt::Key_Down);
+          sendKey(Qt::Key_Return);
+          if (library->property("mode").toInt() != 1) {
             fail(QStringLiteral("Couch Browse did not apply the selected library view"));
             return;
           }
@@ -975,12 +1388,18 @@ int main(int argc, char* argv[]) {
               fail(QStringLiteral("Couch Settings did not open"));
               return;
             }
-            QQuickItem* settingsStart = quickWindow->activeFocusItem();
+            auto* settingsPage = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsOverlay"));
+                    settingsPage->setProperty("section", 1);
+                    QEventLoop settingsLayout;
+                    QTimer::singleShot(50, &settingsLayout, &QEventLoop::quit);
+                    settingsLayout.exec();
+                    QQuickItem* settingsStart = quickWindow->activeFocusItem();
             for (int step = 0; step < 30; ++step) {
               controller.focusDirectionRequested(Qt::Key_Down);
             }
             if (quickWindow->activeFocusItem() == settingsStart ||
                 settingsScroll->property("navigationContentY").toReal() <= 0) {
+              qWarning() << "Settings focus" << (settingsStart ? settingsStart->property("text") : QVariant{}) << (quickWindow->activeFocusItem() ? quickWindow->activeFocusItem()->property("text") : QVariant{}) << "scroll" << settingsScroll->property("navigationContentY");
               fail(QStringLiteral("Controller did not traverse and scroll couch Settings"));
               return;
             }
@@ -1188,6 +1607,7 @@ int main(int argc, char* argv[]) {
                 return;
               }
               auto* sort = quickWindow->findChild<QQuickItem*>(QStringLiteral("sortButton"));
+              auto* coverSize = quickWindow->findChild<QQuickItem*>(QStringLiteral("coverSizeButton"));
               auto* rescan = quickWindow->findChild<QQuickItem*>(QStringLiteral("rescanButton"));
               auto* settings =
                   quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsButton"));
@@ -1213,7 +1633,7 @@ int main(int argc, char* argv[]) {
                   quickWindow->findChild<QQuickItem*>(QStringLiteral("tagFilterButton"));
               auto* settingsScroll =
                   quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsScroll"));
-              if (sort == nullptr || rescan == nullptr || settings == nullptr ||
+              if (sort == nullptr || coverSize == nullptr || rescan == nullptr || settings == nullptr ||
                   allMode == nullptr || hiddenMode == nullptr || allSources == nullptr ||
                   sourceFlickable == nullptr ||
                   retroArchSource == nullptr || statusFilter == nullptr || tagFilter == nullptr ||
@@ -1250,7 +1670,8 @@ int main(int argc, char* argv[]) {
                   fail(QStringLiteral("Focused source filter was not revealed"));
                   return;
                 }
-                for (int step = 0; step < 7; ++step) {
+                // All Sources, Emulated, then the six demo sources up to RetroArch.
+                for (int step = 0; step < 8; ++step) {
                   controller.focusDirectionRequested(Qt::Key_Left);
                 }
                 controller.focusDirectionRequested(Qt::Key_Up);
@@ -1284,7 +1705,68 @@ int main(int argc, char* argv[]) {
                 fail(QStringLiteral("Controller Down did not reach source filters"));
                 return;
               }
-              for (int step = 0; step < 7; ++step) {
+              // Right past the last visible source continues along the toolbar, never
+              // into the grid, even though the emulator chips after RetroArch are hidden here.
+              controller.focusDirectionRequested(Qt::Key_Right);
+              if (!sort->hasActiveFocus()) {
+                fail(QStringLiteral("Controller Right from the last source did not reach the toolbar"));
+                return;
+              }
+              controller.focusDirectionRequested(Qt::Key_Left);
+              if (!narrow) {
+                if (!hiddenMode->hasActiveFocus()) {
+                  fail(QStringLiteral("Controller Left from Sort did not return to the mode filters"));
+                  return;
+                }
+                controller.focusDirectionRequested(Qt::Key_Down);
+              }
+              if (!retroArchSource->hasActiveFocus()) {
+                fail(QStringLiteral("Controller could not return to the source filters"));
+                return;
+              }
+              // Source chips are multi-select: activating one highlights it and clears
+              // the All Sources highlight; activating it again undoes both.
+              auto* sourceLibrary = qmlContext(quickWindow)
+                                        ->contextProperty(QStringLiteral("Library"))
+                                        .value<QObject*>();
+              controller.keyRequested(Qt::Key_Return, Qt::NoModifier);
+              if (sourceLibrary == nullptr || !retroArchSource->property("selected").toBool() ||
+                  allSources->property("selected").toBool() ||
+                  sourceLibrary->property("sourceFilters").toStringList() != QStringList{QStringLiteral("RetroArch")}) {
+                fail(QStringLiteral("Activating a source chip did not highlight it"));
+                return;
+              }
+              // Enter again keeps the single selection; the favorite button removes it.
+              controller.keyRequested(Qt::Key_Return, Qt::NoModifier);
+              if (!retroArchSource->property("selected").toBool()) {
+                fail(QStringLiteral("Enter on a selected source chip should keep it selected"));
+                return;
+              }
+              controller.favoriteRequested();
+              if (retroArchSource->property("selected").toBool() ||
+                  !allSources->property("selected").toBool() ||
+                  !sourceLibrary->property("sourceFilters").toStringList().isEmpty()) {
+                fail(QStringLiteral("The favorite button did not remove the source chip"));
+                return;
+              }
+              // Shift+Enter adds without replacing what is selected.
+              controller.keyRequested(Qt::Key_Return, Qt::NoModifier);
+              controller.focusDirectionRequested(Qt::Key_Left);
+              controller.keyRequested(Qt::Key_Return, Qt::ShiftModifier);
+              if (sourceLibrary->property("sourceFilters").toStringList().size() != 2 ||
+                  !retroArchSource->property("selected").toBool()) {
+                fail(QStringLiteral("Shift+Enter did not add a second source"));
+                return;
+              }
+              controller.favoriteRequested();
+              controller.focusDirectionRequested(Qt::Key_Right);
+              controller.favoriteRequested();
+              if (!sourceLibrary->property("sourceFilters").toStringList().isEmpty() ||
+                  !retroArchSource->hasActiveFocus()) {
+                fail(QStringLiteral("Could not clear the multi-selection with the favorite button"));
+                return;
+              }
+              for (int step = 0; step < 8; ++step) {
                 controller.focusDirectionRequested(Qt::Key_Left);
               }
               if (!allSources->hasActiveFocus()) {
@@ -1318,6 +1800,28 @@ int main(int argc, char* argv[]) {
               controller.toolbarRequested();
               controller.toolbarRequested();
               controller.focusDirectionRequested(Qt::Key_Right);
+              if (!coverSize->hasActiveFocus()) {
+                fail(QStringLiteral("Controller Right did not reach Cover size")); return;
+              }
+              const int selectedBeforeSize = grid->property("currentIndex").toInt();
+              controller.keyRequested(Qt::Key_Return, Qt::NoModifier);
+              QCoreApplication::processEvents();
+              auto* slider = quickWindow->activeFocusItem();
+              if (!slider || slider->objectName() != QStringLiteral("coverSizeSlider")) {
+                fail(QStringLiteral("Cover size did not focus its slider")); return;
+              }
+              const double oldSize = slider->property("value").toDouble();
+              controller.keyRequested(Qt::Key_Left, Qt::NoModifier);
+              if (slider->property("value").toDouble() >= oldSize) {
+                fail(QStringLiteral("Controller Left did not reduce cover size")); return;
+              }
+              controller.keyRequested(Qt::Key_Right, Qt::NoModifier);
+              controller.keyRequested(Qt::Key_Escape, Qt::NoModifier);
+              QCoreApplication::processEvents();
+              if (!coverSize->hasActiveFocus() || grid->property("currentIndex").toInt() != selectedBeforeSize) {
+                fail(QStringLiteral("Cover sizing lost the selected game or toolbar focus")); return;
+              }
+              controller.focusDirectionRequested(Qt::Key_Right);
               if (!rescan->hasActiveFocus()) {
                 fail(QStringLiteral("Controller Right did not reach Rescan"));
                 return;
@@ -1339,6 +1843,11 @@ int main(int argc, char* argv[]) {
                       fail(QStringLiteral("Controller Open did not enter Settings"));
                       return;
                     }
+                    auto* settingsPage = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsOverlay"));
+                    settingsPage->setProperty("section", 1);
+                    QEventLoop settingsLayout;
+                    QTimer::singleShot(50, &settingsLayout, &QEventLoop::quit);
+                    settingsLayout.exec();
                     QQuickItem* settingsStart = quickWindow->activeFocusItem();
                     for (int step = 0; step < 30; ++step) {
                       controller.focusDirectionRequested(Qt::Key_Down);
@@ -1796,7 +2305,7 @@ int main(int argc, char* argv[]) {
   if (faugusLibrary != nullptr && preferences.faugusEnabled()) {
     QTimer::singleShot(450, faugusLibrary, &FaugusGameModel::refresh);
   }
-  if (retroArchLibrary != nullptr && preferences.retroArchEnabled()) {
+  if (retroArchLibrary != nullptr && preferences.retroArchEnabled() && !consolePortalTest) {
     QTimer::singleShot(600, retroArchLibrary, &RetroArchGameModel::refresh);
   }
   // Sources start disabled and switch on once their emulator is detected, unless
@@ -1821,6 +2330,38 @@ int main(int argc, char* argv[]) {
                        if (ryujinxLibrary->ryujinxDetected() && preferences.ryujinxAutoEnabled()) {
                          preferences.setRyujinxAutoEnabled(false);
                          preferences.setRyujinxEnabled(true);
+                       }
+                     });
+  }
+  if (shadps4Library != nullptr &&
+      (preferences.shadps4Enabled() || preferences.shadps4AutoEnabled())) {
+    QTimer::singleShot(720, shadps4Library, &Shadps4GameModel::refresh);
+    QObject::connect(shadps4Library, &Shadps4GameModel::statusChanged, shadps4Library,
+                     [&preferences, shadps4Library] {
+                       if (shadps4Library->shadps4Detected() && preferences.shadps4AutoEnabled()) {
+                         preferences.setShadps4AutoEnabled(false);
+                         preferences.setShadps4Enabled(true);
+                       }
+                     });
+  }
+  if (dolphinLibrary != nullptr &&
+      (preferences.dolphinEnabled() || preferences.dolphinAutoEnabled())) {
+    QTimer::singleShot(760, dolphinLibrary, &DolphinGameModel::refresh);
+    QObject::connect(dolphinLibrary, &DolphinGameModel::statusChanged, dolphinLibrary,
+                     [&preferences, dolphinLibrary] {
+                       if (dolphinLibrary->dolphinDetected() && preferences.dolphinAutoEnabled()) {
+                         preferences.setDolphinAutoEnabled(false);
+                         preferences.setDolphinEnabled(true);
+                       }
+                     });
+  }
+  if (cemuLibrary != nullptr && (preferences.cemuEnabled() || preferences.cemuAutoEnabled())) {
+    QTimer::singleShot(740, cemuLibrary, &CemuGameModel::refresh);
+    QObject::connect(cemuLibrary, &CemuGameModel::statusChanged, cemuLibrary,
+                     [&preferences, cemuLibrary] {
+                       if (cemuLibrary->cemuDetected() && preferences.cemuAutoEnabled()) {
+                         preferences.setCemuAutoEnabled(false);
+                         preferences.setCemuEnabled(true);
                        }
                      });
   }

@@ -118,6 +118,8 @@ int GameInsightsService::completeHours() const { return hoursFor(m_insight.compl
 int GameInsightsService::timeSampleCount() const { return m_insight.timeSampleCount; }
 
 void GameInsightsService::setClientId(const QString& value) {
+  if (m_busy) return;
+  m_accessToken.fill('\0'); m_accessToken.clear(); m_accessTokenExpiry = 0;
   if (m_settings != nullptr) {
     m_settings->setIgdbClientId(value);
   }
@@ -187,6 +189,9 @@ void GameInsightsService::beginSecretOperation(SecretAction action, const QByteA
   if (m_busy || m_secretWatcher.isRunning()) {
     return;
   }
+  if (action == SecretAction::Store || action == SecretAction::Remove) {
+    m_accessToken.fill('\0'); m_accessToken.clear(); m_accessTokenExpiry = 0;
+  }
   m_secretAction = action;
   m_busy = true;
   emit changed();
@@ -224,7 +229,7 @@ void GameInsightsService::finishSecretOperation() {
     m_hasClientSecret = false;
     fail(QStringLiteral("Add an IGDB client secret in settings"));
   } else {
-    if (m_refreshAppId == m_appId) {
+    if (!m_catalogQuery.isEmpty() || m_refreshAppId == m_appId) {
       requestToken(std::move(result.secret));
     } else {
       result.secret.fill('\0');
@@ -311,7 +316,7 @@ void GameInsightsService::finishRequest(QNetworkReply* reply) {
                       reply->property("tooLarge").toBool();
   const RequestKind kind = static_cast<RequestKind>(reply->property("kind").toInt());
   reply->deleteLater();
-  if (m_refreshAppId != m_appId) {
+  if (m_catalogQuery.isEmpty() && m_refreshAppId != m_appId) {
     m_busy = false;
     const QString currentAppId = m_appId;
     loadSteam(currentAppId);
@@ -339,8 +344,16 @@ void GameInsightsService::finishRequest(QNetworkReply* reply) {
     if (m_accessToken.isEmpty()) {
       fail(QStringLiteral("IGDB returned an invalid access token"));
     } else {
-      requestMapping();
+      if (!m_catalogQuery.isEmpty()) sendCatalog();
+      else requestMapping();
     }
+  } else if (kind == RequestKind::Catalog) {
+    if (!QJsonDocument::fromJson(contents).isArray()) { fail(QStringLiteral("IGDB returned invalid data")); return; }
+    m_catalogQuery.clear();
+    m_busy = false;
+    m_statusText = QStringLiteral("IGDB connection working");
+    emit changed();
+    emit catalogFinished(contents, {});
   } else if (kind == RequestKind::Mapping) {
     qint64 gameId = 0;
     if (!IgdbApi::parseSteamMapping(contents, &gameId, &error)) {
@@ -384,9 +397,12 @@ void GameInsightsService::finishRequest(QNetworkReply* reply) {
 }
 
 void GameInsightsService::fail(const QString& message) {
+  const bool catalog = !m_catalogQuery.isEmpty();
+  m_catalogQuery.clear();
   m_busy = false;
   m_statusText = message;
   emit changed();
+  if (catalog) emit catalogFinished({}, message);
 }
 
 void GameInsightsService::clearCurrent() {
@@ -440,4 +456,47 @@ bool GameInsightsService::persist() {
   query.addBindValue(m_insight.timeSampleCount);
   query.addBindValue(m_updatedAt);
   return query.exec();
+}
+
+bool GameInsightsService::requestCatalog(const QByteArray& query, const QString& endpoint) {
+  if (endpoint != "games" && endpoint != "external_games" && endpoint != "popularity_primitives") return false;
+  if (m_busy || !configured() || query.isEmpty()) return false;
+  m_catalogQuery = query;
+  m_catalogEndpoint = endpoint;
+  if (!m_accessToken.isEmpty() && QDateTime::currentSecsSinceEpoch() < m_accessTokenExpiry - 60) {
+    m_busy = true;
+    emit changed();
+    sendCatalog();
+  } else beginSecretOperation(SecretAction::Lookup);
+  return true;
+}
+
+void GameInsightsService::sendCatalog() {
+  QNetworkRequest request(QUrl(QStringLiteral("https://api.igdb.com/v4/") + m_catalogEndpoint));
+  request.setTransferTimeout(15000);
+  request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+  request.setRawHeader("Client-ID", clientId().toUtf8());
+  request.setRawHeader("Authorization", "Bearer " + m_accessToken);
+  request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("text/plain"));
+  sendRequest(request, m_catalogQuery, RequestKind::Catalog);
+}
+
+void GameInsightsService::saveCredentials(const QString& id, QString secret) {
+  if (m_busy || !m_settings) return;
+  if (!QRegularExpression("^[A-Za-z0-9]{5,64}$").match(id.trimmed()).hasMatch()) {
+    secret.fill(QChar::Null); fail(QStringLiteral("That Twitch client ID is invalid")); return;
+  }
+  if (!secret.trimmed().isEmpty() && !QRegularExpression("^[A-Za-z0-9]{20,128}$").match(secret.trimmed()).hasMatch()) {
+    secret.fill(QChar::Null); fail(QStringLiteral("That IGDB client secret is invalid")); return;
+  }
+  m_busy = true; // suppress the intermediate keyring lookup while saving both fields
+  m_settings->setIgdbClientId(id);
+  m_accessToken.fill('\0'); m_accessToken.clear(); m_accessTokenExpiry = 0;
+  m_busy = false;
+  if (secret.trimmed().isEmpty()) beginSecretOperation(SecretAction::Detect);
+  else storeClientSecret(secret);
+  secret.fill(QChar::Null);
+}
+void GameInsightsService::testConnection() {
+  requestCatalog("fields id; limit 1;");
 }

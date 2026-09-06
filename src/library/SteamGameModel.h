@@ -85,6 +85,10 @@ private:
   void startNextCoverDownloads();
   void downloadCover(const QString& appId, int attempt);
   void applyCover(const QString& appId, const QString& path);
+  // Cover paths are written to the database in one batch shortly after they arrive.
+  void flushCoverWrites();
+  QHash<QString, QString> m_pendingCoverWrites;
+  QTimer m_coverWriteTimer;
   void pruneCoverCache();
 
   struct CoverRequest {

@@ -7,6 +7,8 @@
 #include <QUrl>
 #include <QVector>
 
+class GameMetadata;
+
 class UnifiedGameModel final : public QAbstractListModel {
   Q_OBJECT
   Q_PROPERTY(QStringList collectionNames READ collectionNames NOTIFY collectionsChanged)
@@ -16,6 +18,7 @@ public:
   explicit UnifiedGameModel(const QString& databasePath = {}, QObject* parent = nullptr);
   ~UnifiedGameModel() override;
 
+  void setMetadata(GameMetadata* metadata);
   void addSourceModel(QAbstractItemModel* model);
   void setSourceEnabled(const QString& source, bool enabled);
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -34,6 +37,8 @@ public:
                              const QString& appId);
   Q_INVOKABLE bool unlinkGames(int row);
   Q_INVOKABLE bool setCompletionStatus(int row, const QString& status);
+  // Keeps one game in the main library even when its system sits behind a console card.
+  Q_INVOKABLE bool setPinned(int row, bool pinned);
   Q_INVOKABLE bool setTags(int row, const QString& tags);
   Q_INVOKABLE bool createCollection(const QString& name);
   Q_INVOKABLE bool deleteCollection(const QString& name);
@@ -66,8 +71,10 @@ private:
   struct OrganizationState {
     QString status;
     QStringList tags;
+    bool pinned = false;
   };
 
+  GameMetadata* m_metadata = nullptr;
   QVector<QAbstractItemModel*> m_models;
   QSet<QString> m_disabledSources;
   QVector<SourceRow> m_rows;

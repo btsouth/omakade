@@ -1,11 +1,13 @@
 #include "library/LibraryFilterModel.h"
 
+#include "library/ConsoleCatalog.h"
 #include "library/GameRoles.h"
 #include "library/UnifiedGameModel.h"
 
 #include <algorithm>
 
-LibraryFilterModel::LibraryFilterModel(QObject* parent) : QSortFilterProxyModel(parent) {
+LibraryFilterModel::LibraryFilterModel(QObject* parent)
+    : QSortFilterProxyModel(parent), m_cardSystems(ConsoleCatalog::defaultCardSystems()) {
   setDynamicSortFilter(true);
   sort(0);
 }
@@ -15,14 +17,38 @@ void LibraryFilterModel::setSourceModel(QAbstractItemModel* source) {
     disconnect(sourceModel(), nullptr, this, nullptr);
   }
   QSortFilterProxyModel::setSourceModel(source);
+  if (source != nullptr) {
+    connect(source, &QAbstractItemModel::modelReset, this, &LibraryFilterModel::rebuildProxy);
+    connect(source, &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex&, const QModelIndex&, const QList<int>& roles) {
+      const QList<int> filters{GameRoles::Title, GameRoles::Subtitle, GameRoles::Source,
+          GameRoles::System, GameRoles::IsPortal, GameRoles::LinkedSources, GameRoles::Hidden,
+          GameRoles::Favorite, GameRoles::Recent, GameRoles::Installed,
+          GameRoles::CompletionStatus, GameRoles::Collections, GameRoles::Tags};
+      if (roles.isEmpty() || std::any_of(roles.cbegin(), roles.cend(), [&filters](int role) { return filters.contains(role); })) rebuildProxy();
+    });
+    connect(source, &QAbstractItemModel::rowsInserted, this, &LibraryFilterModel::rebuildProxy);
+    connect(source, &QAbstractItemModel::rowsRemoved, this, &LibraryFilterModel::rebuildProxy);
+  }
+  rebuildProxy();
   if (auto* games = qobject_cast<UnifiedGameModel*>(source)) {
     connect(games, &UnifiedGameModel::collectionsChanged, this, [this] {
       beginFilterChange();
+      recountSystems();
       endFilterChange(Direction::Rows);
       emit organizationNamesChanged();
     });
   }
   emit organizationNamesChanged();
+}
+
+QVariant LibraryFilterModel::data(const QModelIndex& item, int role) const {
+  const QModelIndex source = mapToSource(item);
+  if (role == GameRoles::Subtitle && source.data(GameRoles::IsPortal).toBool()) {
+    const int count = m_filteredSystemCounts.value(ConsoleCatalog::idFor(source.data(GameRoles::System).toString()));
+    return count == 1 ? QStringLiteral("1 game") : QStringLiteral("%1 games").arg(count);
+  }
+  return QSortFilterProxyModel::data(item, role);
 }
 
 LibraryFilterModel::SortMode LibraryFilterModel::sortMode() const { return m_sortMode; }
@@ -32,7 +58,11 @@ void LibraryFilterModel::setSortMode(SortMode value) {
     return;
   }
   m_sortMode = value;
+  const bool hadConsoleCards = hasConsoleCards();
+  recountSystems();
   invalidate();
+  if (hadConsoleCards != hasConsoleCards())
+    emit consoleNavigationChanged();
   sort(0);
   emit sortModeChanged();
 }
@@ -45,6 +75,7 @@ void LibraryFilterModel::setAvailability(Availability value) {
   }
   m_availability = value;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit availabilityChanged();
 }
@@ -57,21 +88,99 @@ void LibraryFilterModel::setShowHidden(bool value) {
   }
   m_showHidden = value;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit showHiddenChanged();
 }
 
-QString LibraryFilterModel::sourceFilter() const { return m_sourceFilter; }
+QStringList LibraryFilterModel::emulatorSources() {
+  return {QStringLiteral("RetroArch"), QStringLiteral("Dolphin"), QStringLiteral("Ryujinx"),
+          QStringLiteral("Cemu"), QStringLiteral("PCSX2"), QStringLiteral("shadPS4")};
+}
+
+QString LibraryFilterModel::sourceFilter() const {
+  if (m_sourceFilters.isEmpty()) {
+    return {};
+  }
+  if (sourcesSelected(emulatorSources()) && m_sourceFilters.size() == emulatorSources().size()) {
+    return QStringLiteral("Emulated");
+  }
+  return m_sourceFilters.constFirst();
+}
 
 void LibraryFilterModel::setSourceFilter(const QString& value) {
   const QString normalized = value.trimmed();
-  if (m_sourceFilter.compare(normalized, Qt::CaseInsensitive) == 0) {
+  if (normalized.isEmpty()) {
+    setSourceFilters({});
+  } else if (normalized.compare(QStringLiteral("Emulated"), Qt::CaseInsensitive) == 0) {
+    setSourceFilters(emulatorSources());
+  } else {
+    setSourceFilters({normalized});
+  }
+}
+
+QStringList LibraryFilterModel::sourceFilters() const { return m_sourceFilters; }
+
+bool LibraryFilterModel::sourceSelected(const QString& source) const {
+  return std::any_of(m_sourceFilters.cbegin(), m_sourceFilters.cend(), [&source](const QString& selected) {
+    return selected.compare(source, Qt::CaseInsensitive) == 0;
+  });
+}
+
+bool LibraryFilterModel::sourcesSelected(const QStringList& sources) const {
+  return !sources.isEmpty() && std::all_of(sources.cbegin(), sources.cend(),
+                                           [this](const QString& source) { return sourceSelected(source); });
+}
+
+void LibraryFilterModel::toggleSource(const QString& source) {
+  QStringList next = m_sourceFilters;
+  if (sourceSelected(source)) {
+    next.removeIf([&source](const QString& selected) { return selected.compare(source, Qt::CaseInsensitive) == 0; });
+  } else {
+    next.append(source.trimmed());
+  }
+  setSourceFilters(next);
+}
+
+void LibraryFilterModel::toggleSources(const QStringList& sources) {
+  QStringList next = m_sourceFilters;
+  const bool allSelected = sourcesSelected(sources);
+  for (const QString& source : sources) {
+    next.removeIf([&source](const QString& selected) { return selected.compare(source, Qt::CaseInsensitive) == 0; });
+    if (!allSelected) {
+      next.append(source);
+    }
+  }
+  setSourceFilters(next);
+}
+
+void LibraryFilterModel::setSourceFilters(const QStringList& value) {
+  QStringList normalized;
+  for (const QString& entry : value) {
+    const QString trimmed = entry.trimmed();
+    if (!trimmed.isEmpty() && !normalized.contains(trimmed, Qt::CaseInsensitive)) {
+      normalized.append(trimmed);
+    }
+  }
+  if (m_sourceFilters == normalized) {
     return;
   }
-  m_sourceFilter = normalized;
-  beginFilterChange();
-  endFilterChange(Direction::Rows);
+  m_sourceFilters = normalized;
+  const bool leftConsole = !m_consoleFilter.isEmpty();
+  if (leftConsole) {
+    m_consoleFilter.clear();
+  }
+  if (leftConsole) {
+    rebuildProxy();
+  } else {
+    beginFilterChange();
+    recountSystems();
+    endFilterChange(Direction::Rows);
+  }
   emit sourceFilterChanged();
+  if (leftConsole) {
+    emit consoleNavigationChanged();
+  }
 }
 
 QString LibraryFilterModel::completionFilter() const { return m_completionFilter; }
@@ -83,6 +192,7 @@ void LibraryFilterModel::setCompletionFilter(const QString& value) {
   }
   m_completionFilter = normalized;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit organizationFilterChanged();
 }
@@ -96,6 +206,7 @@ void LibraryFilterModel::setCollectionFilter(const QString& value) {
   }
   m_collectionFilter = normalized;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit organizationFilterChanged();
 }
@@ -109,6 +220,7 @@ void LibraryFilterModel::setTagFilter(const QString& value) {
   }
   m_tagFilter = normalized;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit organizationFilterChanged();
 }
@@ -116,6 +228,147 @@ void LibraryFilterModel::setTagFilter(const QString& value) {
 QStringList LibraryFilterModel::collectionNames() const {
   const auto* games = qobject_cast<const UnifiedGameModel*>(sourceModel());
   return games == nullptr ? QStringList{} : games->collectionNames();
+}
+
+QStringList LibraryFilterModel::cardSystems() const { return m_cardSystems; }
+
+void LibraryFilterModel::setCardSystems(const QStringList& value) {
+  QStringList normalized;
+  for (const QString& system : value) {
+    const QString id = ConsoleCatalog::idFor(system);
+    if (!id.isEmpty() && !normalized.contains(id)) {
+      normalized.append(id);
+    }
+  }
+  if (m_cardSystems == normalized) {
+    return;
+  }
+  m_cardSystems = normalized;
+  if (!m_consoleFilter.isEmpty() && !m_cardSystems.contains(m_consoleFilter)) {
+    m_consoleFilter.clear();
+  }
+  recountSystems();
+  rebuildProxy();
+  emit consoleNavigationChanged();
+}
+
+QStringList LibraryFilterModel::fixedCardSystems() const { return m_fixedCardSystems; }
+
+void LibraryFilterModel::setFixedCardSystems(const QStringList& value) {
+  if (m_fixedCardSystems == value) return;
+  m_fixedCardSystems = value;
+  rebuildProxy();
+  emit consoleNavigationChanged();
+}
+
+bool LibraryFilterModel::expandConsoles() const { return m_expandConsoles; }
+
+void LibraryFilterModel::setExpandConsoles(bool value) {
+  if (m_expandConsoles == value) {
+    return;
+  }
+  m_expandConsoles = value;
+  rebuildProxy();
+  emit consoleNavigationChanged();
+}
+
+int LibraryFilterModel::consoleExpandLimit() const { return m_consoleExpandLimit; }
+
+void LibraryFilterModel::setConsoleExpandLimit(int value) {
+  value = qMax(1, value);
+  if (m_consoleExpandLimit == value) {
+    return;
+  }
+  m_consoleExpandLimit = value;
+  if (m_expandConsoles) {
+    rebuildProxy();
+  }
+  emit consoleNavigationChanged();
+}
+
+bool LibraryFilterModel::hasConsoleCards() const {
+  return m_consolePortalsEnabled && m_consoleFilter.isEmpty() &&
+         std::any_of(m_systemCounts.keyBegin(), m_systemCounts.keyEnd(),
+                     [this](const QString& system) { return m_systemCounts.value(system, 0) > 0; });
+}
+
+bool LibraryFilterModel::setPinned(int row, bool pinned) {
+  auto* games = qobject_cast<UnifiedGameModel*>(sourceModel());
+  return games != nullptr && row >= 0 && row < rowCount() &&
+         games->setPinned(mapToSource(index(row, 0)).row(), pinned);
+}
+
+// Counts are based on visible members, including the active library filters.
+void LibraryFilterModel::recountSystems() {
+  m_portalSystems.clear();
+  m_systemCounts.clear();
+  m_filteredSystemCounts.clear();
+  const QAbstractItemModel* source = sourceModel();
+  if (source == nullptr) {
+    return;
+  }
+  for (int row = 0; row < source->rowCount(); ++row) {
+    const QModelIndex game = source->index(row, 0);
+    if (game.data(GameRoles::IsPortal).toBool()) {
+      m_portalSystems.insert(ConsoleCatalog::idFor(game.data(GameRoles::System).toString()));
+      continue;
+    }
+    const QString system = ConsoleCatalog::idFor(game.data(GameRoles::System).toString());
+    if (!system.isEmpty()) {
+      m_systemCounts[system] += 1;
+      if (matchesGameFilters(game)) m_filteredSystemCounts[system] += 1;
+    }
+  }
+}
+
+bool LibraryFilterModel::systemExpanded(const QString& system) const {
+  return m_expandConsoles && !m_fixedCardSystems.contains(system);
+}
+
+bool LibraryFilterModel::consolePortalsEnabled() const { return m_consolePortalsEnabled; }
+
+void LibraryFilterModel::setConsolePortalsEnabled(bool value) {
+  if (m_consolePortalsEnabled == value) {
+    return;
+  }
+  m_consolePortalsEnabled = value;
+  if (!value) {
+    m_consoleFilter.clear();
+  }
+  rebuildProxy();
+  emit consoleNavigationChanged();
+}
+
+QString LibraryFilterModel::consoleFilter() const { return m_consoleFilter; }
+
+void LibraryFilterModel::setConsoleFilter(const QString& value) {
+  const QString normalized = ConsoleCatalog::idFor(value.trimmed());
+  if (m_consoleFilter == normalized) {
+    return;
+  }
+  m_consoleFilter = normalized;
+  rebuildProxy();
+  emit consoleNavigationChanged();
+}
+
+void LibraryFilterModel::rebuildProxy() {
+  if (sourceModel() == nullptr) {
+    return;
+  }
+  // Entering or leaving a console swaps more than a thousand rows at once.
+  // beginFilterChange/endFilterChange would replay that as one insert or
+  // remove per row and freeze the grid, so drop the mapping and let the proxy
+  // rebuild it in one pass. This is a single layout change for the view, with
+  // no detach from the source model in between.
+  const bool hadConsoleCards = hasConsoleCards();
+  recountSystems();
+  invalidate();
+  if (hadConsoleCards != hasConsoleCards())
+    emit consoleNavigationChanged();
+}
+
+QString LibraryFilterModel::consoleTitle() const {
+  return m_consoleFilter.isEmpty() ? QString{} : ConsoleCatalog::displayNameFor(m_consoleFilter);
 }
 
 QStringList LibraryFilterModel::tagNames() const {
@@ -133,6 +386,7 @@ void LibraryFilterModel::setSearchText(const QString& value) {
 
   m_searchText = normalized;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit searchTextChanged();
 }
@@ -146,6 +400,7 @@ void LibraryFilterModel::setMode(Mode value) {
 
   m_mode = value;
   beginFilterChange();
+  recountSystems();
   endFilterChange(Direction::Rows);
   emit modeChanged();
 }
@@ -155,11 +410,10 @@ QVariantMap LibraryFilterModel::get(int row) const {
     return {};
   }
 
-  const QModelIndex sourceIndex = mapToSource(index(row, 0));
   QVariantMap result;
   const auto roles = sourceModel()->roleNames();
   for (auto iterator = roles.cbegin(); iterator != roles.cend(); ++iterator) {
-    result.insert(QString::fromUtf8(iterator.value()), sourceIndex.data(iterator.key()));
+    result.insert(QString::fromUtf8(iterator.value()), data(index(row, 0), iterator.key()));
   }
   return result;
 }
@@ -296,6 +550,33 @@ bool LibraryFilterModel::setCollectionMembership(int row, const QString& name, b
 bool LibraryFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const {
   const QModelIndex sourceIndex = sourceModel()->index(sourceRow, 0, sourceParent);
 
+  const bool isPortal = sourceIndex.data(GameRoles::IsPortal).toBool();
+  const QString system = ConsoleCatalog::idFor(sourceIndex.data(GameRoles::System).toString());
+  // A system is either spread across the library as tiles or kept behind a
+  // console card. Pinned games stay in the library either way, and the expand
+  // toggle opens every following system, regardless of collection size.
+  const bool cardGame = !isPortal && !system.isEmpty() && m_cardSystems.contains(system) && m_portalSystems.contains(system);
+  if (m_consolePortalsEnabled) {
+    if (m_consoleFilter.isEmpty()) {
+      if (isPortal && systemExpanded(system)) {
+        return false;
+      }
+      if (cardGame && !systemExpanded(system) && !sourceIndex.data(GameRoles::Pinned).toBool()) {
+        return false;
+      }
+    } else if (isPortal || system != m_consoleFilter) {
+      return false;
+    }
+  } else if (isPortal) {
+    return false;
+  }
+
+  if (isPortal) return m_filteredSystemCounts.value(system) > 0;
+  return matchesGameFilters(sourceIndex);
+}
+
+bool LibraryFilterModel::matchesGameFilters(const QModelIndex& sourceIndex) const {
+  const QString primarySource = sourceIndex.data(GameRoles::Source).toString();
   const QVariant installedValue = sourceIndex.data(GameRoles::Installed);
   const bool installed = !installedValue.isValid() || installedValue.toBool();
   if ((m_availability == Availability::Installed && !installed) ||
@@ -303,14 +584,12 @@ bool LibraryFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex& sour
     return false;
   }
 
-  if (!m_sourceFilter.isEmpty()) {
-    const QString primarySource = sourceIndex.data(GameRoles::Source).toString();
+  if (!m_sourceFilters.isEmpty()) {
     const QStringList linkedSources =
         sourceIndex.data(GameRoles::LinkedSources).toString().split(QStringLiteral(" + "));
-    if (primarySource.compare(m_sourceFilter, Qt::CaseInsensitive) != 0 &&
-        std::none_of(linkedSources.cbegin(), linkedSources.cend(), [this](const QString& source) {
-          return source.compare(m_sourceFilter, Qt::CaseInsensitive) == 0;
-        })) {
+    if (!sourceSelected(primarySource) &&
+        std::none_of(linkedSources.cbegin(), linkedSources.cend(),
+                     [this](const QString& source) { return sourceSelected(source); })) {
       return false;
     }
   }
@@ -362,6 +641,16 @@ bool LibraryFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex& sour
 }
 
 bool LibraryFilterModel::lessThan(const QModelIndex& left, const QModelIndex& right) const {
+  if (m_sortMode == SortMode::Popularity) {
+    const double a = left.data(GameRoles::Popularity).isValid() ? left.data(GameRoles::Popularity).toDouble() : -1;
+    const double b = right.data(GameRoles::Popularity).isValid() ? right.data(GameRoles::Popularity).toDouble() : -1;
+    if (a != b) return a > b;
+  }
+  if (m_sortMode == SortMode::Rating) {
+    const int a = left.data(GameRoles::Rating).isValid() ? left.data(GameRoles::Rating).toInt() : -1;
+    const int b = right.data(GameRoles::Rating).isValid() ? right.data(GameRoles::Rating).toInt() : -1;
+    if (a != b) return a > b;
+  }
   if (m_sortMode == SortMode::RecentlyPlayed) {
     const qint64 leftPlayed = left.data(GameRoles::LastPlayed).toLongLong();
     const qint64 rightPlayed = right.data(GameRoles::LastPlayed).toLongLong();
@@ -376,7 +665,7 @@ bool LibraryFilterModel::lessThan(const QModelIndex& left, const QModelIndex& ri
       return leftHours > rightHours;
     }
   }
-  return left.data(GameRoles::Title)
-             .toString()
-             .localeAwareCompare(right.data(GameRoles::Title).toString()) < 0;
+  const int titleOrder = left.data(GameRoles::Title).toString().localeAwareCompare(right.data(GameRoles::Title).toString());
+  if (titleOrder != 0) return titleOrder < 0;
+  return left.data(GameRoles::MetadataKey).toString() < right.data(GameRoles::MetadataKey).toString();
 }

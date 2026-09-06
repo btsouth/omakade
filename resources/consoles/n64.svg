@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#22c55e"/>
+  <polygon points="200,150 280,210 280,330 200,390 120,330 120,210" fill="#14532d"/>
+  <polygon points="200,186 248,222 248,294 200,330 152,294 152,222" fill="#4ade80"/>
+  <text x="200" y="520" text-anchor="middle" fill="#dcfce7" font-family="sans-serif" font-size="34" font-weight="700">NINTENDO 64</text>
+</svg>

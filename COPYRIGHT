@@ -6,3 +6,7 @@ Foundation, either version 3 of the License, or (at your option) any later
 version.
 
 See LICENSE for the full license text.
+
+The console PNG artwork has separate attribution and licensing. See
+resources/consoles/ARTWORK.md in the source tree, or ARTWORK.md beside this
+file in installed packages, for photograph credits and CC BY-SA 3.0 terms.

@@ -51,23 +51,29 @@ public:
   [[nodiscard]] int completeHours() const;
   [[nodiscard]] int timeSampleCount() const;
 
+  Q_INVOKABLE void saveCredentials(const QString& clientId, QString secret);
+  Q_INVOKABLE void testConnection();
   Q_INVOKABLE void setClientId(const QString& clientId);
   Q_INVOKABLE void storeClientSecret(QString secret);
   Q_INVOKABLE void removeCredentials();
   Q_INVOKABLE void loadSteam(const QString& appId);
   Q_INVOKABLE void refreshSteam(const QString& appId);
 
+  bool requestCatalog(const QByteArray& query, const QString& endpoint = QStringLiteral("games"));
+
 signals:
+  void catalogFinished(const QByteArray& contents, const QString& error);
   void changed();
 
 private:
   enum class SecretAction { Detect, Store, Remove, Lookup };
-  enum class RequestKind { Token, Mapping, Game, Time };
+  enum class RequestKind { Token, Mapping, Game, Time, Catalog };
 
   void beginSecretOperation(SecretAction action, const QByteArray& value = {});
   void finishSecretOperation();
   void requestToken(QByteArray secret);
   void requestMapping();
+  void sendCatalog();
   void requestGame();
   void requestTime();
   void sendRequest(const QNetworkRequest& request, const QByteArray& body, RequestKind kind);
@@ -86,6 +92,8 @@ private:
   QHash<QNetworkReply*, QByteArray> m_buffers;
   QString m_appId;
   QString m_refreshAppId;
+  QString m_catalogEndpoint;
+  QByteArray m_catalogQuery;
   QByteArray m_accessToken;
   qint64 m_accessTokenExpiry = 0;
   IgdbGameInsight m_insight;

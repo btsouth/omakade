@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.7.0
+
+Omakade brings console libraries together with your PC games, with simpler settings
+and more control over how your library looks.
+
+### Emulators and console libraries
+
+- Add Dolphin for GameCube and Wii, Cemu for Wii U, and shadPS4 for dumped PS4
+  games. Dreamcast dumps can launch through Flycast.
+- Group console games behind one card per system, or show every game in the
+  library. Switch views from the desktop or Couch Mode toolbar. Set per-system
+  overrides and pin individual games outside their console card.
+- Scan ROM folders and EmuDeck layouts without requiring RetroArch playlists.
+- Filter all emulators with Emulated, or combine individual source filters.
+  Couch Mode Browse now opens on sources.
+- Read titles and icons from Switch dumps using Ryujinx's installed keys, and
+  icons from Wii U archives. Skip Switch updates and DLC as separate games.
+
+### Ratings, covers, and settings
+
+- Identify games with IGDB and sort the library by rating or popularity.
+  Review uncertain matches and correct them from game details.
+- Add optional SteamGridDB portrait covers using the same game identification.
+  Choose another portrait manually and keep downloaded artwork available offline.
+- Replace the long settings sheet with Sources, Library, Connections,
+  Controls & streaming, and About & storage.
+- Adjust cover size, with separate desktop and Couch Mode preferences. Restore
+  centered Couch Mode grids across cover sizes and window dimensions.
+- Add console cover artwork and improve handling of portrait, square, and wide art.
+
+### Fixes and improvements
+
+- Fix the library disappearing after scrolling a filtered source list.
+- Keep other sources out of console views and reduce stalls when opening large
+  ROM collections. Cover downloads no longer rebuild the whole library grid.
+- Improve source selection, focus indicators, toolbar navigation, and console
+  back navigation with a controller.
+
+Existing IGDB credentials carry over. SteamGridDB covers require a separate API
+key in Settings → Connections. Choose Update Ratings & Portraits to fetch metadata;
+these connections are optional.
+
 ## 1.6.1
 
 - Launch, manage, and install Steam games through the Steam client itself,

@@ -15,6 +15,14 @@ ApplicationWindow {
     property var linkResults: []
     property int selectedIndex: -1
     property bool smokeReady: false
+    function chooseRomFolder() { romFolderDialog.open() }
+    Connections {
+        target: Metadata
+        function onEntryChanged(key) {
+            if (root.detailOpen && root.selectedGame.metadataKey === key)
+                root.refreshSelected(root.selectedGame.source, root.selectedGame.runner || "", root.selectedGame.appId)
+        }
+    }
     property bool diagnosticsOpen: false
     property bool linkDialogOpen: false
     property bool collectionDeleteOpen: false
@@ -29,6 +37,17 @@ ApplicationWindow {
     property var filterPickerValues: []
     property string pendingCollectionDelete: ""
     property bool couchMode: CouchModeRequested
+    property int romFolderSystemIndex: 0
+    readonly property var romFolderSystems: [
+        { id: "snes", name: "Super Nintendo" },
+        { id: "nes", name: "NES" },
+        { id: "genesis", name: "Sega Genesis" },
+        { id: "gb", name: "Game Boy" },
+        { id: "gbc", name: "Game Boy Color" },
+        { id: "gba", name: "Game Boy Advance" },
+        { id: "n64", name: "Nintendo 64" },
+        { id: "psx", name: "PlayStation" }
+    ]
     property int desktopVisibility: Window.Windowed
     readonly property bool libraryScanning: (SteamLibrary ? SteamLibrary.scanning : false)
                                             || (LutrisLibrary ? LutrisLibrary.scanning : false)
@@ -37,12 +56,21 @@ ApplicationWindow {
                                             || (RetroArchLibrary ? RetroArchLibrary.scanning : false)
                                             || (Pcsx2Library ? Pcsx2Library.scanning : false)
                                             || (RyujinxLibrary ? RyujinxLibrary.scanning : false)
+                                            || (Shadps4Library ? Shadps4Library.scanning : false)
+                                            || (CemuLibrary ? CemuLibrary.scanning : false)
+                                            || (DolphinLibrary ? DolphinLibrary.scanning : false)
                                             || (BattleNetLibrary ? BattleNetLibrary.scanning : false)
     readonly property int ownedGameCount: SteamAccount
                                           ? SteamAccount.ownedGameCount
                                           : OwnedGameCountOverride
+    // Right from the end of the source row continues along the toolbar.
+    readonly property Item sourceRowNextButton:
+        consoleGamesButton.visible && consoleGamesButton.enabled ? consoleGamesButton : sortButton
     readonly property Item sourceRowEndButton:
-        ryujinxSourceButton.visible && ryujinxSourceButton.enabled ? ryujinxSourceButton
+        dolphinSourceButton.visible && dolphinSourceButton.enabled ? dolphinSourceButton
+      : cemuSourceButton.visible && cemuSourceButton.enabled ? cemuSourceButton
+      : shadps4SourceButton.visible && shadps4SourceButton.enabled ? shadps4SourceButton
+      : ryujinxSourceButton.visible && ryujinxSourceButton.enabled ? ryujinxSourceButton
       : pcsx2SourceButton.visible && pcsx2SourceButton.enabled ? pcsx2SourceButton
       : retroArchSourceButton.visible && retroArchSourceButton.enabled ? retroArchSourceButton
       : faugusSourceButton.visible && faugusSourceButton.enabled ? faugusSourceButton
@@ -88,6 +116,7 @@ ApplicationWindow {
     }
 
     function navigationContainer() {
+        if (coverSizePopup.opened) return coverSizePopup.contentItem
         if (couchTextEntryOpen) {
             return null
         }
@@ -167,7 +196,13 @@ ApplicationWindow {
                              : key === Qt.Key_Down ? "controllerDownTarget"
                              : key === Qt.Key_Left ? "controllerLeftTarget"
                              : "controllerRightTarget"
-        const explicitTarget = current[targetProperty]
+        // Follow the explicit chain through hidden or disabled items, so a row
+        // with some sources turned off still hands focus to the next visible one.
+        let explicitTarget = current[targetProperty]
+        for (let hops = 0; explicitTarget && !(explicitTarget.visible && explicitTarget.enabled)
+             && hops < 24; ++hops) {
+            explicitTarget = explicitTarget[targetProperty]
+        }
         if (explicitTarget && explicitTarget.visible && explicitTarget.enabled) {
             explicitTarget.forceActiveFocus(Qt.TabFocusReason)
             root.revealNavigationItem(container, explicitTarget)
@@ -248,6 +283,9 @@ ApplicationWindow {
         if (RetroArchLibrary && Preferences.retroArchEnabled) RetroArchLibrary.refresh()
         if (Pcsx2Library && Preferences.pcsx2Enabled) Pcsx2Library.refresh()
         if (RyujinxLibrary && Preferences.ryujinxEnabled) RyujinxLibrary.refresh()
+        if (Shadps4Library && Preferences.shadps4Enabled) Shadps4Library.refresh()
+        if (CemuLibrary && Preferences.cemuEnabled) CemuLibrary.refresh()
+        if (DolphinLibrary && Preferences.dolphinEnabled) DolphinLibrary.refresh()
         if (BattleNetLibrary && Preferences.battleNetEnabled) BattleNetLibrary.refresh()
     }
 
@@ -291,7 +329,7 @@ ApplicationWindow {
 
     function revealNavigationItem(container, item) {
         if (container === settingsOverlay) {
-            root.revealInScrollView(settingsScroll, item)
+            settingsOverlay.reveal(item)
         } else if (container === linkDialogOverlay && root.isWithin(item, candidateList)) {
             candidateList.positionViewAtIndex(candidateList.currentIndex, ListView.Contain)
         } else if (container === detailsLoader.item) {
@@ -363,9 +401,24 @@ ApplicationWindow {
         return installations.length > 0 ? installations[0] : fallback
     }
 
+    function leaveConsole() {
+        if (Library.consoleFilter.length > 0) {
+            Library.consoleFilter = ""
+            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+            return true
+        }
+        return false
+    }
+
     function openGame(index) {
         selectedIndex = index
         selectedGame = Library.get(index)
+        if (selectedGame.isPortal) {
+            Library.consoleFilter = selectedGame.system || ""
+            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+            Qt.callLater(root.focusLibrary)
+            return
+        }
         selectedInstallations = Library.installations(index)
         selectedInstallation = preferredInstallation(selectedInstallations, selectedGame)
         if (!DemoMode && selectedInstallation.source === "Steam") {
@@ -424,7 +477,9 @@ ApplicationWindow {
             return
         }
         if (!enabled) {
-            if (root.couchTextEntryOpen) {
+            if (coverSizePopup.opened) {
+                coverSizePopup.close()
+            } else if (root.couchTextEntryOpen) {
                 root.closeCouchTextEntry(false)
             }
             if (couchLibraryView.searchOpen) {
@@ -621,6 +676,12 @@ ApplicationWindow {
         }
     }
 
+    FolderDialog {
+        id: romFolderDialog
+        title: "Choose a ROM folder"
+        onAccepted: Preferences.addRomFolder(selectedFolder, root.romFolderSystems[root.romFolderSystemIndex].id)
+    }
+
     FileDialog {
         id: coverDialog
         title: "Choose cover artwork"
@@ -707,7 +768,9 @@ ApplicationWindow {
     Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (root.couchTextEntryOpen) {
+            if (coverSizePopup.opened) {
+                coverSizePopup.close()
+            } else if (root.couchTextEntryOpen) {
                 root.closeCouchTextEntry(false)
             } else if (root.filterPickerOpen) {
                 root.filterPickerOpen = false
@@ -721,13 +784,14 @@ ApplicationWindow {
                 root.collectionDeleteOpen = false
                 root.pendingCollectionDelete = ""
             } else if (root.diagnosticsOpen) {
-                root.diagnosticsOpen = false
+                settingsOverlay.back()
             } else if (root.detailOpen && detailsLoader.item
                        && detailsLoader.item.collectionEditorOpen) {
                 // The window shortcut sees Escape before the details page does.
                 detailsLoader.item.closeCollectionEditor()
             } else if (root.detailOpen) {
                 root.closeDetails()
+            } else if (root.leaveConsole()) {
             } else if (!root.couchMode && searchField.text.length > 0) {
                 searchField.clear()
                 libraryView.focusGrid()
@@ -741,6 +805,7 @@ ApplicationWindow {
         target: Controller
         property: "focusNavigation"
         value: !root.couchTextEntryOpen
+               && (!root.activeFocusItem || root.activeFocusItem.controllerNavigation !== false)
                && (root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
                || root.collectionDeleteOpen
                || (!root.couchMode && !libraryView.gridFocused))
@@ -1110,9 +1175,28 @@ ApplicationWindow {
                                                             : statusFilterButton
                         text: "ALL SOURCES"
                         compact: true
-                        selected: Library.sourceFilter === ""
+                        selected: Library.sourceFilters.length === 0
                         onClicked: {
-                            Library.sourceFilter = ""
+                            Library.sourceFilters = []
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
+                        id: emulatedSourcesButton
+                        objectName: "emulatedSourcesButton"
+                        property Item controllerLeftTarget: allSourcesButton
+                        property Item controllerRightTarget: steamSourceButton
+                        property Item controllerDownTarget: statusFilterButton
+                        text: "EMULATED"
+                        compact: true
+                        property string sourceName: "Emulated"
+                        selected: Library.emulatorSources.every(source => Library.sourceFilters.indexOf(source) >= 0)
+                        onClicked: {
+                            Library.sourceFilters = Library.emulatorSources
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSources(Library.emulatorSources)
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1122,9 +1206,14 @@ ApplicationWindow {
                         text: "STEAM"
                         compact: true
                         visible: Preferences.steamEnabled
-                        selected: Library.sourceFilter === "Steam"
+                        property string sourceName: "Steam"
+                        selected: Library.sourceFilters.indexOf("Steam") >= 0
                         onClicked: {
-                            Library.sourceFilter = "Steam"
+                            Library.sourceFilters = ["Steam"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Steam")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1134,9 +1223,14 @@ ApplicationWindow {
                         text: "BATTLE.NET"
                         compact: true
                         visible: Preferences.battleNetEnabled
-                        selected: Library.sourceFilter === "Battle.net"
+                        property string sourceName: "Battle.net"
+                        selected: Library.sourceFilters.indexOf("Battle.net") >= 0
                         onClicked: {
-                            Library.sourceFilter = "Battle.net"
+                            Library.sourceFilters = ["Battle.net"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Battle.net")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1146,9 +1240,14 @@ ApplicationWindow {
                         text: "LUTRIS"
                         compact: true
                         visible: Preferences.lutrisEnabled
-                        selected: Library.sourceFilter === "Lutris"
+                        property string sourceName: "Lutris"
+                        selected: Library.sourceFilters.indexOf("Lutris") >= 0
                         onClicked: {
-                            Library.sourceFilter = "Lutris"
+                            Library.sourceFilters = ["Lutris"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Lutris")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1158,9 +1257,14 @@ ApplicationWindow {
                         text: "HEROIC"
                         compact: true
                         visible: Preferences.heroicEnabled
-                        selected: Library.sourceFilter === "Heroic"
+                        property string sourceName: "Heroic"
+                        selected: Library.sourceFilters.indexOf("Heroic") >= 0
                         onClicked: {
-                            Library.sourceFilter = "Heroic"
+                            Library.sourceFilters = ["Heroic"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Heroic")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1170,9 +1274,14 @@ ApplicationWindow {
                         text: "GOG"
                         compact: true
                         visible: Preferences.gogEnabled
-                        selected: Library.sourceFilter === "GOG"
+                        property string sourceName: "GOG"
+                        selected: Library.sourceFilters.indexOf("GOG") >= 0
                         onClicked: {
-                            Library.sourceFilter = "GOG"
+                            Library.sourceFilters = ["GOG"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("GOG")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1182,9 +1291,14 @@ ApplicationWindow {
                         text: "FAUGUS"
                         compact: true
                         visible: Preferences.faugusEnabled
-                        selected: Library.sourceFilter === "Faugus"
+                        property string sourceName: "Faugus"
+                        selected: Library.sourceFilters.indexOf("Faugus") >= 0
                         onClicked: {
-                            Library.sourceFilter = "Faugus"
+                            Library.sourceFilters = ["Faugus"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Faugus")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1195,9 +1309,14 @@ ApplicationWindow {
                         text: "RETROARCH"
                         compact: true
                         visible: Preferences.retroArchEnabled
-                        selected: Library.sourceFilter === "RetroArch"
+                        property string sourceName: "RetroArch"
+                        selected: Library.sourceFilters.indexOf("RetroArch") >= 0
                         onClicked: {
-                            Library.sourceFilter = "RetroArch"
+                            Library.sourceFilters = ["RetroArch"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("RetroArch")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1210,9 +1329,14 @@ ApplicationWindow {
                         text: "PCSX2"
                         compact: true
                         visible: Preferences.pcsx2Enabled
-                        selected: Library.sourceFilter === "PCSX2"
+                        property string sourceName: "PCSX2"
+                        selected: Library.sourceFilters.indexOf("PCSX2") >= 0
                         onClicked: {
-                            Library.sourceFilter = "PCSX2"
+                            Library.sourceFilters = ["PCSX2"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("PCSX2")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1220,13 +1344,79 @@ ApplicationWindow {
                         id: ryujinxSourceButton
                         objectName: "ryujinxSourceButton"
                         property Item controllerLeftTarget: pcsx2SourceButton
+                        property Item controllerRightTarget: shadps4SourceButton
                         property Item controllerDownTarget: statusFilterButton
                         text: "RYUJINX"
                         compact: true
                         visible: Preferences.ryujinxEnabled
-                        selected: Library.sourceFilter === "Ryujinx"
+                        property string sourceName: "Ryujinx"
+                        selected: Library.sourceFilters.indexOf("Ryujinx") >= 0
                         onClicked: {
-                            Library.sourceFilter = "Ryujinx"
+                            Library.sourceFilters = ["Ryujinx"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Ryujinx")
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
+                        id: shadps4SourceButton
+                        objectName: "shadps4SourceButton"
+                        property Item controllerLeftTarget: ryujinxSourceButton
+                        property Item controllerRightTarget: cemuSourceButton
+                        property Item controllerDownTarget: statusFilterButton
+                        text: "SHADPS4"
+                        compact: true
+                        visible: Preferences.shadps4Enabled
+                        property string sourceName: "shadPS4"
+                        selected: Library.sourceFilters.indexOf("shadPS4") >= 0
+                        onClicked: {
+                            Library.sourceFilters = ["shadPS4"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("shadPS4")
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
+                        id: cemuSourceButton
+                        objectName: "cemuSourceButton"
+                        property Item controllerLeftTarget: shadps4SourceButton
+                        property Item controllerRightTarget: dolphinSourceButton
+                        property Item controllerDownTarget: statusFilterButton
+                        text: "CEMU"
+                        compact: true
+                        visible: Preferences.cemuEnabled
+                        property string sourceName: "Cemu"
+                        selected: Library.sourceFilters.indexOf("Cemu") >= 0
+                        onClicked: {
+                            Library.sourceFilters = ["Cemu"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Cemu")
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
+                        id: dolphinSourceButton
+                        objectName: "dolphinSourceButton"
+                        property Item controllerLeftTarget: cemuSourceButton
+                        property Item controllerRightTarget: root.sourceRowNextButton
+                        property Item controllerDownTarget: statusFilterButton
+                        text: "DOLPHIN"
+                        compact: true
+                        visible: Preferences.dolphinEnabled
+                        property string sourceName: "Dolphin"
+                        selected: Library.sourceFilters.indexOf("Dolphin") >= 0
+                        onClicked: {
+                            Library.sourceFilters = ["Dolphin"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Dolphin")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1235,7 +1425,9 @@ ApplicationWindow {
 
                 Text {
                     visible: root.width >= 1100
-                    text: Library.mode === 1 ? "FAVORITES" : Library.mode === 2 ? "RECENTLY PLAYED" : Library.mode === 3 ? "HIDDEN" : "YOUR LIBRARY"
+                    text: Library.consoleTitle.length > 0
+                          ? "LIBRARY / " + Library.consoleTitle.toUpperCase()
+                          : Library.mode === 1 ? "FAVORITES" : Library.mode === 2 ? "RECENTLY PLAYED" : Library.mode === 3 ? "HIDDEN" : "YOUR LIBRARY"
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
@@ -1263,19 +1455,47 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
                 GlassButton {
+                    id: consoleGamesButton
+                    objectName: "consoleGamesButton"
+                    // Every console system follows this view unless explicitly overridden.
+                    visible: Library.hasConsoleCards || Library.expandConsoles
+                    // Left returns to the end of the source row it sits beside.
+                    property Item controllerLeftTarget: root.sourceRowEndButton
+                    property Item controllerRightTarget: sortButton
+                    compact: true
+                    selected: Library.expandConsoles
+                    text: Library.expandConsoles ? "CONSOLE VIEW: GAMES" : "CONSOLE VIEW: CONSOLES"
+                    onClicked: {
+                        Library.expandConsoles = !Library.expandConsoles
+                        libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                    }
+                }
+                GlassButton {
                     id: sortButton
                     objectName: "sortButton"
-                    property Item controllerLeftTarget: root.width < 1040
+                    property Item controllerLeftTarget: consoleGamesButton.visible ? consoleGamesButton
+                                                         : root.width < 1040
                                                          ? root.sourceRowEndButton
                                                          : hiddenModeButton
-                    property Item controllerRightTarget: rescanButton
+                    property Item controllerRightTarget: coverSizeButton
                     compact: true
-                    text: Library.sortMode === 0 ? "SORT: TITLE" : Library.sortMode === 1 ? "SORT: RECENT" : "SORT: PLAYTIME"
-                    onClicked: Library.sortMode = (Library.sortMode + 1) % 3
+                    text: Library.sortMode === 0 ? "SORT: TITLE" : Library.sortMode === 1 ? "SORT: RECENT" : Library.sortMode === 2 ? "SORT: PLAYTIME" : Library.sortMode === 3 ? "SORT: RATING" : "SORT: POPULARITY"
+                    onClicked: Library.sortMode = (Library.sortMode + 1) % 5
+                }
+                GlassButton {
+                    id: coverSizeButton
+                    property Item controllerDownTarget: statusFilterButton.visible ? statusFilterButton : libraryView.navigationTarget
+                    objectName: "coverSizeButton"
+                    property Item controllerLeftTarget: sortButton
+                    property Item controllerRightTarget: rescanButton
+                    property Item controllerUpTarget: settingsButton
+                    compact: true; text: "COVER SIZE"
+                    onClicked: coverSizePopup.open()
                 }
                 GlassButton {
                     id: rescanButton
                     objectName: "rescanButton"
+                    property Item controllerLeftTarget: coverSizeButton
                     property Item controllerUpTarget: settingsButton
                     compact: true
                     text: root.libraryScanning ? "SCANNING" : "RESCAN"
@@ -1283,13 +1503,21 @@ ApplicationWindow {
                     onClicked: root.rescanLibraries()
                 }
                 Text {
-                    text: Controller.connected
+                    readonly property bool sourceChipFocused: root.activeFocusItem
+                                                               && root.activeFocusItem.sourceName !== undefined
+                    text: sourceChipFocused
+                          ? (Controller.connected
+                             ? Controller.primaryGlyph + "  SELECT   ·   " + Controller.favoriteGlyph + "  ADD / REMOVE   ·   " + Controller.backGlyph + "  BACK"
+                             : "ENTER  SELECT   ·   SHIFT+ENTER  ADD / REMOVE")
+                          : Controller.connected
                           ? Controller.primaryGlyph + "  OPEN   ·   " + Controller.favoriteGlyph + "  FAVORITE   ·   " + Controller.toolbarGlyph + "  CONTROLS   ·   " + Controller.backGlyph + "  BACK"
                           : "ENTER  OPEN   ·   F  FAVORITE   ·   F6  CONTROLS"
                     color: root.alpha(Theme.foreground, 0.42)
                     font.family: Theme.fontFamily
                     font.pixelSize: 8
-                    visible: root.width > 930
+                    // The hints are a fixed-width string; on tiled windows they
+                    // starve the source chips, so they only appear with room to spare.
+                    visible: root.width >= 1560
                 }
             }
 
@@ -1405,6 +1633,26 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                visible: Library.consoleTitle.length > 0
+                spacing: 8
+                GlassButton {
+                    objectName: "consoleBackButton"
+                    compact: true
+                    text: "BACK"
+                    onClicked: root.leaveConsole()
+                }
+                Text {
+                    text: Library.consoleTitle
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                }
+                Item { Layout.fillWidth: true }
+            }
+
             LibraryView {
                 id: libraryView
                 objectName: "libraryView"
@@ -1427,6 +1675,12 @@ ApplicationWindow {
                             ? "PCSX2 was not found"
                             : Library.sourceFilter === "Ryujinx" && RyujinxLibrary && !RyujinxLibrary.ryujinxDetected
                             ? "Ryujinx was not found"
+                            : Library.sourceFilter === "shadPS4" && Shadps4Library && !Shadps4Library.shadps4Detected
+                            ? "shadPS4 was not found"
+                            : Library.sourceFilter === "Cemu" && CemuLibrary && !CemuLibrary.cemuDetected
+                            ? "Cemu was not found"
+                            : Library.sourceFilter === "Dolphin" && DolphinLibrary && !DolphinLibrary.dolphinDetected
+                            ? "Dolphin was not found"
                             : Library.sourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
                             ? "Battle.net was not found"
                             : Library.sourceFilter === "Lutris" && LutrisLibrary && !LutrisLibrary.lutrisDetected
@@ -1449,6 +1703,12 @@ ApplicationWindow {
                               ? Pcsx2Library.errorText
                               : Library.sourceFilter === "Ryujinx" && RyujinxLibrary && RyujinxLibrary.errorText.length > 0
                               ? RyujinxLibrary.errorText
+                              : Library.sourceFilter === "shadPS4" && Shadps4Library && Shadps4Library.errorText.length > 0
+                              ? Shadps4Library.errorText
+                              : Library.sourceFilter === "Cemu" && CemuLibrary && CemuLibrary.errorText.length > 0
+                              ? CemuLibrary.errorText
+                              : Library.sourceFilter === "Dolphin" && DolphinLibrary && DolphinLibrary.errorText.length > 0
+                              ? DolphinLibrary.errorText
                               : Library.sourceFilter === "GOG" && HeroicLibrary && HeroicLibrary.errorText.length > 0
                               ? HeroicLibrary.errorText
                               : Library.sourceFilter === "Heroic" && HeroicLibrary && HeroicLibrary.errorText.length > 0
@@ -1459,7 +1719,7 @@ ApplicationWindow {
                               ? BattleNetLibrary.errorText
                               : SteamLibrary && SteamLibrary.errorText.length > 0
                                 ? SteamLibrary.errorText
-                                : "Install a game in Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, or Battle.net, then rescan your library."
+                                : "Install a game in Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, shadPS4, Cemu, Dolphin, or Battle.net, then rescan your library."
                 onGameActivated: index => root.openGame(index)
                 onFavoriteToggled: index => Library.toggleFavorite(index)
                 onCoverRequested: function(source, appId) {
@@ -1467,6 +1727,10 @@ ApplicationWindow {
                         SteamLibrary.requestCover(appId)
                     } else if (source === "Battle.net" && BattleNetLibrary) {
                         BattleNetLibrary.requestCover(appId)
+                    } else if (source === "RetroArch" && RetroArchLibrary) {
+                        RetroArchLibrary.requestCover(appId)
+                    } else if (source === "Dolphin" && DolphinLibrary) {
+                        DolphinLibrary.requestCover(appId)
                     }
                 }
                 onRefreshRequested: {
@@ -1499,6 +1763,10 @@ ApplicationWindow {
                 SteamLibrary.requestCover(appId)
             } else if (source === "Battle.net" && BattleNetLibrary) {
                 BattleNetLibrary.requestCover(appId)
+            } else if (source === "RetroArch" && RetroArchLibrary) {
+                RetroArchLibrary.requestCover(appId)
+            } else if (source === "Dolphin" && DolphinLibrary) {
+                DolphinLibrary.requestCover(appId)
             }
         }
     }
@@ -1560,10 +1828,15 @@ ApplicationWindow {
                     root.showToast("Original cover restored")
                 }
             }
-            onConnectRequested: root.diagnosticsOpen = true
+            onConnectRequested: { settingsOverlay.section = 2; root.diagnosticsOpen = true }
             onHiddenRequested: {
                 Library.toggleHidden(root.selectedIndex)
                 root.closeDetails()
+            }
+            onPinRequested: {
+                if (Library.setPinned(root.selectedIndex, !root.selectedGame.pinned)) {
+                    root.refreshAfterOrganization()
+                }
             }
             onCompletionStatusRequested: status => {
                 if (Library.setCompletionStatus(root.selectedIndex, status)) {
@@ -1915,854 +2188,32 @@ ApplicationWindow {
         interval: 2400
     }
 
-    Rectangle {
+    Popup {
+        id: coverSizePopup
+        objectName: "coverSizePopup"
+        parent: Overlay.overlay
+        width: Math.min(340, root.width - 48)
+        onAboutToShow: {
+            const anchor = coverSizeButton.mapToItem(Overlay.overlay, 0, coverSizeButton.height)
+            x = Math.max(24, Math.min(root.width - width - 24, anchor.x))
+            y = Math.max(24, Math.min(root.height - implicitHeight - 24, anchor.y + 8))
+        }
+        padding: 20; modal: true; focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle { color: Theme.background; radius: Math.max(8, Theme.cornerRadius); border.color: Theme.mutedText }
+        contentItem: ColumnLayout {
+            spacing: 12
+            CoverSizeControl { id: libraryCoverSize; Layout.fillWidth: true; onEditingFinished: coverSizePopup.close() }
+            Text { text: libraryView.columns + " PER ROW"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 }
+        }
+        onOpened: libraryCoverSize.focusSlider()
+        onClosed: coverSizeButton.forceActiveFocus(Qt.TabFocusReason)
+    }
+
+    SettingsPanel {
         id: settingsOverlay
-        property var previousFocus: null
-        anchors.fill: parent
-        visible: root.diagnosticsOpen
-        z: 20
-        Keys.onPressed: function(event) { root.handleArrowKey(settingsOverlay, event) }
-        color: root.alpha(Theme.darkerBackground, 0.72)
-        onVisibleChanged: {
-            if (visible) {
-                previousFocus = root.activeFocusItem
-                Qt.callLater(function() { root.focusWithin(settingsOverlay, true) })
-            } else if (previousFocus) {
-                root.restoreFocus(previousFocus)
-                previousFocus = null
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: root.diagnosticsOpen = false
-        }
-
-        Rectangle {
-            id: settingsPanel
-            anchors.centerIn: parent
-            readonly property real layoutScale: root.couchMode
-                                                    ? Math.max(1, Math.min(2,
-                                                                          root.height / 1080))
-                                                    : 1
-            readonly property real uiScale: root.couchMode ? 1.25 * layoutScale : 1
-            width: Math.min(root.couchMode ? 1280 * layoutScale : 610,
-                            parent.width - (root.couchMode ? 96 : 48))
-            height: Math.min(root.couchMode ? 900 * layoutScale : 760,
-                             parent.height - (root.couchMode ? 72 : 48))
-            radius: Math.max(root.couchMode ? 14 * layoutScale : 8, Theme.cornerRadius)
-            color: root.alpha(Theme.background, 0.98)
-            border.color: root.alpha(Theme.foreground, 0.2)
-
-            MouseArea { anchors.fill: parent }
-
-            ScrollView {
-                id: settingsScroll
-                objectName: "settingsScroll"
-                readonly property real navigationContentY: contentItem ? contentItem.contentY : 0
-                anchors.fill: parent
-                anchors.margins: root.couchMode ? 42 * settingsPanel.layoutScale : 28
-                anchors.bottomMargin: root.couchMode ? 70 * settingsPanel.layoutScale : 28
-                rightPadding: 18
-                contentWidth: availableWidth
-
-            ColumnLayout {
-                width: parent.width
-                spacing: 14
-
-                Text {
-                    text: "SETTINGS & SOURCES"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 20 * settingsPanel.uiScale
-                    font.weight: Font.Bold
-                }
-                Text {
-                    text: "GAME SOURCES"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
-                    font.weight: Font.DemiBold
-                }
-                Repeater {
-                    model: DemoMode ? [] : [
-                        { name: "STEAM", enabled: Preferences.steamEnabled,
-                          status: SteamLibrary ? SteamLibrary.statusText : "Unavailable",
-                          error: SteamLibrary ? SteamLibrary.errorText : "",
-                          paths: SteamLibrary ? SteamLibrary.detectedPaths : [],
-                          lastScan: SteamLibrary ? SteamLibrary.lastScan : 0 },
-                        { name: "BATTLE.NET", enabled: Preferences.battleNetEnabled,
-                          status: BattleNetLibrary ? BattleNetLibrary.statusText : "Unavailable",
-                          error: BattleNetLibrary ? BattleNetLibrary.errorText : "",
-                          paths: BattleNetLibrary ? BattleNetLibrary.detectedPaths : [],
-                          lastScan: BattleNetLibrary ? BattleNetLibrary.lastScan : 0 },
-                        { name: "LUTRIS", enabled: Preferences.lutrisEnabled,
-                          status: LutrisLibrary ? LutrisLibrary.statusText : "Unavailable",
-                          error: LutrisLibrary ? LutrisLibrary.errorText : "",
-                          paths: LutrisLibrary ? LutrisLibrary.detectedPaths : [],
-                          lastScan: LutrisLibrary ? LutrisLibrary.lastScan : 0 },
-                        { name: "HEROIC", enabled: Preferences.heroicEnabled,
-                          status: HeroicLibrary ? HeroicLibrary.statusText : "Unavailable",
-                          error: HeroicLibrary ? HeroicLibrary.errorText : "",
-                          paths: HeroicLibrary ? HeroicLibrary.detectedPaths : [],
-                          lastScan: HeroicLibrary ? HeroicLibrary.lastScan : 0 },
-                        { name: "GOG", enabled: Preferences.gogEnabled,
-                          status: HeroicLibrary ? HeroicLibrary.statusText : "Unavailable",
-                          error: HeroicLibrary ? HeroicLibrary.errorText : "",
-                          paths: HeroicLibrary ? HeroicLibrary.detectedPaths : [],
-                          lastScan: HeroicLibrary ? HeroicLibrary.lastScan : 0 },
-                        { name: "FAUGUS", enabled: Preferences.faugusEnabled,
-                          status: FaugusLibrary ? FaugusLibrary.statusText : "Unavailable",
-                          error: FaugusLibrary ? FaugusLibrary.errorText : "",
-                          paths: FaugusLibrary ? FaugusLibrary.detectedPaths : [],
-                          lastScan: FaugusLibrary ? FaugusLibrary.lastScan : 0 },
-                        { name: "RETROARCH", enabled: Preferences.retroArchEnabled,
-                          status: RetroArchLibrary ? RetroArchLibrary.statusText : "Unavailable",
-                          error: RetroArchLibrary ? RetroArchLibrary.errorText : "",
-                          paths: RetroArchLibrary ? RetroArchLibrary.detectedPaths : [],
-                          lastScan: RetroArchLibrary ? RetroArchLibrary.lastScan : 0 },
-                        { name: "PCSX2", enabled: Preferences.pcsx2Enabled,
-                          status: Pcsx2Library ? Pcsx2Library.statusText : "Unavailable",
-                          error: Pcsx2Library ? Pcsx2Library.errorText : "",
-                          paths: Pcsx2Library ? Pcsx2Library.detectedPaths : [],
-                          lastScan: Pcsx2Library ? Pcsx2Library.lastScan : 0 },
-                        { name: "RYUJINX", enabled: Preferences.ryujinxEnabled,
-                          status: RyujinxLibrary ? RyujinxLibrary.statusText : "Unavailable",
-                          error: RyujinxLibrary ? RyujinxLibrary.errorText : "",
-                          paths: RyujinxLibrary ? RyujinxLibrary.detectedPaths : [],
-                          lastScan: RyujinxLibrary ? RyujinxLibrary.lastScan : 0 }
-                    ]
-                    ColumnLayout {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        spacing: 5
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.name
-                                color: modelData.enabled ? Theme.accent : Theme.mutedText
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11 * settingsPanel.uiScale
-                                font.weight: Font.Bold
-                            }
-                            GlassButton {
-                                compact: true
-                                text: modelData.enabled ? "ENABLED" : "DISABLED"
-                                selected: modelData.enabled
-                                onClicked: {
-                                    let nowEnabled = false
-                                    if (modelData.name === "STEAM") {
-                                        Preferences.steamEnabled = !Preferences.steamEnabled
-                                        nowEnabled = Preferences.steamEnabled
-                                        if (Preferences.steamEnabled) SteamLibrary.refresh()
-                                    } else if (modelData.name === "BATTLE.NET") {
-                                        Preferences.battleNetEnabled = !Preferences.battleNetEnabled
-                                        nowEnabled = Preferences.battleNetEnabled
-                                        if (Preferences.battleNetEnabled && BattleNetLibrary) BattleNetLibrary.refresh()
-                                    } else if (modelData.name === "LUTRIS") {
-                                        Preferences.lutrisEnabled = !Preferences.lutrisEnabled
-                                        nowEnabled = Preferences.lutrisEnabled
-                                        if (Preferences.lutrisEnabled) LutrisLibrary.refresh()
-                                    } else if (modelData.name === "HEROIC") {
-                                        Preferences.heroicEnabled = !Preferences.heroicEnabled
-                                        nowEnabled = Preferences.heroicEnabled
-                                        if (Preferences.heroicEnabled) HeroicLibrary.refresh()
-                                    } else if (modelData.name === "GOG") {
-                                        Preferences.gogEnabled = !Preferences.gogEnabled
-                                        nowEnabled = Preferences.gogEnabled
-                                        if (Preferences.gogEnabled) HeroicLibrary.refresh()
-                                    } else if (modelData.name === "FAUGUS") {
-                                        Preferences.faugusEnabled = !Preferences.faugusEnabled
-                                        nowEnabled = Preferences.faugusEnabled
-                                        if (Preferences.faugusEnabled) FaugusLibrary.refresh()
-                                    } else if (modelData.name === "PCSX2") {
-                                        Preferences.pcsx2Enabled = !Preferences.pcsx2Enabled
-                                        nowEnabled = Preferences.pcsx2Enabled
-                                        if (Preferences.pcsx2Enabled) Pcsx2Library.refresh()
-                                    } else if (modelData.name === "RYUJINX") {
-                                        Preferences.ryujinxEnabled = !Preferences.ryujinxEnabled
-                                        nowEnabled = Preferences.ryujinxEnabled
-                                        if (Preferences.ryujinxEnabled) RyujinxLibrary.refresh()
-                                    } else {
-                                        Preferences.retroArchEnabled = !Preferences.retroArchEnabled
-                                        nowEnabled = Preferences.retroArchEnabled
-                                        if (Preferences.retroArchEnabled) RetroArchLibrary.refresh()
-                                    }
-                                    if (!nowEnabled && Library.sourceFilter.toUpperCase() === modelData.name) {
-                                        Library.sourceFilter = ""
-                                    }
-                                }
-                            }
-                            GlassButton {
-                                compact: true
-                                text: "RESCAN"
-                                enabled: modelData.enabled
-                                onClicked: {
-                                    if (modelData.name === "STEAM") SteamLibrary.refresh()
-                                    else if (modelData.name === "BATTLE.NET" && BattleNetLibrary) BattleNetLibrary.refresh()
-                                    else if (modelData.name === "LUTRIS") LutrisLibrary.refresh()
-                                    else if (modelData.name === "HEROIC") HeroicLibrary.refresh()
-                                    else if (modelData.name === "GOG") HeroicLibrary.refresh()
-                                    else if (modelData.name === "FAUGUS") FaugusLibrary.refresh()
-                                    else if (modelData.name === "PCSX2") Pcsx2Library.refresh()
-                                    else if (modelData.name === "RYUJINX") RyujinxLibrary.refresh()
-                                    else RetroArchLibrary.refresh()
-                                }
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: modelData.status + " · " + root.scanTime(modelData.lastScan)
-                            color: Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10 * settingsPanel.uiScale
-                            wrapMode: Text.Wrap
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: modelData.paths.length > 0
-                            text: modelData.paths.join("\n")
-                            color: Theme.mutedText
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 9 * settingsPanel.uiScale
-                            wrapMode: Text.WrapAnywhere
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: modelData.enabled && modelData.error.length > 0
-                            text: modelData.error
-                            color: Theme.yellow
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 9 * settingsPanel.uiScale
-                            wrapMode: Text.Wrap
-                        }
-                    }
-                }
-                Text {
-                    visible: DemoMode
-                    text: "Demo library"
-                    color: Theme.accent
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12 * settingsPanel.uiScale
-                }
-                Repeater {
-                    model: [
-                        { label: "LIBRARY", value: libraryView.count + " visible games" },
-                        { label: "LOCAL ARTWORK", value: SteamLibrary ? SteamLibrary.artworkCount + " covers" : "Procedural demo art" },
-                        { label: "CONTROLLER", value: Controller.connected ? Controller.name : "Not connected" },
-                        { label: "DATABASE", value: SteamLibrary ? SteamLibrary.databasePath : "Not used in demo mode" },
-                        { label: "ACHIEVEMENT ART", value: (Achievements.cacheBytes / 1048576).toFixed(1) + " MB / " + Preferences.artworkCacheLimitMb + " MB" },
-                        { label: "VERSION", value: AppVersion }
-                    ]
-                    RowLayout {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.preferredWidth: 130
-                            text: modelData.label
-                            color: Theme.mutedText
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10 * settingsPanel.uiScale
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: modelData.value
-                            color: Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11 * settingsPanel.uiScale
-                            elide: Text.ElideMiddle
-                        }
-                    }
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: root.alpha(Theme.foreground, 0.12)
-                }
-                Text {
-                    text: "OPTIONAL STEAM CONNECTION"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: SteamAccount
-                          ? SteamAccount.statusText
-                          : "Local Steam data is used in demo mode."
-                    color: SteamAccount && (SteamAccount.state === "invalid-key"
-                                            || SteamAccount.state === "private"
-                                            || SteamAccount.state === "rate-limited")
-                           ? Theme.yellow : Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: SteamAccount !== null
-                    TextField {
-                        id: steamIdField
-                        property bool controllerNavigation: root.couchMode
-                        Layout.fillWidth: true
-                        placeholderText: "Steam ID (17 digits, starts with 7656119)"
-                        Accessible.name: "Steam ID"
-                        // Copy the saved value in instead of binding so a keyring lookup
-                        // finishing mid-edit cannot overwrite what is being typed.
-                        readonly property string savedText: SteamAccount ? SteamAccount.steamId : ""
-                        onSavedTextChanged: if (!activeFocus) text = savedText
-                        Component.onCompleted: text = savedText
-                        color: Theme.foreground
-                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
-                        font.family: Theme.fontFamily
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        Keys.onReturnPressed: function(event) {
-                            root.handleCouchTextEntry(event, steamIdField, "STEAM ID", false,
-                                                      steamIdField.placeholderText)
-                        }
-                        Keys.onEnterPressed: function(event) {
-                            root.handleCouchTextEntry(event, steamIdField, "STEAM ID", false,
-                                                      steamIdField.placeholderText)
-                        }
-                        background: Rectangle {
-                            radius: Math.max(5, Theme.cornerRadius)
-                            color: root.alpha(Theme.foreground, 0.045)
-                            border.width: steamIdField.activeFocus ? 2 : 1
-                            border.color: steamIdField.activeFocus
-                                          ? Theme.accent
-                                          : root.alpha(Theme.foreground, 0.15)
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "SAVE ID"
-                        onClicked: SteamAccount.setSteamId(steamIdField.text)
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: SteamAccount !== null && !SteamAccount.busy
-                    TextField {
-                        id: apiKeyField
-                        property bool controllerNavigation: root.couchMode
-                        Layout.fillWidth: true
-                        Accessible.name: "Steam Web API key"
-                        placeholderText: SteamAccount && SteamAccount.hasApiKey
-                                         ? "API key stored securely" : "Steam Web API key"
-                        color: Theme.foreground
-                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
-                        echoMode: TextInput.Password
-                        font.family: Theme.fontFamily
-                        Keys.onReturnPressed: function(event) {
-                            root.handleCouchTextEntry(event, apiKeyField, "STEAM WEB API KEY", true,
-                                                      apiKeyField.placeholderText)
-                        }
-                        Keys.onEnterPressed: function(event) {
-                            root.handleCouchTextEntry(event, apiKeyField, "STEAM WEB API KEY", true,
-                                                      apiKeyField.placeholderText)
-                        }
-                        background: Rectangle {
-                            radius: Math.max(5, Theme.cornerRadius)
-                            color: root.alpha(Theme.foreground, 0.045)
-                            border.width: apiKeyField.activeFocus ? 2 : 1
-                            border.color: apiKeyField.activeFocus
-                                          ? Theme.accent
-                                          : root.alpha(Theme.foreground, 0.15)
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "SAVE KEY"
-                        onClicked: {
-                            SteamAccount.storeApiKey(apiKeyField.text)
-                            apiKeyField.clear()
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        visible: SteamAccount ? SteamAccount.hasApiKey : false
-                        text: "REMOVE"
-                        onClicked: SteamAccount.removeApiKey()
-                    }
-                }
-                GlassButton {
-                    compact: true
-                    text: "GET A KEY FROM STEAM"
-                    onClicked: Qt.openUrlExternally("https://steamcommunity.com/dev/apikey")
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    GlassButton {
-                        compact: true
-                        enabled: SteamAccount !== null && !SteamAccount.busy
-                                 && SteamAccount.hasApiKey
-                                 && SteamAccount.steamId.length > 0
-                        text: SteamAccount && SteamAccount.busy
-                              ? "SYNCING STEAM LIBRARY" : "SYNC OWNED STEAM LIBRARY"
-                        onClicked: SteamAccount.refreshOwnedGames()
-                    }
-                    Text {
-                        visible: SteamAccount && SteamAccount.ownedGameCount > 0
-                        text: SteamAccount
-                              ? SteamAccount.ownedGameCount + " OWNED GAMES CACHED" : ""
-                        color: Theme.mutedText
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 9 * settingsPanel.uiScale
-                    }
-                    Item { Layout.fillWidth: true }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "OWNED LIBRARY SYNC REQUIRES PUBLIC STEAM GAME DETAILS"
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 8 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: root.alpha(Theme.foreground, 0.12)
-                }
-                Text {
-                    text: "OPTIONAL RETROACHIEVEMENTS CONNECTION"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: RetroAchievements
-                          ? RetroAchievements.statusText
-                          : "RetroAchievements is unavailable in demo mode."
-                    color: RetroAchievements && (RetroAchievements.state === "invalid-key"
-                                                 || RetroAchievements.state === "unsupported"
-                                                 || RetroAchievements.state === "rate-limited")
-                           ? Theme.yellow : Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: RetroAchievements !== null && !RetroAchievements.busy
-                    TextField {
-                        id: retroAchievementsUsernameField
-                        property bool controllerNavigation: root.couchMode
-                        Layout.fillWidth: true
-                        placeholderText: "RetroAchievements username"
-                        text: RetroAchievements ? RetroAchievements.username : ""
-                        color: Theme.foreground
-                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
-                        font.family: Theme.fontFamily
-                        Keys.onReturnPressed: function(event) {
-                            root.handleCouchTextEntry(event, retroAchievementsUsernameField,
-                                                      "RETROACHIEVEMENTS USERNAME", false,
-                                                      retroAchievementsUsernameField.placeholderText)
-                        }
-                        Keys.onEnterPressed: function(event) {
-                            root.handleCouchTextEntry(event, retroAchievementsUsernameField,
-                                                      "RETROACHIEVEMENTS USERNAME", false,
-                                                      retroAchievementsUsernameField.placeholderText)
-                        }
-                        background: Rectangle {
-                            radius: Math.max(5, Theme.cornerRadius)
-                            color: root.alpha(Theme.foreground, 0.045)
-                            border.width: retroAchievementsUsernameField.activeFocus ? 2 : 1
-                            border.color: retroAchievementsUsernameField.activeFocus
-                                          ? Theme.accent
-                                          : root.alpha(Theme.foreground, 0.15)
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "SAVE USERNAME"
-                        onClicked: RetroAchievements.setUsername(retroAchievementsUsernameField.text)
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: RetroAchievements !== null && !RetroAchievements.busy
-                    TextField {
-                        id: retroAchievementsKeyField
-                        property bool controllerNavigation: root.couchMode
-                        Layout.fillWidth: true
-                        placeholderText: RetroAchievements && RetroAchievements.hasApiKey
-                                         ? "API key stored securely" : "RetroAchievements Web API key"
-                        color: Theme.foreground
-                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
-                        echoMode: TextInput.Password
-                        Keys.onReturnPressed: function(event) {
-                            root.handleCouchTextEntry(event, retroAchievementsKeyField,
-                                                      "RETROACHIEVEMENTS API KEY", true,
-                                                      retroAchievementsKeyField.placeholderText)
-                        }
-                        Keys.onEnterPressed: function(event) {
-                            root.handleCouchTextEntry(event, retroAchievementsKeyField,
-                                                      "RETROACHIEVEMENTS API KEY", true,
-                                                      retroAchievementsKeyField.placeholderText)
-                        }
-                        font.family: Theme.fontFamily
-                        background: Rectangle {
-                            radius: Math.max(5, Theme.cornerRadius)
-                            color: root.alpha(Theme.foreground, 0.045)
-                            border.width: retroAchievementsKeyField.activeFocus ? 2 : 1
-                            border.color: retroAchievementsKeyField.activeFocus
-                                          ? Theme.accent
-                                          : root.alpha(Theme.foreground, 0.15)
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "SAVE KEY"
-                        onClicked: {
-                            RetroAchievements.storeApiKey(retroAchievementsKeyField.text)
-                            retroAchievementsKeyField.clear()
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        visible: RetroAchievements ? RetroAchievements.hasApiKey : false
-                        text: "REMOVE"
-                        onClicked: RetroAchievements.removeApiKey()
-                    }
-                }
-                GlassButton {
-                    compact: true
-                    text: "GET A KEY FROM RETROACHIEVEMENTS"
-                    onClicked: Qt.openUrlExternally("https://retroachievements.org/settings")
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "SUPPORTS NES, SNES, GENESIS, GAME BOY AND OTHER CARTRIDGE SYSTEMS FIRST; DISC-BASED SYSTEMS ARE NOT MATCHED YET"
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 8 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: root.alpha(Theme.foreground, 0.12)
-                }
-                Text {
-                    text: "OPTIONAL GAME INSIGHTS"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: Insights ? Insights.statusText : "IGDB is unavailable in demo mode."
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "TWITCH SETUP · Create Application, not Extension · Redirect: http://localhost · Client type: Confidential · Manage → New Secret"
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 9 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: Insights !== null && !Insights.busy
-                    TextField {
-                        id: igdbClientIdField
-                        property bool controllerNavigation: root.couchMode
-                        Layout.fillWidth: true
-                        placeholderText: "Twitch developer client ID"
-                        Accessible.name: placeholderText
-                        readonly property string savedText: Insights ? Insights.clientId : ""
-                        onSavedTextChanged: if (!activeFocus) text = savedText
-                        Component.onCompleted: text = savedText
-                        color: Theme.foreground
-                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
-                        font.family: Theme.fontFamily
-                        Keys.onReturnPressed: function(event) {
-                            root.handleCouchTextEntry(event, igdbClientIdField,
-                                                      "TWITCH CLIENT ID", false,
-                                                      igdbClientIdField.placeholderText)
-                        }
-                        Keys.onEnterPressed: function(event) {
-                            root.handleCouchTextEntry(event, igdbClientIdField,
-                                                      "TWITCH CLIENT ID", false,
-                                                      igdbClientIdField.placeholderText)
-                        }
-                        background: Rectangle {
-                            radius: Math.max(5, Theme.cornerRadius)
-                            color: root.alpha(Theme.foreground, 0.045)
-                            border.width: igdbClientIdField.activeFocus ? 2 : 1
-                            border.color: igdbClientIdField.activeFocus
-                                          ? Theme.accent
-                                          : root.alpha(Theme.foreground, 0.15)
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "SAVE ID"
-                        onClicked: Insights.setClientId(igdbClientIdField.text)
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: Insights !== null && !Insights.busy
-                    TextField {
-                        id: igdbSecretField
-                        property bool controllerNavigation: root.couchMode
-                        Layout.fillWidth: true
-                        Accessible.name: "Twitch developer client secret"
-                        placeholderText: Insights && Insights.hasClientSecret
-                                         ? "Client secret stored securely" : "Twitch developer client secret"
-                        color: Theme.foreground
-                        placeholderTextColor: root.alpha(Theme.foreground, 0.42)
-                        echoMode: TextInput.Password
-                        Keys.onReturnPressed: function(event) {
-                            root.handleCouchTextEntry(event, igdbSecretField,
-                                                      "TWITCH CLIENT SECRET", true,
-                                                      igdbSecretField.placeholderText)
-                        }
-                        Keys.onEnterPressed: function(event) {
-                            root.handleCouchTextEntry(event, igdbSecretField,
-                                                      "TWITCH CLIENT SECRET", true,
-                                                      igdbSecretField.placeholderText)
-                        }
-                        font.family: Theme.fontFamily
-                        background: Rectangle {
-                            radius: Math.max(5, Theme.cornerRadius)
-                            color: root.alpha(Theme.foreground, 0.045)
-                            border.width: igdbSecretField.activeFocus ? 2 : 1
-                            border.color: igdbSecretField.activeFocus
-                                          ? Theme.accent
-                                          : root.alpha(Theme.foreground, 0.15)
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "SAVE SECRET"
-                        onClicked: {
-                            Insights.storeClientSecret(igdbSecretField.text)
-                            igdbSecretField.clear()
-                        }
-                    }
-                    GlassButton {
-                        compact: true
-                        visible: Insights ? Insights.configured : false
-                        text: "REMOVE"
-                        onClicked: Insights.removeCredentials()
-                    }
-                }
-                GlassButton {
-                    compact: true
-                    text: "OPEN TWITCH APPLICATIONS"
-                    onClicked: Qt.openUrlExternally("https://dev.twitch.tv/console/apps")
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: root.alpha(Theme.foreground, 0.12)
-                }
-                Text {
-                    text: "STREAM WITH SUNSHINE AND MOONLIGHT"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: Sunshine ? Sunshine.statusText : "Sunshine export is unavailable in demo mode."
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "Moonlight shows Sunshine's app list. Omakade can add itself next to Steam Big Picture and one app per installed game with its cover. Sunshine reads the list when it starts, so restart it after changes."
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 9 * settingsPanel.uiScale
-                    wrapMode: Text.Wrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: Sunshine !== null && Sunshine.detected
-                    Text {
-                        Layout.fillWidth: true
-                        text: "OMAKADE IN MOONLIGHT"
-                        color: Theme.foreground
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
-                    }
-                    GlassButton {
-                        objectName: "sunshineOmakadeButton"
-                        compact: true
-                        text: Preferences.sunshineOmakadeApp ? "ENABLED" : "DISABLED"
-                        onClicked: Preferences.sunshineOmakadeApp = !Preferences.sunshineOmakadeApp
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    enabled: Sunshine !== null && Sunshine.detected
-                    Text {
-                        Layout.fillWidth: true
-                        text: Sunshine && Sunshine.exportedGames > 0
-                              ? "ONE APP PER INSTALLED GAME · " + Sunshine.exportedGames + " EXPORTED"
-                              : "ONE APP PER INSTALLED GAME"
-                        color: Theme.foreground
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
-                    }
-                    GlassButton {
-                        objectName: "sunshineGamesButton"
-                        compact: true
-                        text: Preferences.sunshineGameApps ? "ENABLED" : "DISABLED"
-                        onClicked: Preferences.sunshineGameApps = !Preferences.sunshineGameApps
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: Sunshine !== null && Sunshine.detected
-                    GlassButton {
-                        compact: true
-                        text: "UPDATE APP LIST"
-                        enabled: Sunshine && !Sunshine.busy
-                        onClicked: Sunshine.sync()
-                    }
-                    GlassButton {
-                        compact: true
-                        visible: Sunshine && Sunshine.restartNeeded && !Sunshine.streaming
-                        enabled: Sunshine && !Sunshine.busy
-                        text: "RESTART SUNSHINE"
-                        onClicked: Sunshine.restartSunshine()
-                    }
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: root.alpha(Theme.foreground, 0.12)
-                }
-                Text {
-                    text: "LIBRARY COLLECTIONS"
-                    color: Theme.brightForeground
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    visible: Library.collectionNames.length === 0
-                    text: "Create collections from a game's details."
-                    color: Theme.mutedText
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
-                }
-                Repeater {
-                    model: Library.collectionNames
-                    RowLayout {
-                        required property string modelData
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: modelData
-                            color: Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11 * settingsPanel.uiScale
-                            elide: Text.ElideRight
-                        }
-                        GlassButton {
-                            compact: true
-                            text: "DELETE"
-                            onClicked: {
-                                root.pendingCollectionDelete = modelData
-                                root.collectionDeleteOpen = true
-                            }
-                        }
-                    }
-                }
-                RowLayout {
-                    Layout.topMargin: 8
-                    spacing: 8
-                    GlassButton {
-                        compact: true
-                        text: "PROJECT"
-                        onClicked: Qt.openUrlExternally("https://github.com/btsouth/omakade")
-                    }
-                    GlassButton {
-                        compact: true
-                        text: "REPORT ISSUE"
-                        onClicked: Qt.openUrlExternally("https://github.com/btsouth/omakade/issues/new/choose")
-                    }
-                    Item { Layout.fillWidth: true }
-                }
-                GridLayout {
-                    Layout.fillWidth: true
-                    columnSpacing: 8
-                    rowSpacing: 8
-                    columns: 3
-                    GlassButton {
-                        Layout.fillWidth: true
-                        compact: true
-                        text: Preferences.reducedMotion ? "MOTION OFF" : "MOTION ON"
-                        selected: Preferences.reducedMotion
-                        onClicked: Preferences.reducedMotion = !Preferences.reducedMotion
-                    }
-                    GlassButton {
-                        Layout.fillWidth: true
-                        compact: true
-                        text: "AUTO-CLOSE: " + (Preferences.closeAfterLaunch ? "ON" : "OFF")
-                        selected: Preferences.closeAfterLaunch
-                        onClicked: Preferences.closeAfterLaunch = !Preferences.closeAfterLaunch
-                    }
-                    GlassButton {
-                        Layout.fillWidth: true
-                        compact: true
-                        text: "CACHE -"
-                        onClicked: Preferences.artworkCacheLimitMb -= 128
-                    }
-                    GlassButton {
-                        Layout.fillWidth: true
-                        compact: true
-                        text: "CACHE +"
-                        onClicked: Preferences.artworkCacheLimitMb += 128
-                    }
-                    GlassButton {
-                        Layout.fillWidth: true
-                        compact: true
-                        text: "CLEAR ART"
-                        onClicked: Achievements.clearCache()
-                    }
-                    GlassButton {
-                        Layout.fillWidth: true
-                        text: "CLOSE"
-                        primary: true
-                        onClicked: root.diagnosticsOpen = false
-                    }
-                }
-            }
-            }
-
-            Text {
-                visible: root.couchMode
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.rightMargin: 42
-                anchors.bottomMargin: 24
-                text: Controller.primaryGlyph + "  SELECT     "
-                      + Controller.backGlyph + "  CLOSE"
-                color: Theme.mutedText
-                font.family: Theme.fontFamily
-                font.pixelSize: 12 * settingsPanel.uiScale
-                font.weight: Font.DemiBold
-            }
-        }
+        host: root
+        libraryCount: libraryView.count
     }
 
     Rectangle {
@@ -2913,6 +2364,7 @@ ApplicationWindow {
             }
         }
         function onFocusDirectionRequested(key) {
+            if (!Controller.inputEnabled || !root.active) return
             const container = root.navigationContainer()
             if (!root.couchMode && !container && !libraryView.gridFocused
                     && !root.focusSpatial(librarySurface, key)
@@ -2924,9 +2376,17 @@ ApplicationWindow {
             }
         }
         function onToolbarRequested() {
+            if (!Controller.inputEnabled || !root.active) return
             root.toggleLibraryControls()
         }
         function onFavoriteRequested() {
+            if (!Controller.inputEnabled || !root.active) return
+            const focused = root.activeFocusItem
+            if (focused && focused.sourceName !== undefined && focused.visible) {
+                // On a source chip the favorite button means "add or remove this source".
+                focused.secondaryClicked()
+                return
+            }
             if (root.detailOpen && !root.diagnosticsOpen && !root.linkDialogOpen
                     && !root.collectionDeleteOpen) {
                 Library.toggleFavorite(root.selectedIndex)

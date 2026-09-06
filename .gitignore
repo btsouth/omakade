@@ -6,3 +6,7 @@
 /.qt/
 compile_commands.json
 __pycache__/
+/shadps4-bin/
+
+/output/
+/stage/

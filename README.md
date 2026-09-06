@@ -21,22 +21,28 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 
 ## Features
 
-Omakade 1.6.1 includes:
+Omakade 1.7.0 includes:
 
-- Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, and
-  Ryujinx discovery, plus direct GOG installation discovery,
-  including Steam non-Steam shortcuts and games sideloaded into Heroic, plus
-  Battle.net games from Wine, Proton, and Bottles prefixes
+- Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2,
+  Ryujinx, Cemu, shadPS4, and Dolphin discovery, plus direct GOG installation
+  discovery, including Steam non-Steam shortcuts and games sideloaded into
+  Heroic, plus Battle.net games from Wine, Proton, and Bottles prefixes
+- Console cards for cartridge and disc systems, with a per-system choice
+  between cards and library tiles, per-game pinning, and ROM folder scanning
+  for EmuDeck-style layouts
 - One-click details and delegated launching through the owning platform
 - Omarchy palette, font, transparency, and live theme updates
-- Search, favorites, hidden games, sorting, and source filters
+- Search, favorites, hidden games, sorting, and source filters that combine,
+  including one chip for every emulator
 - Runtime source controls with scan status and detected locations
 - Optional close-after-launch behavior
 - Collections, tags, completion states, and smart organization filters
 - Local Steam achievements plus optional Web API enrichment
 - Optional RetroAchievements progress for supported RetroArch systems
 - Optional Steam owned-library sync with installed and ready-to-install views
-- Optional IGDB critic aggregates and game-length estimates
+- Optional IGDB ratings, popularity sorting, and game-length estimates
+- SteamGridDB portrait covers with per-game identification and artwork choices
+- Adjustable cover size and per-console grouping preferences
 - Local, downloaded, and user-selected cover artwork
 - Explicit linking for games installed through multiple sources
 - ProtonDB and PCGamingWiki shortcuts with actionable launch errors
@@ -90,23 +96,23 @@ verify the package, and install it. If Omakade is already installed, `pacman -U`
 upgrades it in place without removing your settings or library data:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.6.1/omakade-1.6.1-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.6.1/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.7.0/omakade-1.7.0-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.7.0/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.6.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.7.0-1-x86_64.pkg.tar.zst
 ```
 
 ### Install or upgrade from a browser download
 
 1. Open the [latest release](https://github.com/btsouth/omakade/releases/latest).
-2. Under **Assets**, download `omakade-1.6.1-1-x86_64.pkg.tar.zst` (or
-   `omakade-1.6.1-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
+2. Under **Assets**, download `omakade-1.7.0-1-x86_64.pkg.tar.zst` (or
+   `omakade-1.7.0-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
 3. Open a terminal in that folder and run the commands below. On ARM64,
    replace `x86_64` with `aarch64` in the package filename:
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.6.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.7.0-1-x86_64.pkg.tar.zst
 ```
 
 Launch Omakade from the application launcher or run `omakade` in a terminal.
@@ -122,6 +128,18 @@ off to Steam.
 Omakade keeps its local library and settings when the package is upgraded or
 removed. The owning launchers remain responsible for games, accounts, updates,
 cloud saves, DRM, and compatibility tools.
+
+Emulated games can sit behind one console card per system (Super Nintendo,
+Nintendo 64, Sega Dreamcast, and so on) instead of filling the library. Each
+system's layout is chosen in Settings → Library, and any game can be
+pinned to the main library from its details page. ROM folders without a
+RetroArch playlist are scanned when they follow the EmuDeck layout
+(`~/Emulation/roms`, `/data/Emulation/Games`) or are added under ROM Folders in
+Settings → Sources. Switch dumps show the icon and name stored inside the NSP or XCI when
+Ryujinx's `prod.keys` is present; Wii U `.wua` archives and PS4 dumps carry
+their own icons. GameCube and Wii discs come from Dolphin's game folders or a
+`GameCube`/`Wii` folder, launch through Dolphin's batch mode, and take their
+covers from Dolphin's cache or GameTDB.
 
 RetroArch games come from its configured playlists. Omakade uses local
 RetroArch thumbnails and runtime logs, then launches each game with its assigned

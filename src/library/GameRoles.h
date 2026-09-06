@@ -37,6 +37,13 @@ enum Role {
   Collections,
   LaunchTarget,
   Installed,
+  System,
+  IsPortal,
+  Pinned,
+  MetadataKey,
+  Rating,
+  RatingCount,
+  Popularity,
 };
 
 inline QHash<int, QByteArray> names() {
@@ -64,6 +71,13 @@ inline QHash<int, QByteArray> names() {
       {Runner, "runner"},
       {Flatpak, "flatpak"},
       {Hidden, "hidden"},
+      {System, "system"},
+      {IsPortal, "isPortal"},
+      {Pinned, "pinned"},
+      {MetadataKey, "metadataKey"},
+      {Rating, "rating"},
+      {RatingCount, "ratingCount"},
+      {Popularity, "popularity"},
   };
 }
 } // namespace GameRoles

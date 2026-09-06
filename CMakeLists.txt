@@ -1,9 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(Omakade VERSION 1.6.1 LANGUAGES CXX)
+project(Omakade VERSION 1.7.0 LANGUAGES CXX)
 
 find_package(PkgConfig REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+pkg_check_modules(LIBZSTD REQUIRED IMPORTED_TARGET libzstd)
 pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
 
@@ -33,13 +35,20 @@ add_library(omakade_core STATIC
   src/app/AppSettings.h
   src/app/SingleInstance.cpp
   src/app/SingleInstance.h
+  src/input/ControllerFocusGuard.cpp
+  src/input/ControllerFocusGuard.h
   src/input/ControllerInput.cpp
   src/input/ControllerInput.h
   src/input/CouchCursorManager.cpp
   src/input/CouchCursorManager.h
   src/library/LibraryFilterModel.cpp
   src/library/LibraryFilterModel.h
+  src/library/DatabaseTuning.h
   src/library/GameRoles.h
+  src/library/ConsoleCatalog.cpp
+  src/library/ConsoleCatalog.h
+  src/library/ConsolePortalModel.cpp
+  src/library/ConsolePortalModel.h
   src/library/BattleNetGameModel.cpp
   src/library/BattleNetGameModel.h
   src/library/FaugusGameModel.cpp
@@ -54,6 +63,10 @@ add_library(omakade_core STATIC
   src/library/Pcsx2GameModel.h
   src/library/RyujinxGameModel.cpp
   src/library/RyujinxGameModel.h
+  src/library/Shadps4GameModel.cpp
+  src/library/Shadps4GameModel.h
+  src/library/CemuGameModel.cpp
+  src/library/CemuGameModel.h
   src/library/MockGameModel.cpp
   src/library/MockGameModel.h
   src/library/SteamGameModel.cpp
@@ -69,6 +82,8 @@ add_library(omakade_core STATIC
   src/launch/PlayRequest.h
   src/launch/SteamLauncher.cpp
   src/launch/SteamLauncher.h
+  src/metadata/GameMetadata.cpp
+  src/metadata/GameMetadata.h
   src/metadata/IgdbApi.cpp
   src/metadata/IgdbApi.h
   src/metadata/GameInsightsService.cpp
@@ -82,10 +97,26 @@ add_library(omakade_core STATIC
   src/sources/lutris/LutrisScanner.h
   src/sources/retroarch/RetroArchScanner.cpp
   src/sources/retroarch/RetroArchScanner.h
+  src/sources/retro/RomFolderScanner.cpp
+  src/sources/retro/RomFolderScanner.h
   src/sources/pcsx2/Pcsx2Scanner.cpp
   src/sources/pcsx2/Pcsx2Scanner.h
   src/sources/ryujinx/RyujinxScanner.cpp
   src/sources/ryujinx/RyujinxScanner.h
+  src/sources/shadps4/Shadps4Scanner.cpp
+  src/sources/shadps4/Shadps4Scanner.h
+  src/sources/cemu/CemuScanner.cpp
+  src/sources/cemu/CemuScanner.h
+  src/sources/dolphin/DolphinScanner.cpp
+  src/sources/dolphin/DolphinScanner.h
+  src/library/DolphinGameModel.cpp
+  src/library/DolphinGameModel.h
+  src/artwork/SwitchTitleReader.cpp
+  src/artwork/SwitchTitleReader.h
+  src/artwork/ZArchiveReader.cpp
+  src/artwork/ZArchiveReader.h
+  src/artwork/TgaImage.cpp
+  src/artwork/TgaImage.h
   src/sources/heroic/HeroicScanner.cpp
   src/sources/heroic/HeroicScanner.h
   src/sources/faugus/FaugusScanner.cpp
@@ -103,6 +134,8 @@ target_link_libraries(omakade_core PUBLIC
   PkgConfig::SDL3
   PkgConfig::LIBSECRET
   PkgConfig::LIBZIP
+  PkgConfig::LIBZSTD
+  OpenSSL::Crypto
   Qt6::Concurrent
   Qt6::Core
   Qt6::Gui
@@ -123,10 +156,14 @@ qt_add_qml_module(omakade
   VERSION 1.0
   QML_FILES
     qml/Main.qml
+    qml/components/CoverSizeControl.qml
+    qml/components/CoverArtwork.qml
     qml/components/GameCard.qml
     qml/components/CouchLibraryView.qml
     qml/components/CouchKeyboard.qml
     qml/components/CouchBrowsePanel.qml
+    qml/components/GameMetadataEditor.qml
+    qml/components/SettingsPanel.qml
     qml/components/GlassButton.qml
     qml/components/LibraryView.qml
     qml/screens/GameDetails.qml
@@ -136,6 +173,18 @@ qt_add_resources(omakade "omakade_icons"
   PREFIX "/icons"
   FILES
     resources/icons/io.github.tsouth89.Omakade.svg
+)
+
+# Console card art: any PNG, JPG, or SVG dropped into resources/consoles named
+# after a ConsoleCatalog id (snes.png, n64.svg, ...) is bundled automatically.
+file(GLOB OMAKADE_CONSOLE_ART CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/consoles/*.png"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/consoles/*.jpg"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/consoles/*.svg")
+qt_add_resources(omakade "omakade_consoles"
+  PREFIX "/consoles"
+  BASE "resources/consoles"
+  FILES ${OMAKADE_CONSOLE_ART}
 )
 
 set_target_properties(omakade PROPERTIES
@@ -175,6 +224,9 @@ install(FILES packaging/io.github.tsouth89.Omakade.metainfo.xml
   DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
 )
 install(FILES LICENSE COPYRIGHT
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
+)
+install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
 )
 install(FILES README.md PRIVACY.md SUPPORT.md CHANGELOG.md docs/COMPATIBILITY.md

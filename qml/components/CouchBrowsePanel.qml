@@ -9,10 +9,11 @@ FocusScope {
     property int categoryIndex: 0
     property var optionModel: []
     readonly property var categories: [
+        { label: "SOURCE", kind: "source" },
         { label: "LIBRARY VIEW", kind: "mode" },
         { label: "SORT ORDER", kind: "sort" },
         { label: "AVAILABILITY", kind: "availability" },
-        { label: "SOURCE", kind: "source" },
+        { label: "CONSOLES", kind: "consoles" },
         { label: "STATUS", kind: "status" },
         { label: "COLLECTION", kind: "collection" },
         { label: "TAG", kind: "tag" }
@@ -44,7 +45,9 @@ FocusScope {
             return [
                 { label: "TITLE", value: 0 },
                 { label: "RECENTLY PLAYED", value: 1 },
-                { label: "PLAYTIME", value: 2 }
+                { label: "PLAYTIME", value: 2 },
+                { label: "IGDB RATING", value: 3 },
+                { label: "POPULARITY (IGDB VISITS)", value: 4 }
             ]
         }
         if (kind === "availability") {
@@ -56,6 +59,13 @@ FocusScope {
         }
         if (kind === "source") {
             return sourceOptions
+        }
+        if (kind === "consoles") {
+            // All systems follow this view unless explicitly overridden in Settings.
+            return [
+                { label: "CONSOLE CARDS", value: false },
+                { label: "CONSOLE GAMES SHOWN", value: true }
+            ]
         }
         if (kind === "status") {
             return [
@@ -87,6 +97,7 @@ FocusScope {
                             : kind === "sort" ? libraryModel.sortMode
                             : kind === "availability" ? libraryModel.availability
                             : kind === "source" ? libraryModel.sourceFilter
+                            : kind === "consoles" ? libraryModel.expandConsoles
                             : kind === "status" ? libraryModel.completionFilter
                             : kind === "collection" ? libraryModel.collectionFilter
                             : libraryModel.tagFilter
@@ -103,6 +114,7 @@ FocusScope {
              : kind === "sort" ? libraryModel.sortMode === value
              : kind === "availability" ? libraryModel.availability === value
              : kind === "source" ? libraryModel.sourceFilter === value
+             : kind === "consoles" ? libraryModel.expandConsoles === value
              : kind === "status" ? libraryModel.completionFilter === value
              : kind === "collection" ? libraryModel.collectionFilter === value
              : libraryModel.tagFilter === value
@@ -118,6 +130,7 @@ FocusScope {
         else if (kind === "sort") libraryModel.sortMode = value
         else if (kind === "availability") libraryModel.availability = value
         else if (kind === "source") libraryModel.sourceFilter = value
+        else if (kind === "consoles") libraryModel.expandConsoles = value
         else if (kind === "status") libraryModel.completionFilter = value
         else if (kind === "collection") libraryModel.collectionFilter = value
         else libraryModel.tagFilter = value
@@ -129,6 +142,7 @@ FocusScope {
         libraryModel.sortMode = 0
         libraryModel.availability = 0
         libraryModel.sourceFilter = ""
+        libraryModel.consoleFilter = ""
         libraryModel.completionFilter = ""
         libraryModel.collectionFilter = ""
         libraryModel.tagFilter = ""
@@ -143,10 +157,14 @@ FocusScope {
     }
 
     onCategoryIndexChanged: rebuildOptions()
+    onSourceOptionsChanged: if (categories[categoryIndex].kind === "source") rebuildOptions()
 
     Connections {
         target: root.libraryModel
         function onOrganizationNamesChanged() { root.rebuildOptions() }
+        function onSourceFilterChanged() {
+            if (root.categories[root.categoryIndex].kind === "source") root.rebuildOptions()
+        }
     }
 
     Rectangle {

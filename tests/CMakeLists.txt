@@ -28,6 +28,14 @@ set_tests_properties(omakade_controller_navigation PROPERTIES
   TIMEOUT 30
 )
 
+add_test(NAME omakade_console_portal_view
+  COMMAND omakade --console-portal-test --render-size=1600x900
+)
+set_tests_properties(omakade_console_portal_view PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  TIMEOUT 30
+)
+
 add_test(NAME omakade_controller_navigation_tiled
   COMMAND omakade --controller-navigation-test --owned-layout-test --uninstalled-layout-test
           --render-size=820x590
@@ -322,3 +330,49 @@ set_tests_properties(omakade_uninstalled_detail_render PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 30
 )
+
+foreach(size_case IN ITEMS small large)
+  add_test(NAME omakade_cover_size_${size_case}
+    COMMAND omakade --owned-layout-test --render-overlay=cover-size-${size_case}
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/cover-size-${size_case}.png
+            --render-size=820x590)
+  set_tests_properties(omakade_cover_size_${size_case} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 30)
+endforeach()
+foreach(settings_section IN ITEMS sources library connections controls about)
+  add_test(NAME omakade_settings_${settings_section}
+    COMMAND omakade --render-overlay=settings-${settings_section}
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/settings-${settings_section}.png
+            --render-size=820x590)
+  set_tests_properties(omakade_settings_${settings_section} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 30)
+endforeach()
+
+foreach(wheel_mode IN ITEMS animated reduced)
+  set(wheel_options --expand-scroll-test)
+  if(wheel_mode STREQUAL "reduced")
+    list(APPEND wheel_options --reduced-motion)
+  endif()
+  add_test(NAME omakade_filtered_wheel_${wheel_mode}
+    COMMAND omakade --console-portal-test --render-size=1600x900 ${wheel_options})
+  set_tests_properties(omakade_filtered_wheel_${wheel_mode} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 30)
+endforeach()
+
+foreach(couch_grid_variant IN ITEMS normal small large)
+  set(couch_grid_overlay couch-grid)
+  if(NOT couch_grid_variant STREQUAL "normal")
+    set(couch_grid_overlay couch-grid-${couch_grid_variant})
+  endif()
+  add_test(NAME omakade_couch_grid_centered_${couch_grid_variant}
+    COMMAND omakade --couch --owned-layout-test
+      --render-overlay=${couch_grid_overlay}
+      --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/couch-grid-centered-${couch_grid_variant}.png
+      --render-size=2048x1152)
+  set_tests_properties(omakade_couch_grid_centered_${couch_grid_variant} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 30)
+endforeach()

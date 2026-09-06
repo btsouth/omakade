@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#0b1220"/>
+  <rect x="0" y="0" width="400" height="86" fill="#0ea5e9"/>
+  <rect x="50" y="180" width="300" height="160" rx="12" fill="#1e3a5f"/>
+  <rect x="74" y="204" width="252" height="20" rx="6" fill="#38bdf8"/>
+  <circle cx="286" cy="286" r="22" fill="#7dd3fc"/>
+  <text x="200" y="520" text-anchor="middle" fill="#e0f2fe" font-family="sans-serif" font-size="30" font-weight="700">SEGA GENESIS</text>
+</svg>
