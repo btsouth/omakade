@@ -50,6 +50,7 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
     QString source;
     QString appId;
     QString runner;
+    QString where;
   };
   const QList<LegacySource> sources{
       {"games", "'Steam'", "app_id", "''"},
@@ -61,12 +62,13 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
       {"pcsx2_games", "'PCSX2'", "'path:' || path", "COALESCE(serial, '')"},
       {"ryujinx_games", "'Ryujinx'", "game_id", "COALESCE(flatpak_app_id, '')"},
       {"battlenet_games", "'Battle.net'", "game_id", "COALESCE(runner, '')"},
-      {"manual_games", "'Manual'", "id", "''"}};
+      {"manual_games", "'Manual'", "id", "''", "WHERE active = 1"}};
   for (const auto& source : sources) {
     if (!tables.contains(source.table))
       continue;
-    if (!query.exec(QStringLiteral("SELECT %1, %2, %3, favorite, hidden FROM %4")
-                        .arg(source.source, source.runner, source.appId, source.table)))
+    if (!query.exec(QStringLiteral("SELECT %1, %2, %3, favorite, hidden FROM %4 %5")
+                        .arg(source.source, source.runner, source.appId, source.table,
+                             source.where)))
       return fail("Could not read personal state for " + source.table + ".");
     while (query.next()) {
       QJsonObject row{{"source", query.value(0).toString()},
@@ -102,12 +104,16 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
         else
           return fail("The personal-data schema is unsupported: " + schema.key() + ".");
       }
-      if (!query.exec("SELECT " + expressions.join(", ") + " FROM " + schema.key()))
+      // Removed manual games stay in the table as inactive rows; they are not
+      // personal data worth carrying to another machine.
+      const QString where = schema.key() == "manual_games" ? " WHERE active = 1" : QString();
+      if (!query.exec("SELECT " + expressions.join(", ") + " FROM " + schema.key() + where))
         return fail("Could not read the personal-data table " + schema.key() + ".");
       while (query.next()) {
         if (++recordCount > 100000)
           return fail("The library contains too many personal records for one backup.");
         QJsonObject row;
+        bool danglingArtwork = false;
         for (int index = 0; index < schema.value().size(); ++index) {
           const QString column = schema.value().at(index);
           const auto value = query.value(index);
@@ -127,9 +133,16 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
             }
             if (!assetForPath.contains(path)) {
               QFile image(path);
-              if (!image.open(QIODevice::ReadOnly) || image.size() > BackupArchive::MaxImageBytes)
-                return fail("Custom artwork is missing or too large. Repair or reset it before "
-                            "backing up.");
+              if (!image.open(QIODevice::ReadOnly)) {
+                // The override points at a file that is gone. The library already
+                // falls back to provider artwork for it, so drop it from the backup
+                // instead of blocking every export on a file nobody can repair.
+                danglingArtwork = true;
+                row.insert(column, "");
+                continue;
+              }
+              if (image.size() > BackupArchive::MaxImageBytes)
+                return fail("Custom artwork is too large. Reset it before backing up.");
               const auto bytes = image.read(BackupArchive::MaxImageBytes + 1);
               const auto name = BackupArchive::artworkName(bytes, error);
               if (name.isEmpty())
@@ -151,6 +164,14 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
               return fail("A personal record exceeds the backup size limit.");
             row.insert(column, text);
           }
+        }
+        if (danglingArtwork) {
+          bool anyArtwork = false;
+          for (const QString& column : schema.value())
+            if (column.endsWith("_path") && !row.value(column).toString().isEmpty())
+              anyArtwork = true;
+          if (!anyArtwork)
+            continue;
         }
         if (schema.key() == "user_game_flags") {
           const QString key = keyFor(row);

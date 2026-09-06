@@ -1,5 +1,7 @@
 #include "library/LibraryFilterModel.h"
 
+#include "library/PersonalDataRules.h"
+
 #include "library/GameRoles.h"
 #include "library/UnifiedGameModel.h"
 
@@ -149,8 +151,9 @@ QVariantList LibraryFilterModel::savedFilters() const {
 QString LibraryFilterModel::saveCurrentFilter(const QString& value) {
   auto* games = qobject_cast<UnifiedGameModel*>(sourceModel());
   const QString name = value.trimmed().normalized(QString::NormalizationForm_C);
-  if (!games || savedFilters().size() >= 500 || name.isEmpty() || name.size() > 100 ||
-      name.contains(QRegularExpression(QStringLiteral("[\\x00-\\x1f\\x7f]"))) || !validFilterState(filterState())) {
+  if (!games || savedFilters().size() >= PersonalDataRules::kMaxSavedFilters || name.isEmpty() ||
+      name.size() > PersonalDataRules::kMaxFilterNameLength ||
+      PersonalDataRules::hasControlCharacters(name) || !validFilterState(filterState())) {
     setSavedFilterMessage("Use a name of 1 to 100 characters; up to 500 filters can be saved."); return {};
   }
   const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -164,8 +167,8 @@ QString LibraryFilterModel::saveCurrentFilter(const QString& value) {
 bool LibraryFilterModel::renameSavedFilter(const QString& id, const QString& value) {
   auto* games = qobject_cast<UnifiedGameModel*>(sourceModel());
   const QString name = value.trimmed().normalized(QString::NormalizationForm_C);
-  if (games && !name.isEmpty() && name.size() <= 100 &&
-      !name.contains(QRegularExpression(QStringLiteral("[\\x00-\\x1f\\x7f]")))) {
+  if (games && !name.isEmpty() && name.size() <= PersonalDataRules::kMaxFilterNameLength &&
+      !PersonalDataRules::hasControlCharacters(name)) {
     for (const auto& entry : games->savedFilters()) {
       const auto saved = entry.toMap();
       if (saved.value("id").toString() == id && games->saveFilter(id, name, saved.value("state").toMap())) {

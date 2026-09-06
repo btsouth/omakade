@@ -1,5 +1,7 @@
 #include "backup/BackupArchive.h"
 
+#include "library/PersonalDataRules.h"
+
 #include <QBuffer>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -28,12 +30,7 @@ QJsonObject manifestFor(const BackupPayload& payload) {
           {"createdAt", payload.createdAt}, {"library", payload.library},
           {"settings", payload.settings},   {"artwork", artworks}};
 }
-bool hasControls(const QString& value) {
-  for (const auto ch : value)
-    if (ch.category() == QChar::Other_Control)
-      return true;
-  return false;
-}
+bool hasControls(const QString& value) { return PersonalDataRules::hasControlCharacters(value); }
 bool fail(QString* error, const QString& message) {
   if (error)
     *error = message;
@@ -65,7 +62,7 @@ bool validSavedState(const QJsonObject& state) {
 bool validManual(const QJsonObject& entry, const QString& id) {
   const QSet<QString> fields{"id", "title", "executable", "directory", "arguments"};
   if (entry.size() != fields.size() || entry.value("id").toString() != id ||
-      !text(entry.value("title"), 200, false) || !text(entry.value("executable"), 4096, false) ||
+      !text(entry.value("title"), PersonalDataRules::kMaxManualTitleLength, false) || !text(entry.value("executable"), 4096, false) ||
       !text(entry.value("directory"), 4096, false) || !entry.value("arguments").isArray())
     return false;
   for (auto it = entry.begin(); it != entry.end(); ++it)
@@ -75,7 +72,7 @@ bool validManual(const QJsonObject& entry, const QString& id) {
       !QDir::isAbsolutePath(entry.value("directory").toString()))
     return false;
   const auto args = entry.value("arguments").toArray();
-  if (args.size() > 256)
+  if (args.size() > PersonalDataRules::kMaxManualArguments)
     return false;
   for (const auto& arg : args)
     if (!text(arg, 128 * 1024))
@@ -249,7 +246,8 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
       if (table.key() == "saved_filters") {
         const auto name = row.value("name").toString();
         const auto key = name.normalized(QString::NormalizationForm_C).toCaseFolded();
-        if (name.trimmed() != name || name.size() > 100 || hasControls(name) ||
+        if (name.trimmed() != name || name.size() > PersonalDataRules::kMaxFilterNameLength ||
+            hasControls(name) ||
             row.value("name_key").toString() != key || savedNames.contains(key))
           return fail(error, "A saved filter name is invalid or duplicated.");
         savedNames.insert(key);

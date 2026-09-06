@@ -23,6 +23,7 @@
 #include "library/LutrisGameModel.h"
 #include "library/MockGameModel.h"
 #include "library/ManualGameModel.h"
+#include "library/PersonalDataRules.h"
 #include "library/Pcsx2GameModel.h"
 #include "library/RyujinxGameModel.h"
 #include "library/RetroArchGameModel.h"
@@ -1880,10 +1881,14 @@ void CoreTests::backupSnapshotConsolidatesLegacyPersonalState() {
   QCOMPARE(snapshot.artwork.size(), 1);
   QVERIFY(original.open(QIODevice::ReadOnly)); QCOMPARE(original.readAll(), originalBytes); original.close();
   QVERIFY2(BackupArchive::write(temp.filePath("export.omakade-backup"), snapshot, &error), qPrintable(error));
-  const auto goodLibrary = snapshot.library;
+  // A custom artwork file that has gone missing is dropped from the backup
+  // rather than blocking every export; the library already falls back for it.
   QVERIFY(QFile::remove(cover));
-  QVERIFY(!BackupSnapshot::capture(path, settings.backupSettings(), &snapshot, &error));
-  QCOMPARE(snapshot.library, goodLibrary);
+  BackupPayload withoutCover;
+  QVERIFY2(BackupSnapshot::capture(path, settings.backupSettings(), &withoutCover, &error), qPrintable(error));
+  QVERIFY(withoutCover.library.value("artwork_overrides").toArray().isEmpty());
+  QVERIFY(withoutCover.artwork.isEmpty());
+  QCOMPARE(withoutCover.library.value("user_game_flags").toArray().size(), 9);
 }
 
 void CoreTests::backupArchiveRoundTripsAndRejectsInvalidContent() {
@@ -2190,6 +2195,9 @@ void CoreTests::savedFiltersPersistAndPreserveQueries() {
     QCOMPARE(filter.rowCount(), 1);
     expected = filter.filterState();
     id = filter.saveCurrentFilter(" Weekend picks ");
+  // Names follow the same control-character rule the backup validator applies.
+  QVERIFY(filter.saveCurrentFilter(QStringLiteral("bad\u0085name")).isEmpty());
+  QVERIFY(filter.saveCurrentFilter(QString(PersonalDataRules::kMaxFilterNameLength + 1, QLatin1Char('n'))).isEmpty());
     QVERIFY(!id.isEmpty());
     QVERIFY(filter.saveCurrentFilter("WEEKEND PICKS").isEmpty());
     QVERIFY(filter.saveCurrentFilter(" ").isEmpty());
@@ -4139,6 +4147,19 @@ void CoreTests::manualGamesImportEditLaunchAndRemove() {
   QVERIFY(QFileInfo::exists(executable + QStringLiteral(" moved")));
   ManualGameModel afterRemoval(database);
   QCOMPARE(afterRemoval.rowCount(), 1);
+  // Removed entries are inactive rows; backups carry only what the library shows.
+  BackupPayload snapshot;
+  QString snapshotError;
+  QVERIFY2(BackupSnapshot::capture(database, {}, &snapshot, &snapshotError), qPrintable(snapshotError));
+  QCOMPARE(snapshot.library.value("manual_games").toArray().size(), 1);
+  for (const auto& flag : snapshot.library.value("user_game_flags").toArray())
+    QVERIFY(flag.toObject().value("app_id").toString() != id);
+  // The editor and the backup validator share one title limit.
+  QVariantMap longTitle = afterRemoval.get(afterRemoval.data(afterRemoval.index(0), GameRoles::AppId).toString());
+  longTitle.insert(QStringLiteral("title"), QString(PersonalDataRules::kMaxManualTitleLength + 1, QLatin1Char('x')));
+  QVERIFY(afterRemoval.saveEntry(longTitle).isEmpty());
+  longTitle.insert(QStringLiteral("title"), QStringLiteral("bad\u0085title"));
+  QVERIFY(afterRemoval.saveEntry(longTitle).isEmpty());
 }
 
 void CoreTests::gogFoldersPersistAndHandleDisconnectedRoots() {

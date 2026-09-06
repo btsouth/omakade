@@ -68,6 +68,7 @@ add_library(omakade_core STATIC
   src/library/RyujinxGameModel.h
   src/library/ManualGameModel.cpp
   src/library/ManualGameModel.h
+  src/library/PersonalDataRules.h
   src/library/MockGameModel.cpp
   src/library/MockGameModel.h
   src/library/SteamGameModel.cpp

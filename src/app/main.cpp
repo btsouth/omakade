@@ -395,10 +395,16 @@ int main(int argc, char* argv[]) {
           ? QDir::tempPath() +
                 QStringLiteral("/omakade-test-%1.toml").arg(QCoreApplication::applicationPid())
           : QString{};
-  const BackupRecovery::Paths backupPaths{
-      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/omakade/library.sqlite3",
-      QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/omakade/config.toml",
-      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/omakade/restore-recovery"};
+  // Recovery insists on canonical paths. Qt passes XDG_DATA_HOME and
+  // XDG_CONFIG_HOME through untouched, so a trailing slash there must be
+  // cleaned here rather than rejected at restore time.
+  const QString dataRoot =
+      QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
+  const QString configRoot =
+      QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation));
+  const BackupRecovery::Paths backupPaths{dataRoot + "/omakade/library.sqlite3",
+                                          configRoot + "/omakade/config.toml",
+                                          dataRoot + "/omakade/restore-recovery"};
   // All synthetic libraries skip recovery entirely. The normal path owns the
   // SingleInstance claim above before any source database or service is opened.
   if (!demoMode && !stressMode && !navigationTest &&
