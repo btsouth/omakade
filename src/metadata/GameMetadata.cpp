@@ -584,7 +584,11 @@ void GameMetadata::next() {
   m_busy = true;
   m_igdbStage = "games";
   auto saved = entry(key());
-  if (saved.value("updated").toLongLong() > QDateTime::currentSecsSinceEpoch() - 30 * 86400) {
+  // The same rule that decided this game was worth queuing decides whether it is identified
+  // again. Judging freshness by the timestamp alone here meant every game queued because the
+  // rules had changed was dequeued, sent straight to artwork, and never re-identified, so its
+  // recorded rule version never moved and the whole library stayed on old answers forever.
+  if (!needsIdentifying(saved, QDateTime::currentSecsSinceEpoch())) {
     gridSearch();
     return;
   }
