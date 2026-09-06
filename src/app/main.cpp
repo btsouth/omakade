@@ -975,6 +975,9 @@ int main(int argc, char* argv[]) {
         std::make_unique<GameInsightsService>(steamLibrary->databasePath(), &preferences);
     gameMetadata = std::make_unique<GameMetadata>(steamLibrary->databasePath(), gameInsights.get());
     gameMetadata->setLibrary(&unifiedGames);
+    // The filtered view decides what gets identified first, so opening a console fills that
+    // console in rather than waiting for the rest of the library.
+    gameMetadata->setVisibleLibrary(&library);
     gameMetadata->setCacheLimitMb(preferences.artworkCacheLimitMb());
     QObject::connect(&preferences, &AppSettings::artworkCacheLimitMbChanged, gameMetadata.get(), [&preferences, metadata = gameMetadata.get()] { metadata->setCacheLimitMb(preferences.artworkCacheLimitMb()); });
     unifiedGames.setMetadata(gameMetadata.get());

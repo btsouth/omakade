@@ -5,6 +5,8 @@
 #include <QHash>
 #include <QNetworkAccessManager>
 #include <QElapsedTimer>
+#include <QAbstractItemModel>
+#include <QTimer>
 #include <QObject>
 #include <QQueue>
 #include <QSqlDatabase>
@@ -27,6 +29,9 @@ public:
                QObject* parent = nullptr, QNetworkAccessManager* network = nullptr);
   ~GameMetadata() override;
   void setLibrary(UnifiedGameModel* library);
+  // The filtered view the user is looking at. Games on screen are identified first, so opening
+  // a console fills it in rather than waiting for the rest of the library.
+  void setVisibleLibrary(QAbstractItemModel* visible);
   // Drops portraits that were downloaded over artwork the game's own source provides. Runs by
   // itself as the library settles, so a rule change reaches an existing library without anyone
   // being asked to run anything.
@@ -49,6 +54,8 @@ public:
   }
   Q_INVOKABLE void inspect(const QVariantMap& game);
   Q_INVOKABLE void refreshLibrary();
+  // Continues the library pass on its own: after the library settles, whenever games are added,
+  // and whenever the view changes. Stopping it by hand keeps it stopped until the next launch.
   // Identification depends on how titles are cleaned and how a match is accepted. Raise this
   // whenever those rules change: every entry decided by older rules is then re-identified on
   // the next update, instead of waiting out the ordinary freshness window with a stale answer.
@@ -115,6 +122,11 @@ private:
   // Each provider is paced on its own, so the queue does not need a blanket pause between games.
   QElapsedTimer m_sinceGridRequest;
   bool m_reviewedPortraits = false;
+  bool m_stoppedByHand = false;
+  QAbstractItemModel* m_visible = nullptr;
+  QTimer m_settle;
+  void continueLibraryPass();
+  void promoteVisibleGames();
   QQueue<QVariantMap> m_queue;
   QVariantMap m_selected, m_active;
   QVariantList m_candidates, m_covers;

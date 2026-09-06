@@ -1,5 +1,6 @@
 #include "metadata/GameMetadata.h"
 #include "library/ConsoleCatalog.h"
+#include <algorithm>
 #include <QSet>
 #include "library/GameRoles.h"
 #include "library/UnifiedGameModel.h"
@@ -261,14 +262,73 @@ void GameMetadata::setLibrary(UnifiedGameModel* library) {
   // Sources populate the library over the first few seconds, so wait for rows to arrive before
   // judging what artwork a game has. The review runs once and is cheap: only entries that
   // actually hold a portrait are examined.
-  const auto review = [this] {
-    if (m_reviewedPortraits || m_library == nullptr || m_library->rowCount() == 0)
+  const auto settled = [this] {
+    if (m_library == nullptr || m_library->rowCount() == 0)
       return;
-    m_reviewedPortraits = true;
-    dropUnwantedPortraits();
+    if (!m_reviewedPortraits) {
+      m_reviewedPortraits = true;
+      dropUnwantedPortraits();
+    }
+    // Sources arrive over several seconds. Wait for a quiet moment before queuing, so a
+    // library still loading is not walked once per source.
+    m_settle.start();
   };
-  connect(m_library, &QAbstractItemModel::rowsInserted, this, review);
-  connect(m_library, &QAbstractItemModel::modelReset, this, review);
+  m_settle.setSingleShot(true);
+  m_settle.setInterval(2000);
+  connect(&m_settle, &QTimer::timeout, this, &GameMetadata::continueLibraryPass);
+  connect(m_library, &QAbstractItemModel::rowsInserted, this, settled);
+  connect(m_library, &QAbstractItemModel::modelReset, this, settled);
+}
+
+void GameMetadata::setVisibleLibrary(QAbstractItemModel* visible) {
+  m_visible = visible;
+  if (m_visible == nullptr)
+    return;
+  // Changing the view changes what matters most. Reorder what is still pending rather than
+  // starting again, so nothing already done is repeated.
+  const auto viewChanged = [this] {
+    promoteVisibleGames();
+    if (!busy())
+      m_settle.start();
+  };
+  connect(m_visible, &QAbstractItemModel::modelReset, this, viewChanged);
+  connect(m_visible, &QAbstractItemModel::rowsInserted, this, viewChanged);
+  connect(m_visible, &QAbstractItemModel::rowsRemoved, this, viewChanged);
+}
+
+void GameMetadata::continueLibraryPass() {
+  // Stopping by hand means stopped, until the next launch or an explicit update.
+  if (m_stoppedByHand || busy() || m_library == nullptr)
+    return;
+  if ((m_insights == nullptr || !m_insights->configured()) && !hasGridKey())
+    return;
+  m_cancelled = false;
+  for (int row = 0; row < m_library->rowCount(); ++row) {
+    QVariantMap game;
+    const auto roles = m_library->roleNames();
+    for (auto it = roles.cbegin(); it != roles.cend(); ++it)
+      game.insert(QString::fromUtf8(it.value()),
+                  m_library->data(m_library->index(row), it.key()));
+    enqueue(game);
+  }
+  if (m_queue.isEmpty())
+    return;
+  promoteVisibleGames();
+  next();
+}
+
+void GameMetadata::promoteVisibleGames() {
+  if (m_queue.isEmpty() || m_visible == nullptr)
+    return;
+  QSet<QString> onScreen;
+  for (int row = 0; row < m_visible->rowCount(); ++row)
+    onScreen.insert(
+        m_visible->data(m_visible->index(row, 0), GameRoles::MetadataKey).toString());
+  if (onScreen.isEmpty())
+    return;
+  std::stable_partition(m_queue.begin(), m_queue.end(), [&onScreen](const QVariantMap& game) {
+    return onScreen.contains(game.value("metadataKey").toString());
+  });
 }
 
 void GameMetadata::dropUnwantedPortraits() {
@@ -358,6 +418,7 @@ void GameMetadata::refreshLibrary() {
     return;
   }
   m_cancelled = false;
+  m_stoppedByHand = false;
   m_queue.clear();
   for (int i = 0; i < m_library->rowCount(); ++i) {
     QVariantMap game;
@@ -366,6 +427,7 @@ void GameMetadata::refreshLibrary() {
       game.insert(QString::fromUtf8(it.value()), m_library->data(m_library->index(i), it.key()));
     enqueue(game);
   }
+  promoteVisibleGames();
   next();
 }
 void GameMetadata::next() {
@@ -904,6 +966,8 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
 void GameMetadata::cancel() {
   m_queue.clear();
   m_cancelled = true;
+  m_stoppedByHand = true;
+  m_settle.stop();
   m_status = m_busy ? "Stopping after the current request" : "Metadata update stopped";
   emit changed();
 }
