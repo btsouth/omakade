@@ -61,10 +61,17 @@ public:
   Q_INVOKABLE void refreshLibrary();
   // Continues the library pass on its own: after the library settles, whenever games are added,
   // and whenever the view changes. Stopping it by hand keeps it stopped until the next launch.
-  // Identification depends on how titles are cleaned and how a match is accepted. Raise this
-  // whenever those rules change: every entry decided by older rules is then re-identified on
-  // the next update, instead of waiting out the ordinary freshness window with a stale answer.
-  static constexpr int kMatchVersion = 2;
+  // Identification depends on how titles are cleaned, which platforms count, and how a match is
+  // accepted. Raise this whenever any of those change: every entry decided by older rules is
+  // then re-identified on the next update, instead of waiting out the ordinary freshness window
+  // with a stale answer. Forgetting leaves a library stuck on answers the rules would no longer
+  // give, so matchingRulesFingerprint below fails the build's tests until this is raised.
+  //   2  dump tags, sorted articles, tie-breaking between equal titles
+  //   3  regional platforms, accents, publisher prefixes, catalogue numbers
+  static constexpr int kMatchVersion = 3;
+  // Everything the identification rules depend on, folded into one value. A test pins it, so a
+  // change to any rule fails until kMatchVersion is raised alongside it.
+  [[nodiscard]] static QByteArray matchingRulesFingerprint();
   // How long a rating stays fresh before it is fetched again.
   static constexpr qint64 kRatingFreshnessSeconds = 30 * 86400;
   // True when a stored entry should be identified again: either the rules that decided it have

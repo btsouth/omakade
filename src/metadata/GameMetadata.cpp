@@ -464,6 +464,34 @@ void GameMetadata::inspect(const QVariantMap& game) {
   m_covers.clear();
   emit changed();
 }
+QByteArray GameMetadata::matchingRulesFingerprint() {
+  // Representative of every rule: dump tags, sorted articles, accents, brand prefixes,
+  // catalogue numbers, editions that must survive, and the platforms each system searches.
+  static const QStringList titles{
+      QStringLiteral("Chrono Trigger (USA)"),
+      QStringLiteral("Star Fox (EU, Rev 1)"),
+      QStringLiteral("Legend of Zelda, The - A Link to the Past (NA)"),
+      QStringLiteral("Slayers (English Translated by Dynamic Designs, Rev 1.01)"),
+      QStringLiteral("Mega Man X3 (Prototype - NTSC Conversion)"),
+      QStringLiteral("Pokémon Stadium 2"),
+      QStringLiteral("Disney's DuckTales"),
+      QStringLiteral("1636 - Pokemon Fire Red"),
+      QStringLiteral("Sonic 3 (& Knuckles)"),
+      QStringLiteral("Persona 3 Reload (Digital Deluxe Edition)")};
+  QByteArray material;
+  for (const QString& title : titles)
+    material += normalizedTitle(title).toUtf8() + '\n';
+  for (const QString& system :
+       {QStringLiteral("snes"), QStringLiteral("nes"), QStringLiteral("n64"),
+        QStringLiteral("dreamcast"), QStringLiteral("switch"), QString{}}) {
+    material += system.toUtf8() + '=';
+    for (int platform : platformIds(system))
+      material += QByteArray::number(platform) + ',';
+    material += '\n';
+  }
+  return QCryptographicHash::hash(material, QCryptographicHash::Sha256).toHex().left(16);
+}
+
 bool GameMetadata::needsIdentifying(const QVariantMap& saved, qint64 now) {
   // An answer produced by older rules is stale however recently it was written. Without this a
   // matching fix would reach existing libraries only as each entry aged out, which for a shelf

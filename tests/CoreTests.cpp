@@ -6750,6 +6750,12 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QCOMPARE(GameMetadata::normalizedTitle("Super Mario All-Stars (NA)"),
            QStringLiteral("super mario all stars"));
 
+  // Every identification rule folded into one value. If this fails, a rule changed: raise
+  // GameMetadata::kMatchVersion alongside it and update this expectation, or every library
+  // already out there stays on answers the rules would no longer give.
+  QCOMPARE(GameMetadata::matchingRulesFingerprint(), QByteArray("506f0b8fef280446"));
+  QCOMPARE(GameMetadata::kMatchVersion, 3);
+
   // An entry decided by older matching rules is stale however recently it was written, so a
   // matching fix reaches an existing library on the next update instead of a month later.
   const qint64 now = 1788700000;
