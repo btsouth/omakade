@@ -189,6 +189,7 @@ Item {
             required property string title
             required property string subtitle
             required property int hours
+            required property int rating
             required property int progress
             required property bool favorite
             required property string completionStatus
@@ -229,6 +230,7 @@ Item {
                 title: delegateRoot.title
                 subtitle: delegateRoot.subtitle
                 hours: delegateRoot.hours
+                rating: delegateRoot.rating
                 progress: delegateRoot.progress
                 favorite: delegateRoot.favorite
                 completionStatus: delegateRoot.completionStatus
