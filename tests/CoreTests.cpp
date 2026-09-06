@@ -1,5 +1,6 @@
 #include <QNetworkReply>
 #include <QBuffer>
+#include <QProcess>
 #include "metadata/GameMetadata.h"
 #include "achievements/AchievementModel.h"
 #include "achievements/RetroAchievementsApi.h"
@@ -739,6 +740,7 @@ private slots:
   void metadataPersistsRatingsAndPreservesCustomArt();
   void portraitBatchContinuesAndKeepsRatingTimestamp();
   void portraitSelectionCompletesOnlyAfterSuccessfulSave();
+  void startupBenchmarkDoesNotActivateAnotherInstance();
   void probeEmbeddedArtwork();
   void switchTitleReaderReadsSyntheticDump();
   void zarchiveReaderAndTgaDecodeSyntheticArchive();
@@ -5458,9 +5460,11 @@ void CoreTests::consoleLayoutsPinAndExpand() {
           reopened.data(reopened.index(1), GameRoles::Pinned).toBool());
 
   // Source filters combine, and the console card follows its games' source.
+  library.setFixedCardSystems({QStringLiteral("gamecube")});
   library.setSourceFilters({QStringLiteral("Dolphin")});
-  QCOMPARE(count("Dolphin"), 1);
-  QCOMPARE(portalCount(), 1);  // the GameCube card
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);  // one system goes straight to its games
+  QVERIFY(!library.hasConsoleCards());
   library.toggleSource(QStringLiteral("Demo"));
   QCOMPARE(library.rowCount(), 50 + 1 + 1);
   QVERIFY(library.sourceSelected(QStringLiteral("demo")));
@@ -5518,6 +5522,25 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   QCOMPARE(count("RetroArch"),4);
   QCOMPARE(portalCount(),0);
 
+  // Discovery of a second Dolphin system restores grouping. Search alone must
+  // not change that decision, and returning to one system flattens it again.
+  library.setExpandConsoles(false);
+  library.setSourceFilters({QStringLiteral("Dolphin")});
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);
+  createDolphinFixture(dolphinRoot, discs);
+  cubes.refreshFromRoots({dolphinRoot});
+  QCOMPARE(cubes.rowCount(), 3);
+  QCOMPARE(count("Dolphin"), 1); // pinned Zelda
+  QCOMPARE(portalCount(), 2);
+  library.setSearchText(QStringLiteral("Mario Kart Wii"));
+  QCOMPARE(library.rowCount(), 1);
+  QCOMPARE(portalCount(), 1);
+  library.setSearchText({});
+  QVERIFY(QFile::remove(discs + QStringLiteral("/nested/Mario Kart Wii (USA).wbfs")));
+  cubes.refreshFromRoots({dolphinRoot});
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);
 }
 
 void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
@@ -5775,4 +5798,34 @@ void CoreTests::portraitSelectionCompletesOnlyAfterSuccessfulSave() {
   QCOMPARE(selected.count(), 1);
   QCOMPARE(metadata.covers().size(), 1);
   QCOMPARE(metadata.status(), QString("Portrait has unexpected dimensions"));
+}
+
+void CoreTests::startupBenchmarkDoesNotActivateAnotherInstance() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  QLocalServer otherInstance;
+  QVERIFY(otherInstance.listen(temp.filePath(SingleInstance::defaultServerName())));
+  QProcess benchmark;
+  auto environment = QProcessEnvironment::systemEnvironment();
+  environment.insert("TMPDIR", temp.path());
+  environment.insert("XDG_CONFIG_HOME", temp.filePath("config"));
+  environment.insert("XDG_DATA_HOME", temp.filePath("data"));
+  environment.insert("XDG_CACHE_HOME", temp.filePath("cache"));
+  environment.insert("QT_QPA_PLATFORM", "offscreen");
+  environment.insert("QT_QUICK_BACKEND", "software");
+  environment.insert("QT_FORCE_STDERR_LOGGING", "1");
+  environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "");
+  environment.insert("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + temp.filePath("no-session-bus"));
+  benchmark.setProcessEnvironment(environment);
+  benchmark.setProcessChannelMode(QProcess::MergedChannels);
+  benchmark.start(QCoreApplication::applicationDirPath() + "/../omakade",
+                  {"--couch", "--stress-test", "--benchmark"});
+  QVERIFY(benchmark.waitForFinished(10000));
+  const QByteArray output = benchmark.readAll();
+  QCOMPARE(benchmark.exitStatus(), QProcess::NormalExit);
+  QCOMPARE(benchmark.exitCode(), 0);
+  QVERIFY2(output.contains("First frame in"), output.constData());
+  QVERIFY(!otherInstance.waitForNewConnection(20));
+  QVERIFY(!otherInstance.hasPendingConnections());
+  QVERIFY(!QFileInfo::exists(temp.filePath("config/omakade/config.toml")));
 }

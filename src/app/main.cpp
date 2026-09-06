@@ -253,7 +253,7 @@ void runConsolePortalTest(QQuickWindow* window, QGuiApplication* application) {
         QTimer::singleShot(150, window, [=] {
           // Removing the earlier non-emulated rows moves GridView's content origin.
           QMetaObject::invokeMethod(grid, "positionViewAtEnd");
-          library->setProperty("sourceFilters", QStringList{QStringLiteral("RetroArch")});
+          library->setProperty("sourceFilters", LibraryFilterModel::emulatorSources());
           grid->setProperty("currentIndex", 0);
           QTimer::singleShot(150, window, [=] {
             QMetaObject::invokeMethod(grid, "positionViewAtBeginning");
@@ -373,6 +373,8 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
   const bool stressMode = application.arguments().contains(QStringLiteral("--stress-test"));
+  const bool isolatedTest = smokeTest || renderMode || navigationTest || consolePortalTest ||
+                            benchmarkMode || stressMode;
   const bool reducedMotionRequest =
       application.arguments().contains(QStringLiteral("--reduced-motion"));
   const bool couchRequest = application.arguments().contains(QStringLiteral("--couch")) ||
@@ -388,12 +390,11 @@ int main(int argc, char* argv[]) {
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
       : couchRequest                     ? QByteArray("activate stream")
                                          : QByteArray("activate");
-  if (!smokeTest && !renderMode && !navigationTest && !consolePortalTest &&
-      !singleInstance.claimOrNotify(instanceCommand)) {
+  if (!isolatedTest && !singleInstance.claimOrNotify(instanceCommand)) {
     return EXIT_SUCCESS;
   }
   const QString settingsPath =
-      navigationTest || renderMode || smokeTest || consolePortalTest
+      isolatedTest
           ? QDir::tempPath() +
                 QStringLiteral("/omakade-test-%1.toml").arg(QCoreApplication::applicationPid())
           : QString{};
@@ -1024,10 +1025,10 @@ int main(int argc, char* argv[]) {
     QObject::connect(
         quickWindow, &QQuickWindow::frameSwapped, &application,
         [&application, &controller, &startupTimer, benchmarkMode, benchmarkLimitSupplied,
-         benchmarkMaxMs, renderMode, navigationTest, smokeTest, consolePortalTest] {
+         benchmarkMaxMs, isolatedTest] {
           const qint64 firstFrameMs = startupTimer.elapsed();
           qInfo() << "First frame in" << firstFrameMs << "ms";
-          if (!renderMode && !navigationTest && !smokeTest && !benchmarkMode && !consolePortalTest) {
+          if (!isolatedTest) {
             controller.start();
           }
           if (benchmarkMode) {

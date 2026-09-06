@@ -152,6 +152,7 @@ private:
   QHash<QString, int> m_systemCounts;
   QHash<QString, int> m_filteredSystemCounts;
   QSet<QString> m_portalSystems;
+  QString m_singleSourceSystem;
   QString m_completionFilter;
   QString m_collectionFilter;
   QString m_tagFilter;

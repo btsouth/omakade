@@ -178,9 +178,7 @@ void LibraryFilterModel::setSourceFilters(const QStringList& value) {
     endFilterChange(Direction::Rows);
   }
   emit sourceFilterChanged();
-  if (leftConsole) {
-    emit consoleNavigationChanged();
-  }
+  emit consoleNavigationChanged();
 }
 
 QString LibraryFilterModel::completionFilter() const { return m_completionFilter; }
@@ -287,7 +285,7 @@ void LibraryFilterModel::setConsoleExpandLimit(int value) {
 }
 
 bool LibraryFilterModel::hasConsoleCards() const {
-  return m_consolePortalsEnabled && m_consoleFilter.isEmpty() &&
+  return m_singleSourceSystem.isEmpty() && m_consolePortalsEnabled && m_consoleFilter.isEmpty() &&
          std::any_of(m_systemCounts.keyBegin(), m_systemCounts.keyEnd(),
                      [this](const QString& system) { return m_systemCounts.value(system, 0) > 0; });
 }
@@ -303,6 +301,8 @@ void LibraryFilterModel::recountSystems() {
   m_portalSystems.clear();
   m_systemCounts.clear();
   m_filteredSystemCounts.clear();
+  m_singleSourceSystem.clear();
+  QSet<QString> selectedSourceSystems;
   const QAbstractItemModel* source = sourceModel();
   if (source == nullptr) {
     return;
@@ -315,14 +315,24 @@ void LibraryFilterModel::recountSystems() {
     }
     const QString system = ConsoleCatalog::idFor(game.data(GameRoles::System).toString());
     if (!system.isEmpty()) {
+      // Count the source's systems before search/favorites filtering, so those
+      // filters cannot unexpectedly flatten a multi-system source.
+      if (m_sourceFilters.size() == 1 &&
+          (sourceSelected(game.data(GameRoles::Source).toString()) ||
+           game.data(GameRoles::LinkedSources).toString().split(QStringLiteral(" + "))
+               .contains(m_sourceFilters.first(), Qt::CaseInsensitive)))
+        selectedSourceSystems.insert(system);
       m_systemCounts[system] += 1;
       if (matchesGameFilters(game)) m_filteredSystemCounts[system] += 1;
     }
   }
+  if (selectedSourceSystems.size() == 1)
+    m_singleSourceSystem = *selectedSourceSystems.cbegin();
 }
 
 bool LibraryFilterModel::systemExpanded(const QString& system) const {
-  return m_expandConsoles && !m_fixedCardSystems.contains(system);
+  return (!m_singleSourceSystem.isEmpty() && system == m_singleSourceSystem) ||
+         (m_expandConsoles && !m_fixedCardSystems.contains(system));
 }
 
 bool LibraryFilterModel::consolePortalsEnabled() const { return m_consolePortalsEnabled; }
