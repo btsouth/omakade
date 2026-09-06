@@ -268,6 +268,13 @@ GameMetadata::GameMetadata(const QString& databasePath, GameInsightsService* ins
   }
   if (insights)
     connect(insights, &GameInsightsService::catalogFinished, this, &GameMetadata::matchResult);
+    // Credentials are read from the keyring on a worker thread, so the library can settle
+    // before they arrive. Without this the pass looked once, found no connection, and never
+    // looked again, leaving the whole library unidentified until something else changed.
+    connect(insights, &GameInsightsService::changed, this, [this] {
+      if (!m_stoppedByHand && !m_editing && !busy())
+        m_settle.start();
+    });
   if (QFileInfo::exists(m_cacheRoot + "/configured"))
     secretOperation(0);
 }
@@ -1076,6 +1083,9 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
     }
     finish(action == 2 ? "SteamGridDB disconnected. Cached covers are kept."
                        : "SteamGridDB key available");
+    // The key arriving can be the thing that makes work possible, so look again.
+    if (!m_stoppedByHand && !m_editing && !busy())
+      m_settle.start();
   });
   m_secrets.setFuture(QtConcurrent::run([action, value]() mutable {
     InsightsSecretResult result;
