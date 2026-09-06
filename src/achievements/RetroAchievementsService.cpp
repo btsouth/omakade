@@ -1,3 +1,5 @@
+#include "app/SecretService.h"
+#include <QMutexLocker>
 #include "achievements/RetroAchievementsService.h"
 
 #include "app/AppSettings.h"
@@ -32,6 +34,8 @@ constexpr qint64 kConsoleCacheLifetimeSeconds = 30LL * 24 * 60 * 60;
 constexpr qint64 kHashListCacheLifetimeSeconds = 7LL * 24 * 60 * 60;
 
 RetroAchievementsSecretResult lookupSecret(bool includeSecret) {
+  // libsecret builds its GObject types on first use and cannot take two threads at once.
+  QMutexLocker keyring(&secretServiceLock());
   GError* error = nullptr;
   gchar* password = secret_password_lookup_sync(retroAchievementsSchema(), nullptr, &error,
                                                 "service", kSecretService, nullptr);
@@ -252,6 +256,7 @@ void RetroAchievementsService::beginSecretOperation(SecretAction action,
   m_secretAction = action;
   setBusy(true);
   m_secretWatcher.setFuture(QtConcurrent::run([action, secretValue = QByteArray(value)]() mutable {
+    QMutexLocker keyring(&secretServiceLock());
     if (action == SecretAction::Detect || action == SecretAction::LookupForRefresh) {
       return lookupSecret(action != SecretAction::Detect);
     }

@@ -1,3 +1,5 @@
+#include "app/SecretService.h"
+#include <QMutexLocker>
 #include "metadata/GameMetadata.h"
 #include "library/ConsoleCatalog.h"
 #include <algorithm>
@@ -272,7 +274,7 @@ GameMetadata::GameMetadata(const QString& databasePath, GameInsightsService* ins
     // before they arrive. Without this the pass looked once, found no connection, and never
     // looked again, leaving the whole library unidentified until something else changed.
     connect(insights, &GameInsightsService::changed, this, [this] {
-      if (!m_stoppedByHand && !m_editing && !busy())
+      if (!m_stoppedByHand && !m_editing)
         m_settle.start();
     });
   if (QFileInfo::exists(m_cacheRoot + "/configured"))
@@ -308,6 +310,10 @@ void GameMetadata::setLibrary(UnifiedGameModel* library) {
   connect(&m_settle, &QTimer::timeout, this, &GameMetadata::continueLibraryPass);
   connect(m_library, &QAbstractItemModel::rowsInserted, this, settled);
   connect(m_library, &QAbstractItemModel::modelReset, this, settled);
+  // Sources that load straight from their own database have already filled the library by the
+  // time this runs, and those rows arrived before anything was listening. Waiting only for the
+  // next change then waits forever, and nothing is ever identified.
+  settled();
 }
 
 void GameMetadata::setVisibleLibrary(QAbstractItemModel* visible) {
@@ -353,8 +359,14 @@ void GameMetadata::setEditing(bool editing) {
 
 void GameMetadata::continueLibraryPass() {
   // Stopping by hand means stopped, until the next launch or an explicit update.
-  if (m_stoppedByHand || m_editing || busy() || m_library == nullptr)
+  if (m_stoppedByHand || m_editing || m_library == nullptr)
     return;
+  // Reading keys from the keyring is work that finishes on its own, so look again shortly
+  // rather than waiting to be told. Wanting credentials is different: that waits for an event.
+  if (busy()) {
+    m_settle.start();
+    return;
+  }
   if ((m_insights == nullptr || !m_insights->configured()) && !hasGridKey())
     return;
   m_cancelled = false;
@@ -1067,6 +1079,9 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
     if (!result.success) {
       result.secret.fill('\0');
       finish("Secret Service could not update the SteamGridDB key");
+      // Ratings do not need this key, so a failure here must not end the pass.
+      if (!m_stoppedByHand && !m_editing)
+        m_settle.start();
       return;
     }
     m_gridKey.fill('\0');
@@ -1088,6 +1103,7 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
       m_settle.start();
   });
   m_secrets.setFuture(QtConcurrent::run([action, value]() mutable {
+    QMutexLocker keyring(&secretServiceLock());
     InsightsSecretResult result;
     SecretSchema* schema =
         secret_schema_new("io.github.tsouth89.Omakade.SteamGridDB", SECRET_SCHEMA_NONE, "service",

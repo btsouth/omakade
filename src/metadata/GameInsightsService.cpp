@@ -1,3 +1,5 @@
+#include "app/SecretService.h"
+#include <QMutexLocker>
 #include "metadata/GameInsightsService.h"
 
 #include "app/AppSettings.h"
@@ -31,6 +33,8 @@ const SecretSchema* insightsSchema() {
 }
 
 InsightsSecretResult secretOperation(int action, QByteArray value) {
+  // libsecret builds its GObject types on first use and cannot take two threads at once.
+  QMutexLocker keyring(&secretServiceLock());
   GError* error = nullptr;
   InsightsSecretResult result;
   if (action == 0 || action == 3) {
