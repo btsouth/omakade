@@ -375,11 +375,15 @@ LaunchCommand GameLauncher::retroArchCommand(const QString& contentPath, const Q
       corePath == QStringLiteral("DETECT")) {
     return {};
   }
+  // Emulators keep their own windowed or fullscreen setting, and a game started from a
+  // launcher should fill the screen whichever way that is set, so each one is asked explicitly.
   return flatpak ? LaunchCommand{QStringLiteral("flatpak"),
                                  {QStringLiteral("run"), QStringLiteral("org.libretro.RetroArch"),
-                                  QStringLiteral("-L"), corePath, contentPath}}
+                                  QStringLiteral("--fullscreen"), QStringLiteral("-L"), corePath,
+                                  contentPath}}
                  : LaunchCommand{QStringLiteral("retroarch"),
-                                 {QStringLiteral("-L"), corePath, contentPath}};
+                                 {QStringLiteral("--fullscreen"), QStringLiteral("-L"), corePath,
+                                  contentPath}};
 }
 
 LaunchCommand GameLauncher::resolvedCartridgeCommand(const QString& contentPath,
@@ -413,7 +417,7 @@ LaunchCommand GameLauncher::pcsx2Command(const QString& id, bool isElf, bool fla
     return {};
   }
   const QString target = id.mid(5);
-  QStringList arguments;
+  QStringList arguments{QStringLiteral("-fullscreen")};
   if (isElf) {
     arguments << QStringLiteral("-elf") << target;
   } else {
@@ -451,14 +455,17 @@ LaunchCommand GameLauncher::shadps4Command(const QString& path, const QString& n
   }
   const QString target = path.startsWith(QStringLiteral("path:")) ? path.mid(5) : path;
   if (!nativeExecutable.isEmpty()) {
-    return LaunchCommand{nativeExecutable, {QStringLiteral("-g"), target}};
+    return LaunchCommand{nativeExecutable,
+                         {QStringLiteral("-f"), QStringLiteral("true"), QStringLiteral("-g"),
+                          target}};
   }
   if (flatpakAppId.isEmpty()) {
     return {};
   }
   return LaunchCommand{QStringLiteral("flatpak"),
                        {QStringLiteral("run"), flatpakAppId, QStringLiteral("--"),
-                        QStringLiteral("-g"), target}};
+                        QStringLiteral("-f"), QStringLiteral("true"), QStringLiteral("-g"),
+                        target}};
 }
 
 // Batch mode (-b) closes Dolphin with the game, so the tile goes to the game and
@@ -472,12 +479,16 @@ LaunchCommand GameLauncher::dolphinCommand(const QString& path, const QString& n
   if (flatpak) {
     return LaunchCommand{QStringLiteral("flatpak"),
                          {QStringLiteral("run"), QStringLiteral("org.DolphinEmu.dolphin-emu"),
+                          QStringLiteral("-C"),
+                          QStringLiteral("Dolphin.Display.Fullscreen=True"),
                           QStringLiteral("-b"), QStringLiteral("-e"), target}};
   }
   if (nativeExecutable.isEmpty()) {
     return {};
   }
-  return LaunchCommand{nativeExecutable, {QStringLiteral("-b"), QStringLiteral("-e"), target}};
+  return LaunchCommand{nativeExecutable,
+                       {QStringLiteral("-C"), QStringLiteral("Dolphin.Display.Fullscreen=True"),
+                        QStringLiteral("-b"), QStringLiteral("-e"), target}};
 }
 
 LaunchCommand GameLauncher::cemuCommand(const QString& path, bool flatpak) {
@@ -488,9 +499,11 @@ LaunchCommand GameLauncher::cemuCommand(const QString& path, bool flatpak) {
   if (flatpak) {
     return LaunchCommand{QStringLiteral("flatpak"),
                          {QStringLiteral("run"), QStringLiteral("info.cemu.Cemu"),
-                          QStringLiteral("--"), QStringLiteral("-g"), target}};
+                          QStringLiteral("--"), QStringLiteral("--fullscreen"),
+                          QStringLiteral("-g"), target}};
   }
-  return LaunchCommand{QStringLiteral("cemu"), {QStringLiteral("-g"), target}};
+  return LaunchCommand{QStringLiteral("cemu"),
+                       {QStringLiteral("--fullscreen"), QStringLiteral("-g"), target}};
 }
 
 LaunchCommand GameLauncher::battleNetCommand(const QString& id, const QString& prefix,

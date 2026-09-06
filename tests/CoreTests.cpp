@@ -3503,12 +3503,14 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
   const QString core = QStringLiteral("/cores/genesis_plus_gx_libretro.so");
   const LaunchCommand native = GameLauncher::retroArchCommand(content, core, false);
   QCOMPARE(native.program, QStringLiteral("retroarch"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("-L"), core, content}));
+  // A game started from a launcher fills the screen, whatever the emulator is set to.
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-L"), core, content}));
   const LaunchCommand flatpak = GameLauncher::retroArchCommand(content, core, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments,
            QStringList({QStringLiteral("run"), QStringLiteral("org.libretro.RetroArch"),
-                        QStringLiteral("-L"), core, content}));
+                        QStringLiteral("--fullscreen"), QStringLiteral("-L"), core, content}));
   QVERIFY(!GameLauncher::retroArchCommand(content, QStringLiteral("DETECT"), false).isValid());
   QVERIFY(!GameLauncher::retroArchCommand({}, core, false).isValid());
   const LaunchCommand playlist =
@@ -5267,7 +5269,8 @@ void CoreTests::pcsx2LauncherBuildsSafeCommands() {
   const LaunchCommand native =
       GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false, false);
   QCOMPARE(native.program, QStringLiteral("pcsx2-qt"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("/games/Crash.iso")}));
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("-fullscreen"), QStringLiteral("/games/Crash.iso")}));
   const LaunchCommand flatpak =
       GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
@@ -5276,8 +5279,8 @@ void CoreTests::pcsx2LauncherBuildsSafeCommands() {
   // ELF entries must receive -elf <file>.
   const LaunchCommand elf =
       GameLauncher::pcsx2Command(QStringLiteral("path:/games/homebrew.elf"), true, false);
-  QCOMPARE(elf.arguments,
-           QStringList({QStringLiteral("-elf"), QStringLiteral("/games/homebrew.elf")}));
+  QCOMPARE(elf.arguments, QStringList({QStringLiteral("-fullscreen"), QStringLiteral("-elf"),
+                                       QStringLiteral("/games/homebrew.elf")}));
   QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("bad;id"), false, false).isValid());
 }
 
@@ -5600,8 +5603,9 @@ void CoreTests::shadps4LauncherBuildsSafeCommands() {
   const LaunchCommand native = GameLauncher::shadps4Command(
       QStringLiteral("/games/CUSA00001/eboot.bin"), QStringLiteral("shadps4"));
   QCOMPARE(native.program, QStringLiteral("shadps4"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("-g"),
-                                          QStringLiteral("/games/CUSA00001/eboot.bin")}));
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("-f"), QStringLiteral("true"), QStringLiteral("-g"),
+                        QStringLiteral("/games/CUSA00001/eboot.bin")}));
   const LaunchCommand flatpak = GameLauncher::shadps4Command(
       QStringLiteral("/games/CUSA00001/eboot.bin"), {}, QStringLiteral("net.shadps4.shadPS4"));
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
@@ -5899,7 +5903,8 @@ void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {
       QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
   QCOMPARE(playlist.program, QStringLiteral("retroarch"));
   QCOMPARE(playlist.arguments,
-           QStringList({QStringLiteral("-L"), QStringLiteral("/cores/snes9x_libretro.so"), rom}));
+           QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-L"),
+                        QStringLiteral("/cores/snes9x_libretro.so"), rom}));
 
   const LaunchCommand standalone = GameLauncher::resolvedCartridgeCommand(
       rom, {}, false, true, QStringLiteral("snes9x"),
@@ -5912,7 +5917,7 @@ void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {
       QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
   QCOMPARE(mapped.program, QStringLiteral("retroarch"));
   QCOMPARE(mapped.arguments,
-           QStringList({QStringLiteral("-L"),
+           QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-L"),
                         QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"), rom}));
 
   const LaunchCommand fallback = GameLauncher::resolvedCartridgeCommand(
@@ -5970,8 +5975,8 @@ void CoreTests::cemuLauncherBuildsSafeCommands() {
   const LaunchCommand native =
       GameLauncher::cemuCommand(QStringLiteral("/games/mario.rpx"), false);
   QCOMPARE(native.program, QStringLiteral("cemu"));
-  QCOMPARE(native.arguments,
-           QStringList({QStringLiteral("-g"), QStringLiteral("/games/mario.rpx")}));
+  QCOMPARE(native.arguments, QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-g"),
+                                          QStringLiteral("/games/mario.rpx")}));
   const LaunchCommand flatpak =
       GameLauncher::cemuCommand(QStringLiteral("/games/mario.wua"), true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
@@ -6412,7 +6417,8 @@ void CoreTests::dolphinScannerReadsDiscHeadersAndLaunches() {
 
   const LaunchCommand native = GameLauncher::dolphinCommand(byId.value("GZLE01").path, QStringLiteral("dolphin-emu"), false);
   QCOMPARE(native.program, QStringLiteral("dolphin-emu"));
-  QCOMPARE(native.arguments, (QStringList{QStringLiteral("-b"), QStringLiteral("-e"), byId.value("GZLE01").path}));
+  QCOMPARE(native.arguments, (QStringList{QStringLiteral("-C"), QStringLiteral("Dolphin.Display.Fullscreen=True"),
+                        QStringLiteral("-b"), QStringLiteral("-e"), byId.value("GZLE01").path}));
   const LaunchCommand flatpak = GameLauncher::dolphinCommand(QStringLiteral("path:") + byId.value("RMCE01").path, QString{}, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments.first(), QStringLiteral("run"));
@@ -6476,7 +6482,7 @@ void CoreTests::dreamcastFoldersBecomeAPortal() {
       roms.data(roms.index(0), GameRoles::InstallPath).toString(), QString{}, false, false, QString{},
       QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
   QCOMPARE(command.program, QStringLiteral("retroarch"));
-  QCOMPARE(command.arguments.at(1), QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
+  QCOMPARE(command.arguments.at(2), QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
 }
 
 void CoreTests::consoleLayoutsPinAndExpand() {
