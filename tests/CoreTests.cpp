@@ -6825,18 +6825,32 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));
   QVERIFY(!GameMetadata::searchQuery("Super Mario World (USA)", "snes").contains("USA"));
   QVERIFY(GameMetadata::searchQuery("Mario", "unknown-console").isEmpty());
+  // A Japanese release is catalogued under its own machine, so both are searched.
+  QVERIFY(GameMetadata::searchQuery("Alcahest", "snes").contains("platforms = (19,58)"));
+  QCOMPARE(GameMetadata::platformIds("snes"), QList<int>({19, 58}));
+  QVERIFY(GameMetadata::platformIds("unknown-console").isEmpty());
   QVERIFY(GameMetadata::searchQuery("Mario", "gamecube").contains("platforms = (21)"));
   const auto matches = GameMetadata::parseMatches(R"json([
     {"id":1,"name":"Metroid Prime","platforms":[21],"total_rating":89.5,"total_rating_count":300},
     {"id":2,"name":"Metroid Prime Remastered","platforms":[130],"total_rating":94,"total_rating_count":90},
     {"id":3,"name":"Unrated","platforms":[21]},
     {"id":4,"name":"Bad rating","platforms":[21],"total_rating":999,"total_rating_count":1},
-    {"id":0,"name":"Invalid","platforms":[21]}])json",21);
+    {"id":0,"name":"Invalid","platforms":[21]}])json", QList<int>{21});
   QCOMPARE(matches.size(),3);
   QCOMPARE(matches.at(0).toMap().value("rating").toInt(),90);
   QCOMPARE(matches.at(1).toMap().value("rating").toInt(),-1);
   QCOMPARE(matches.at(2).toMap().value("rating").toInt(),-1);
-  QVERIFY(GameMetadata::parseMatches("{broken",21).isEmpty());
+  QVERIFY(GameMetadata::parseMatches("{broken", QList<int>{21}).isEmpty());
+  // A Super Famicom listing is the same cartridge as its Super Nintendo release.
+  const auto regional = GameMetadata::parseMatches(
+      R"json([{"id":9,"name":"Alcahest","platforms":[58]}])json", QList<int>{19, 58});
+  QCOMPARE(regional.size(), 1);
+  QVERIFY(GameMetadata::parseMatches(
+              R"json([{"id":9,"name":"Alcahest","platforms":[58]}])json", QList<int>{19})
+          .isEmpty());
+  // Accents and a publisher in front of a licensed title are not different games.
+  QCOMPARE(GameMetadata::normalizedTitle("Pokemon Stadium 2"),
+           GameMetadata::normalizedTitle("Pokémon Stadium 2"));
   const auto covers = GameMetadata::parseCovers(R"json({"success":true,"data":[
     {"id":1,"width":600,"height":900,"url":"https://cdn2.steamgriddb.com/grid/good.png"},
     {"id":2,"width":512,"height":512,"url":"https://cdn2.steamgriddb.com/grid/square.png"},

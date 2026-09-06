@@ -89,9 +89,11 @@ public:
   Q_INVOKABLE void testGridConnection();
   Q_INVOKABLE void clearPortraitCache();
   static QString normalizedTitle(QString title);
-  static int platformId(const QString& system);
+  // The IGDB platforms a system's games can be listed under. A Japanese release is often
+  // catalogued under the regional machine rather than the western one.
+  static QList<int> platformIds(const QString& system);
   static QByteArray searchQuery(const QString& title, const QString& system);
-  static QVariantList parseMatches(const QByteArray& data, int platform);
+  static QVariantList parseMatches(const QByteArray& data, const QList<int>& platforms);
   static QVariantList parseCovers(const QByteArray& data);
   static bool trustedImageUrl(const QUrl& url);
 signals:

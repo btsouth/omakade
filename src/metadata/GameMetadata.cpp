@@ -125,7 +125,17 @@ QString GameMetadata::normalizedTitle(QString title) {
                            .simplified();
   // A leading article is never what separates two games, and the catalogues disagree about it.
   static const QRegularExpression leadingArticle(QStringLiteral("^(?:the|a|an) (?=.)"));
-  return normalized.remove(leadingArticle);
+  normalized.remove(leadingArticle);
+  // Accents are a spelling difference, not a different game: a cartridge labelled Pokemon
+  // Stadium 2 is the catalogue's Pokémon Stadium 2.
+  QString folded;
+  folded.reserve(normalized.size());
+  for (const QChar character : normalized.normalized(QString::NormalizationForm_D)) {
+    if (character.category() != QChar::Mark_NonSpacing) {
+      folded.append(character);
+    }
+  }
+  return folded.normalized(QString::NormalizationForm_C);
 }
 bool GameMetadata::wantsPortraitCover(const QString& system, const QString& source,
                                       const QString& sourceCover) {
@@ -152,21 +162,32 @@ bool GameMetadata::wantsPortraitCover(const QString& system, const QString& sour
   return double(size.width()) / double(size.height()) > kPortraitAspectLimit;
 }
 
-int GameMetadata::platformId(const QString& system) {
-  static const QHash<QString, int> ids{
-      {"nes", 18}, {"snes", 19},    {"gb", 33},      {"gbc", 22},       {"gba", 24},
-      {"n64", 4},  {"genesis", 29}, {"psx", 7},      {"dreamcast", 23}, {"gamecube", 21},
-      {"wii", 5},  {"ps2", 8},      {"switch", 130}, {"wiiu", 41},      {"ps4", 48}};
-  return ids.value(ConsoleCatalog::idFor(system), system.isEmpty() ? 6 : 0);
+QList<int> GameMetadata::platformIds(const QString& system) {
+  // IGDB catalogues a Japanese release under its own machine, so a Super Famicom cartridge is
+  // platform 58 rather than the Super Nintendo's 19. Filtering on the western platform alone
+  // threw away games IGDB had already returned by name, which was the single largest reason a
+  // shelf of imports stayed unidentified.
+  static const QHash<QString, QList<int>> ids{
+      {"nes", {18, 99}},   {"snes", {19, 58}}, {"gb", {33}},      {"gbc", {22}},
+      {"gba", {24}},       {"n64", {4}},       {"genesis", {29}}, {"psx", {7}},
+      {"dreamcast", {23}}, {"gamecube", {21}}, {"wii", {5}},      {"ps2", {8}},
+      {"switch", {130}},   {"wiiu", {41}},     {"ps4", {48}}};
+  const QString id = ConsoleCatalog::idFor(system);
+  if (ids.contains(id))
+    return ids.value(id);
+  return system.isEmpty() ? QList<int>{6} : QList<int>{};
 }
 QByteArray GameMetadata::searchQuery(const QString& title, const QString& system) {
-  const int platform = platformId(system);
-  if (title.trimmed().isEmpty() || platform == 0)
+  const QList<int> platforms = platformIds(system);
+  if (title.trimmed().isEmpty() || platforms.isEmpty())
     return {};
+  QByteArrayList numbers;
+  for (int platform : platforms)
+    numbers.append(QByteArray::number(platform));
   return QByteArray(fields) + "search " + quoted(cleanTitle(title)).toUtf8() +
-         "; where platforms = (" + QByteArray::number(platform) + "); limit 20;";
+         "; where platforms = (" + numbers.join(',') + "); limit 20;";
 }
-QVariantList GameMetadata::parseMatches(const QByteArray& data, int platform) {
+QVariantList GameMetadata::parseMatches(const QByteArray& data, const QList<int>& platforms) {
   QVariantList result;
   const auto doc = QJsonDocument::fromJson(data);
   if (!doc.isArray())
@@ -175,8 +196,14 @@ QVariantList GameMetadata::parseMatches(const QByteArray& data, int platform) {
     const auto obj = value.toObject();
     if (obj.value("id").toInteger() <= 0 || obj.value("name").toString().isEmpty())
       continue;
-    if (platform > 0 && !obj.value("platforms").toArray().contains(platform))
-      continue;
+    if (!platforms.isEmpty()) {
+      const auto listed = obj.value("platforms").toArray();
+      bool onPlatform = false;
+      for (int platform : platforms)
+        onPlatform = onPlatform || listed.contains(platform);
+      if (!onPlatform)
+        continue;
+    }
     QVariantMap match{{"id", obj.value("id").toInteger()}, {"title", obj.value("name").toString()}};
     const qint64 released = obj.value("first_release_date").toInteger();
     match["year"] = released > 0 ? QDateTime::fromSecsSinceEpoch(released).date().year() : 0;
@@ -585,7 +612,7 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     finish("IGDB returned invalid data. Cached metadata is unchanged.");
     return;
   }
-  const auto matches = parseMatches(data, platformId(m_active.value("system").toString()));
+  const auto matches = parseMatches(data, platformIds(m_active.value("system").toString()));
   if (m_manual) {
     m_candidates = matches;
     m_candidateProvider = "igdb";
@@ -594,6 +621,16 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     return;
   }
   const auto saved = entry(key());
+  // A licensed game is often catalogued with its publisher in front, as Disney's DuckTales for
+  // a cartridge labelled DuckTales. Comparing with that prefix removed as well recognises it.
+  static const QRegularExpression brandPrefix(QStringLiteral("^[\\p{L}\\p{N} ]{2,24}? s "));
+  const auto sameGame = [](const QString& candidate, const QString& local) {
+    if (candidate == local)
+      return true;
+    QString withoutBrand = candidate;
+    withoutBrand.remove(brandPrefix);
+    return !withoutBrand.isEmpty() && withoutBrand == local;
+  };
   // A match the user chose stays chosen. Refreshing its rating must never hand the game to a
   // different catalogue entry, however well another one scores.
   const bool userChose = saved.value("manualMatch").toBool() && saved.value("igdbId").toLongLong() > 0;
@@ -606,8 +643,8 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     }
     if (m_igdbStage == "mappedGame" ||
         saved.value("igdbId").toLongLong() == match.toMap().value("id").toLongLong() ||
-        normalizedTitle(match.toMap().value("title").toString()) ==
-            normalizedTitle(m_active.value("title").toString()))
+        sameGame(normalizedTitle(match.toMap().value("title").toString()),
+                 normalizedTitle(m_active.value("title").toString())))
       exact.append(match);
   }
   if (exact.size() == 1)
