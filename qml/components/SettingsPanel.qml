@@ -6,6 +6,17 @@ import QtQuick.Layouts
         id: settingsOverlay
         objectName: "settingsOverlay"
         function reveal(item) { if (host.isWithin(item, settingsScroll)) host.revealInScrollView(settingsScroll, item) }
+        // Every connection row reports the same three states from the service that owns it.
+        // Credentials are stored in the keyring, so "connected" means Omakade holds what the
+        // provider needs, and a provider that answered with a problem says so instead.
+        readonly property var connectionProblems: ["invalid-key", "private", "rate-limited",
+                                                   "unsupported", "error"]
+        function connectionLabel(name, ready, state) {
+            if (!ready) return name + " · NOT CONNECTED"
+            if (state && settingsOverlay.connectionProblems.indexOf(state) >= 0)
+                return name + " · CHECK SETTINGS"
+            return name + " · CONNECTED"
+        }
         // Main.qml owns the GOG folder actions, but the field lives here.
         function focusGogFolderField() {
             settingsOverlay.section = 0
@@ -732,7 +743,7 @@ import QtQuick.Layouts
                 }
                 GlassButton { compact: true; text: "STOP UPDATE"; visible: Metadata && Metadata.busy; onClicked: Metadata.cancel() }
                 Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: Metadata ? Metadata.status : ""; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 10 * settingsPanel.uiScale }
-                GlassButton { Layout.fillWidth: true; compact: true; text: "STEAMGRIDDB PORTRAIT COVERS · " + (Metadata && Metadata.hasGridKey ? "CONNECTED" : "NOT CONNECTED"); selected: settingsOverlay.connection === 3; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 3 ? -1 : 3; settingsOverlay.pageChanged() } }
+                GlassButton { Layout.fillWidth: true; compact: true; text: settingsOverlay.connectionLabel("STEAMGRIDDB PORTRAIT COVERS", Metadata && Metadata.hasGridKey, ""); selected: settingsOverlay.connection === 3; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 3 ? -1 : 3; settingsOverlay.pageChanged() } }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 10; visible: settingsOverlay.connection === 3
                     Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Add a SteamGridDB API key for portrait covers. You can choose a different portrait in each game's details."; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale }
@@ -759,7 +770,7 @@ import QtQuick.Layouts
                         GlassButton { compact: true; text: "GET AN API KEY"; onClicked: Qt.openUrlExternally("https://www.steamgriddb.com/profile/preferences/api") }
                     }
                 }
-                GlassButton { Layout.fillWidth: true; compact: true; text: "STEAM LIBRARY INFORMATION · " + (SteamAccount && SteamAccount.hasApiKey ? "CONNECTED" : "OPTIONAL"); selected: settingsOverlay.connection === 0; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 0 ? -1 : 0; settingsOverlay.pageChanged() } }
+                GlassButton { Layout.fillWidth: true; compact: true; text: settingsOverlay.connectionLabel("STEAM LIBRARY INFORMATION", SteamAccount && SteamAccount.hasApiKey && SteamAccount.steamId.length > 0, SteamAccount ? SteamAccount.state : ""); selected: settingsOverlay.connection === 0; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 0 ? -1 : 0; settingsOverlay.pageChanged() } }
                 ColumnLayout { Layout.fillWidth: true; spacing: 12; visible: settingsOverlay.connection === 0
                 Text {
                     Layout.fillWidth: true
@@ -896,7 +907,7 @@ import QtQuick.Layouts
                     wrapMode: Text.Wrap
                 }
                 }
-                GlassButton { Layout.fillWidth: true; compact: true; text: "RETROACHIEVEMENTS"; selected: settingsOverlay.connection === 1; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 1 ? -1 : 1; settingsOverlay.pageChanged() } }
+                GlassButton { Layout.fillWidth: true; compact: true; text: settingsOverlay.connectionLabel("RETROACHIEVEMENTS", RetroAchievements && RetroAchievements.hasApiKey && RetroAchievements.username.length > 0, RetroAchievements ? RetroAchievements.state : ""); selected: settingsOverlay.connection === 1; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 1 ? -1 : 1; settingsOverlay.pageChanged() } }
                 ColumnLayout { Layout.fillWidth: true; spacing: 12; visible: settingsOverlay.connection === 1
                 Text {
                     Layout.fillWidth: true
@@ -1009,7 +1020,7 @@ import QtQuick.Layouts
                     wrapMode: Text.Wrap
                 }
                 }
-                GlassButton { Layout.fillWidth: true; compact: true; text: "RATINGS AND GAME INFORMATION · IGDB"; selected: settingsOverlay.connection === 2; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 2 ? -1 : 2; settingsOverlay.pageChanged() } }
+                GlassButton { Layout.fillWidth: true; compact: true; text: settingsOverlay.connectionLabel("RATINGS AND GAME INFORMATION · IGDB", Insights && Insights.configured, ""); selected: settingsOverlay.connection === 2; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 2 ? -1 : 2; settingsOverlay.pageChanged() } }
                 ColumnLayout { Layout.fillWidth: true; spacing: 12; visible: settingsOverlay.connection === 2
                 Text {
                     Layout.fillWidth: true

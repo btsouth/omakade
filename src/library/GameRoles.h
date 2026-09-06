@@ -44,6 +44,10 @@ enum Role {
   Rating,
   RatingCount,
   Popularity,
+  // The artwork the game's own source provides, before any user choice or downloaded portrait.
+  // Deciding whether a game needs a portrait has to look at this, not at the resolved cover,
+  // or a portrait already downloaded would justify itself.
+  SourceCoverPath,
   CustomHero,
   CustomLogo,
 };
@@ -66,6 +70,7 @@ inline QHash<int, QByteArray> names() {
       {Year, "year"},
       {AppId, "appId"},
       {CoverPath, "coverPath"},
+      {SourceCoverPath, "sourceCoverPath"},
       {HeroPath, "heroPath"},
       {LogoPath, "logoPath"},
       {InstallPath, "installPath"},

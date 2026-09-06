@@ -11,6 +11,7 @@
 #include "achievements/SteamAchievementApi.h"
 #include "app/AppSettings.h"
 #include "artwork/SwitchTitleReader.h"
+#include "artwork/CoverImageProvider.h"
 #include "artwork/TgaImage.h"
 #include "artwork/ZArchiveReader.h"
 #include "backup/BackupArchive.h"
@@ -135,6 +136,62 @@ public:
 private:
   QString m_title;
   QString m_coverPath;
+};
+
+// A source that can rescan and find the same games, or find more, so the library's reaction to
+// each can be held to what it should be.
+class RescanningSourceModel final : public QAbstractListModel {
+public:
+  explicit RescanningSourceModel(int games) : m_games(games) {}
+  [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override {
+    return parent.isValid() ? 0 : m_games;
+  }
+  [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override {
+    if (!index.isValid() || index.row() >= m_games)
+      return {};
+    switch (role) {
+    case GameRoles::Title:
+      return QStringLiteral("Game %1").arg(index.row());
+    case GameRoles::Source:
+      return QStringLiteral("Rescanning");
+    case GameRoles::Runner:
+      return QString{};
+    case GameRoles::AppId:
+      return QStringLiteral("game-%1").arg(index.row());
+    case GameRoles::Installed:
+      return true;
+    default:
+      return {};
+    }
+  }
+  [[nodiscard]] QHash<int, QByteArray> roleNames() const override {
+    return {{GameRoles::Title, "title"},
+            {GameRoles::Source, "source"},
+            {GameRoles::Runner, "runner"},
+            {GameRoles::AppId, "appId"},
+            {GameRoles::Installed, "installed"}};
+  }
+  // A scan that finished and found exactly what was already there.
+  void rescanFindingNothingNew() {
+    beginResetModel();
+    endResetModel();
+  }
+  // A scan that finished and found more games.
+  void grow(int extra) {
+    beginResetModel();
+    m_games += extra;
+    endResetModel();
+  }
+  void loseFirstGame() {
+    beginResetModel();
+    --m_games;
+    ++m_offset;
+    endResetModel();
+  }
+
+private:
+  int m_games = 0;
+  int m_offset = 0;
 };
 
 class DelayedSteamModel final : public QAbstractListModel {
@@ -753,6 +810,8 @@ private slots:
   void dreamcastFoldersBecomeAPortal();
   void consoleLayoutsPinAndExpand();
   void metadataMatchingKeepsPlatformsAndEditions();
+  void coverCacheDecodesArtworkOnce();
+  void libraryOnlyResetsWhenGamesActuallyMove();
   void coverSizesPersistIndependently();
   void controllerNavigationFollowsWindowFocus();
   void metadataPersistsRatingsAndPreservesCustomArt();
@@ -3444,12 +3503,14 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
   const QString core = QStringLiteral("/cores/genesis_plus_gx_libretro.so");
   const LaunchCommand native = GameLauncher::retroArchCommand(content, core, false);
   QCOMPARE(native.program, QStringLiteral("retroarch"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("-L"), core, content}));
+  // A game started from a launcher fills the screen, whatever the emulator is set to.
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-L"), core, content}));
   const LaunchCommand flatpak = GameLauncher::retroArchCommand(content, core, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments,
            QStringList({QStringLiteral("run"), QStringLiteral("org.libretro.RetroArch"),
-                        QStringLiteral("-L"), core, content}));
+                        QStringLiteral("--fullscreen"), QStringLiteral("-L"), core, content}));
   QVERIFY(!GameLauncher::retroArchCommand(content, QStringLiteral("DETECT"), false).isValid());
   QVERIFY(!GameLauncher::retroArchCommand({}, core, false).isValid());
   const LaunchCommand playlist =
@@ -5208,7 +5269,8 @@ void CoreTests::pcsx2LauncherBuildsSafeCommands() {
   const LaunchCommand native =
       GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false, false);
   QCOMPARE(native.program, QStringLiteral("pcsx2-qt"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("/games/Crash.iso")}));
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("-fullscreen"), QStringLiteral("/games/Crash.iso")}));
   const LaunchCommand flatpak =
       GameLauncher::pcsx2Command(QStringLiteral("path:/games/Crash.iso"), false, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
@@ -5217,8 +5279,8 @@ void CoreTests::pcsx2LauncherBuildsSafeCommands() {
   // ELF entries must receive -elf <file>.
   const LaunchCommand elf =
       GameLauncher::pcsx2Command(QStringLiteral("path:/games/homebrew.elf"), true, false);
-  QCOMPARE(elf.arguments,
-           QStringList({QStringLiteral("-elf"), QStringLiteral("/games/homebrew.elf")}));
+  QCOMPARE(elf.arguments, QStringList({QStringLiteral("-fullscreen"), QStringLiteral("-elf"),
+                                       QStringLiteral("/games/homebrew.elf")}));
   QVERIFY(!GameLauncher::pcsx2Command(QStringLiteral("bad;id"), false, false).isValid());
 }
 
@@ -5541,8 +5603,9 @@ void CoreTests::shadps4LauncherBuildsSafeCommands() {
   const LaunchCommand native = GameLauncher::shadps4Command(
       QStringLiteral("/games/CUSA00001/eboot.bin"), QStringLiteral("shadps4"));
   QCOMPARE(native.program, QStringLiteral("shadps4"));
-  QCOMPARE(native.arguments, QStringList({QStringLiteral("-g"),
-                                          QStringLiteral("/games/CUSA00001/eboot.bin")}));
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("-f"), QStringLiteral("true"), QStringLiteral("-g"),
+                        QStringLiteral("/games/CUSA00001/eboot.bin")}));
   const LaunchCommand flatpak = GameLauncher::shadps4Command(
       QStringLiteral("/games/CUSA00001/eboot.bin"), {}, QStringLiteral("net.shadps4.shadPS4"));
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
@@ -5840,7 +5903,8 @@ void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {
       QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
   QCOMPARE(playlist.program, QStringLiteral("retroarch"));
   QCOMPARE(playlist.arguments,
-           QStringList({QStringLiteral("-L"), QStringLiteral("/cores/snes9x_libretro.so"), rom}));
+           QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-L"),
+                        QStringLiteral("/cores/snes9x_libretro.so"), rom}));
 
   const LaunchCommand standalone = GameLauncher::resolvedCartridgeCommand(
       rom, {}, false, true, QStringLiteral("snes9x"),
@@ -5853,7 +5917,7 @@ void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {
       QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
   QCOMPARE(mapped.program, QStringLiteral("retroarch"));
   QCOMPARE(mapped.arguments,
-           QStringList({QStringLiteral("-L"),
+           QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-L"),
                         QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"), rom}));
 
   const LaunchCommand fallback = GameLauncher::resolvedCartridgeCommand(
@@ -5911,8 +5975,8 @@ void CoreTests::cemuLauncherBuildsSafeCommands() {
   const LaunchCommand native =
       GameLauncher::cemuCommand(QStringLiteral("/games/mario.rpx"), false);
   QCOMPARE(native.program, QStringLiteral("cemu"));
-  QCOMPARE(native.arguments,
-           QStringList({QStringLiteral("-g"), QStringLiteral("/games/mario.rpx")}));
+  QCOMPARE(native.arguments, QStringList({QStringLiteral("--fullscreen"), QStringLiteral("-g"),
+                                          QStringLiteral("/games/mario.rpx")}));
   const LaunchCommand flatpak =
       GameLauncher::cemuCommand(QStringLiteral("/games/mario.wua"), true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
@@ -6353,7 +6417,8 @@ void CoreTests::dolphinScannerReadsDiscHeadersAndLaunches() {
 
   const LaunchCommand native = GameLauncher::dolphinCommand(byId.value("GZLE01").path, QStringLiteral("dolphin-emu"), false);
   QCOMPARE(native.program, QStringLiteral("dolphin-emu"));
-  QCOMPARE(native.arguments, (QStringList{QStringLiteral("-b"), QStringLiteral("-e"), byId.value("GZLE01").path}));
+  QCOMPARE(native.arguments, (QStringList{QStringLiteral("-C"), QStringLiteral("Dolphin.Display.Fullscreen=True"),
+                        QStringLiteral("-b"), QStringLiteral("-e"), byId.value("GZLE01").path}));
   const LaunchCommand flatpak = GameLauncher::dolphinCommand(QStringLiteral("path:") + byId.value("RMCE01").path, QString{}, true);
   QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
   QCOMPARE(flatpak.arguments.first(), QStringLiteral("run"));
@@ -6417,7 +6482,7 @@ void CoreTests::dreamcastFoldersBecomeAPortal() {
       roms.data(roms.index(0), GameRoles::InstallPath).toString(), QString{}, false, false, QString{},
       QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
   QCOMPARE(command.program, QStringLiteral("retroarch"));
-  QCOMPARE(command.arguments.at(1), QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
+  QCOMPARE(command.arguments.at(2), QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
 }
 
 void CoreTests::consoleLayoutsPinAndExpand() {
@@ -6587,25 +6652,217 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   QCOMPARE(portalCount(), 0);
 }
 
+void CoreTests::libraryOnlyResetsWhenGamesActuallyMove() {
+  QTemporaryDir temp;
+  RescanningSourceModel source(4);
+  UnifiedGameModel library(temp.filePath("library.sqlite3"));
+  library.addSourceModel(&source);
+  QCOMPARE(library.rowCount(), 4);
+
+  QSignalSpy resets(&library, &QAbstractItemModel::modelReset);
+  QSignalSpy inserted(&library, &QAbstractItemModel::rowsInserted);
+
+  // Nine sources scan on startup and most find exactly what was already there. A reset throws
+  // away every card on screen along with its artwork, so a scan that changed nothing must say
+  // nothing. This is what made the grid blink repeatedly through startup.
+  for (int scan = 0; scan < 5; ++scan)
+    source.rescanFindingNothingNew();
+  QCOMPARE(resets.count(), 0);
+  QCOMPARE(inserted.count(), 0);
+  QCOMPARE(library.rowCount(), 4);
+
+  // A source that finished scanning and found more games appends them, keeping the cards that
+  // are already on screen.
+  source.grow(3);
+  QCOMPARE(resets.count(), 0);
+  QCOMPARE(inserted.count(), 1);
+  QCOMPARE(library.rowCount(), 7);
+  QCOMPARE(inserted.first().at(1).toInt(), 4);
+  QCOMPARE(inserted.first().at(2).toInt(), 6);
+
+  // A reset is still correct when games genuinely move or disappear.
+  source.loseFirstGame();
+  QCOMPARE(resets.count(), 1);
+  QCOMPARE(library.rowCount(), 6);
+}
+
+void CoreTests::coverCacheDecodesArtworkOnce() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("cover.png");
+  QImage art(600, 900, QImage::Format_RGB32);
+  art.fill(Qt::darkMagenta);
+  QVERIFY(art.save(path));
+
+  CoverImageProvider provider(16);
+  QSize produced;
+  const QSize wanted(128, 192);
+  const QImage first = provider.requestImage("f" + path, &produced, wanted);
+  QVERIFY(!first.isNull());
+  QCOMPARE(provider.misses(), 1);
+  QCOMPARE(provider.hits(), 0);
+  // Artwork is decoded to the size the card asked for, keeping its proportions.
+  QCOMPARE(first.size(), QSize(128, 192));
+
+  // The same card asking again is served from memory. Without this a library of any size read
+  // every cover from disk again on each scroll and filter change.
+  const QImage again = provider.requestImage("f" + path, &produced, wanted);
+  QCOMPARE(again, first);
+  QCOMPARE(provider.misses(), 1);
+  QCOMPARE(provider.hits(), 1);
+
+  // A different size is different artwork to a card, so it is decoded on its own.
+  provider.requestImage("f" + path, &produced, QSize(256, 384));
+  QCOMPARE(provider.misses(), 2);
+
+  // Anything that is not marked as a file or as bundled art is refused rather than guessed at.
+  QVERIFY(provider.requestImage("http://example.com/cover.png", &produced, wanted).isNull());
+  QVERIFY(provider.requestImage("f" + temp.filePath("missing.png"), &produced, wanted).isNull());
+}
+
 void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QCOMPARE(GameMetadata::normalizedTitle("Chrono Trigger (USA)"), QStringLiteral("chrono trigger"));
+  // ROM sets tag every dump. None of it reaches IGDB, so none of it may reach the comparison.
+  const QString zelda = QStringLiteral("legend of zelda a link to the past");
+  QCOMPARE(GameMetadata::normalizedTitle("Tetris Attack (NA)"), QStringLiteral("tetris attack"));
+  QCOMPARE(GameMetadata::normalizedTitle("Star Fox (EU, Rev 1)"), QStringLiteral("star fox"));
+  QCOMPARE(GameMetadata::normalizedTitle("Super Goal! 2 (JP, Rev 1.01)"), QStringLiteral("super goal 2"));
+  QCOMPARE(GameMetadata::normalizedTitle("Donkey Kong Country (NA) [!]"), QStringLiteral("donkey kong country"));
+  QCOMPARE(GameMetadata::normalizedTitle("90 Minutes (NTSC Conversion)"), QStringLiteral("90 minutes"));
+  QCOMPARE(GameMetadata::normalizedTitle("Mega Man X3 (Prototype - NTSC Conversion)"), QStringLiteral("mega man x3"));
+  QCOMPARE(GameMetadata::normalizedTitle("A Bug's Life (TW)"), QStringLiteral("bug s life"));
+  // A translation note runs to any number of clauses and is still just dump metadata.
+  QCOMPARE(GameMetadata::normalizedTitle(
+               "Slayers (English Translated by Dynamic Designs and Matt's Messy Room, Rev 1.01)"),
+           QStringLiteral("slayers"));
+  QCOMPARE(GameMetadata::normalizedTitle(
+               "Cyber Knight (English Translated by Aeon Genesis, Rev 1.01 With Fixes by MTeam)"),
+           QStringLiteral("cyber knight"));
+  // A sorted article matches the way the catalogue writes it, before or without a subtitle.
+  QCOMPARE(GameMetadata::normalizedTitle("Legend of Zelda, The - A Link to the Past (NA)"), zelda);
+  QCOMPARE(GameMetadata::normalizedTitle("The Legend of Zelda: A Link to the Past"), zelda);
+  QCOMPARE(GameMetadata::normalizedTitle("Lion King, The (NA)"), QStringLiteral("lion king"));
+  // Editions, remasters and real subtitles are not dump tags and stay in the title.
+  QCOMPARE(GameMetadata::normalizedTitle("Sonic 3 (& Knuckles)"), QStringLiteral("sonic 3 knuckles"));
+  QVERIFY(GameMetadata::normalizedTitle("Alan Wake (Remastered)").contains("remastered"));
+  QVERIFY(GameMetadata::normalizedTitle("Persona 3 Reload (Digital Deluxe Edition)").contains("deluxe"));
+  QVERIFY(GameMetadata::normalizedTitle("Runner2 (Future Legend of Rhythm Alien)").contains("rhythm alien"));
+  QCOMPARE(GameMetadata::normalizedTitle("Prototype 2"), QStringLiteral("prototype 2"));
+  QCOMPARE(GameMetadata::normalizedTitle("Super Mario All-Stars (NA)"),
+           QStringLiteral("super mario all stars"));
+
+  // Every identification rule folded into one value. If this fails, a rule changed: raise
+  // GameMetadata::kMatchVersion alongside it and update this expectation, or every library
+  // already out there stays on answers the rules would no longer give.
+  QCOMPARE(GameMetadata::matchingRulesFingerprint(), QByteArray("506f0b8fef280446"));
+  QCOMPARE(GameMetadata::kMatchVersion, 3);
+
+  // An entry decided by older matching rules is stale however recently it was written, so a
+  // matching fix reaches an existing library on the next update instead of a month later.
+  const qint64 now = 1788700000;
+  QVariantMap current{{"matchVersion", GameMetadata::kMatchVersion}, {"updated", now - 60}};
+  QVERIFY(!GameMetadata::needsIdentifying(current, now));
+  QVariantMap olderRules{{"matchVersion", GameMetadata::kMatchVersion - 1}, {"updated", now - 60}};
+  QVERIFY(GameMetadata::needsIdentifying(olderRules, now));
+  QVERIFY(GameMetadata::needsIdentifying(QVariantMap{{"updated", now - 60}}, now));
+  QVariantMap aged{{"matchVersion", GameMetadata::kMatchVersion},
+                   {"updated", now - GameMetadata::kRatingFreshnessSeconds - 1}};
+  QVERIFY(GameMetadata::needsIdentifying(aged, now));
+
+  // A small system must not sit behind a large one. Games on screen come first, then the rest
+  // is taken a system at a time in turn, so eight N64 games are reached immediately rather than
+  // after 1,387 SNES ROMs.
+  QList<QVariantMap> waiting;
+  for (int i = 0; i < 6; ++i)
+    waiting.append({{"metadataKey", QStringLiteral("snes-%1").arg(i)}, {"system", "snes"}});
+  waiting.append({{"metadataKey", "n64-0"}, {"system", "n64"}});
+  waiting.append({{"metadataKey", "n64-1"}, {"system", "n64"}});
+  waiting.append({{"metadataKey", "dc-0"}, {"system", "dreamcast"}});
+  const auto ordered = GameMetadata::orderForIdentification(waiting, {QStringLiteral("snes-4")});
+  QCOMPARE(ordered.size(), waiting.size());
+  // What is on screen is identified first.
+  QCOMPARE(ordered.at(0).value("metadataKey").toString(), QStringLiteral("snes-4"));
+  // Then one game per system in turn, so no system waits for another to finish.
+  QCOMPARE(ordered.at(1).value("system").toString(), QStringLiteral("snes"));
+  QCOMPARE(ordered.at(2).value("system").toString(), QStringLiteral("n64"));
+  QCOMPARE(ordered.at(3).value("system").toString(), QStringLiteral("dreamcast"));
+  QCOMPARE(ordered.at(4).value("system").toString(), QStringLiteral("snes"));
+  QCOMPARE(ordered.at(5).value("system").toString(), QStringLiteral("n64"));
+  // Both N64 games and the Dreamcast game are reached well before the SNES shelf finishes.
+  int lastSnes = 0;
+  for (int i = 0; i < ordered.size(); ++i)
+    if (ordered.at(i).value("system").toString() == QStringLiteral("snes"))
+      lastSnes = i;
+  for (int i = 0; i < ordered.size(); ++i)
+    if (ordered.at(i).value("system").toString() != QStringLiteral("snes"))
+      QVERIFY(i < lastSnes);
+
+  // A downloaded portrait replaces whatever artwork a game already has, so it is only worth
+  // fetching when that artwork is missing or cannot serve as a cover.
+  QTemporaryDir artwork;
+  const auto write = [&artwork](const QString& name, int width, int height) {
+    QImage image(width, height, QImage::Format_RGB32);
+    image.fill(Qt::darkCyan);
+    const QString path = artwork.filePath(name);
+    return image.save(path) ? path : QString{};
+  };
+  const QString capsule = write("steam.jpg", 600, 900);      // Steam's official library capsule
+  const QString icon = write("switch.png", 1024, 1024);      // a Switch dump's square icon
+  const QString boxScan = write("snes.png", 700, 500);       // a wide SNES box scan
+  QVERIFY(!capsule.isEmpty() && !icon.isEmpty() && !boxScan.isEmpty());
+  // Official portrait artwork is never replaced, whether it arrives as a path or a file URL.
+  QVERIFY(!GameMetadata::wantsPortraitCover("", "GOG", capsule));
+  QVERIFY(!GameMetadata::wantsPortraitCover("", "GOG", QUrl::fromLocalFile(capsule).toString()));
+  // Steam guarantees an official capsule, so it never takes fan art even before that capsule
+  // has downloaded.
+  QVERIFY(!GameMetadata::wantsPortraitCover("", "Steam", ""));
+  // A square icon crops a logo off the card, so those games may take a portrait.
+  QVERIFY(GameMetadata::wantsPortraitCover("switch", "Ryujinx", icon));
+  QVERIFY(GameMetadata::wantsPortraitCover("ps4", "shadPS4", icon));
+  // A box printed wide cannot fill a card, so those take a portrait whatever system they are.
+  QVERIFY(GameMetadata::wantsPortraitCover("snes", "RetroArch", boxScan));
+  QVERIFY(GameMetadata::wantsPortraitCover("n64", "RetroArch", boxScan));
+  QVERIFY(GameMetadata::wantsPortraitCover("dreamcast", "RetroArch", icon));
+  // A box printed portrait already works as a cover and is authentic, so it is kept. NES boxes
+  // and GameTDB covers are both this shape.
+  const QString nesBox = write("nes.png", 640, 880);
+  QVERIFY(!nesBox.isEmpty());
+  QVERIFY(!GameMetadata::wantsPortraitCover("nes", "RetroArch", nesBox));
+  QVERIFY(!GameMetadata::wantsPortraitCover("Nintendo - Nintendo Entertainment System", "RetroArch", nesBox));
+  QVERIFY(!GameMetadata::wantsPortraitCover("gamecube", "Dolphin", capsule));
+  // A game with no artwork at all has nothing to lose.
+  QVERIFY(GameMetadata::wantsPortraitCover("", "Lutris", ""));
+  QVERIFY(GameMetadata::wantsPortraitCover("", "Lutris", artwork.filePath("missing.png")));
   QVERIFY(GameMetadata::normalizedTitle("Metroid Prime") != GameMetadata::normalizedTitle("Metroid Prime Remastered"));
   QVERIFY(GameMetadata::normalizedTitle("Final Fantasy VII") != GameMetadata::normalizedTitle("Final Fantasy VIII"));
   QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));
   QVERIFY(!GameMetadata::searchQuery("Super Mario World (USA)", "snes").contains("USA"));
   QVERIFY(GameMetadata::searchQuery("Mario", "unknown-console").isEmpty());
+  // A Japanese release is catalogued under its own machine, so both are searched.
+  QVERIFY(GameMetadata::searchQuery("Alcahest", "snes").contains("platforms = (19,58)"));
+  QCOMPARE(GameMetadata::platformIds("snes"), QList<int>({19, 58}));
+  QVERIFY(GameMetadata::platformIds("unknown-console").isEmpty());
   QVERIFY(GameMetadata::searchQuery("Mario", "gamecube").contains("platforms = (21)"));
   const auto matches = GameMetadata::parseMatches(R"json([
     {"id":1,"name":"Metroid Prime","platforms":[21],"total_rating":89.5,"total_rating_count":300},
     {"id":2,"name":"Metroid Prime Remastered","platforms":[130],"total_rating":94,"total_rating_count":90},
     {"id":3,"name":"Unrated","platforms":[21]},
     {"id":4,"name":"Bad rating","platforms":[21],"total_rating":999,"total_rating_count":1},
-    {"id":0,"name":"Invalid","platforms":[21]}])json",21);
+    {"id":0,"name":"Invalid","platforms":[21]}])json", QList<int>{21});
   QCOMPARE(matches.size(),3);
   QCOMPARE(matches.at(0).toMap().value("rating").toInt(),90);
   QCOMPARE(matches.at(1).toMap().value("rating").toInt(),-1);
   QCOMPARE(matches.at(2).toMap().value("rating").toInt(),-1);
-  QVERIFY(GameMetadata::parseMatches("{broken",21).isEmpty());
+  QVERIFY(GameMetadata::parseMatches("{broken", QList<int>{21}).isEmpty());
+  // A Super Famicom listing is the same cartridge as its Super Nintendo release.
+  const auto regional = GameMetadata::parseMatches(
+      R"json([{"id":9,"name":"Alcahest","platforms":[58]}])json", QList<int>{19, 58});
+  QCOMPARE(regional.size(), 1);
+  QVERIFY(GameMetadata::parseMatches(
+              R"json([{"id":9,"name":"Alcahest","platforms":[58]}])json", QList<int>{19})
+          .isEmpty());
+  // Accents and a publisher in front of a licensed title are not different games.
+  QCOMPARE(GameMetadata::normalizedTitle("Pokemon Stadium 2"),
+           GameMetadata::normalizedTitle("Pokémon Stadium 2"));
   const auto covers = GameMetadata::parseCovers(R"json({"success":true,"data":[
     {"id":1,"width":600,"height":900,"url":"https://cdn2.steamgriddb.com/grid/good.png"},
     {"id":2,"width":512,"height":512,"url":"https://cdn2.steamgriddb.com/grid/square.png"},

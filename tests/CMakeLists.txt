@@ -456,6 +456,23 @@ set_tests_properties(omakade_artwork_editor omakade_artwork_editor_couch
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
+# Narrowing the library leaves the grid holding delegates for the games that just left. Moving
+# down from the organize row must reach the game on screen, never one of those.
+add_test(NAME omakade_stale_selection
+  COMMAND omakade --stale-selection-test --owned-layout-test --render-size=1600x900)
+set_tests_properties(omakade_stale_selection PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+  TIMEOUT 30)
+
+# Back walks out of a console, then a search, then a source, then anything else narrowing the
+# view, in both Desktop and Couch Mode.
+add_test(NAME omakade_filter_back COMMAND omakade --filter-back-test --render-size=1600x900)
+add_test(NAME omakade_filter_back_couch
+  COMMAND omakade --filter-back-test --couch --render-size=1920x1080)
+set_tests_properties(omakade_filter_back omakade_filter_back_couch PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+  TIMEOUT 30)
+
 add_test(NAME omakade_random_selection COMMAND omakade --random-selection-test)
 add_test(NAME omakade_random_selection_couch COMMAND omakade --random-selection-test --couch)
 add_test(NAME omakade_random_selection_render COMMAND omakade

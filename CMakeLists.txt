@@ -171,6 +171,8 @@ add_library(omakade_core STATIC
   src/artwork/ZArchiveReader.h
   src/artwork/TgaImage.cpp
   src/artwork/TgaImage.h
+  src/artwork/CoverImageProvider.cpp
+  src/artwork/CoverImageProvider.h
   src/sources/heroic/HeroicScanner.cpp
   src/sources/heroic/HeroicScanner.h
   src/sources/faugus/FaugusScanner.cpp
@@ -185,6 +187,7 @@ add_library(omakade_core STATIC
 
 target_include_directories(omakade_core PUBLIC src)
 target_link_libraries(omakade_core PUBLIC
+  Qt6::Quick
   PkgConfig::SDL3
   PkgConfig::LIBSECRET
   PkgConfig::LIBZIP

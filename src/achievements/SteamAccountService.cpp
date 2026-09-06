@@ -1,3 +1,5 @@
+#include "app/SecretService.h"
+#include <QMutexLocker>
 #include "achievements/SteamAccountService.h"
 
 #include "app/AppSettings.h"
@@ -41,6 +43,8 @@ constexpr qsizetype kMaximumOwnedGamesResponseBytes = 16 * 1024 * 1024;
 constexpr qint64 kAchievementRefreshSeconds = 15 * 60;
 
 SteamSecretResult lookupSecret(bool includeSecret) {
+  // libsecret builds its GObject types on first use and cannot take two threads at once.
+  QMutexLocker keyring(&secretServiceLock());
   GError* error = nullptr;
   gchar* password = secret_password_lookup_sync(steamSchema(), nullptr, &error, "service",
                                                 kSecretService, nullptr);
@@ -308,6 +312,7 @@ void SteamAccountService::beginSecretOperation(SecretAction action, const QByteA
   m_secretAction = action;
   setBusy(true);
   m_secretWatcher.setFuture(QtConcurrent::run([action, secretValue = QByteArray(value)]() mutable {
+    QMutexLocker keyring(&secretServiceLock());
     if (action == SecretAction::Detect || action == SecretAction::LookupForRefresh ||
         action == SecretAction::LookupForOwnedGames) {
       return lookupSecret(action != SecretAction::Detect);

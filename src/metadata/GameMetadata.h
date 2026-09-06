@@ -4,6 +4,10 @@
 #include <QFutureWatcher>
 #include <QHash>
 #include <QNetworkAccessManager>
+#include <QElapsedTimer>
+#include <QAbstractItemModel>
+#include <QSet>
+#include <QTimer>
 #include <QObject>
 #include <QQueue>
 #include <QSqlDatabase>
@@ -26,6 +30,13 @@ public:
                QObject* parent = nullptr, QNetworkAccessManager* network = nullptr);
   ~GameMetadata() override;
   void setLibrary(UnifiedGameModel* library);
+  // The filtered view the user is looking at. Games on screen are identified first, so opening
+  // a console fills it in rather than waiting for the rest of the library.
+  void setVisibleLibrary(QAbstractItemModel* visible);
+  // Drops portraits that were downloaded over artwork the game's own source provides. Runs by
+  // itself as the library settles, so a rule change reaches an existing library without anyone
+  // being asked to run anything.
+  void dropUnwantedPortraits();
   void setCacheLimitMb(int megabytes);
   QVariantMap entry(const QString& key) const { return m_entries.value(key); }
   bool busy() const { return m_busy || !m_queue.isEmpty() || m_secrets.isRunning(); }
@@ -43,7 +54,41 @@ public:
                                                                             : QVariantList{};
   }
   Q_INVOKABLE void inspect(const QVariantMap& game);
+  // While someone is identifying a game by hand, the background pass stands down. Without this
+  // the queue keeps the service busy and every manual control stays disabled, because they are
+  // all gated on the same busy state.
+  Q_INVOKABLE void setEditing(bool editing);
   Q_INVOKABLE void refreshLibrary();
+  // Continues the library pass on its own: after the library settles, whenever games are added,
+  // and whenever the view changes. Stopping it by hand keeps it stopped until the next launch.
+  // Identification depends on how titles are cleaned, which platforms count, and how a match is
+  // accepted. Raise this whenever any of those change: every entry decided by older rules is
+  // then re-identified on the next update, instead of waiting out the ordinary freshness window
+  // with a stale answer. Forgetting leaves a library stuck on answers the rules would no longer
+  // give, so matchingRulesFingerprint below fails the build's tests until this is raised.
+  //   2  dump tags, sorted articles, tie-breaking between equal titles
+  //   3  regional platforms, accents, publisher prefixes, catalogue numbers
+  static constexpr int kMatchVersion = 3;
+  // Everything the identification rules depend on, folded into one value. A test pins it, so a
+  // change to any rule fails until kMatchVersion is raised alongside it.
+  [[nodiscard]] static QByteArray matchingRulesFingerprint();
+  // How long a rating stays fresh before it is fetched again.
+  static constexpr qint64 kRatingFreshnessSeconds = 30 * 86400;
+  // True when a stored entry should be identified again: either the rules that decided it have
+  // changed, or its rating has simply aged out.
+  [[nodiscard]] static bool needsIdentifying(const QVariantMap& saved, qint64 now);
+  // The order games are identified in. Anything on screen comes first, and the rest is taken a
+  // system at a time in turn, so a shelf of 1,387 SNES ROMs cannot starve the eight N64 games
+  // behind it. Pure so the ordering can be tested without a network.
+  [[nodiscard]] static QList<QVariantMap> orderForIdentification(const QList<QVariantMap>& games,
+                                                                 const QSet<QString>& onScreen);
+  // A downloaded portrait replaces the artwork a game already has, so it is only worth
+  // fetching when that artwork is missing or cannot serve as a cover. Takes the system and the
+  // path to the source's own art.
+  [[nodiscard]] static bool wantsPortraitCover(const QString& system, const QString& source,
+                                               const QString& sourceCover);
+  // Artwork at least as tall as 4:3 already works as a cover and is left alone.
+  static constexpr double kPortraitAspectLimit = 0.8;
   Q_INVOKABLE void search(const QString& title);
   Q_INVOKABLE void chooseMatch(int index);
   Q_INVOKABLE void rejectMatch();
@@ -55,9 +100,11 @@ public:
   Q_INVOKABLE void testGridConnection();
   Q_INVOKABLE void clearPortraitCache();
   static QString normalizedTitle(QString title);
-  static int platformId(const QString& system);
+  // The IGDB platforms a system's games can be listed under. A Japanese release is often
+  // catalogued under the regional machine rather than the western one.
+  static QList<int> platformIds(const QString& system);
   static QByteArray searchQuery(const QString& title, const QString& system);
-  static QVariantList parseMatches(const QByteArray& data, int platform);
+  static QVariantList parseMatches(const QByteArray& data, const QList<int>& platforms);
   static QVariantList parseCovers(const QByteArray& data);
   static bool trustedImageUrl(const QUrl& url);
 signals:
@@ -91,6 +138,16 @@ private:
   QNetworkAccessManager* m_network;
   QFutureWatcher<InsightsSecretResult> m_secrets;
   QByteArray m_gridKey;
+  // Each provider is paced on its own, so the queue does not need a blanket pause between games.
+  QElapsedTimer m_sinceGridRequest;
+  bool m_reviewedPortraits = false;
+  bool m_stoppedByHand = false;
+  bool m_editing = false;
+  QQueue<QVariantMap> m_pausedQueue;
+  QAbstractItemModel* m_visible = nullptr;
+  QTimer m_settle;
+  void continueLibraryPass();
+  void promoteVisibleGames();
   QQueue<QVariantMap> m_queue;
   QVariantMap m_selected, m_active;
   QVariantList m_candidates, m_covers;
@@ -99,6 +156,10 @@ private:
   QHash<QByteArray, QByteArray> m_queryCache;
   QByteArray m_queryKey;
   QString m_igdbStage;
+  // A ROM set can number its files, as 1636 - Pokemon Fire Red. Searching for that finds
+  // nothing, so a failed search is tried once more without the number. Held here so a title
+  // that genuinely starts with a number is only ever searched for as written first.
+  QString m_numberedRetryTitle;
   bool m_cancelled = false;
   bool m_busy = false;
   bool m_manual = false;

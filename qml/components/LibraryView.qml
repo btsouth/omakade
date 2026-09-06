@@ -12,6 +12,10 @@ Item {
     readonly property int count: grid.count
     readonly property int columns: grid.columns
     readonly property bool gridFocused: grid.activeFocus
+    // Where focus should land when something above hands it downwards. With no games left the
+    // grid has nothing to select, so the empty state takes it instead.
+    readonly property Item focusTarget: grid.count > 0 ? grid
+                                      : root.filtersActive ? emptyClearButton : emptyRescanButton
     property bool scanning: false
     property bool filtersActive: false
     property string emptyTitle: "No games found"
@@ -137,19 +141,19 @@ Item {
         }
 
         Keys.onReturnPressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
                 event.accepted = true
             }
         }
         Keys.onEnterPressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
                 event.accepted = true
             }
         }
         Keys.onSpacePressed: function(event) {
-            if (currentIndex >= 0) {
+            if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
                 event.accepted = true
             }
@@ -189,6 +193,7 @@ Item {
             required property string title
             required property string subtitle
             required property int hours
+            required property int rating
             required property int progress
             required property bool favorite
             required property string completionStatus
@@ -227,8 +232,13 @@ Item {
                 anchors.topMargin: 7
                 anchors.bottomMargin: 7
                 title: delegateRoot.title
-                subtitle: delegateRoot.subtitle
+                // Inside a console the heading already names the system, so the launcher's
+                // long core name is repetition. Drop it and let the rating and playtime have
+                // the room instead.
+                subtitle: Library.consoleFilter.length > 0 && delegateRoot.source.length > 0
+                          ? delegateRoot.source : delegateRoot.subtitle
                 hours: delegateRoot.hours
+                rating: delegateRoot.rating
                 progress: delegateRoot.progress
                 favorite: delegateRoot.favorite
                 completionStatus: delegateRoot.completionStatus
@@ -238,14 +248,26 @@ Item {
                 coverPath: delegateRoot.coverPath
                 current: grid.currentIndex === delegateRoot.index
                 focus: current
+                // A recycled delegate keeps its place in the scene but stands for no row, and
+                // carries index -1. Leaving it in the focus chain let a keyboard or controller
+                // move land on a card the person cannot see and open a game that is not there.
+                activeFocusOnTab: delegateRoot.index >= 0
 
                 onActiveFocusChanged: {
-                    if (activeFocus) {
+                    if (activeFocus && delegateRoot.index >= 0) {
                         grid.currentIndex = delegateRoot.index
                     }
                 }
-                onActivated: root.gameActivated(delegateRoot.index)
-                onFavoriteToggled: root.favoriteToggled(delegateRoot.index)
+                onActivated: {
+                    if (delegateRoot.index >= 0) {
+                        root.gameActivated(delegateRoot.index)
+                    }
+                }
+                onFavoriteToggled: {
+                    if (delegateRoot.index >= 0) {
+                        root.favoriteToggled(delegateRoot.index)
+                    }
+                }
             }
         }
 

@@ -190,6 +190,8 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
     }
     return source.model->index(source.row, 0).data(role);
   }
+  case GameRoles::SourceCoverPath:
+    return source.model->index(source.row, 0).data(GameRoles::CoverPath);
   case GameRoles::HeroPath:
   case GameRoles::CustomHero:
   case GameRoles::LogoPath:
@@ -307,6 +309,7 @@ QHash<int, QByteArray> UnifiedGameModel::roleNames() const {
   roles.insert(GameRoles::RatingCount, "ratingCount");
   roles.insert(GameRoles::Popularity, "popularity");
   roles.insert(GameRoles::CustomCover, "customCover");
+  roles.insert(GameRoles::SourceCoverPath, "sourceCoverPath");
   roles.insert(GameRoles::CustomHero, "customHero");
   roles.insert(GameRoles::CustomLogo, "customLogo");
   roles.insert(GameRoles::Linked, "linked");
@@ -1024,10 +1027,14 @@ QVariantMap UnifiedGameModel::gameMap(const SourceRow& source) const {
 }
 
 void UnifiedGameModel::rebuildRows() {
-  beginResetModel();
-  m_rows.clear();
-  m_rowForKey.clear();
-  m_rowsForGroup.clear();
+  // Nine sources scan on startup and each one signals as it loads, so this runs many times in
+  // the first seconds. A full reset destroys and recreates every card, which is what made the
+  // grid blink through startup, so compose the library first and then emit the smallest change
+  // that describes it: nothing at all when the result is identical, an insert when games were
+  // only added, and a reset only when games genuinely moved or disappeared.
+  QVector<SourceRow> rows;
+  QHash<QString, SourceRow> rowForKey;
+  QHash<QString, QVector<SourceRow>> rowsForGroup;
   for (QAbstractItemModel* model : m_models) {
     for (int row = 0; row < model->rowCount(); ++row) {
       const SourceRow source{.model = model, .row = row};
@@ -1038,10 +1045,10 @@ void UnifiedGameModel::rebuildRows() {
       if (key.isEmpty()) {
         continue;
       }
-      m_rowForKey.insert(key, source);
+      rowForKey.insert(key, source);
       const QString groupId = m_groupForGame.value(key);
       if (!groupId.isEmpty()) {
-        m_rowsForGroup[groupId].append(source);
+        rowsForGroup[groupId].append(source);
       }
     }
   }
@@ -1054,14 +1061,44 @@ void UnifiedGameModel::rebuildRows() {
       }
       const QString groupId = m_groupForGame.value(gameKey(source));
       if (groupId.isEmpty()) {
-        m_rows.append(source);
+        rows.append(source);
       } else if (!addedGroups.contains(groupId)) {
-        SourceRow representative = sourceForKey(m_primaryForGroup.value(groupId));
-        m_rows.append(representative.model == nullptr ? source : representative);
+        SourceRow representative = rowForKey.value(m_primaryForGroup.value(groupId));
+        rows.append(representative.model == nullptr ? source : representative);
         addedGroups.insert(groupId);
       }
     }
   }
+
+  QStringList keys;
+  keys.reserve(rows.size());
+  for (const SourceRow& row : rows) {
+    keys.append(gameKey(row));
+  }
+  const auto adopt = [&] {
+    m_rows = rows;
+    m_rowKeys = keys;
+    m_rowForKey = rowForKey;
+    m_rowsForGroup = rowsForGroup;
+  };
+  if (keys == m_rowKeys) {
+    // A rescan that found the same games. The row mapping may point at different source rows,
+    // so take it, but say nothing: the view is already correct and any real change to a game
+    // arrives through dataChanged.
+    adopt();
+    return;
+  }
+  if (keys.size() > m_rowKeys.size() &&
+      QStringList(keys.mid(0, m_rowKeys.size())) == m_rowKeys) {
+    // A source finished scanning and added games. Appending keeps every card already on screen,
+    // along with its artwork and the selection.
+    beginInsertRows(QModelIndex(), m_rowKeys.size(), keys.size() - 1);
+    adopt();
+    endInsertRows();
+    return;
+  }
+  beginResetModel();
+  adopt();
   endResetModel();
 }
 

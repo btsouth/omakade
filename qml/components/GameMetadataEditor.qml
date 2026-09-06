@@ -15,6 +15,10 @@ ColumnLayout {
     readonly property string gameKey: game.metadataKey || ""
     onGameKeyChanged: { editing = false; if (Metadata) Metadata.inspect(game) }
     Component.onCompleted: if (Metadata) Metadata.inspect(game)
+    // Identifying a game by hand takes precedence over the background pass, which would
+    // otherwise hold the service busy and leave every control here disabled.
+    onEditingChanged: if (Metadata) Metadata.setEditing(editing)
+    Component.onDestruction: if (Metadata) Metadata.setEditing(false)
     Connections {
         target: Metadata
         function onPortraitSelected(key) {

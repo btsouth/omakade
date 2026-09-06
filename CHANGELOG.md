@@ -22,10 +22,15 @@ and more control over how your library looks.
 
 ### Ratings, covers, and settings
 
-- Identify games with IGDB and sort the library by rating or popularity.
-  Review uncertain matches and correct them from game details.
-- Add optional SteamGridDB portrait covers using the same game identification.
-  Choose another portrait manually and keep downloaded artwork available offline.
+- Identify games with IGDB and sort the library by rating or popularity. Ratings
+  appear on library cards beside the source and the playtime.
+- Match ROM dumps automatically. Region, revision, release and translation tags
+  are understood, so a shelf of tagged dumps identifies itself instead of asking
+  you to confirm every game. What cannot be matched confidently is counted at the
+  end and can be corrected from game details.
+- Add optional SteamGridDB portrait covers using the same game identification,
+  for Switch, Wii U, PS4 and PC games. Retro consoles keep their own box art
+  instead. Choose another portrait manually and keep artwork available offline.
 - Replace the long settings sheet with Sources, Library, Connections,
   Controls & streaming, and About & storage.
 - Adjust cover size, with separate desktop and Couch Mode preferences. Restore

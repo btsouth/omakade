@@ -1,5 +1,9 @@
+#include "app/SecretService.h"
+#include <QMutexLocker>
 #include "metadata/GameMetadata.h"
 #include "library/ConsoleCatalog.h"
+#include <algorithm>
+#include <QSet>
 #include "library/GameRoles.h"
 #include "library/UnifiedGameModel.h"
 #include <QBuffer>
@@ -29,44 +33,163 @@ namespace {
 constexpr auto fields = "fields "
                         "name,platforms,first_release_date,total_rating,total_rating_count,"
                         "aggregated_rating,aggregated_rating_count; ";
+// IGDB allows four requests a second; 350 ms keeps a comfortable margin. SteamGridDB is not
+// documented as precisely, so its calls are held a little further apart. With both providers
+// paced at the request, the gap between games only has to yield to the event loop.
+constexpr int kGridRequestGapMs = 250;
+constexpr int kBetweenGamesMs = 100;
+
 QString quoted(QString text) {
   text.replace('\\', "\\\\");
   text.replace('"', "\\\"");
   text.replace(QRegularExpression("[\\x00-\\x1f]"), " ");
   return '"' + text.left(200) + '"';
 }
-QString cleanTitle(QString title) {
-  // Strip dump metadata only. Hacks, prototypes, remasters and editions keep their names.
-  title.remove(QRegularExpression(
+// One part of a parenthesised dump tag: a region, a language, a release flag, a revision, or a
+// translation or hack note. Editions and subtitles are deliberately absent, so "(Director's Cut)"
+// is never mistaken for dump metadata.
+bool dumpTagPart(const QString& part) {
+  static const QRegularExpression known(
       QStringLiteral(
-          R"(\s*\((?:(?:USA|Europe|Japan|World|U|E|J)(?:, ?(?:USA|Europe|Japan|World))*|(?:En|Ja|Fr|De|Es|It|Nl|Pt|Ko|Zh)(?:, ?[A-Za-z]{2})*|Rev [0-9.]+)\))"),
-      QRegularExpression::CaseInsensitiveOption));
-  title.remove(QStringLiteral("[!]"));
+          R"(^(?:NA|JP|EU|US|USA|EUR|JPN|Europe|Japan|World|Korea|China|Taiwan|Brazil|Australia|Asia|TW|KR|CN|AU|BR|CA|HK|RU|SP|FR|DE|ES|IT|NL|SE|PD|PE|U|E|J|W|UE|JU)$)"
+          R"(|^(?:En|Ja|Fr|De|Es|It|Nl|Pt|Ko|Zh|Sv|Da|No|Fi|Ru|Pl)$)"
+          R"(|^(?:Prototype|Proto|Beta|Alpha|Sample|Demo|Unl|Unlicensed|Pirate|Alt|Aftermarket|Homebrew|Enhanced Version|Virtual Console|Switch Online|Classic Mini)$)"
+          R"(|^(?:NTSC|PAL)(?: |-)Conversion$)"
+          R"(|^Rev(?:ision)?\.?(?: ?[0-9A-Za-z.]+)?$)"
+          R"(|^(?:v|Version) ?[0-9][0-9A-Za-z.]*$)"
+          R"(|Translat(?:ed|ion)|\bPatch\b|\bHack\b|\bFan ?Trans)"),
+      QRegularExpression::CaseInsensitiveOption);
+  return known.match(part.trimmed()).hasMatch();
+}
+
+// A group is dump metadata only when every comma or dash separated part is a known tag. That
+// keeps "(Balloon Fight)" and other real subtitles, and removes "(NA, Rev 1)" whole.
+bool dumpTagGroup(const QString& contents) {
+  // A note about a translation or a patch is dump metadata however many clauses it runs to,
+  // as in "(English Translated by Aeon Genesis, Rev 1.01 With Fixes by MTeam)".
+  static const QRegularExpression romHack(
+      QStringLiteral(R"(Translat(?:ed|ion)|\bPatch(?:ed)?\b|\bHack\b|\bFan ?Trans|\bFixes by\b)"),
+      QRegularExpression::CaseInsensitiveOption);
+  if (romHack.match(contents).hasMatch())
+    return true;
+  const QStringList parts =
+      contents.split(QRegularExpression(QStringLiteral(",| - ")), Qt::SkipEmptyParts);
+  if (parts.isEmpty())
+    return false;
+  for (const QString& part : parts)
+    if (!dumpTagPart(part))
+      return false;
+  return true;
+}
+
+QString cleanTitle(QString title) {
+  // ROM sets tag dumps with the region, language, revision, release state and any translation
+  // patch. IGDB knows none of that, so a tagged title never matches its catalogue entry.
+  // Editions, remasters and subtitles are not tags and keep their names.
+  static const QRegularExpression group(QStringLiteral(R"(\s*\(([^()]*)\))"));
+  static const QRegularExpression squareTag(QStringLiteral(R"(\s*\[[^\[\]]*\])"));
+  QString previous;
+  while (previous != title) {
+    previous = title;
+    QString stripped;
+    qsizetype at = 0;
+    auto matches = group.globalMatch(title);
+    while (matches.hasNext()) {
+      const auto match = matches.next();
+      if (!dumpTagGroup(match.captured(1)))
+        continue;
+      stripped += title.mid(at, match.capturedStart() - at);
+      at = match.capturedEnd();
+    }
+    title = stripped + title.mid(at);
+    // Square brackets only ever carry dump flags such as [!], [b1] or [T+Eng].
+    title.remove(squareTag);
+    title = title.simplified();
+  }
+  // "Legend of Zelda, The" is how a ROM set sorts a title, and the article can sit before a
+  // subtitle as in "Legend of Zelda, The - Ocarina of Time". Put it back in front so the search
+  // reads the way IGDB stores it.
+  static const QRegularExpression sortedArticle(
+      QStringLiteral(
+          R"(^(.*?),\s*(The|A|An|Der|Die|Das|Le|La|Les|El|Los|Il|Lo)(\s*[-:].*)?$)"),
+      QRegularExpression::CaseInsensitiveOption);
+  const auto article = sortedArticle.match(title);
+  if (article.hasMatch())
+    title = article.captured(2) + QLatin1Char(' ') + article.captured(1) + article.captured(3);
   return title.simplified();
 }
 } // namespace
 QString GameMetadata::normalizedTitle(QString title) {
   title = cleanTitle(title);
-  return title.normalized(QString::NormalizationForm_KC)
-      .toCaseFolded()
-      .replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}\"]+")), " ")
-      .simplified();
+  QString normalized = title.normalized(QString::NormalizationForm_KC)
+                           .toCaseFolded()
+                           .replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}\"]+")), " ")
+                           .simplified();
+  // A leading article is never what separates two games, and the catalogues disagree about it.
+  static const QRegularExpression leadingArticle(QStringLiteral("^(?:the|a|an) (?=.)"));
+  normalized.remove(leadingArticle);
+  // Accents are a spelling difference, not a different game: a cartridge labelled Pokemon
+  // Stadium 2 is the catalogue's Pokémon Stadium 2.
+  QString folded;
+  folded.reserve(normalized.size());
+  for (const QChar character : normalized.normalized(QString::NormalizationForm_D)) {
+    if (character.category() != QChar::Mark_NonSpacing) {
+      folded.append(character);
+    }
+  }
+  return folded.normalized(QString::NormalizationForm_C);
 }
-int GameMetadata::platformId(const QString& system) {
-  static const QHash<QString, int> ids{
-      {"nes", 18}, {"snes", 19},    {"gb", 33},      {"gbc", 22},       {"gba", 24},
-      {"n64", 4},  {"genesis", 29}, {"psx", 7},      {"dreamcast", 23}, {"gamecube", 21},
-      {"wii", 5},  {"ps2", 8},      {"switch", 130}, {"wiiu", 41},      {"ps4", 48}};
-  return ids.value(ConsoleCatalog::idFor(system), system.isEmpty() ? 6 : 0);
+bool GameMetadata::wantsPortraitCover(const QString& system, const QString& source,
+                                      const QString& sourceCover) {
+  Q_UNUSED(system);
+  // Steam ships an official 600x900 capsule for every game. It downloads on demand, so judging
+  // by the file alone would hand a fan portrait to any game whose capsule had not arrived yet.
+  if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) == 0)
+    return false;
+  // Everything else is decided by the shape of the artwork the game already has, not by which
+  // system it came from. A physical box that was printed portrait, an NES box or a GameTDB
+  // cover, already works as a cover and is authentic, so it is kept. A box that was printed
+  // wide or square, an N64 carton or a Dreamcast case, cannot fill a card without being cropped
+  // or letterboxed, and a portrait reads better there even when it is fan made. Artwork that
+  // arrives later is reconsidered, since dropUnwantedPortraits applies this same rule.
+  QString path = sourceCover;
+  if (path.startsWith(QStringLiteral("file://")))
+    path = QUrl(path).toLocalFile();
+  if (path.isEmpty() || !QFileInfo::exists(path))
+    return true;
+  QImageReader reader(path);
+  const QSize size = reader.size();
+  if (!size.isValid() || size.height() <= 0)
+    return true;
+  return double(size.width()) / double(size.height()) > kPortraitAspectLimit;
+}
+
+QList<int> GameMetadata::platformIds(const QString& system) {
+  // IGDB catalogues a Japanese release under its own machine, so a Super Famicom cartridge is
+  // platform 58 rather than the Super Nintendo's 19. Filtering on the western platform alone
+  // threw away games IGDB had already returned by name, which was the single largest reason a
+  // shelf of imports stayed unidentified.
+  static const QHash<QString, QList<int>> ids{
+      {"nes", {18, 99}},   {"snes", {19, 58}}, {"gb", {33}},      {"gbc", {22}},
+      {"gba", {24}},       {"n64", {4}},       {"genesis", {29}}, {"psx", {7}},
+      {"dreamcast", {23}}, {"gamecube", {21}}, {"wii", {5}},      {"ps2", {8}},
+      {"switch", {130}},   {"wiiu", {41}},     {"ps4", {48}}};
+  const QString id = ConsoleCatalog::idFor(system);
+  if (ids.contains(id))
+    return ids.value(id);
+  return system.isEmpty() ? QList<int>{6} : QList<int>{};
 }
 QByteArray GameMetadata::searchQuery(const QString& title, const QString& system) {
-  const int platform = platformId(system);
-  if (title.trimmed().isEmpty() || platform == 0)
+  const QList<int> platforms = platformIds(system);
+  if (title.trimmed().isEmpty() || platforms.isEmpty())
     return {};
+  QByteArrayList numbers;
+  for (int platform : platforms)
+    numbers.append(QByteArray::number(platform));
   return QByteArray(fields) + "search " + quoted(cleanTitle(title)).toUtf8() +
-         "; where platforms = (" + QByteArray::number(platform) + "); limit 20;";
+         "; where platforms = (" + numbers.join(',') + "); limit 20;";
 }
-QVariantList GameMetadata::parseMatches(const QByteArray& data, int platform) {
+QVariantList GameMetadata::parseMatches(const QByteArray& data, const QList<int>& platforms) {
   QVariantList result;
   const auto doc = QJsonDocument::fromJson(data);
   if (!doc.isArray())
@@ -75,8 +198,14 @@ QVariantList GameMetadata::parseMatches(const QByteArray& data, int platform) {
     const auto obj = value.toObject();
     if (obj.value("id").toInteger() <= 0 || obj.value("name").toString().isEmpty())
       continue;
-    if (platform > 0 && !obj.value("platforms").toArray().contains(platform))
-      continue;
+    if (!platforms.isEmpty()) {
+      const auto listed = obj.value("platforms").toArray();
+      bool onPlatform = false;
+      for (int platform : platforms)
+        onPlatform = onPlatform || listed.contains(platform);
+      if (!onPlatform)
+        continue;
+    }
     QVariantMap match{{"id", obj.value("id").toInteger()}, {"title", obj.value("name").toString()}};
     const qint64 released = obj.value("first_release_date").toInteger();
     match["year"] = released > 0 ? QDateTime::fromSecsSinceEpoch(released).date().year() : 0;
@@ -141,6 +270,13 @@ GameMetadata::GameMetadata(const QString& databasePath, GameInsightsService* ins
   }
   if (insights)
     connect(insights, &GameInsightsService::catalogFinished, this, &GameMetadata::matchResult);
+    // Credentials are read from the keyring on a worker thread, so the library can settle
+    // before they arrive. Without this the pass looked once, found no connection, and never
+    // looked again, leaving the whole library unidentified until something else changed.
+    connect(insights, &GameInsightsService::changed, this, [this] {
+      if (!m_stoppedByHand && !m_editing)
+        m_settle.start();
+    });
   if (QFileInfo::exists(m_cacheRoot + "/configured"))
     secretOperation(0);
 }
@@ -151,7 +287,183 @@ GameMetadata::~GameMetadata() {
   m_database = {};
   QSqlDatabase::removeDatabase(m_connection);
 }
-void GameMetadata::setLibrary(UnifiedGameModel* library) { m_library = library; }
+void GameMetadata::setLibrary(UnifiedGameModel* library) {
+  m_library = library;
+  if (m_library == nullptr)
+    return;
+  // Sources populate the library over the first few seconds, so wait for rows to arrive before
+  // judging what artwork a game has. The review runs once and is cheap: only entries that
+  // actually hold a portrait are examined.
+  const auto settled = [this] {
+    if (m_library == nullptr || m_library->rowCount() == 0)
+      return;
+    if (!m_reviewedPortraits) {
+      m_reviewedPortraits = true;
+      dropUnwantedPortraits();
+    }
+    // Sources arrive over several seconds. Wait for a quiet moment before queuing, so a
+    // library still loading is not walked once per source.
+    m_settle.start();
+  };
+  m_settle.setSingleShot(true);
+  m_settle.setInterval(2000);
+  connect(&m_settle, &QTimer::timeout, this, &GameMetadata::continueLibraryPass);
+  connect(m_library, &QAbstractItemModel::rowsInserted, this, settled);
+  connect(m_library, &QAbstractItemModel::modelReset, this, settled);
+  // Sources that load straight from their own database have already filled the library by the
+  // time this runs, and those rows arrived before anything was listening. Waiting only for the
+  // next change then waits forever, and nothing is ever identified.
+  settled();
+}
+
+void GameMetadata::setVisibleLibrary(QAbstractItemModel* visible) {
+  m_visible = visible;
+  if (m_visible == nullptr)
+    return;
+  // Changing the view changes what matters most. Reorder what is still pending rather than
+  // starting again, so nothing already done is repeated.
+  const auto viewChanged = [this] {
+    promoteVisibleGames();
+    if (!busy())
+      m_settle.start();
+  };
+  connect(m_visible, &QAbstractItemModel::modelReset, this, viewChanged);
+  connect(m_visible, &QAbstractItemModel::rowsInserted, this, viewChanged);
+  connect(m_visible, &QAbstractItemModel::rowsRemoved, this, viewChanged);
+  // Opening a console swaps the whole view in one pass and reports it as a layout change, not
+  // as rows coming and going. Without this, walking into a console never reordered anything and
+  // its games waited behind the rest of the library.
+  connect(m_visible, &QAbstractItemModel::layoutChanged, this, viewChanged);
+}
+
+void GameMetadata::setEditing(bool editing) {
+  if (m_editing == editing)
+    return;
+  m_editing = editing;
+  if (editing) {
+    // Stand the queue down and hold it, rather than dropping it, so nothing already worked out
+    // is repeated when the person is done.
+    m_pausedQueue = m_queue;
+    m_queue.clear();
+    m_settle.stop();
+    const auto saved = entry(m_selected.value("metadataKey").toString());
+    const QString state = saved.value("matchStatus").toString();
+    m_status = state.isEmpty() ? QStringLiteral("Not identified yet") : state;
+    emit changed();
+    return;
+  }
+  m_queue = m_pausedQueue;
+  m_pausedQueue.clear();
+  if (!m_queue.isEmpty())
+    next();
+  else
+    m_settle.start();
+  emit changed();
+}
+
+void GameMetadata::continueLibraryPass() {
+  // Stopping by hand means stopped, until the next launch or an explicit update.
+  if (m_stoppedByHand || m_editing || m_library == nullptr)
+    return;
+  // Reading keys from the keyring is work that finishes on its own, so look again shortly
+  // rather than waiting to be told. Wanting credentials is different: that waits for an event.
+  if (busy()) {
+    m_settle.start();
+    return;
+  }
+  if ((m_insights == nullptr || !m_insights->configured()) && !hasGridKey())
+    return;
+  m_cancelled = false;
+  for (int row = 0; row < m_library->rowCount(); ++row) {
+    QVariantMap game;
+    const auto roles = m_library->roleNames();
+    for (auto it = roles.cbegin(); it != roles.cend(); ++it)
+      game.insert(QString::fromUtf8(it.value()),
+                  m_library->data(m_library->index(row), it.key()));
+    enqueue(game);
+  }
+  if (m_queue.isEmpty())
+    return;
+  promoteVisibleGames();
+  next();
+}
+
+QList<QVariantMap> GameMetadata::orderForIdentification(const QList<QVariantMap>& games,
+                                                        const QSet<QString>& onScreen) {
+  QList<QVariantMap> visible;
+  // Everything else is grouped by system and then taken a system at a time in turn. Walking the
+  // library in order meant a small system sat behind every ROM of a large one, which is why
+  // eight Nintendo 64 games could go unidentified while a 1,387 game shelf worked through.
+  QList<QString> order;
+  QHash<QString, QList<QVariantMap>> bySystem;
+  for (const QVariantMap& game : games) {
+    if (onScreen.contains(game.value("metadataKey").toString())) {
+      visible.append(game);
+      continue;
+    }
+    const QString system = game.value("system").toString();
+    if (!bySystem.contains(system))
+      order.append(system);
+    bySystem[system].append(game);
+  }
+  QList<QVariantMap> rest;
+  for (bool moved = true; moved;) {
+    moved = false;
+    for (const QString& system : order) {
+      auto& remaining = bySystem[system];
+      if (remaining.isEmpty())
+        continue;
+      rest.append(remaining.takeFirst());
+      moved = true;
+    }
+  }
+  return visible + rest;
+}
+
+void GameMetadata::promoteVisibleGames() {
+  if (m_queue.isEmpty())
+    return;
+  QSet<QString> onScreen;
+  if (m_visible != nullptr)
+    for (int row = 0; row < m_visible->rowCount(); ++row)
+      onScreen.insert(
+          m_visible->data(m_visible->index(row, 0), GameRoles::MetadataKey).toString());
+  const QList<QVariantMap> ordered =
+      orderForIdentification(QList<QVariantMap>(m_queue.cbegin(), m_queue.cend()), onScreen);
+  m_queue.clear();
+  for (const QVariantMap& game : ordered)
+    m_queue.enqueue(game);
+}
+
+void GameMetadata::dropUnwantedPortraits() {
+  if (m_library == nullptr)
+    return;
+  int dropped = 0;
+  for (int row = 0; row < m_library->rowCount(); ++row) {
+    const QModelIndex game = m_library->index(row);
+    const QString id = game.data(GameRoles::MetadataKey).toString();
+    if (id.isEmpty())
+      continue;
+    auto value = entry(id);
+    if (!value.contains("portrait"))
+      continue;
+    if (wantsPortraitCover(game.data(GameRoles::System).toString(),
+                           game.data(GameRoles::Source).toString(),
+                           game.data(GameRoles::SourceCoverPath).toString()))
+      continue;
+    // A portrait the user chose is stored as a custom cover, which outranks this and stays.
+    value.remove("portrait");
+    value.remove("gridCoverId");
+    persist(id, value);
+    ++dropped;
+  }
+  if (dropped > 0) {
+    m_status = QStringLiteral("Restored artwork on %1 %2")
+                   .arg(dropped)
+                   .arg(dropped == 1 ? "game" : "games");
+    emit changed();
+  }
+}
 void GameMetadata::persist(const QString& id, const QVariantMap& value) {
   if (id.isEmpty())
     return;
@@ -173,8 +485,57 @@ void GameMetadata::inspect(const QVariantMap& game) {
   m_selected = game;
   m_candidates.clear();
   m_covers.clear();
+  // Someone looking at a game's details is waiting on that game, so it goes to the front rather
+  // than taking its turn behind the rest of the library.
+  const QString key = game.value("metadataKey").toString();
+  if (!key.isEmpty()) {
+    for (qsizetype at = 0; at < m_queue.size(); ++at) {
+      if (m_queue.at(at).value("metadataKey").toString() != key)
+        continue;
+      if (at > 0)
+        m_queue.move(at, 0);
+      break;
+    }
+  }
   emit changed();
 }
+QByteArray GameMetadata::matchingRulesFingerprint() {
+  // Representative of every rule: dump tags, sorted articles, accents, brand prefixes,
+  // catalogue numbers, editions that must survive, and the platforms each system searches.
+  static const QStringList titles{
+      QStringLiteral("Chrono Trigger (USA)"),
+      QStringLiteral("Star Fox (EU, Rev 1)"),
+      QStringLiteral("Legend of Zelda, The - A Link to the Past (NA)"),
+      QStringLiteral("Slayers (English Translated by Dynamic Designs, Rev 1.01)"),
+      QStringLiteral("Mega Man X3 (Prototype - NTSC Conversion)"),
+      QStringLiteral("Pokémon Stadium 2"),
+      QStringLiteral("Disney's DuckTales"),
+      QStringLiteral("1636 - Pokemon Fire Red"),
+      QStringLiteral("Sonic 3 (& Knuckles)"),
+      QStringLiteral("Persona 3 Reload (Digital Deluxe Edition)")};
+  QByteArray material;
+  for (const QString& title : titles)
+    material += normalizedTitle(title).toUtf8() + '\n';
+  for (const QString& system :
+       {QStringLiteral("snes"), QStringLiteral("nes"), QStringLiteral("n64"),
+        QStringLiteral("dreamcast"), QStringLiteral("switch"), QString{}}) {
+    material += system.toUtf8() + '=';
+    for (int platform : platformIds(system))
+      material += QByteArray::number(platform) + ',';
+    material += '\n';
+  }
+  return QCryptographicHash::hash(material, QCryptographicHash::Sha256).toHex().left(16);
+}
+
+bool GameMetadata::needsIdentifying(const QVariantMap& saved, qint64 now) {
+  // An answer produced by older rules is stale however recently it was written. Without this a
+  // matching fix would reach existing libraries only as each entry aged out, which for a shelf
+  // marked "Needs identification" means a month of looking broken.
+  if (saved.value("matchVersion").toInt() < kMatchVersion)
+    return true;
+  return saved.value("updated").toLongLong() <= now - kRatingFreshnessSeconds;
+}
+
 void GameMetadata::enqueue(const QVariantMap& game) {
   if (game.value("isPortal").toBool() || game.value("metadataKey").toString().isEmpty())
     return;
@@ -182,9 +543,12 @@ void GameMetadata::enqueue(const QVariantMap& game) {
   if (saved.value("rejected").toBool())
     return;
   const qint64 now = QDateTime::currentSecsSinceEpoch();
-  const bool ratings = m_insights && m_insights->configured() &&
-                       saved.value("updated").toLongLong() <= now - 30 * 86400;
-  const bool portrait = hasGridKey() && !QFileInfo::exists(saved.value("portrait").toString()) &&
+  const bool ratings = m_insights && m_insights->configured() && needsIdentifying(saved, now);
+  const bool portrait = hasGridKey() &&
+                        wantsPortraitCover(game.value("system").toString(),
+                                           game.value("source").toString(),
+                                           game.value("sourceCoverPath").toString()) &&
+                        !QFileInfo::exists(saved.value("portrait").toString()) &&
                         saved.value("coverAttempt").toLongLong() <= now - 86400;
   if (!ratings && !portrait)
     return;
@@ -198,6 +562,7 @@ void GameMetadata::refreshLibrary() {
     return;
   }
   m_cancelled = false;
+  m_stoppedByHand = false;
   m_queue.clear();
   for (int i = 0; i < m_library->rowCount(); ++i) {
     QVariantMap game;
@@ -206,6 +571,7 @@ void GameMetadata::refreshLibrary() {
       game.insert(QString::fromUtf8(it.value()), m_library->data(m_library->index(i), it.key()));
     enqueue(game);
   }
+  promoteVisibleGames();
   next();
 }
 void GameMetadata::next() {
@@ -213,16 +579,32 @@ void GameMetadata::next() {
   if (m_busy || m_secrets.isRunning() || m_cancelled)
     return;
   if (m_queue.isEmpty()) {
-    m_status = "Library metadata is up to date";
+    // Say how many games could not be identified confidently, so the exceptions are a known
+    // quantity rather than something to discover one game at a time.
+    int unidentified = 0;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
+      if (it.value().value("matchStatus").toString() == "Needs identification")
+        ++unidentified;
+    m_status = unidentified == 0
+                   ? QStringLiteral("Library metadata is up to date")
+                   : QStringLiteral("Library metadata is up to date. %1 %2 identification; open a "
+                                    "game's details to choose its match.")
+                         .arg(unidentified)
+                         .arg(unidentified == 1 ? "game needs" : "games need");
     emit changed();
     return;
   }
   m_active = m_queue.dequeue();
   m_manual = false;
+  m_numberedRetryTitle.clear();
   m_busy = true;
   m_igdbStage = "games";
   auto saved = entry(key());
-  if (saved.value("updated").toLongLong() > QDateTime::currentSecsSinceEpoch() - 30 * 86400) {
+  // The same rule that decided this game was worth queuing decides whether it is identified
+  // again. Judging freshness by the timestamp alone here meant every game queued because the
+  // rules had changed was dequeued, sent straight to artwork, and never re-identified, so its
+  // recorded rule version never moved and the whole library stayed on old answers forever.
+  if (!needsIdentifying(saved, QDateTime::currentSecsSinceEpoch())) {
     gridSearch();
     return;
   }
@@ -249,7 +631,7 @@ void GameMetadata::next() {
   if (m_insights && m_insights->busy()) {
     m_busy = false;
     m_queue.prepend(m_active);
-    QTimer::singleShot(500, this, &GameMetadata::next);
+    QTimer::singleShot(kBetweenGamesMs, this, &GameMetadata::next);
     return;
   }
   gridSearch();
@@ -261,6 +643,7 @@ void GameMetadata::search(const QString& title) {
   m_igdbStage = "games";
   m_active = m_selected;
   m_manual = true;
+  m_numberedRetryTitle.clear();
   m_candidateProvider = "igdb";
   m_candidates.clear();
   m_covers.clear();
@@ -323,7 +706,7 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     finish("IGDB returned invalid data. Cached metadata is unchanged.");
     return;
   }
-  const auto matches = parseMatches(data, platformId(m_active.value("system").toString()));
+  const auto matches = parseMatches(data, platformIds(m_active.value("system").toString()));
   if (m_manual) {
     m_candidates = matches;
     m_candidateProvider = "igdb";
@@ -332,19 +715,71 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     return;
   }
   const auto saved = entry(key());
+  // A licensed game is often catalogued with its publisher in front, as Disney's DuckTales for
+  // a cartridge labelled DuckTales. Comparing with that prefix removed as well recognises it.
+  static const QRegularExpression brandPrefix(QStringLiteral("^[\\p{L}\\p{N} ]{2,24}? s "));
+  const auto sameGame = [](const QString& candidate, const QString& local) {
+    if (candidate == local)
+      return true;
+    QString withoutBrand = candidate;
+    withoutBrand.remove(brandPrefix);
+    return !withoutBrand.isEmpty() && withoutBrand == local;
+  };
+  // A match the user chose stays chosen. Refreshing its rating must never hand the game to a
+  // different catalogue entry, however well another one scores.
+  const bool userChose = saved.value("manualMatch").toBool() && saved.value("igdbId").toLongLong() > 0;
   QVariantList exact;
-  for (const auto& match : matches)
+  for (const auto& match : matches) {
+    if (userChose) {
+      if (saved.value("igdbId").toLongLong() == match.toMap().value("id").toLongLong())
+        exact.append(match);
+      continue;
+    }
     if (m_igdbStage == "mappedGame" ||
         saved.value("igdbId").toLongLong() == match.toMap().value("id").toLongLong() ||
-        normalizedTitle(match.toMap().value("title").toString()) ==
-            normalizedTitle(m_active.value("title").toString()))
+        sameGame(normalizedTitle(match.toMap().value("title").toString()),
+                 normalizedTitle(m_numberedRetryTitle.isEmpty()
+                                     ? m_active.value("title").toString()
+                                     : m_numberedRetryTitle)))
       exact.append(match);
+  }
   if (exact.size() == 1)
     acceptMatch(exact.first().toMap());
-  else {
+  else if (exact.size() > 1) {
+    // Several catalogue entries carry the same name on the same platform: usually a regional
+    // duplicate or a compilation beside the game. The entry people actually rated is the one
+    // to keep, so pick the most rated and fall back to the lowest id for a stable answer.
+    QVariantMap best;
+    for (const auto& candidate : exact) {
+      const auto map = candidate.toMap();
+      if (best.isEmpty() ||
+          map.value("ratingCount").toInt() > best.value("ratingCount").toInt() ||
+          (map.value("ratingCount").toInt() == best.value("ratingCount").toInt() &&
+           map.value("id").toLongLong() < best.value("id").toLongLong()))
+        best = map;
+    }
+    acceptMatch(best);
+  } else {
+    // Some ROM sets number their files, as "1636 - Pokemon Fire Red". Searching for the number
+    // finds nothing. Trying again without it only after the title as written has failed means a
+    // game that really begins with a number, 1080 Snowboarding or 1942, is never mangled.
+    static const QRegularExpression catalogueNumber(QStringLiteral("^\\d{2,5}\\s*-\\s*(?=\\S)"));
+    const QString written = m_active.value("title").toString();
+    if (!m_manual && m_numberedRetryTitle.isEmpty() &&
+        catalogueNumber.match(written).hasMatch()) {
+      QString withoutNumber = written;
+      withoutNumber.remove(catalogueNumber);
+      const QByteArray retry = searchQuery(withoutNumber, m_active.value("system").toString());
+      if (!retry.isEmpty()) {
+        m_numberedRetryTitle = withoutNumber;
+        requestIgdb(retry, "games", "games");
+        return;
+      }
+    }
     auto value = saved;
     value["matchStatus"] = "Needs identification";
     value["updated"] = QDateTime::currentSecsSinceEpoch();
+    value["matchVersion"] = kMatchVersion;
     persist(key(), value);
     gridSearch();
   }
@@ -376,6 +811,7 @@ void GameMetadata::acceptMatch(const QVariantMap& match) {
   value["platform"] = m_active.value("system");
   value["localTitle"] = m_active.value("title");
   value["manualMatch"] = m_manual || value.value("manualMatch").toBool();
+  value["matchVersion"] = kMatchVersion;
   persist(key(), value);
   m_candidates.clear();
   requestIgdb("fields game_id,value; where game_id = " +
@@ -399,6 +835,7 @@ void GameMetadata::findCovers() {
   m_cancelled = false;
   m_active = m_selected;
   m_manual = true;
+  m_numberedRetryTitle.clear();
   m_busy = true;
   m_candidates.clear();
   m_covers.clear();
@@ -407,6 +844,22 @@ void GameMetadata::findCovers() {
 void GameMetadata::gridSearch() {
   if (!hasGridKey()) {
     finish("IGDB data saved. Connect SteamGridDB for portrait covers.");
+    return;
+  }
+  if (!m_manual && !wantsPortraitCover(m_active.value("system").toString(),
+                                       m_active.value("source").toString(),
+                                       m_active.value("sourceCoverPath").toString())) {
+    // An earlier run may have downloaded a portrait over artwork that should have been kept.
+    // Drop it so the game shows its own art again. A portrait the user picked is stored as a
+    // custom cover, which outranks this and is untouched. The file stays for the ordinary
+    // cache trim to reclaim.
+    auto value = entry(key());
+    if (value.contains("portrait")) {
+      value.remove("portrait");
+      value.remove("gridCoverId");
+      persist(key(), value);
+    }
+    finish("IGDB data saved. This game keeps the artwork its source provides.");
     return;
   }
   auto value = entry(key());
@@ -465,6 +918,18 @@ void GameMetadata::chooseCover(int index) {
 }
 void GameMetadata::get(const QUrl& url, const QString& stage) {
   emit changed();
+  // Hold SteamGridDB's API calls apart. Image downloads come from a CDN and are slow enough on
+  // their own. Without this the queue would burst three calls per game back to back.
+  if (stage != "image" && m_sinceGridRequest.isValid()) {
+    const qint64 waited = m_sinceGridRequest.elapsed();
+    if (waited < kGridRequestGapMs) {
+      QTimer::singleShot(kGridRequestGapMs - waited, this,
+                         [this, url, stage] { get(url, stage); });
+      return;
+    }
+  }
+  if (stage != "image")
+    m_sinceGridRequest.restart();
   QNetworkRequest request(url);
   request.setTransferTimeout(15000);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
@@ -515,13 +980,18 @@ void GameMetadata::response(const QByteArray& data, const QString& stage) {
       return;
     }
     QDir().mkpath(m_cacheRoot);
+    // Covers are photographs and illustrations, and lossless storage was costing about 750 KB
+    // each. A library of a thousand games would have filled the artwork cache on its own and
+    // then spent the rest of its life evicting and downloading the same covers. JPEG at this
+    // quality is indistinguishable on a card and roughly a fifth of the size.
     const QString path =
         m_cacheRoot + '/' +
         QString::fromLatin1(
             QCryptographicHash::hash(key().toUtf8(), QCryptographicHash::Sha256).toHex()) +
-        '-' + QString::number(m_downloadId) + ".png";
+        '-' + QString::number(m_downloadId) + ".jpg";
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || !image.save(&file, "PNG") || !file.commit()) {
+    const QImage opaque = image.convertToFormat(QImage::Format_RGB32);
+    if (!file.open(QIODevice::WriteOnly) || !opaque.save(&file, "JPG", 92) || !file.commit()) {
       finish("Could not save portrait");
       return;
     }
@@ -603,7 +1073,7 @@ void GameMetadata::finish(const QString& message) {
   m_status = message;
   emit changed();
   if (!m_queue.isEmpty())
-    QTimer::singleShot(500, this, &GameMetadata::next);
+    QTimer::singleShot(kBetweenGamesMs, this, &GameMetadata::next);
 }
 void GameMetadata::storeGridKey(QString key) {
   if (busy())
@@ -629,6 +1099,9 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
     if (!result.success) {
       result.secret.fill('\0');
       finish("Secret Service could not update the SteamGridDB key");
+      // Ratings do not need this key, so a failure here must not end the pass.
+      if (!m_stoppedByHand && !m_editing)
+        m_settle.start();
       return;
     }
     m_gridKey.fill('\0');
@@ -645,8 +1118,12 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
     }
     finish(action == 2 ? "SteamGridDB disconnected. Cached covers are kept."
                        : "SteamGridDB key available");
+    // The key arriving can be the thing that makes work possible, so look again.
+    if (!m_stoppedByHand && !m_editing && !busy())
+      m_settle.start();
   });
   m_secrets.setFuture(QtConcurrent::run([action, value]() mutable {
+    QMutexLocker keyring(&secretServiceLock());
     InsightsSecretResult result;
     SecretSchema* schema =
         secret_schema_new("io.github.tsouth89.Omakade.SteamGridDB", SECRET_SCHEMA_NONE, "service",
@@ -680,6 +1157,8 @@ void GameMetadata::secretOperation(int action, QByteArray value) {
 void GameMetadata::cancel() {
   m_queue.clear();
   m_cancelled = true;
+  m_stoppedByHand = true;
+  m_settle.stop();
   m_status = m_busy ? "Stopping after the current request" : "Metadata update stopped";
   emit changed();
 }
@@ -739,7 +1218,8 @@ void GameMetadata::trimPortraitCache() {
   const QDir cache(m_cacheRoot);
   qint64 kept = 0;
   QSet<QString> removed;
-  for (const auto& file : cache.entryInfoList({"*.png"}, QDir::Files, QDir::Time)) {
+  for (const auto& file :
+       cache.entryInfoList({"*.jpg", "*.png"}, QDir::Files, QDir::Time)) {
     if (kept + file.size() <= m_cacheLimitBytes)
       kept += file.size();
     else if (QFile::remove(file.absoluteFilePath()))
