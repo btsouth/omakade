@@ -111,6 +111,23 @@ FocusScope {
         }
     }
 
+    readonly property string sourceLabel: {
+        const chosen = root.libraryModel.sourceFilters
+        if (!chosen || chosen.length === 0)
+            return "ALL"
+        if (chosen.length === 1)
+            return chosen[0].toUpperCase()
+        const grouped = root.libraryModel.sourceFilter
+        if (grouped && grouped.toUpperCase() === "EMULATED")
+            return "EMULATED"
+        return chosen.length + " SOURCES"
+    }
+    readonly property string sortLabel:
+        root.libraryModel.sortMode === 1 ? "RECENT"
+      : root.libraryModel.sortMode === 2 ? "PLAYTIME"
+      : root.libraryModel.sortMode === 3 ? "RATING"
+      : root.libraryModel.sortMode === 4 ? "POPULARITY" : "TITLE"
+
     function selectMode(mode) {
         libraryModel.mode = mode
         currentIndex = libraryModel.rowCount() > 0 ? 0 : -1
@@ -139,7 +156,7 @@ FocusScope {
                        : -1
         refreshCurrentGame()
         Qt.callLater(function() {
-            browseButton.forceActiveFocus(Qt.TabFocusReason)
+            sourceButton.forceActiveFocus(Qt.TabFocusReason)
         })
     }
 
@@ -353,49 +370,63 @@ FocusScope {
                     root.libraryModel.consoleFilter = ""
                     root.currentIndex = root.libraryModel.rowCount() > 0 ? 0 : -1
                 }
-                KeyNavigation.right: allButton
+                KeyNavigation.right: showButton
                 KeyNavigation.down: root.detailView ? viewButton : gameGrid
             }
+            // What the library is showing, and what it is filtered and sorted by, are stated on
+            // the bar rather than hidden inside Browse. Being unable to tell that only one
+            // source was selected is what made the library look broken.
             GlassButton {
-                id: allButton
-                objectName: "couchAllButton"
-                text: "ALL"
+                id: showButton
+                objectName: "couchShowButton"
+                text: "SHOW: " + (root.libraryModel.mode === 1 ? "FAVORITES"
+                                : root.libraryModel.mode === 2 ? "RECENT" : "ALL")
+                Accessible.name: "Showing " + (root.libraryModel.mode === 1 ? "favorites"
+                                             : root.libraryModel.mode === 2 ? "recently played"
+                                                                            : "all games")
                 compact: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
-                selected: root.libraryModel.mode === 0
-                onClicked: root.selectMode(0)
+                selected: root.libraryModel.mode !== 0
+                onClicked: root.selectMode((root.libraryModel.mode + 1) % 3)
                 KeyNavigation.left: consoleButton.visible ? consoleButton : null
-                KeyNavigation.right: favoritesButton
+                KeyNavigation.right: sourceButton
                 KeyNavigation.down: root.detailView ? viewButton : gameGrid
             }
             GlassButton {
-                id: favoritesButton
-                objectName: "couchFavoritesFilterButton"
-                text: "FAVORITES"
+                id: sourceButton
+                objectName: "couchSourceButton"
+                text: "SOURCE: " + root.sourceLabel
+                Accessible.name: "Source filter: " + root.sourceLabel.toLowerCase()
                 compact: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
-                selected: root.libraryModel.mode === 1
-                onClicked: root.selectMode(1)
-                KeyNavigation.left: allButton
-                KeyNavigation.right: recentButton
+                selected: root.libraryModel.sourceFilters.length > 0
+                // Opens Browse on its source list, which is also the way to every other filter.
+                onClicked: root.openBrowse()
+                KeyNavigation.left: showButton
+                KeyNavigation.right: sortButton
                 KeyNavigation.down: root.detailView ? viewButton : gameGrid
             }
             GlassButton {
-                id: recentButton
-                objectName: "couchRecentButton"
-                text: "RECENT"
+                id: sortButton
+                objectName: "couchSortButton"
+                text: "SORT: " + root.sortLabel
+                Accessible.name: "Sorted by " + root.sortLabel.toLowerCase()
                 compact: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
-                selected: root.libraryModel.mode === 2
-                onClicked: root.selectMode(2)
-                KeyNavigation.left: favoritesButton
+                selected: root.libraryModel.sortMode !== 0
+                onClicked: {
+                    root.libraryModel.sortMode = (root.libraryModel.sortMode + 1) % 5
+                    root.currentIndex = root.libraryModel.rowCount() > 0 ? 0 : -1
+                    root.refreshCurrentGame()
+                }
+                KeyNavigation.left: sourceButton
                 KeyNavigation.right: consoleViewButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
             GlassButton {
                 id: consoleViewButton
                 objectName: "couchConsoleViewButton"
-                text: root.libraryModel.expandConsoles ? "CONSOLES: GAMES" : "CONSOLES: CARDS"
+                text: "CONSOLES"
                 Accessible.name: "Console view: " + (root.libraryModel.expandConsoles ? "games" : "cards")
                 compact: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
@@ -405,31 +436,20 @@ FocusScope {
                     root.currentIndex = root.libraryModel.rowCount() > 0 ? 0 : -1
                     root.refreshCurrentGame()
                 }
-                KeyNavigation.left: recentButton
+                KeyNavigation.left: sortButton
                 KeyNavigation.right: layoutButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
             GlassButton {
                 id: layoutButton
                 objectName: "couchLayoutButton"
-                text: root.detailView ? "VIEW · DETAIL" : "VIEW · GRID"
+                text: root.detailView ? "VIEW: DETAIL" : "VIEW: GRID"
                 iconText: root.detailView ? "▤" : "▦"
                 compact: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
                 selected: true
                 onClicked: root.toggleLibraryView()
                 KeyNavigation.left: consoleViewButton
-                KeyNavigation.right: browseButton
-                KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
-            }
-            GlassButton {
-                id: browseButton
-                objectName: "couchBrowseButton"
-                text: "BROWSE"
-                compact: true
-                displayScale: Math.max(1, root.uiScale * 1.18)
-                onClicked: root.openBrowse()
-                KeyNavigation.left: layoutButton
                 KeyNavigation.right: searchButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
@@ -444,7 +464,7 @@ FocusScope {
                 compact: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
                 onClicked: root.openSearch()
-                KeyNavigation.left: browseButton
+                KeyNavigation.left: layoutButton
                 KeyNavigation.right: settingsButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
@@ -630,7 +650,7 @@ FocusScope {
                 displayScale: Math.max(1, root.uiScale * 1.2)
                 enabled: root.currentIndex >= 0
                 onClicked: root.gameActivated(root.currentIndex)
-                KeyNavigation.up: allButton
+                KeyNavigation.up: showButton
                 KeyNavigation.right: favoriteButton
                 KeyNavigation.down: gameStrip
             }
@@ -896,7 +916,7 @@ FocusScope {
 
         Keys.onUpPressed: function(event) {
             if (currentIndex >= 0 && currentIndex < columnCount) {
-                allButton.forceActiveFocus(Qt.TabFocusReason)
+                showButton.forceActiveFocus(Qt.TabFocusReason)
                 event.accepted = true
             } else {
                 event.accepted = false
@@ -926,6 +946,8 @@ FocusScope {
             required property string source
             required property string appId
             required property bool favorite
+            required property int rating
+            required property int hours
             required property color accentStart
             required property color accentEnd
             readonly property bool current: gameGrid.currentIndex === index
@@ -1025,6 +1047,33 @@ FocusScope {
                     }
                 }
 
+                // Sitting in a fixed corner lets the eye read a column of ratings down the grid,
+                // which a line of text under the card cannot do at television distance. Games
+                // without a rating simply have no badge.
+                Rectangle {
+                    objectName: "couchCardRating"
+                    visible: gridCard.rating >= 0
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10 * root.uiScale
+                    anchors.bottomMargin: 14 * root.uiScale
+                    width: gridRatingText.implicitWidth + 14 * root.uiScale
+                    height: 26 * root.uiScale
+                    radius: 5 * root.uiScale
+                    color: root.alpha(Theme.darkerBackground, 0.86)
+                    border.color: root.alpha(Theme.brightForeground, 0.24)
+
+                    Text {
+                        id: gridRatingText
+                        anchors.centerIn: parent
+                        text: gridCard.rating + "%"
+                        color: Theme.brightForeground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13 * root.uiScale
+                        font.weight: Font.DemiBold
+                    }
+                }
+
                 Rectangle {
                     visible: gridCard.current
                     anchors.left: parent.left
@@ -1072,6 +1121,7 @@ FocusScope {
                 anchors.rightMargin: 11 * root.uiScale
                 anchors.bottomMargin: 8 * root.uiScale
                 text: (gridCard.source || gridCard.subtitle || "LIBRARY").toUpperCase()
+                      + (gridCard.hours > 0 ? " · " + gridCard.hours + "H" : "")
                 textFormat: Text.PlainText
                 color: gridCard.current ? Theme.accent : Theme.mutedText
                 font.family: Theme.fontFamily

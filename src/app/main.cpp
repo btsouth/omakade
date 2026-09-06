@@ -1356,10 +1356,10 @@ int main(int argc, char* argv[]) {
         auto* strip = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchGameStrip"));
         auto* grid = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchGameGrid"));
         auto* view = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchViewButton"));
-        auto* all = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchAllButton"));
-        auto* favorites =
-            quickWindow->findChild<QQuickItem*>(QStringLiteral("couchFavoritesFilterButton"));
-        auto* recent = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchRecentButton"));
+        auto* show = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchShowButton"));
+        auto* sourceFilter =
+            quickWindow->findChild<QQuickItem*>(QStringLiteral("couchSourceButton"));
+        auto* sortOrder = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchSortButton"));
         auto* layout = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchLayoutButton"));
         auto* favorite =
             quickWindow->findChild<QQuickItem*>(QStringLiteral("couchFavoriteButton"));
@@ -1368,7 +1368,6 @@ int main(int argc, char* argv[]) {
         auto* settingsScroll =
             quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsScroll"));
         auto* search = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchSearchButton"));
-        auto* browse = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchBrowseButton"));
         auto* browsePanel =
             quickWindow->findChild<QQuickItem*>(QStringLiteral("couchBrowsePanel"));
         auto* browseCategories =
@@ -1389,10 +1388,9 @@ int main(int argc, char* argv[]) {
         if (!quickWindow->property("couchMode").toBool() || couch == nullptr ||
             couchCursor == nullptr ||
             !couch->isVisible() || strip == nullptr || grid == nullptr || view == nullptr ||
-            all == nullptr || favorites == nullptr || recent == nullptr || layout == nullptr ||
+            show == nullptr || sourceFilter == nullptr || sortOrder == nullptr || layout == nullptr ||
             favorite == nullptr || settings == nullptr ||
             settingsScroll == nullptr || search == nullptr || preferences == nullptr ||
-            browse == nullptr ||
             browsePanel == nullptr || browseCategories == nullptr || browseOptions == nullptr ||
             keyboard == nullptr || keyboardGrid == nullptr || textEntryKeyboard == nullptr ||
             textEntryGrid == nullptr || desktopSearch == nullptr) {
@@ -1406,7 +1404,7 @@ int main(int argc, char* argv[]) {
         controller.keyRequested(Qt::Key_Right, Qt::NoModifier);
         QTimer::singleShot(50, quickWindow,
                            [quickWindow, &application, &controller, couch, couchCursor, strip, grid,
-                            view, all, favorites, recent, layout, favorite, browse, browsePanel,
+                            view, show, sourceFilter, sortOrder, layout, favorite, browsePanel,
                             browseCategories, browseOptions, search, settings, settingsScroll,
                             keyboard, keyboardGrid, textEntryKeyboard, textEntryGrid, desktopSearch,
                             preferences, fail] {
@@ -1495,7 +1493,7 @@ int main(int argc, char* argv[]) {
             fail(QStringLiteral("Couch console view toggle is missing"));
             return;
           }
-          const QList<QQuickItem*> detailToolbarPath = {all, favorites, recent, consoleView, layout};
+          const QList<QQuickItem*> detailToolbarPath = {show, sourceFilter, sortOrder, consoleView, layout};
           for (int step = 0; step < detailToolbarPath.size(); ++step) {
             if (!detailToolbarPath.at(step)->hasActiveFocus()) {
               fail(QStringLiteral("Controller detail toolbar step %1 failed; focus=%2")
@@ -1533,7 +1531,7 @@ int main(int argc, char* argv[]) {
             return;
           }
           sendKey(Qt::Key_Up);
-          const QList<QQuickItem*> toolbarPath = {all, favorites, recent, consoleView, layout, browse};
+          const QList<QQuickItem*> toolbarPath = {show, sourceFilter, sortOrder, consoleView, layout};
           for (int step = 0; step < toolbarPath.size(); ++step) {
             if (!toolbarPath.at(step)->hasActiveFocus()) {
               fail(QStringLiteral("Controller grid toolbar step %1 failed; focus=%2")
@@ -1557,6 +1555,16 @@ int main(int argc, char* argv[]) {
             if (step + 1 < toolbarPath.size()) {
               sendKey(Qt::Key_Right);
             }
+          }
+          // Browse now opens from the Source control, which states the current filter on the
+          // bar. Walk back to it rather than reaching Browse through a button of its own.
+          for (int step = 0; step < 3; ++step) {
+            sendKey(Qt::Key_Left);
+          }
+          if (!sourceFilter->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Left did not return along the couch toolbar; focus=%1")
+                     .arg(focusDescription()));
+            return;
           }
           sendKey(Qt::Key_Return);
           if (!couch->property("browseOpen").toBool() || !browsePanel->isVisible() ||
@@ -1601,9 +1609,19 @@ int main(int argc, char* argv[]) {
             return;
           }
           sendKey(Qt::Key_Escape);
-          if (couch->property("browseOpen").toBool() || !browse->hasActiveFocus()) {
+          // Browse is opened from the Source control, so closing it returns there.
+          if (couch->property("browseOpen").toBool() || !sourceFilter->hasActiveFocus()) {
             fail(QStringLiteral("Controller Back did not close couch Browse"));
             return;
+          }
+          // Source, Sort, Consoles, View, Search: the bar continues rightwards without a gap.
+          for (const QQuickItem* expected : {sortOrder, consoleView, layout}) {
+            sendKey(Qt::Key_Right);
+            if (!expected->hasActiveFocus()) {
+              fail(QStringLiteral("Controller could not walk the couch toolbar; focus=%1")
+                       .arg(focusDescription()));
+              return;
+            }
           }
           sendKey(Qt::Key_Right);
           if (!search->hasActiveFocus()) {
