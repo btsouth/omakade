@@ -1,5 +1,6 @@
 #include "metadata/GameMetadata.h"
 #include "library/ConsoleCatalog.h"
+#include <QSet>
 #include "library/GameRoles.h"
 #include "library/UnifiedGameModel.h"
 #include <QBuffer>
@@ -35,23 +36,105 @@ QString quoted(QString text) {
   text.replace(QRegularExpression("[\\x00-\\x1f]"), " ");
   return '"' + text.left(200) + '"';
 }
-QString cleanTitle(QString title) {
-  // Strip dump metadata only. Hacks, prototypes, remasters and editions keep their names.
-  title.remove(QRegularExpression(
+// One part of a parenthesised dump tag: a region, a language, a release flag, a revision, or a
+// translation or hack note. Editions and subtitles are deliberately absent, so "(Director's Cut)"
+// is never mistaken for dump metadata.
+bool dumpTagPart(const QString& part) {
+  static const QRegularExpression known(
       QStringLiteral(
-          R"(\s*\((?:(?:USA|Europe|Japan|World|U|E|J)(?:, ?(?:USA|Europe|Japan|World))*|(?:En|Ja|Fr|De|Es|It|Nl|Pt|Ko|Zh)(?:, ?[A-Za-z]{2})*|Rev [0-9.]+)\))"),
-      QRegularExpression::CaseInsensitiveOption));
-  title.remove(QStringLiteral("[!]"));
+          R"(^(?:NA|JP|EU|US|USA|EUR|JPN|Europe|Japan|World|Korea|China|Taiwan|Brazil|Australia|Asia|TW|KR|CN|AU|BR|CA|HK|RU|SP|FR|DE|ES|IT|NL|SE|PD|PE|U|E|J|W|UE|JU)$)"
+          R"(|^(?:En|Ja|Fr|De|Es|It|Nl|Pt|Ko|Zh|Sv|Da|No|Fi|Ru|Pl)$)"
+          R"(|^(?:Prototype|Proto|Beta|Alpha|Sample|Demo|Unl|Unlicensed|Pirate|Alt|Aftermarket|Homebrew|Enhanced Version|Virtual Console|Switch Online|Classic Mini)$)"
+          R"(|^(?:NTSC|PAL)(?: |-)Conversion$)"
+          R"(|^Rev(?:ision)?\.?(?: ?[0-9A-Za-z.]+)?$)"
+          R"(|^(?:v|Version) ?[0-9][0-9A-Za-z.]*$)"
+          R"(|Translat(?:ed|ion)|\bPatch\b|\bHack\b|\bFan ?Trans)"),
+      QRegularExpression::CaseInsensitiveOption);
+  return known.match(part.trimmed()).hasMatch();
+}
+
+// A group is dump metadata only when every comma or dash separated part is a known tag. That
+// keeps "(Balloon Fight)" and other real subtitles, and removes "(NA, Rev 1)" whole.
+bool dumpTagGroup(const QString& contents) {
+  // A note about a translation or a patch is dump metadata however many clauses it runs to,
+  // as in "(English Translated by Aeon Genesis, Rev 1.01 With Fixes by MTeam)".
+  static const QRegularExpression romHack(
+      QStringLiteral(R"(Translat(?:ed|ion)|\bPatch(?:ed)?\b|\bHack\b|\bFan ?Trans|\bFixes by\b)"),
+      QRegularExpression::CaseInsensitiveOption);
+  if (romHack.match(contents).hasMatch())
+    return true;
+  const QStringList parts =
+      contents.split(QRegularExpression(QStringLiteral(",| - ")), Qt::SkipEmptyParts);
+  if (parts.isEmpty())
+    return false;
+  for (const QString& part : parts)
+    if (!dumpTagPart(part))
+      return false;
+  return true;
+}
+
+QString cleanTitle(QString title) {
+  // ROM sets tag dumps with the region, language, revision, release state and any translation
+  // patch. IGDB knows none of that, so a tagged title never matches its catalogue entry.
+  // Editions, remasters and subtitles are not tags and keep their names.
+  static const QRegularExpression group(QStringLiteral(R"(\s*\(([^()]*)\))"));
+  static const QRegularExpression squareTag(QStringLiteral(R"(\s*\[[^\[\]]*\])"));
+  QString previous;
+  while (previous != title) {
+    previous = title;
+    QString stripped;
+    qsizetype at = 0;
+    auto matches = group.globalMatch(title);
+    while (matches.hasNext()) {
+      const auto match = matches.next();
+      if (!dumpTagGroup(match.captured(1)))
+        continue;
+      stripped += title.mid(at, match.capturedStart() - at);
+      at = match.capturedEnd();
+    }
+    title = stripped + title.mid(at);
+    // Square brackets only ever carry dump flags such as [!], [b1] or [T+Eng].
+    title.remove(squareTag);
+    title = title.simplified();
+  }
+  // "Legend of Zelda, The" is how a ROM set sorts a title, and the article can sit before a
+  // subtitle as in "Legend of Zelda, The - Ocarina of Time". Put it back in front so the search
+  // reads the way IGDB stores it.
+  static const QRegularExpression sortedArticle(
+      QStringLiteral(
+          R"(^(.*?),\s*(The|A|An|Der|Die|Das|Le|La|Les|El|Los|Il|Lo)(\s*[-:].*)?$)"),
+      QRegularExpression::CaseInsensitiveOption);
+  const auto article = sortedArticle.match(title);
+  if (article.hasMatch())
+    title = article.captured(2) + QLatin1Char(' ') + article.captured(1) + article.captured(3);
   return title.simplified();
 }
 } // namespace
 QString GameMetadata::normalizedTitle(QString title) {
   title = cleanTitle(title);
-  return title.normalized(QString::NormalizationForm_KC)
-      .toCaseFolded()
-      .replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}\"]+")), " ")
-      .simplified();
+  QString normalized = title.normalized(QString::NormalizationForm_KC)
+                           .toCaseFolded()
+                           .replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}\"]+")), " ")
+                           .simplified();
+  // A leading article is never what separates two games, and the catalogues disagree about it.
+  static const QRegularExpression leadingArticle(QStringLiteral("^(?:the|a|an) (?=.)"));
+  return normalized.remove(leadingArticle);
 }
+namespace {
+// Retro consoles get real box scans from the Libretro thumbnail server, and GameCube and Wii
+// covers come from GameTDB, so a fan-made portrait would replace authentic artwork. Switch,
+// Wii U and PS4 dumps only carry a square icon, which crops badly on a card, so those still
+// want a portrait. Games with no console, such as PC titles, want one too.
+bool prefersSourceCoverArt(const QString& system) {
+  const QString id = ConsoleCatalog::idFor(system);
+  if (id.isEmpty())
+    return false;
+  static const QSet<QString> iconOnly{QStringLiteral("switch"), QStringLiteral("wiiu"),
+                                      QStringLiteral("ps4")};
+  return !iconOnly.contains(id);
+}
+} // namespace
+
 int GameMetadata::platformId(const QString& system) {
   static const QHash<QString, int> ids{
       {"nes", 18}, {"snes", 19},    {"gb", 33},      {"gbc", 22},       {"gba", 24},
@@ -184,7 +267,8 @@ void GameMetadata::enqueue(const QVariantMap& game) {
   const qint64 now = QDateTime::currentSecsSinceEpoch();
   const bool ratings = m_insights && m_insights->configured() &&
                        saved.value("updated").toLongLong() <= now - 30 * 86400;
-  const bool portrait = hasGridKey() && !QFileInfo::exists(saved.value("portrait").toString()) &&
+  const bool portrait = hasGridKey() && !prefersSourceCoverArt(game.value("system").toString()) &&
+                        !QFileInfo::exists(saved.value("portrait").toString()) &&
                         saved.value("coverAttempt").toLongLong() <= now - 86400;
   if (!ratings && !portrait)
     return;
@@ -341,7 +425,21 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
       exact.append(match);
   if (exact.size() == 1)
     acceptMatch(exact.first().toMap());
-  else {
+  else if (exact.size() > 1) {
+    // Several catalogue entries carry the same name on the same platform: usually a regional
+    // duplicate or a compilation beside the game. The entry people actually rated is the one
+    // to keep, so pick the most rated and fall back to the lowest id for a stable answer.
+    QVariantMap best;
+    for (const auto& candidate : exact) {
+      const auto map = candidate.toMap();
+      if (best.isEmpty() ||
+          map.value("ratingCount").toInt() > best.value("ratingCount").toInt() ||
+          (map.value("ratingCount").toInt() == best.value("ratingCount").toInt() &&
+           map.value("id").toLongLong() < best.value("id").toLongLong()))
+        best = map;
+    }
+    acceptMatch(best);
+  } else {
     auto value = saved;
     value["matchStatus"] = "Needs identification";
     value["updated"] = QDateTime::currentSecsSinceEpoch();
@@ -407,6 +505,10 @@ void GameMetadata::findCovers() {
 void GameMetadata::gridSearch() {
   if (!hasGridKey()) {
     finish("IGDB data saved. Connect SteamGridDB for portrait covers.");
+    return;
+  }
+  if (!m_manual && prefersSourceCoverArt(m_active.value("system").toString())) {
+    finish("IGDB data saved. This system keeps its own box art.");
     return;
   }
   auto value = entry(key());

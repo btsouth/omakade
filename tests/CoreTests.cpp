@@ -6589,6 +6589,32 @@ void CoreTests::consoleLayoutsPinAndExpand() {
 
 void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QCOMPARE(GameMetadata::normalizedTitle("Chrono Trigger (USA)"), QStringLiteral("chrono trigger"));
+  // ROM sets tag every dump. None of it reaches IGDB, so none of it may reach the comparison.
+  const QString zelda = QStringLiteral("legend of zelda a link to the past");
+  QCOMPARE(GameMetadata::normalizedTitle("Tetris Attack (NA)"), QStringLiteral("tetris attack"));
+  QCOMPARE(GameMetadata::normalizedTitle("Star Fox (EU, Rev 1)"), QStringLiteral("star fox"));
+  QCOMPARE(GameMetadata::normalizedTitle("Super Goal! 2 (JP, Rev 1.01)"), QStringLiteral("super goal 2"));
+  QCOMPARE(GameMetadata::normalizedTitle("Donkey Kong Country (NA) [!]"), QStringLiteral("donkey kong country"));
+  QCOMPARE(GameMetadata::normalizedTitle("90 Minutes (NTSC Conversion)"), QStringLiteral("90 minutes"));
+  QCOMPARE(GameMetadata::normalizedTitle("Mega Man X3 (Prototype - NTSC Conversion)"), QStringLiteral("mega man x3"));
+  QCOMPARE(GameMetadata::normalizedTitle("A Bug's Life (TW)"), QStringLiteral("bug s life"));
+  // A translation note runs to any number of clauses and is still just dump metadata.
+  QCOMPARE(GameMetadata::normalizedTitle(
+               "Slayers (English Translated by Dynamic Designs and Matt's Messy Room, Rev 1.01)"),
+           QStringLiteral("slayers"));
+  QCOMPARE(GameMetadata::normalizedTitle(
+               "Cyber Knight (English Translated by Aeon Genesis, Rev 1.01 With Fixes by MTeam)"),
+           QStringLiteral("cyber knight"));
+  // A sorted article matches the way the catalogue writes it, before or without a subtitle.
+  QCOMPARE(GameMetadata::normalizedTitle("Legend of Zelda, The - A Link to the Past (NA)"), zelda);
+  QCOMPARE(GameMetadata::normalizedTitle("The Legend of Zelda: A Link to the Past"), zelda);
+  QCOMPARE(GameMetadata::normalizedTitle("Lion King, The (NA)"), QStringLiteral("lion king"));
+  // Editions, remasters and real subtitles are not dump tags and stay in the title.
+  QCOMPARE(GameMetadata::normalizedTitle("Sonic 3 (& Knuckles)"), QStringLiteral("sonic 3 knuckles"));
+  QVERIFY(GameMetadata::normalizedTitle("Alan Wake (Remastered)").contains("remastered"));
+  QVERIFY(GameMetadata::normalizedTitle("Persona 3 Reload (Digital Deluxe Edition)").contains("deluxe"));
+  QVERIFY(GameMetadata::normalizedTitle("Runner2 (Future Legend of Rhythm Alien)").contains("rhythm alien"));
+  QCOMPARE(GameMetadata::normalizedTitle("Prototype 2"), QStringLiteral("prototype 2"));
   QVERIFY(GameMetadata::normalizedTitle("Metroid Prime") != GameMetadata::normalizedTitle("Metroid Prime Remastered"));
   QVERIFY(GameMetadata::normalizedTitle("Final Fantasy VII") != GameMetadata::normalizedTitle("Final Fantasy VIII"));
   QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));
