@@ -6665,6 +6665,34 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
                    {"updated", now - GameMetadata::kRatingFreshnessSeconds - 1}};
   QVERIFY(GameMetadata::needsIdentifying(aged, now));
 
+  // A small system must not sit behind a large one. Games on screen come first, then the rest
+  // is taken a system at a time in turn, so eight N64 games are reached immediately rather than
+  // after 1,387 SNES ROMs.
+  QList<QVariantMap> waiting;
+  for (int i = 0; i < 6; ++i)
+    waiting.append({{"metadataKey", QStringLiteral("snes-%1").arg(i)}, {"system", "snes"}});
+  waiting.append({{"metadataKey", "n64-0"}, {"system", "n64"}});
+  waiting.append({{"metadataKey", "n64-1"}, {"system", "n64"}});
+  waiting.append({{"metadataKey", "dc-0"}, {"system", "dreamcast"}});
+  const auto ordered = GameMetadata::orderForIdentification(waiting, {QStringLiteral("snes-4")});
+  QCOMPARE(ordered.size(), waiting.size());
+  // What is on screen is identified first.
+  QCOMPARE(ordered.at(0).value("metadataKey").toString(), QStringLiteral("snes-4"));
+  // Then one game per system in turn, so no system waits for another to finish.
+  QCOMPARE(ordered.at(1).value("system").toString(), QStringLiteral("snes"));
+  QCOMPARE(ordered.at(2).value("system").toString(), QStringLiteral("n64"));
+  QCOMPARE(ordered.at(3).value("system").toString(), QStringLiteral("dreamcast"));
+  QCOMPARE(ordered.at(4).value("system").toString(), QStringLiteral("snes"));
+  QCOMPARE(ordered.at(5).value("system").toString(), QStringLiteral("n64"));
+  // Both N64 games and the Dreamcast game are reached well before the SNES shelf finishes.
+  int lastSnes = 0;
+  for (int i = 0; i < ordered.size(); ++i)
+    if (ordered.at(i).value("system").toString() == QStringLiteral("snes"))
+      lastSnes = i;
+  for (int i = 0; i < ordered.size(); ++i)
+    if (ordered.at(i).value("system").toString() != QStringLiteral("snes"))
+      QVERIFY(i < lastSnes);
+
   // A downloaded portrait replaces whatever artwork a game already has, so it is only worth
   // fetching when that artwork is missing or cannot serve as a cover.
   QTemporaryDir artwork;
