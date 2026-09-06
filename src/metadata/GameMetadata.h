@@ -6,6 +6,7 @@
 #include <QNetworkAccessManager>
 #include <QElapsedTimer>
 #include <QAbstractItemModel>
+#include <QSet>
 #include <QTimer>
 #include <QObject>
 #include <QQueue>
@@ -65,6 +66,11 @@ public:
   // True when a stored entry should be identified again: either the rules that decided it have
   // changed, or its rating has simply aged out.
   [[nodiscard]] static bool needsIdentifying(const QVariantMap& saved, qint64 now);
+  // The order games are identified in. Anything on screen comes first, and the rest is taken a
+  // system at a time in turn, so a shelf of 1,387 SNES ROMs cannot starve the eight N64 games
+  // behind it. Pure so the ordering can be tested without a network.
+  [[nodiscard]] static QList<QVariantMap> orderForIdentification(const QList<QVariantMap>& games,
+                                                                 const QSet<QString>& onScreen);
   // A downloaded portrait replaces the artwork a game already has, so it is only worth
   // fetching when that artwork is missing or cannot serve as a cover. Takes the system and the
   // path to the source's own art.

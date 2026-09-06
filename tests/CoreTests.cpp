@@ -11,6 +11,7 @@
 #include "achievements/SteamAchievementApi.h"
 #include "app/AppSettings.h"
 #include "artwork/SwitchTitleReader.h"
+#include "artwork/CoverImageProvider.h"
 #include "artwork/TgaImage.h"
 #include "artwork/ZArchiveReader.h"
 #include "backup/BackupArchive.h"
@@ -753,6 +754,7 @@ private slots:
   void dreamcastFoldersBecomeAPortal();
   void consoleLayoutsPinAndExpand();
   void metadataMatchingKeepsPlatformsAndEditions();
+  void coverCacheDecodesArtworkOnce();
   void coverSizesPersistIndependently();
   void controllerNavigationFollowsWindowFocus();
   void metadataPersistsRatingsAndPreservesCustomArt();
@@ -6585,6 +6587,39 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   cubes.refreshFromRoots({dolphinRoot});
   QCOMPARE(count("Dolphin"), 2);
   QCOMPARE(portalCount(), 0);
+}
+
+void CoreTests::coverCacheDecodesArtworkOnce() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("cover.png");
+  QImage art(600, 900, QImage::Format_RGB32);
+  art.fill(Qt::darkMagenta);
+  QVERIFY(art.save(path));
+
+  CoverImageProvider provider(16);
+  QSize produced;
+  const QSize wanted(128, 192);
+  const QImage first = provider.requestImage("f" + path, &produced, wanted);
+  QVERIFY(!first.isNull());
+  QCOMPARE(provider.misses(), 1);
+  QCOMPARE(provider.hits(), 0);
+  // Artwork is decoded to the size the card asked for, keeping its proportions.
+  QCOMPARE(first.size(), QSize(128, 192));
+
+  // The same card asking again is served from memory. Without this a library of any size read
+  // every cover from disk again on each scroll and filter change.
+  const QImage again = provider.requestImage("f" + path, &produced, wanted);
+  QCOMPARE(again, first);
+  QCOMPARE(provider.misses(), 1);
+  QCOMPARE(provider.hits(), 1);
+
+  // A different size is different artwork to a card, so it is decoded on its own.
+  provider.requestImage("f" + path, &produced, QSize(256, 384));
+  QCOMPARE(provider.misses(), 2);
+
+  // Anything that is not marked as a file or as bundled art is refused rather than guessed at.
+  QVERIFY(provider.requestImage("http://example.com/cover.png", &produced, wanted).isNull());
+  QVERIFY(provider.requestImage("f" + temp.filePath("missing.png"), &produced, wanted).isNull());
 }
 
 void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {

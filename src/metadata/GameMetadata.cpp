@@ -317,18 +317,51 @@ void GameMetadata::continueLibraryPass() {
   next();
 }
 
+QList<QVariantMap> GameMetadata::orderForIdentification(const QList<QVariantMap>& games,
+                                                        const QSet<QString>& onScreen) {
+  QList<QVariantMap> visible;
+  // Everything else is grouped by system and then taken a system at a time in turn. Walking the
+  // library in order meant a small system sat behind every ROM of a large one, which is why
+  // eight Nintendo 64 games could go unidentified while a 1,387 game shelf worked through.
+  QList<QString> order;
+  QHash<QString, QList<QVariantMap>> bySystem;
+  for (const QVariantMap& game : games) {
+    if (onScreen.contains(game.value("metadataKey").toString())) {
+      visible.append(game);
+      continue;
+    }
+    const QString system = game.value("system").toString();
+    if (!bySystem.contains(system))
+      order.append(system);
+    bySystem[system].append(game);
+  }
+  QList<QVariantMap> rest;
+  for (bool moved = true; moved;) {
+    moved = false;
+    for (const QString& system : order) {
+      auto& remaining = bySystem[system];
+      if (remaining.isEmpty())
+        continue;
+      rest.append(remaining.takeFirst());
+      moved = true;
+    }
+  }
+  return visible + rest;
+}
+
 void GameMetadata::promoteVisibleGames() {
-  if (m_queue.isEmpty() || m_visible == nullptr)
+  if (m_queue.isEmpty())
     return;
   QSet<QString> onScreen;
-  for (int row = 0; row < m_visible->rowCount(); ++row)
-    onScreen.insert(
-        m_visible->data(m_visible->index(row, 0), GameRoles::MetadataKey).toString());
-  if (onScreen.isEmpty())
-    return;
-  std::stable_partition(m_queue.begin(), m_queue.end(), [&onScreen](const QVariantMap& game) {
-    return onScreen.contains(game.value("metadataKey").toString());
-  });
+  if (m_visible != nullptr)
+    for (int row = 0; row < m_visible->rowCount(); ++row)
+      onScreen.insert(
+          m_visible->data(m_visible->index(row, 0), GameRoles::MetadataKey).toString());
+  const QList<QVariantMap> ordered =
+      orderForIdentification(QList<QVariantMap>(m_queue.cbegin(), m_queue.cend()), onScreen);
+  m_queue.clear();
+  for (const QVariantMap& game : ordered)
+    m_queue.enqueue(game);
 }
 
 void GameMetadata::dropUnwantedPortraits() {

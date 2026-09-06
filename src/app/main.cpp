@@ -10,6 +10,7 @@
 #include "input/ControllerFocusGuard.h"
 #include "input/CouchCursorManager.h"
 #include "app/IdleInhibitor.h"
+#include "artwork/CoverImageProvider.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
 #include "streaming/SunshineIntegration.h"
@@ -1059,6 +1060,9 @@ int main(int argc, char* argv[]) {
   }
   BackupManager backups(managerPaths, &preferences, steamLibrary != nullptr || backupFixture);
   QQmlApplicationEngine engine;
+  // Cover art is decoded once and kept, so scrolling away and back, or changing a filter, does
+  // not send every card to disk again. The engine takes ownership.
+  engine.addImageProvider(QStringLiteral("covers"), new CoverImageProvider());
   engine.rootContext()->setContextProperty("Backups", &backups);
   engine.rootContext()->setContextProperty("GogSettingsFixture", gogSettingsFixture);
   QObject::connect(&engine, &QQmlApplicationEngine::warnings, [](const QList<QQmlError>& warnings) {
