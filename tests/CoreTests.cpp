@@ -138,6 +138,62 @@ private:
   QString m_coverPath;
 };
 
+// A source that can rescan and find the same games, or find more, so the library's reaction to
+// each can be held to what it should be.
+class RescanningSourceModel final : public QAbstractListModel {
+public:
+  explicit RescanningSourceModel(int games) : m_games(games) {}
+  [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override {
+    return parent.isValid() ? 0 : m_games;
+  }
+  [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override {
+    if (!index.isValid() || index.row() >= m_games)
+      return {};
+    switch (role) {
+    case GameRoles::Title:
+      return QStringLiteral("Game %1").arg(index.row());
+    case GameRoles::Source:
+      return QStringLiteral("Rescanning");
+    case GameRoles::Runner:
+      return QString{};
+    case GameRoles::AppId:
+      return QStringLiteral("game-%1").arg(index.row());
+    case GameRoles::Installed:
+      return true;
+    default:
+      return {};
+    }
+  }
+  [[nodiscard]] QHash<int, QByteArray> roleNames() const override {
+    return {{GameRoles::Title, "title"},
+            {GameRoles::Source, "source"},
+            {GameRoles::Runner, "runner"},
+            {GameRoles::AppId, "appId"},
+            {GameRoles::Installed, "installed"}};
+  }
+  // A scan that finished and found exactly what was already there.
+  void rescanFindingNothingNew() {
+    beginResetModel();
+    endResetModel();
+  }
+  // A scan that finished and found more games.
+  void grow(int extra) {
+    beginResetModel();
+    m_games += extra;
+    endResetModel();
+  }
+  void loseFirstGame() {
+    beginResetModel();
+    --m_games;
+    ++m_offset;
+    endResetModel();
+  }
+
+private:
+  int m_games = 0;
+  int m_offset = 0;
+};
+
 class DelayedSteamModel final : public QAbstractListModel {
 public:
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override {
@@ -755,6 +811,7 @@ private slots:
   void consoleLayoutsPinAndExpand();
   void metadataMatchingKeepsPlatformsAndEditions();
   void coverCacheDecodesArtworkOnce();
+  void libraryOnlyResetsWhenGamesActuallyMove();
   void coverSizesPersistIndependently();
   void controllerNavigationFollowsWindowFocus();
   void metadataPersistsRatingsAndPreservesCustomArt();
@@ -6587,6 +6644,40 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   cubes.refreshFromRoots({dolphinRoot});
   QCOMPARE(count("Dolphin"), 2);
   QCOMPARE(portalCount(), 0);
+}
+
+void CoreTests::libraryOnlyResetsWhenGamesActuallyMove() {
+  QTemporaryDir temp;
+  RescanningSourceModel source(4);
+  UnifiedGameModel library(temp.filePath("library.sqlite3"));
+  library.addSourceModel(&source);
+  QCOMPARE(library.rowCount(), 4);
+
+  QSignalSpy resets(&library, &QAbstractItemModel::modelReset);
+  QSignalSpy inserted(&library, &QAbstractItemModel::rowsInserted);
+
+  // Nine sources scan on startup and most find exactly what was already there. A reset throws
+  // away every card on screen along with its artwork, so a scan that changed nothing must say
+  // nothing. This is what made the grid blink repeatedly through startup.
+  for (int scan = 0; scan < 5; ++scan)
+    source.rescanFindingNothingNew();
+  QCOMPARE(resets.count(), 0);
+  QCOMPARE(inserted.count(), 0);
+  QCOMPARE(library.rowCount(), 4);
+
+  // A source that finished scanning and found more games appends them, keeping the cards that
+  // are already on screen.
+  source.grow(3);
+  QCOMPARE(resets.count(), 0);
+  QCOMPARE(inserted.count(), 1);
+  QCOMPARE(library.rowCount(), 7);
+  QCOMPARE(inserted.first().at(1).toInt(), 4);
+  QCOMPARE(inserted.first().at(2).toInt(), 6);
+
+  // A reset is still correct when games genuinely move or disappear.
+  source.loseFirstGame();
+  QCOMPARE(resets.count(), 1);
+  QCOMPARE(library.rowCount(), 6);
 }
 
 void CoreTests::coverCacheDecodesArtworkOnce() {
