@@ -30,6 +30,12 @@ namespace {
 constexpr auto fields = "fields "
                         "name,platforms,first_release_date,total_rating,total_rating_count,"
                         "aggregated_rating,aggregated_rating_count; ";
+// IGDB allows four requests a second; 350 ms keeps a comfortable margin. SteamGridDB is not
+// documented as precisely, so its calls are held a little further apart. With both providers
+// paced at the request, the gap between games only has to yield to the event loop.
+constexpr int kGridRequestGapMs = 250;
+constexpr int kBetweenGamesMs = 100;
+
 QString quoted(QString text) {
   text.replace('\\', "\\\\");
   text.replace('"', "\\\"");
@@ -120,20 +126,30 @@ QString GameMetadata::normalizedTitle(QString title) {
   static const QRegularExpression leadingArticle(QStringLiteral("^(?:the|a|an) (?=.)"));
   return normalized.remove(leadingArticle);
 }
-namespace {
-// Retro consoles get real box scans from the Libretro thumbnail server, and GameCube and Wii
-// covers come from GameTDB, so a fan-made portrait would replace authentic artwork. Switch,
-// Wii U and PS4 dumps only carry a square icon, which crops badly on a card, so those still
-// want a portrait. Games with no console, such as PC titles, want one too.
-bool prefersSourceCoverArt(const QString& system) {
+bool GameMetadata::wantsPortraitCover(const QString& system, const QString& sourceCover) {
+  // Retro consoles get real box scans from the Libretro thumbnail server, and GameCube and Wii
+  // covers come from GameTDB. That artwork is authentic and a fan-made portrait would replace
+  // it, so those systems never ask for one. Switch, Wii U and PS4 dumps carry only a square
+  // icon, which crops a logo off the card, so they may.
   const QString id = ConsoleCatalog::idFor(system);
-  if (id.isEmpty())
-    return false;
   static const QSet<QString> iconOnly{QStringLiteral("switch"), QStringLiteral("wiiu"),
                                       QStringLiteral("ps4")};
-  return !iconOnly.contains(id);
+  if (!id.isEmpty() && !iconOnly.contains(id))
+    return false;
+  // Whatever the source, artwork that is already portrait shaped is the artwork to keep. Steam
+  // ships an official 600x900 capsule, and other launchers carry publisher covers; replacing
+  // those with fan art is a downgrade, so a portrait only fills a gap or a bad shape.
+  QString path = sourceCover;
+  if (path.startsWith(QStringLiteral("file://")))
+    path = QUrl(path).toLocalFile();
+  if (path.isEmpty() || !QFileInfo::exists(path))
+    return true;
+  QImageReader reader(path);
+  const QSize size = reader.size();
+  if (!size.isValid() || size.height() <= 0)
+    return true;
+  return double(size.width()) / double(size.height()) > kPortraitAspectLimit;
 }
-} // namespace
 
 int GameMetadata::platformId(const QString& system) {
   static const QHash<QString, int> ids{
@@ -275,7 +291,9 @@ void GameMetadata::enqueue(const QVariantMap& game) {
     return;
   const qint64 now = QDateTime::currentSecsSinceEpoch();
   const bool ratings = m_insights && m_insights->configured() && needsIdentifying(saved, now);
-  const bool portrait = hasGridKey() && !prefersSourceCoverArt(game.value("system").toString()) &&
+  const bool portrait = hasGridKey() &&
+                        wantsPortraitCover(game.value("system").toString(),
+                                           game.value("sourceCoverPath").toString()) &&
                         !QFileInfo::exists(saved.value("portrait").toString()) &&
                         saved.value("coverAttempt").toLongLong() <= now - 86400;
   if (!ratings && !portrait)
@@ -352,7 +370,7 @@ void GameMetadata::next() {
   if (m_insights && m_insights->busy()) {
     m_busy = false;
     m_queue.prepend(m_active);
-    QTimer::singleShot(500, this, &GameMetadata::next);
+    QTimer::singleShot(kBetweenGamesMs, this, &GameMetadata::next);
     return;
   }
   gridSearch();
@@ -537,8 +555,9 @@ void GameMetadata::gridSearch() {
     finish("IGDB data saved. Connect SteamGridDB for portrait covers.");
     return;
   }
-  if (!m_manual && prefersSourceCoverArt(m_active.value("system").toString())) {
-    finish("IGDB data saved. This system keeps its own box art.");
+  if (!m_manual && !wantsPortraitCover(m_active.value("system").toString(),
+                                       m_active.value("sourceCoverPath").toString())) {
+    finish("IGDB data saved. This game keeps the artwork its source provides.");
     return;
   }
   auto value = entry(key());
@@ -597,6 +616,18 @@ void GameMetadata::chooseCover(int index) {
 }
 void GameMetadata::get(const QUrl& url, const QString& stage) {
   emit changed();
+  // Hold SteamGridDB's API calls apart. Image downloads come from a CDN and are slow enough on
+  // their own. Without this the queue would burst three calls per game back to back.
+  if (stage != "image" && m_sinceGridRequest.isValid()) {
+    const qint64 waited = m_sinceGridRequest.elapsed();
+    if (waited < kGridRequestGapMs) {
+      QTimer::singleShot(kGridRequestGapMs - waited, this,
+                         [this, url, stage] { get(url, stage); });
+      return;
+    }
+  }
+  if (stage != "image")
+    m_sinceGridRequest.restart();
   QNetworkRequest request(url);
   request.setTransferTimeout(15000);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
@@ -735,7 +766,7 @@ void GameMetadata::finish(const QString& message) {
   m_status = message;
   emit changed();
   if (!m_queue.isEmpty())
-    QTimer::singleShot(500, this, &GameMetadata::next);
+    QTimer::singleShot(kBetweenGamesMs, this, &GameMetadata::next);
 }
 void GameMetadata::storeGridKey(QString key) {
   if (busy())

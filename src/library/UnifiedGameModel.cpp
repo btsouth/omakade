@@ -190,6 +190,8 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
     }
     return source.model->index(source.row, 0).data(role);
   }
+  case GameRoles::SourceCoverPath:
+    return source.model->index(source.row, 0).data(GameRoles::CoverPath);
   case GameRoles::HeroPath:
   case GameRoles::CustomHero:
   case GameRoles::LogoPath:
@@ -307,6 +309,7 @@ QHash<int, QByteArray> UnifiedGameModel::roleNames() const {
   roles.insert(GameRoles::RatingCount, "ratingCount");
   roles.insert(GameRoles::Popularity, "popularity");
   roles.insert(GameRoles::CustomCover, "customCover");
+  roles.insert(GameRoles::SourceCoverPath, "sourceCoverPath");
   roles.insert(GameRoles::CustomHero, "customHero");
   roles.insert(GameRoles::CustomLogo, "customLogo");
   roles.insert(GameRoles::Linked, "linked");

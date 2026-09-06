@@ -6629,6 +6629,33 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QVariantMap aged{{"matchVersion", GameMetadata::kMatchVersion},
                    {"updated", now - GameMetadata::kRatingFreshnessSeconds - 1}};
   QVERIFY(GameMetadata::needsIdentifying(aged, now));
+
+  // A downloaded portrait replaces whatever artwork a game already has, so it is only worth
+  // fetching when that artwork is missing or cannot serve as a cover.
+  QTemporaryDir artwork;
+  const auto write = [&artwork](const QString& name, int width, int height) {
+    QImage image(width, height, QImage::Format_RGB32);
+    image.fill(Qt::darkCyan);
+    const QString path = artwork.filePath(name);
+    return image.save(path) ? path : QString{};
+  };
+  const QString capsule = write("steam.jpg", 600, 900);      // Steam's official library capsule
+  const QString icon = write("switch.png", 1024, 1024);      // a Switch dump's square icon
+  const QString boxScan = write("snes.png", 700, 500);       // a wide SNES box scan
+  QVERIFY(!capsule.isEmpty() && !icon.isEmpty() && !boxScan.isEmpty());
+  // Official portrait artwork is never replaced, whether it arrives as a path or a file URL.
+  QVERIFY(!GameMetadata::wantsPortraitCover("", capsule));
+  QVERIFY(!GameMetadata::wantsPortraitCover("", QUrl::fromLocalFile(capsule).toString()));
+  // A square icon crops a logo off the card, so those games may take a portrait.
+  QVERIFY(GameMetadata::wantsPortraitCover("switch", icon));
+  QVERIFY(GameMetadata::wantsPortraitCover("ps4", icon));
+  // Retro consoles keep their authentic box art even though it is the wrong shape.
+  QVERIFY(!GameMetadata::wantsPortraitCover("snes", boxScan));
+  QVERIFY(!GameMetadata::wantsPortraitCover("Nintendo - Super Nintendo Entertainment System", boxScan));
+  QVERIFY(!GameMetadata::wantsPortraitCover("gamecube", ""));
+  // A game with no artwork at all has nothing to lose.
+  QVERIFY(GameMetadata::wantsPortraitCover("", ""));
+  QVERIFY(GameMetadata::wantsPortraitCover("", artwork.filePath("missing.png")));
   QVERIFY(GameMetadata::normalizedTitle("Metroid Prime") != GameMetadata::normalizedTitle("Metroid Prime Remastered"));
   QVERIFY(GameMetadata::normalizedTitle("Final Fantasy VII") != GameMetadata::normalizedTitle("Final Fantasy VIII"));
   QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));

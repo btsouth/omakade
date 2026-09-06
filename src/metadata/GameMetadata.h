@@ -4,6 +4,7 @@
 #include <QFutureWatcher>
 #include <QHash>
 #include <QNetworkAccessManager>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QQueue>
 #include <QSqlDatabase>
@@ -53,6 +54,12 @@ public:
   // True when a stored entry should be identified again: either the rules that decided it have
   // changed, or its rating has simply aged out.
   [[nodiscard]] static bool needsIdentifying(const QVariantMap& saved, qint64 now);
+  // A downloaded portrait replaces the artwork a game already has, so it is only worth
+  // fetching when that artwork is missing or cannot serve as a cover. Takes the system and the
+  // path to the source's own art.
+  [[nodiscard]] static bool wantsPortraitCover(const QString& system, const QString& sourceCover);
+  // Artwork at least as tall as 4:3 already works as a cover and is left alone.
+  static constexpr double kPortraitAspectLimit = 0.8;
   Q_INVOKABLE void search(const QString& title);
   Q_INVOKABLE void chooseMatch(int index);
   Q_INVOKABLE void rejectMatch();
@@ -100,6 +107,8 @@ private:
   QNetworkAccessManager* m_network;
   QFutureWatcher<InsightsSecretResult> m_secrets;
   QByteArray m_gridKey;
+  // Each provider is paced on its own, so the queue does not need a blanket pause between games.
+  QElapsedTimer m_sinceGridRequest;
   QQueue<QVariantMap> m_queue;
   QVariantMap m_selected, m_active;
   QVariantList m_candidates, m_covers;
