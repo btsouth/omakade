@@ -2096,7 +2096,20 @@ void CoreTests::backupArchiveRoundTripsAndRejectsInvalidContent() {
   original.library = {
       {"user_game_flags", QJsonArray{QJsonObject{{"source", "Steam"}, {"runner", ""}, {"app_id", "123"}, {"favorite", true}, {"hidden", QJsonValue::Null}}}},
       {"manual_games", QJsonArray{QJsonObject{{"id", "manual-test"}, {"entry", QString::fromUtf8(QJsonDocument(manual).toJson(QJsonDocument::Compact))}, {"favorite", false}, {"hidden", false}, {"active", true}}}},
-      {"artwork_overrides", QJsonArray{QJsonObject{{"source", "Steam"}, {"runner", ""}, {"app_id", "123"}, {"cover_path", art}, {"hero_path", ""}, {"logo_path", ""}}}}};
+      {"artwork_overrides", QJsonArray{QJsonObject{{"source", "Steam"}, {"runner", ""}, {"app_id", "123"}, {"cover_path", art}, {"hero_path", ""}, {"logo_path", ""}}}},
+      // Sources are a list now. A filter saved by an earlier build stored one name as a
+      // string, and an archive holding one must still export and import.
+      {"saved_filters", QJsonArray{
+          QJsonObject{{"id", "list-filter"}, {"name", "Two sources"}, {"name_key", "two sources"},
+              {"state_json", QString::fromUtf8(QJsonDocument(QJsonObject{{"version", 1},
+                  {"search", ""}, {"mode", 0}, {"sort", 4}, {"availability", 0},
+                  {"showHidden", false}, {"source", QJsonArray{"Steam", "Dolphin"}},
+                  {"status", ""}, {"collection", ""}, {"tag", ""}}).toJson(QJsonDocument::Compact))}},
+          QJsonObject{{"id", "legacy-filter"}, {"name", "One source"}, {"name_key", "one source"},
+              {"state_json", QString::fromUtf8(QJsonDocument(QJsonObject{{"version", 1},
+                  {"search", ""}, {"mode", 0}, {"sort", 0}, {"availability", 0},
+                  {"showHidden", false}, {"source", "Steam"},
+                  {"status", ""}, {"collection", ""}, {"tag", ""}}).toJson(QJsonDocument::Compact))}}}}};
   original.artwork.insert(art, imageBytes);
   QVERIFY2(BackupArchive::write(path, original, &error), qPrintable(error));
   BackupPayload restored;
@@ -2414,6 +2427,24 @@ void CoreTests::savedFiltersPersistAndPreserveQueries() {
     QVERIFY(filter.setCollectionMembership(0, "Weekend", true));
     QVERIFY(filter.applySavedFilter(id));
     QCOMPARE(filter.rowCount(), 1);
+    QVERIFY(filter.savedFilterMessage().isEmpty());
+    // Several source chips at once round trip, since a saved filter stores the whole selection.
+    filter.setSourceFilters({QStringLiteral("Demo"), QStringLiteral("Mock")});
+    const QVariantMap multiple = filter.filterState();
+    const QString multipleId = filter.saveCurrentFilter(QStringLiteral("Two sources"));
+    QVERIFY(!multipleId.isEmpty());
+    filter.setSourceFilters({});
+    QVERIFY(filter.applySavedFilter(multipleId));
+    QCOMPARE(filter.sourceFilters(), QStringList({QStringLiteral("Demo"), QStringLiteral("Mock")}));
+    QCOMPARE(filter.filterState(), multiple);
+    // A filter saved before sources became multi-select stored one name as a bare string.
+    // It still applies, rather than being reported as an unsupported format.
+    QVariantMap legacy = expected;
+    legacy.insert(QStringLiteral("source"), QStringLiteral("Demo"));
+    QVERIFY(model.saveFilter(QStringLiteral("legacy"), QStringLiteral("Legacy format"), legacy));
+    filter.setSourceFilters({});
+    QVERIFY(filter.applySavedFilter(QStringLiteral("legacy")));
+    QCOMPARE(filter.sourceFilters(), QStringList{QStringLiteral("Demo")});
     QVERIFY(filter.savedFilterMessage().isEmpty());
     QVariantMap future = expected;
     future.insert("version", 999);
