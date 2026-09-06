@@ -258,6 +258,15 @@ void GameMetadata::inspect(const QVariantMap& game) {
   m_covers.clear();
   emit changed();
 }
+bool GameMetadata::needsIdentifying(const QVariantMap& saved, qint64 now) {
+  // An answer produced by older rules is stale however recently it was written. Without this a
+  // matching fix would reach existing libraries only as each entry aged out, which for a shelf
+  // marked "Needs identification" means a month of looking broken.
+  if (saved.value("matchVersion").toInt() < kMatchVersion)
+    return true;
+  return saved.value("updated").toLongLong() <= now - kRatingFreshnessSeconds;
+}
+
 void GameMetadata::enqueue(const QVariantMap& game) {
   if (game.value("isPortal").toBool() || game.value("metadataKey").toString().isEmpty())
     return;
@@ -265,8 +274,7 @@ void GameMetadata::enqueue(const QVariantMap& game) {
   if (saved.value("rejected").toBool())
     return;
   const qint64 now = QDateTime::currentSecsSinceEpoch();
-  const bool ratings = m_insights && m_insights->configured() &&
-                       saved.value("updated").toLongLong() <= now - 30 * 86400;
+  const bool ratings = m_insights && m_insights->configured() && needsIdentifying(saved, now);
   const bool portrait = hasGridKey() && !prefersSourceCoverArt(game.value("system").toString()) &&
                         !QFileInfo::exists(saved.value("portrait").toString()) &&
                         saved.value("coverAttempt").toLongLong() <= now - 86400;
@@ -427,13 +435,22 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     return;
   }
   const auto saved = entry(key());
+  // A match the user chose stays chosen. Refreshing its rating must never hand the game to a
+  // different catalogue entry, however well another one scores.
+  const bool userChose = saved.value("manualMatch").toBool() && saved.value("igdbId").toLongLong() > 0;
   QVariantList exact;
-  for (const auto& match : matches)
+  for (const auto& match : matches) {
+    if (userChose) {
+      if (saved.value("igdbId").toLongLong() == match.toMap().value("id").toLongLong())
+        exact.append(match);
+      continue;
+    }
     if (m_igdbStage == "mappedGame" ||
         saved.value("igdbId").toLongLong() == match.toMap().value("id").toLongLong() ||
         normalizedTitle(match.toMap().value("title").toString()) ==
             normalizedTitle(m_active.value("title").toString()))
       exact.append(match);
+  }
   if (exact.size() == 1)
     acceptMatch(exact.first().toMap());
   else if (exact.size() > 1) {
@@ -454,6 +471,7 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     auto value = saved;
     value["matchStatus"] = "Needs identification";
     value["updated"] = QDateTime::currentSecsSinceEpoch();
+    value["matchVersion"] = kMatchVersion;
     persist(key(), value);
     gridSearch();
   }
@@ -485,6 +503,7 @@ void GameMetadata::acceptMatch(const QVariantMap& match) {
   value["platform"] = m_active.value("system");
   value["localTitle"] = m_active.value("title");
   value["manualMatch"] = m_manual || value.value("manualMatch").toBool();
+  value["matchVersion"] = kMatchVersion;
   persist(key(), value);
   m_candidates.clear();
   requestIgdb("fields game_id,value; where game_id = " +

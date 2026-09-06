@@ -44,6 +44,15 @@ public:
   }
   Q_INVOKABLE void inspect(const QVariantMap& game);
   Q_INVOKABLE void refreshLibrary();
+  // Identification depends on how titles are cleaned and how a match is accepted. Raise this
+  // whenever those rules change: every entry decided by older rules is then re-identified on
+  // the next update, instead of waiting out the ordinary freshness window with a stale answer.
+  static constexpr int kMatchVersion = 2;
+  // How long a rating stays fresh before it is fetched again.
+  static constexpr qint64 kRatingFreshnessSeconds = 30 * 86400;
+  // True when a stored entry should be identified again: either the rules that decided it have
+  // changed, or its rating has simply aged out.
+  [[nodiscard]] static bool needsIdentifying(const QVariantMap& saved, qint64 now);
   Q_INVOKABLE void search(const QString& title);
   Q_INVOKABLE void chooseMatch(int index);
   Q_INVOKABLE void rejectMatch();

@@ -6615,6 +6615,20 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QVERIFY(GameMetadata::normalizedTitle("Persona 3 Reload (Digital Deluxe Edition)").contains("deluxe"));
   QVERIFY(GameMetadata::normalizedTitle("Runner2 (Future Legend of Rhythm Alien)").contains("rhythm alien"));
   QCOMPARE(GameMetadata::normalizedTitle("Prototype 2"), QStringLiteral("prototype 2"));
+  QCOMPARE(GameMetadata::normalizedTitle("Super Mario All-Stars (NA)"),
+           QStringLiteral("super mario all stars"));
+
+  // An entry decided by older matching rules is stale however recently it was written, so a
+  // matching fix reaches an existing library on the next update instead of a month later.
+  const qint64 now = 1788700000;
+  QVariantMap current{{"matchVersion", GameMetadata::kMatchVersion}, {"updated", now - 60}};
+  QVERIFY(!GameMetadata::needsIdentifying(current, now));
+  QVariantMap olderRules{{"matchVersion", GameMetadata::kMatchVersion - 1}, {"updated", now - 60}};
+  QVERIFY(GameMetadata::needsIdentifying(olderRules, now));
+  QVERIFY(GameMetadata::needsIdentifying(QVariantMap{{"updated", now - 60}}, now));
+  QVariantMap aged{{"matchVersion", GameMetadata::kMatchVersion},
+                   {"updated", now - GameMetadata::kRatingFreshnessSeconds - 1}};
+  QVERIFY(GameMetadata::needsIdentifying(aged, now));
   QVERIFY(GameMetadata::normalizedTitle("Metroid Prime") != GameMetadata::normalizedTitle("Metroid Prime Remastered"));
   QVERIFY(GameMetadata::normalizedTitle("Final Fantasy VII") != GameMetadata::normalizedTitle("Final Fantasy VIII"));
   QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));
