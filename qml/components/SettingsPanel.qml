@@ -6,6 +6,13 @@ import QtQuick.Layouts
         id: settingsOverlay
         objectName: "settingsOverlay"
         function reveal(item) { if (host.isWithin(item, settingsScroll)) host.revealInScrollView(settingsScroll, item) }
+        // Main.qml owns the GOG folder actions, but the field lives here.
+        function focusGogFolderField() {
+            settingsOverlay.section = 0
+            settingsOverlay.sourceDetail = ""
+            gogLibraryPathField.forceActiveFocus()
+            settingsOverlay.reveal(gogLibraryPathField)
+        }
         required property var host
         property int libraryCount: 0
         property int section: 0
@@ -359,6 +366,45 @@ import QtQuick.Layouts
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
+                    visible: !DemoMode && settingsOverlay.sourceDetail === ""
+                    spacing: 8
+                    Text {
+                        text: "GAMES YOU ADD YOURSELF"
+                        color: Theme.brightForeground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11 * settingsPanel.uiScale
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Add a native game or a desktop entry that no launcher reports. Removing one from Omakade never deletes its files."
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11 * settingsPanel.uiScale
+                        wrapMode: Text.Wrap
+                    }
+                    RowLayout {
+                        spacing: 8
+                        GlassButton {
+                            objectName: "addManualGameButton"
+                            compact: true
+                            text: "ADD A GAME"
+                            onClicked: host.editManualGame("")
+                        }
+                        GlassButton {
+                            compact: true
+                            visible: ManualLibrary.count > 0
+                            text: "MANUAL GAMES · " + ManualLibrary.count
+                            onClicked: {
+                                Library.sourceFilters = ["Manual"]
+                                host.diagnosticsOpen = false
+                                host.focusLibrary()
+                            }
+                        }
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
                     visible: !DemoMode
                     spacing: 8
                     Text {
@@ -416,6 +462,112 @@ import QtQuick.Layouts
                             compact: true
                             text: "ADD FOLDER"
                             onClicked: host.chooseRomFolder()
+                        }
+                    }
+                }
+                ColumnLayout {
+                    objectName: "gogFoldersSection"
+                    Layout.fillWidth: true
+                    visible: (!DemoMode || GogSettingsFixture) && settingsOverlay.sourceDetail === ""
+                    spacing: 8
+                    Text {
+                        text: "EXTRA GOG FOLDERS"
+                        color: Theme.brightForeground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11 * settingsPanel.uiScale
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Standard folders are discovered automatically. Add a folder containing GOG installations. Removing it here never deletes game files."
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11 * settingsPanel.uiScale
+                        wrapMode: Text.Wrap
+                    }
+                    Repeater {
+                        model: Preferences.gogLibraryPaths
+                        ColumnLayout {
+                            required property string modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11 * settingsPanel.uiScale
+                                    wrapMode: Text.WrapAnywhere
+                                }
+                                GlassButton {
+                                    objectName: "gogRemoveFolder_" + index
+                                    compact: true
+                                    text: "REMOVE"
+                                    Accessible.name: "Remove GOG folder " + modelData
+                                    onClicked: host.removeGogLibraryFolder(modelData)
+                                }
+                            }
+                            Text {
+                                objectName: "gogFolderStatus_" + index
+                                Layout.fillWidth: true
+                                readonly property string scanState: HeroicLibrary
+                                    ? HeroicLibrary.statusText + HeroicLibrary.errorText : ""
+                                text: { scanState; return Preferences.gogLibraryPathStatus(modelData) }
+                                color: Theme.mutedText
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 10 * settingsPanel.uiScale
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+                    TextField {
+                        id: gogLibraryPathField
+                        objectName: "gogLibraryPathField"
+                        property bool controllerNavigation: host.couchMode
+                        Layout.fillWidth: true
+                        placeholderText: "/path/to/GOG games"
+                        Accessible.name: "GOG library folder path"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        placeholderTextColor: host.alpha(Theme.foreground, 0.42)
+                        font.pixelSize: 13 * settingsPanel.uiScale
+                        Keys.onReturnPressed: function(event) {
+                            host.handleCouchTextEntry(event, gogLibraryPathField, "GOG FOLDER", false,
+                                                      gogLibraryPathField.placeholderText)
+                        }
+                        Keys.onEnterPressed: function(event) {
+                            host.handleCouchTextEntry(event, gogLibraryPathField, "GOG FOLDER", false,
+                                                      gogLibraryPathField.placeholderText)
+                        }
+                        background: Rectangle {
+                            radius: Math.max(5, Theme.cornerRadius)
+                            color: host.alpha(Theme.foreground, 0.045)
+                            border.width: gogLibraryPathField.activeFocus ? 2 : 1
+                            border.color: gogLibraryPathField.activeFocus ? Theme.accent : host.alpha(Theme.foreground, 0.15)
+                        }
+                    }
+                    RowLayout {
+                        spacing: 8
+                        GlassButton {
+                            objectName: "gogAddFolderButton"
+                            compact: true
+                            text: "ADD FOLDER"
+                            onClicked: {
+                                if (Preferences.addGogLibraryPath(gogLibraryPathField.text)) {
+                                    gogLibraryPathField.clear()
+                                    host.showToast("GOG folder saved")
+                                } else {
+                                    host.showToast("Enter an absolute folder path. Up to 64 extra folders can be saved.")
+                                }
+                            }
+                        }
+                        GlassButton {
+                            compact: true
+                            visible: !host.couchMode
+                            text: "BROWSE"
+                            onClicked: host.openGogFolderDialog()
                         }
                     }
                 }
@@ -1058,6 +1210,13 @@ import QtQuick.Layouts
                     spacing: 14
                     visible: settingsOverlay.section === 4
                 GlassButton { compact: true; text: "CLEAR DOWNLOADED PORTRAITS"; enabled: Metadata && !Metadata.busy; onClicked: Metadata.clearPortraitCache() }
+                GlassButton {
+                    objectName: "backupSettingsButton"
+                    compact: true
+                    text: "BACKUP & RESTORE"
+                    enabled: Backups.available
+                    onClicked: host.openBackupEditor()
+                }
                 Repeater {
                     model: [
                         { label: "LIBRARY", value: settingsOverlay.libraryCount + " visible games" },

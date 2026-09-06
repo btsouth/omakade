@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -57,9 +58,13 @@ class AppSettings final : public QObject {
   Q_PROPERTY(bool sunshineGameApps READ sunshineGameApps WRITE setSunshineGameApps NOTIFY
                  sunshineChanged)
 
+  Q_PROPERTY(QStringList gogLibraryPaths READ gogLibraryPaths NOTIFY gogLibraryPathsChanged)
+
 public:
   explicit AppSettings(const QString& path = {}, QObject* parent = nullptr);
 
+  [[nodiscard]] QJsonObject backupSettings() const;
+  bool applyBackupSettings(const QJsonObject& settings, bool replace);
   [[nodiscard]] bool reducedMotion() const;
   void setReducedMotion(bool value);
   [[nodiscard]] int artworkCacheLimitMb() const;
@@ -143,7 +148,13 @@ public:
   [[nodiscard]] bool sunshineGameApps() const;
   void setSunshineGameApps(bool value);
 
+  [[nodiscard]] QStringList gogLibraryPaths() const;
+  Q_INVOKABLE bool addGogLibraryPath(const QString& path);
+  Q_INVOKABLE bool removeGogLibraryPath(const QString& path);
+  Q_INVOKABLE QString gogLibraryPathStatus(const QString& path) const;
+
 signals:
+  void gogLibraryPathsChanged();
   void reducedMotionChanged();
   void artworkCacheLimitMbChanged();
   void steamIdChanged();
@@ -165,11 +176,15 @@ signals:
   void preferStandaloneEmulatorsChanged();
 
 private:
+  struct UnloadedSettings {};
+  explicit AppSettings(UnloadedSettings) : QObject(nullptr) {}
+  void assignBackupSettings(const QJsonObject& settings);
   [[nodiscard]] static QString defaultPath();
   void load();
-  void save() const;
+  bool save() const;
 
   QString m_path;
+  QStringList m_gogLibraryPaths;
   bool m_reducedMotion = false;
   int m_artworkCacheLimitMb = 1024;
   QString m_steamId;

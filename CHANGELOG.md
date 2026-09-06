@@ -32,6 +32,17 @@ and more control over how your library looks.
   centered Couch Mode grids across cover sizes and window dimensions.
 - Add console cover artwork and improve handling of portrait, square, and wide art.
 
+### Library organization and backups
+
+- Add native games and desktop entries manually, with editable launch arguments.
+- Choose a preferred installation for linked games and add extra GOG folders.
+- Customize covers, hero images, and logos with independent resets.
+- Organize several games at once and save named library filters.
+- Pick a game from the current results, then decide whether to play it.
+- Back up personal library choices, settings, and artwork. Preview and merge or
+  replace a backup, with recovery if restoring is interrupted.
+- Use the new controls in Desktop and Couch Mode, including controller text entry.
+
 ### Fixes and improvements
 
 - Keep the screensaver and lock screen away while a launched game runs. Controllers

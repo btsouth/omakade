@@ -58,6 +58,18 @@ endif()
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(omakade_core STATIC
+  src/backup/BackupArchive.cpp
+  src/backup/BackupArchive.h
+  src/backup/BackupSnapshot.cpp
+  src/backup/BackupSnapshot.h
+  src/backup/BackupDatabase.cpp
+  src/backup/BackupDatabase.h
+  src/backup/BackupRecovery.cpp
+  src/backup/BackupRecovery.h
+  src/backup/BackupManager.cpp
+  src/backup/BackupManager.h
+  src/backup/BackupStartup.cpp
+  src/backup/BackupStartup.h
   src/achievements/AchievementModel.cpp
   src/achievements/AchievementModel.h
   src/achievements/RetroAchievementsApi.cpp
@@ -106,6 +118,9 @@ add_library(omakade_core STATIC
   src/library/Shadps4GameModel.h
   src/library/CemuGameModel.cpp
   src/library/CemuGameModel.h
+  src/library/ManualGameModel.cpp
+  src/library/ManualGameModel.h
+  src/library/PersonalDataRules.h
   src/library/MockGameModel.cpp
   src/library/MockGameModel.h
   src/library/SteamGameModel.cpp
@@ -215,6 +230,12 @@ qt_add_qml_module(omakade
     qml/components/SettingsPanel.qml
     qml/components/GlassButton.qml
     qml/components/LibraryView.qml
+    qml/screens/ArtworkEditor.qml
+    qml/screens/RestoreStartup.qml
+    qml/screens/BackupEditor.qml
+    qml/screens/SavedFiltersEditor.qml
+    qml/screens/BulkOrganizationEditor.qml
+    qml/screens/ManualGameEditor.qml
     qml/screens/GameDetails.qml
 )
 

@@ -28,12 +28,16 @@
   <releases>
     <release version="1.7.0" date="2026-09-06">
       <description>
-        <p>Console libraries, redesigned settings, and optional ratings and portrait covers.</p>
+        <p>Console libraries, redesigned settings, personal backups, and optional ratings and portrait covers.</p>
         <ul>
           <li>Discover GameCube and Wii games with Dolphin, Wii U games with Cemu, and dumped PS4 games with shadPS4.</li>
           <li>Switch between console cards and individual games on desktop and in Couch Mode.</li>
           <li>Adjust cover sizes and browse sources from the reorganized settings.</li>
           <li>Identify games with IGDB, sort by rating, and choose SteamGridDB portrait covers.</li>
+          <li>Add native games and desktop entries by hand, choose a preferred installation for linked games, and add extra GOG folders.</li>
+          <li>Customize covers, heroes, and logos, organize several games at once, save library filters, and pick a random game.</li>
+          <li>Back up and restore personal library choices, settings, and artwork.</li>
+          <li>Hold the screensaver off while a game launched from Omakade is running.</li>
         </ul>
       </description>
     </release>

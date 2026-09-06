@@ -44,6 +44,8 @@ enum Role {
   Rating,
   RatingCount,
   Popularity,
+  CustomHero,
+  CustomLogo,
 };
 
 inline QHash<int, QByteArray> names() {

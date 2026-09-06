@@ -8,6 +8,12 @@ import "screens"
 ApplicationWindow {
     id: root
 
+    property bool randomSelection: false
+    property bool backupEditorOpen: false
+    property bool bulkOrganizationOpen: false
+    property bool savedFiltersOpen: false
+    property bool artworkEditorOpen: false
+    property bool manualEditorOpen: false
     property bool detailOpen: false
     property var selectedGame: ({})
     property var selectedInstallation: ({})
@@ -16,6 +22,7 @@ ApplicationWindow {
     property int selectedIndex: -1
     property bool smokeReady: false
     function chooseRomFolder() { romFolderDialog.open() }
+    function openGogFolderDialog() { gogFolderDialog.open() }
     Connections {
         target: Metadata
         function onEntryChanged(key) {
@@ -65,9 +72,11 @@ ApplicationWindow {
                                           : OwnedGameCountOverride
     // Right from the end of the source row continues along the toolbar.
     readonly property Item sourceRowNextButton:
-        consoleGamesButton.visible && consoleGamesButton.enabled ? consoleGamesButton : sortButton
+        randomGameButton.visible && randomGameButton.enabled ? randomGameButton
+      : consoleGamesButton.visible && consoleGamesButton.enabled ? consoleGamesButton : sortButton
     readonly property Item sourceRowEndButton:
-        dolphinSourceButton.visible && dolphinSourceButton.enabled ? dolphinSourceButton
+        manualSourceButton.visible ? manualSourceButton
+      : dolphinSourceButton.visible && dolphinSourceButton.enabled ? dolphinSourceButton
       : cemuSourceButton.visible && cemuSourceButton.enabled ? cemuSourceButton
       : shadps4SourceButton.visible && shadps4SourceButton.enabled ? shadps4SourceButton
       : ryujinxSourceButton.visible && ryujinxSourceButton.enabled ? ryujinxSourceButton
@@ -120,6 +129,11 @@ ApplicationWindow {
         if (couchTextEntryOpen) {
             return null
         }
+        if (backupEditorOpen) return backupEditor
+        if (bulkOrganizationOpen) return bulkOrganizationEditor
+        if (savedFiltersOpen) return savedFiltersEditor
+        if (artworkEditorOpen) return artworkEditor
+        if (manualEditorOpen) return manualEditor
         if (filterPickerOpen) {
             return filterPickerOverlay
         }
@@ -188,6 +202,9 @@ ApplicationWindow {
             return false
         }
         const current = root.activeFocusItem
+        if (container === backupEditor && backupEditor.navigate(current, key)) return true
+        if (container === bulkOrganizationEditor && bulkOrganizationEditor.navigate(current, key)) return true
+        if (container === savedFiltersEditor && savedFiltersEditor.navigate(current, key)) return true
         if (!root.isWithin(current, container)) {
             root.focusWithin(container, true)
             return true
@@ -328,7 +345,11 @@ ApplicationWindow {
     }
 
     function revealNavigationItem(container, item) {
-        if (container === settingsOverlay) {
+        if (container === bulkOrganizationEditor) {
+            bulkOrganizationEditor.reveal(item)
+        } else if (container === savedFiltersEditor) {
+            savedFiltersEditor.reveal(item)
+        } else if (container === settingsOverlay) {
             settingsOverlay.reveal(item)
         } else if (container === linkDialogOverlay && root.isWithin(item, candidateList)) {
             candidateList.positionViewAtIndex(candidateList.currentIndex, ListView.Contain)
@@ -393,12 +414,18 @@ ApplicationWindow {
     }
 
     function preferredInstallation(installations, fallback) {
-        for (let index = 0; index < installations.length; ++index) {
-            if (installations[index].installed !== false) {
-                return installations[index]
-            }
+        const preferred = Library.preferredInstallation(root.selectedIndex)
+        return preferred && preferred.appId ? preferred : fallback
+    }
+
+    function pickRandomGame() {
+        const index = Library.pickRandomGame()
+        if (index < 0) {
+            root.showToast("No available games match these filters")
+            return
         }
-        return installations.length > 0 ? installations[0] : fallback
+        root.openGame(index)
+        root.randomSelection = true
     }
 
     function leaveConsole() {
@@ -411,6 +438,7 @@ ApplicationWindow {
     }
 
     function openGame(index) {
+        root.randomSelection = false
         selectedIndex = index
         selectedGame = Library.get(index)
         if (selectedGame.isPortal) {
@@ -682,6 +710,142 @@ ApplicationWindow {
         onAccepted: Preferences.addRomFolder(selectedFolder, root.romFolderSystems[root.romFolderSystemIndex].id)
     }
 
+    function openBulkOrganization() {
+        Library.clearSelection()
+        root.bulkOrganizationOpen = true
+        Qt.callLater(bulkOrganizationEditor.focusEditor)
+    }
+    BulkOrganizationEditor {
+        id: bulkOrganizationEditor
+        objectName: "bulkOrganizationEditor"
+        anchors.fill: parent
+        z: 87
+        visible: root.bulkOrganizationOpen
+        couchMode: root.couchMode
+        onDismissed: {
+            Library.clearSelection()
+            root.bulkOrganizationOpen = false
+            Qt.callLater(root.focusCurrentSurface)
+        }
+        onTextEntryRequested: (target, title) => root.openCouchTextEntry(target, title, false, "")
+    }
+
+    function openSavedFilters() {
+        root.savedFiltersOpen = true
+        Qt.callLater(savedFiltersEditor.focusEditor)
+    }
+    function applySavedFilter(id) {
+        const current = Library.get(root.couchMode ? couchLibraryView.currentIndex : libraryView.currentIndex)
+        if (!Library.applySavedFilter(id)) return
+        searchField.text = Library.searchText
+        const found = Library.indexOf(current.source || "", current.runner || "", current.appId || "")
+        const index = found >= 0 ? found : Library.rowCount() > 0 ? 0 : -1
+        libraryView.currentIndex = index
+        couchLibraryView.currentIndex = index
+        couchLibraryView.refreshCurrentGame()
+        root.savedFiltersOpen = false
+        if (Library.savedFilterMessage) root.showToast(Library.savedFilterMessage)
+        Qt.callLater(root.focusCurrentSurface)
+    }
+    SavedFiltersEditor {
+        id: savedFiltersEditor
+        objectName: "savedFiltersEditor"
+        anchors.fill: parent
+        z: 86
+        visible: root.savedFiltersOpen
+        couchMode: root.couchMode
+        onApplyRequested: id => root.applySavedFilter(id)
+        onDismissed: { root.savedFiltersOpen = false; Qt.callLater(root.focusCurrentSurface) }
+        onTextEntryRequested: (target, title) => root.openCouchTextEntry(target, title, false, "")
+    }
+
+    function openBackupEditor() {
+        backupEditorOpen = true
+        Qt.callLater(backupEditor.focusEditor)
+    }
+    function focusGogLibraryPath() { settingsOverlay.focusGogFolderField() }
+    function removeGogLibraryFolder(path) {
+        if (!Preferences.removeGogLibraryPath(path)) root.showToast("Could not remove that folder")
+        Qt.callLater(root.focusGogLibraryPath)
+    }
+    BackupEditor {
+        id: backupEditor
+        objectName: "backupEditor"
+        anchors.fill: parent
+        z: 89
+        visible: root.backupEditorOpen
+        couchMode: root.couchMode
+        onDismissed: { root.backupEditorOpen = false; Qt.callLater(root.focusCurrentSurface) }
+        onTextEntryRequested: (target, title) => root.openCouchTextEntry(target, title, false, "")
+    }
+
+    function editArtwork() {
+        artworkEditor.message = ""
+        root.artworkEditorOpen = true
+        Qt.callLater(artworkEditor.focusEditor)
+    }
+    ArtworkEditor {
+        id: artworkEditor
+        objectName: "artworkEditor"
+        anchors.fill: parent
+        z: 85
+        visible: root.artworkEditorOpen
+        game: root.selectedGame
+        gameRow: root.selectedIndex
+        couchMode: root.couchMode
+        onDismissed: {
+            root.artworkEditorOpen = false
+            Qt.callLater(root.focusCurrentSurface)
+        }
+        onArtworkChanged: root.refreshAfterOrganization()
+        onTextEntryRequested: (target, title) => root.openCouchTextEntry(target, title, false, "")
+    }
+
+    function editManualGame(id) {
+        manualEditorOpen = true
+        manualEditor.loadDraft(id ? ManualLibrary.get(id) : {})
+    }
+
+    ManualGameEditor {
+        id: manualEditor
+        objectName: "manualGameEditor"
+        anchors.fill: parent
+        z: 80
+        visible: root.manualEditorOpen
+        couchMode: root.couchMode
+        onTextEntryRequested: (target, title) => root.openCouchTextEntry(target, title, false, "")
+        onDismissed: {
+            root.manualEditorOpen = false
+            Qt.callLater(root.focusCurrentSurface)
+        }
+        onSaved: function(id) {
+            root.manualEditorOpen = false
+            root.diagnosticsOpen = false
+            if (manualEditor.entryId === "") root.clearLibraryFilters()
+            const row = Library.indexOf("Manual", "", id)
+            if (row >= 0) root.openGame(row)
+            else { root.detailOpen = false; Qt.callLater(root.focusLibrary) }
+            root.showToast("Manual game saved")
+        }
+        onRemoved: {
+            root.manualEditorOpen = false
+            root.detailOpen = false
+            Qt.callLater(root.focusCurrentSurface)
+            root.showToast("Removed from Omakade. Game files were kept.")
+        }
+    }
+
+    FolderDialog {
+        id: gogFolderDialog
+        title: "Choose a GOG library folder"
+        onAccepted: {
+            if (!Preferences.addGogLibraryPath(selectedFolder.toString()))
+                root.showToast("Could not save that folder")
+            Qt.callLater(root.focusCurrentSurface)
+        }
+        onRejected: Qt.callLater(root.focusCurrentSurface)
+    }
+
     FileDialog {
         id: coverDialog
         title: "Choose cover artwork"
@@ -772,6 +936,21 @@ ApplicationWindow {
                 coverSizePopup.close()
             } else if (root.couchTextEntryOpen) {
                 root.closeCouchTextEntry(false)
+            } else if (root.backupEditorOpen) {
+                backupEditor.dismiss()
+            } else if (root.bulkOrganizationOpen) {
+                Library.clearSelection()
+                root.bulkOrganizationOpen = false
+                Qt.callLater(root.focusCurrentSurface)
+            } else if (root.savedFiltersOpen) {
+                root.savedFiltersOpen = false
+                Qt.callLater(root.focusCurrentSurface)
+            } else if (root.artworkEditorOpen) {
+                root.artworkEditorOpen = false
+                Qt.callLater(root.focusCurrentSurface)
+            } else if (root.manualEditorOpen) {
+                root.manualEditorOpen = false
+                Qt.callLater(root.focusCurrentSurface)
             } else if (root.filterPickerOpen) {
                 root.filterPickerOpen = false
             } else if (root.couchMode && couchLibraryView.searchOpen) {
@@ -806,7 +985,7 @@ ApplicationWindow {
         property: "focusNavigation"
         value: !root.couchTextEntryOpen
                && (!root.activeFocusItem || root.activeFocusItem.controllerNavigation !== false)
-               && (root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
+               && (root.backupEditorOpen || root.bulkOrganizationOpen || root.savedFiltersOpen || root.artworkEditorOpen || root.manualEditorOpen || root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
                || root.collectionDeleteOpen
                || (!root.couchMode && !libraryView.gridFocused))
     }
@@ -1060,6 +1239,18 @@ ApplicationWindow {
                     }
                 }
 
+                GlassButton {
+                    objectName: "bulkOrganizationButton"
+                    text: "ORGANIZE"
+                    compact: true
+                    onClicked: root.openBulkOrganization()
+                }
+                GlassButton {
+                    objectName: "savedFiltersButton"
+                    text: "SAVED FILTERS"
+                    compact: true
+                    onClicked: root.openSavedFilters()
+                }
                 GlassButton {
                     id: settingsButton
                     objectName: "settingsButton"
@@ -1404,7 +1595,7 @@ ApplicationWindow {
                         id: dolphinSourceButton
                         objectName: "dolphinSourceButton"
                         property Item controllerLeftTarget: cemuSourceButton
-                        property Item controllerRightTarget: root.sourceRowNextButton
+                        property Item controllerRightTarget: manualSourceButton
                         property Item controllerDownTarget: statusFilterButton
                         text: "DOLPHIN"
                         compact: true
@@ -1417,6 +1608,26 @@ ApplicationWindow {
                         }
                         onSecondaryClicked: {
                             Library.toggleSource("Dolphin")
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
+                        id: manualSourceButton
+                        objectName: "manualSourceButton"
+                        property Item controllerLeftTarget: dolphinSourceButton
+                        property Item controllerRightTarget: root.sourceRowNextButton
+                        property Item controllerDownTarget: statusFilterButton
+                        text: "MANUAL"
+                        compact: true
+                        visible: ManualLibrary.count > 0
+                        property string sourceName: "Manual"
+                        selected: Library.sourceFilters.indexOf("Manual") >= 0
+                        onClicked: {
+                            Library.sourceFilters = ["Manual"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Manual")
                             libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                         }
                     }
@@ -1455,12 +1666,23 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
                 GlassButton {
+                    id: randomGameButton
+                    objectName: "randomGameButton"
+                    property Item controllerLeftTarget: root.width < 1040
+                                                         ? root.sourceRowEndButton
+                                                         : hiddenModeButton
+                    property Item controllerRightTarget: consoleGamesButton.visible && consoleGamesButton.enabled
+                                                         ? consoleGamesButton : sortButton
+                    compact: true
+                    text: "PICK A GAME"
+                    onClicked: root.pickRandomGame()
+                }
+                GlassButton {
                     id: consoleGamesButton
                     objectName: "consoleGamesButton"
                     // Every console system follows this view unless explicitly overridden.
                     visible: Library.hasConsoleCards || Library.expandConsoles
-                    // Left returns to the end of the source row it sits beside.
-                    property Item controllerLeftTarget: root.sourceRowEndButton
+                    property Item controllerLeftTarget: randomGameButton
                     property Item controllerRightTarget: sortButton
                     compact: true
                     selected: Library.expandConsoles
@@ -1474,9 +1696,7 @@ ApplicationWindow {
                     id: sortButton
                     objectName: "sortButton"
                     property Item controllerLeftTarget: consoleGamesButton.visible ? consoleGamesButton
-                                                         : root.width < 1040
-                                                         ? root.sourceRowEndButton
-                                                         : hiddenModeButton
+                                                         : randomGameButton
                     property Item controllerRightTarget: coverSizeButton
                     compact: true
                     text: Library.sortMode === 0 ? "SORT: TITLE" : Library.sortMode === 1 ? "SORT: RECENT" : Library.sortMode === 2 ? "SORT: PLAYTIME" : Library.sortMode === 3 ? "SORT: RATING" : "SORT: POPULARITY"
@@ -1756,6 +1976,9 @@ ApplicationWindow {
             Library.toggleFavorite(index)
             couchLibraryView.refreshCurrentGame()
         }
+        onOrganizeRequested: root.openBulkOrganization()
+        onSavedFiltersRequested: root.openSavedFilters()
+        onRandomRequested: root.pickRandomGame()
         onSettingsRequested: root.diagnosticsOpen = true
         onDesktopRequested: root.setCouchMode(false)
         onCoverRequested: function(source, appId) {
@@ -1794,7 +2017,7 @@ ApplicationWindow {
             installations: root.selectedInstallations
             selectedInstallation: root.selectedInstallation
             couchMode: root.couchMode
-            navigationEnabled: !root.linkDialogOpen && !root.diagnosticsOpen
+            navigationEnabled: !root.backupEditorOpen && !root.bulkOrganizationOpen && !root.savedFiltersOpen && !root.artworkEditorOpen && !root.manualEditorOpen && !root.linkDialogOpen && !root.diagnosticsOpen
                                && !root.collectionDeleteOpen
             onBackRequested: root.closeDetails()
             onFavoriteRequested: {
@@ -1802,9 +2025,23 @@ ApplicationWindow {
                 // The favorite filter can drop or move the row, so find the game again by identity.
                 root.refreshAfterOrganization()
             }
+            onManualEditRequested: root.editManualGame(root.selectedInstallation.appId)
             onPlayRequested: root.playSelected()
             onManageRequested: root.manageSelected()
             onInstallationSelected: installation => root.selectInstallation(installation)
+            onPreferredInstallationRequested: {
+                const choice = root.selectedInstallation
+                if (Library.setPreferredInstallation(root.selectedIndex, choice.source,
+                                                     choice.runner || "", choice.appId)) {
+                    root.selectedInstallations = Library.installations(root.selectedIndex)
+                    root.selectInstallation(root.preferredInstallation(root.selectedInstallations,
+                                                                       root.selectedGame))
+                    root.showToast("Default installation saved")
+                    Qt.callLater(root.focusCurrentSurface)
+                } else {
+                    root.showToast("Could not save the default installation")
+                }
+            }
             onLinkRequested: {
                 linkSearch.text = root.selectedGame.title
                 root.linkResults = Library.linkCandidates(root.selectedIndex, linkSearch.text)
@@ -1821,7 +2058,9 @@ ApplicationWindow {
                     root.showToast("Installations unlinked")
                 }
             }
-            onCoverRequested: coverDialog.open()
+            randomSelection: root.randomSelection
+            onRandomRequested: root.pickRandomGame()
+            onCoverRequested: root.editArtwork()
             onCoverResetRequested: {
                 if (Library.resetCustomCover(root.selectedIndex)) {
                     root.refreshAfterOrganization()
