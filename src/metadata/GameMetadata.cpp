@@ -297,7 +297,18 @@ void GameMetadata::next() {
   if (m_busy || m_secrets.isRunning() || m_cancelled)
     return;
   if (m_queue.isEmpty()) {
-    m_status = "Library metadata is up to date";
+    // Say how many games could not be identified confidently, so the exceptions are a known
+    // quantity rather than something to discover one game at a time.
+    int unidentified = 0;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
+      if (it.value().value("matchStatus").toString() == "Needs identification")
+        ++unidentified;
+    m_status = unidentified == 0
+                   ? QStringLiteral("Library metadata is up to date")
+                   : QStringLiteral("Library metadata is up to date. %1 %2 identification; open a "
+                                    "game's details to choose its match.")
+                         .arg(unidentified)
+                         .arg(unidentified == 1 ? "game needs" : "games need");
     emit changed();
     return;
   }
