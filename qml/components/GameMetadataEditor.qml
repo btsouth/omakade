@@ -15,10 +15,18 @@ ColumnLayout {
     readonly property string gameKey: game.metadataKey || ""
     onGameKeyChanged: { editing = false; if (Metadata) Metadata.inspect(game) }
     Component.onCompleted: if (Metadata) Metadata.inspect(game)
+    Connections {
+        target: Metadata
+        function onPortraitSelected(key) {
+            if (key !== root.gameKey) return
+            root.editing = false
+            artworkButton.forceActiveFocus()
+        }
+    }
     RowLayout {
         Layout.fillWidth: true
         Text { Layout.fillWidth: true; text: "RATING & COVER ART"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 12 * root.uiScale }
-        GlassButton { compact: true; text: root.editing ? "DONE" : "IDENTIFY / ARTWORK"; onClicked: root.editing = !root.editing }
+        GlassButton { id: artworkButton; compact: true; text: root.editing ? "DONE" : "IDENTIFY / ARTWORK"; onClicked: root.editing = !root.editing }
     }
     Text {
         Layout.fillWidth: true

@@ -28,7 +28,7 @@ public:
   void setLibrary(UnifiedGameModel* library);
   void setCacheLimitMb(int megabytes);
   QVariantMap entry(const QString& key) const { return m_entries.value(key); }
-  bool busy() const { return m_busy || m_secrets.isRunning(); }
+  bool busy() const { return m_busy || !m_queue.isEmpty() || m_secrets.isRunning(); }
   bool hasGridKey() const { return !m_gridKey.isEmpty(); }
   int pending() const { return m_queue.size() + (m_busy ? 1 : 0); }
   Q_INVOKABLE void cancel();
@@ -63,6 +63,7 @@ public:
 signals:
   void changed();
   void entryChanged(const QString& key);
+  void portraitSelected(const QString& key);
 
 private:
   friend class CoreTests;

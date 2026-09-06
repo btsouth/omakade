@@ -738,6 +738,7 @@ private slots:
   void controllerNavigationFollowsWindowFocus();
   void metadataPersistsRatingsAndPreservesCustomArt();
   void portraitBatchContinuesAndKeepsRatingTimestamp();
+  void portraitSelectionCompletesOnlyAfterSuccessfulSave();
   void probeEmbeddedArtwork();
   void switchTitleReaderReadsSyntheticDump();
   void zarchiveReaderAndTgaDecodeSyntheticArchive();
@@ -5696,8 +5697,14 @@ void CoreTests::portraitBatchContinuesAndKeepsRatingTimestamp() {
                            {"updated", ratingUpdated}, {"rating", 90}});
   }
   QCOMPARE(keys.size(), 2);
+  bool idleWithPendingGames = false;
+  connect(&metadata, &GameMetadata::changed, &metadata, [&] {
+    if (metadata.pending() > 0 && !metadata.busy())
+      idleWithPendingGames = true;
+  });
   metadata.refreshLibrary();
   QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy() && metadata.pending() == 0, 5000);
+  QVERIFY(!idleWithPendingGames);
   QCOMPARE(network.requests.size(), 4);
   for (const auto& key : keys) {
     const auto entry = metadata.entry(key);
@@ -5712,4 +5719,60 @@ void CoreTests::portraitBatchContinuesAndKeepsRatingTimestamp() {
     else
       QVERIFY(request.rawHeader("Authorization").isEmpty());
   }
+
+  // A queued game still owns the updater between requests. Credential actions
+  // must not start in that gap, and a scheduled next() must respect Stop.
+  metadata.m_queue.enqueue({{"metadataKey", keys.first()}});
+  QVERIFY(metadata.busy());
+  metadata.storeGridKey("invalid");
+  QVERIFY(metadata.status() != "That SteamGridDB API key is invalid");
+  metadata.cancel();
+  QVERIFY(!metadata.busy());
+  QCOMPARE(metadata.pending(), 0);
+  metadata.next();
+  QCOMPARE(metadata.status(), QString("Metadata update stopped"));
+  QCOMPARE(network.requests.size(), 4);
+}
+
+void CoreTests::portraitSelectionCompletesOnlyAfterSuccessfulSave() {
+  QTemporaryDir temp;
+  PortraitFixtureNetwork network;
+  QImage image(600, 900, QImage::Format_RGB32);
+  image.fill(Qt::blue);
+  QBuffer buffer(&network.png);
+  QVERIFY(buffer.open(QIODevice::WriteOnly));
+  QVERIFY(image.save(&buffer, "PNG"));
+  MockGameModel source(nullptr, 1);
+  UnifiedGameModel games(temp.filePath("library.sqlite3"));
+  games.addSourceModel(&source);
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  metadata.setLibrary(&games);
+  metadata.m_gridKey = "offline-fixture-key";
+  const QString key = games.data(games.index(0), GameRoles::MetadataKey).toString();
+  metadata.persist(key, {{"igdbId", 1}, {"gridId", 11}});
+  metadata.inspect({{"metadataKey", key}});
+  QSignalSpy selected(&metadata, &GameMetadata::portraitSelected);
+  metadata.findCovers();
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(metadata.covers().size(), 1);
+  QSignalSpy stateChanges(&metadata, &GameMetadata::changed);
+  metadata.chooseCover(0);
+  QVERIFY(metadata.busy());
+  QVERIFY(!stateChanges.isEmpty());
+  QCOMPARE(selected.count(), 0);
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(selected.count(), 1);
+  QCOMPARE(selected.first().first().toString(), key);
+  QVERIFY(metadata.covers().isEmpty());
+  QVERIFY(QFileInfo::exists(metadata.current().value("portrait").toString()));
+
+  metadata.findCovers();
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(metadata.covers().size(), 1);
+  network.png = "invalid image";
+  metadata.chooseCover(0);
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(selected.count(), 1);
+  QCOMPARE(metadata.covers().size(), 1);
+  QCOMPARE(metadata.status(), QString("Portrait has unexpected dimensions"));
 }

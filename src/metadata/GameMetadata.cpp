@@ -209,7 +209,8 @@ void GameMetadata::refreshLibrary() {
   next();
 }
 void GameMetadata::next() {
-  if (busy())
+  // Pending games keep the public busy state active during the request delay.
+  if (m_busy || m_secrets.isRunning() || m_cancelled)
     return;
   if (m_queue.isEmpty()) {
     m_status = "Library metadata is up to date";
@@ -463,6 +464,7 @@ void GameMetadata::chooseCover(int index) {
   get(url, "image");
 }
 void GameMetadata::get(const QUrl& url, const QString& stage) {
+  emit changed();
   QNetworkRequest request(url);
   request.setTransferTimeout(15000);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
@@ -539,7 +541,13 @@ void GameMetadata::response(const QByteArray& data, const QString& stage) {
     value["portraitUpdated"] = QDateTime::currentSecsSinceEpoch();
     persist(key(), value);
     trimPortraitCache();
+    const bool selectedManually = m_manual;
+    const QString selectedKey = key();
+    if (selectedManually)
+      m_covers.clear();
     finish("Portrait saved from SteamGridDB");
+    if (selectedManually)
+      emit portraitSelected(selectedKey);
     return;
   }
   const auto object = QJsonDocument::fromJson(data).object();
@@ -676,6 +684,7 @@ void GameMetadata::cancel() {
   emit changed();
 }
 void GameMetadata::requestIgdb(QByteArray query, QString endpoint, QString stage) {
+  emit changed();
   m_igdbStage = stage;
   m_queryKey = endpoint.toUtf8() + ':' + query;
   if (m_queryCache.contains(m_queryKey)) {
