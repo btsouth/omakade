@@ -34,6 +34,10 @@ and more control over how your library looks.
 
 ### Fixes and improvements
 
+- Keep the screensaver and lock screen away while a launched game runs. Controllers
+  do not count as input for the compositor's idle timer, and unlike Steam most
+  emulators never say they are busy, so Omakade holds a Wayland idle inhibitor
+  from launch until the game process exits.
 - Fix the library disappearing after scrolling a filtered source list.
 - Keep other sources out of console views and reduce stalls when opening large
   ROM collections. Cover downloads no longer rebuild the whole library grid.

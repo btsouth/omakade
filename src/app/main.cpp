@@ -6,6 +6,7 @@
 #include "input/ControllerInput.h"
 #include "input/ControllerFocusGuard.h"
 #include "input/CouchCursorManager.h"
+#include "app/IdleInhibitor.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
 #include "streaming/SunshineIntegration.h"
@@ -879,6 +880,13 @@ int main(int argc, char* argv[]) {
   auto* rootWindow = qobject_cast<QWindow*>(engine.rootObjects().constFirst());
   if (rootWindow != nullptr) {
     new ControllerFocusGuard(&controller, rootWindow);
+    // Hold the compositor's idle timer while a launched game runs, since controller input alone
+    // never resets it and most emulators do not inhibit for themselves.
+    auto* idleInhibitor = new IdleInhibitor(rootWindow, rootWindow);
+    QObject::connect(&launcher, &GameLauncher::gameRunningChanged, idleInhibitor,
+                     [&launcher, idleInhibitor] {
+                       idleInhibitor->setInhibited(launcher.gameRunning());
+                     });
     auto* couchCursor = new CouchCursorManager(rootWindow, 1600, rootWindow);
     couchCursor->setObjectName(QStringLiteral("couchCursorManager"));
     QObject::connect(rootWindow, SIGNAL(couchModeChanged()), couchCursor,

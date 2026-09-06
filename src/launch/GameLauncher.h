@@ -2,17 +2,26 @@
 
 #include "launch/LaunchCommand.h"
 
+#include <QList>
 #include <QObject>
+#include <QProcessEnvironment>
 #include <QStringList>
+#include <QTimer>
 
 class GameLauncher final : public QObject {
   Q_OBJECT
   Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+  Q_PROPERTY(bool gameRunning READ gameRunning NOTIFY gameRunningChanged)
 
 public:
   explicit GameLauncher(QObject* parent = nullptr);
 
   [[nodiscard]] QString lastError() const;
+  // True while a game process started by launch() is still alive. Games are started detached,
+  // so this is polled from /proc rather than reported by QProcess.
+  [[nodiscard]] bool gameRunning() const;
+  // Starts a detached process and follows it through gameRunning() until it exits.
+  bool startTracked(const LaunchCommand& command, const QString& workingDirectory = {});
   [[nodiscard]] static LaunchCommand lutrisCommand(const QString& id, bool flatpak);
   [[nodiscard]] static LaunchCommand heroicCommand(const QString& id, const QString& runner,
                                                    bool flatpak);
@@ -49,6 +58,7 @@ public:
 
 signals:
   void lastErrorChanged();
+  void gameRunningChanged();
 
 private:
   bool launchLutris(const QString& id, bool flatpak, bool manageOnly);
@@ -68,6 +78,16 @@ private:
   bool launchGog(const QString& id, const QString& installPath, bool manageOnly);
   [[nodiscard]] QString flatpakError(const QString& appId, const QString& launcherName) const;
   void setError(const QString& error);
+  bool startCommand(const LaunchCommand& command, bool track, const QString& workingDirectory = {},
+                    const QProcessEnvironment& environment = QProcessEnvironment());
+  void trackProcess(qint64 pid);
+  void pollTrackedProcesses();
+  struct TrackedProcess {
+    qint64 pid = 0;
+    qint64 startTime = -1;
+  };
   QString m_lastError;
   bool m_preferStandaloneEmulators = false;
+  QList<TrackedProcess> m_trackedProcesses;
+  QTimer m_trackTimer;
 };

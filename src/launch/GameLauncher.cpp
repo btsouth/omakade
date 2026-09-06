@@ -225,7 +225,99 @@ const ConsoleDefinition* consoleForRom(const QString& contentPath) {
 }
 } // namespace
 
-GameLauncher::GameLauncher(QObject* parent) : QObject(parent) {}
+GameLauncher::GameLauncher(QObject* parent) : QObject(parent) {
+  m_trackTimer.setInterval(1000);
+  connect(&m_trackTimer, &QTimer::timeout, this, &GameLauncher::pollTrackedProcesses);
+}
+
+namespace {
+
+// Start time of a process in clock ticks since boot, from /proc/<pid>/stat, or -1 when the
+// process is gone or already a zombie. Pairing the pid with its start time guards against the
+// pid being recycled by an unrelated process while we poll.
+qint64 processStartTime(qint64 pid) {
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  if (!stat.open(QIODevice::ReadOnly)) {
+    return -1;
+  }
+  const QByteArray contents = stat.readAll();
+  const qsizetype commEnd = contents.lastIndexOf(')');
+  if (commEnd < 0) {
+    return -1;
+  }
+  // Fields after the command name: state is the first, start time the twentieth.
+  const QList<QByteArray> fields = contents.mid(commEnd + 2).simplified().split(' ');
+  if (fields.size() < 20) {
+    return -1;
+  }
+  const char state = fields.at(0).isEmpty() ? '?' : fields.at(0).at(0);
+  if (state == 'Z' || state == 'X') {
+    return -1;
+  }
+  bool okay = false;
+  const qint64 startTime = fields.at(19).toLongLong(&okay);
+  return okay ? startTime : -1;
+}
+
+}  // namespace
+
+bool GameLauncher::gameRunning() const {
+  return !m_trackedProcesses.isEmpty();
+}
+
+bool GameLauncher::startTracked(const LaunchCommand& command, const QString& workingDirectory) {
+  return startCommand(command, true, workingDirectory);
+}
+
+bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
+                                const QString& workingDirectory,
+                                const QProcessEnvironment& environment) {
+  QProcess process;
+  process.setProgram(command.program);
+  process.setArguments(command.arguments);
+  if (!workingDirectory.isEmpty()) {
+    process.setWorkingDirectory(workingDirectory);
+  }
+  if (!environment.isEmpty()) {
+    process.setProcessEnvironment(environment);
+  }
+  qint64 pid = 0;
+  if (!process.startDetached(&pid)) {
+    return false;
+  }
+  if (track && pid > 0) {
+    trackProcess(pid);
+  }
+  return true;
+}
+
+void GameLauncher::trackProcess(qint64 pid) {
+  const qint64 startTime = processStartTime(pid);
+  if (startTime < 0) {
+    return;  // Already gone: a launcher stub that handed off and exited.
+  }
+  const bool wasRunning = gameRunning();
+  m_trackedProcesses.append({pid, startTime});
+  if (!m_trackTimer.isActive()) {
+    m_trackTimer.start();
+  }
+  if (!wasRunning) {
+    emit gameRunningChanged();
+  }
+}
+
+void GameLauncher::pollTrackedProcesses() {
+  const bool wasRunning = gameRunning();
+  m_trackedProcesses.removeIf([](const TrackedProcess& process) {
+    return processStartTime(process.pid) != process.startTime;
+  });
+  if (m_trackedProcesses.isEmpty()) {
+    m_trackTimer.stop();
+  }
+  if (wasRunning != gameRunning()) {
+    emit gameRunningChanged();
+  }
+}
 
 void GameLauncher::setPreferStandaloneEmulators(bool value) {
   m_preferStandaloneEmulators = value;
@@ -631,7 +723,7 @@ bool GameLauncher::launchLutris(const QString& id, bool flatpak, bool manageOnly
       return false;
     }
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Lutris could not be started. Open Lutris and try again."));
     return false;
   }
@@ -670,7 +762,7 @@ bool GameLauncher::launchHeroic(const QString& id, const QString& runner, bool f
       return false;
     }
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Heroic could not be started. Open Heroic and try again."));
     return false;
   }
@@ -705,8 +797,7 @@ bool GameLauncher::launchGog(const QString& id, const QString& installPath, bool
     }
   }
   const std::optional<GogLaunchTask> task = HeroicScanner::gogLaunchTask(installPath, id);
-  if (!task.has_value() ||
-      !QProcess::startDetached(command.program, command.arguments, task->workingDirectory)) {
+  if (!task.has_value() || !startCommand(command, true, task->workingDirectory)) {
     setError(QStringLiteral("GOG could not start this game."));
     return false;
   }
@@ -742,7 +833,7 @@ bool GameLauncher::launchFaugus(const QString& id, bool flatpak, bool manageOnly
     setError(QStringLiteral("This game has an invalid Faugus ID."));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Faugus could not be started. Open Faugus and try again."));
     return false;
   }
@@ -796,7 +887,7 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
     setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(usesRetroArch
                  ? QStringLiteral("RetroArch could not be started. Open RetroArch and try again.")
                  : QStringLiteral("%1 could not be started.").arg(command.program));
@@ -831,7 +922,7 @@ bool GameLauncher::launchPcsx2(const QString& id, bool isElf, bool flatpak, bool
     setError(QStringLiteral("This game has an invalid PCSX2 target."));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("PCSX2 could not be started. Open PCSX2 and try again."));
     return false;
   }
@@ -884,7 +975,7 @@ bool GameLauncher::launchRyujinx(const QString& id, bool flatpak, const QString&
     setError(QStringLiteral("This game has an invalid Ryujinx target."));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Ryujinx could not be started. Open Ryujinx and try again."));
     return false;
   }
@@ -928,7 +1019,7 @@ bool GameLauncher::launchShadps4(const QString& path, bool flatpak, const QStrin
     setError(QStringLiteral("This game has an invalid shadPS4 target."));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("shadPS4 could not be started. Open shadPS4 and try again."));
     return false;
   }
@@ -965,7 +1056,7 @@ bool GameLauncher::launchDolphin(const QString& path, bool flatpak, bool manageO
     setError(QStringLiteral("This game has an invalid Dolphin target."));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Dolphin could not be started. Open Dolphin and try again."));
     return false;
   }
@@ -1001,7 +1092,7 @@ bool GameLauncher::launchCemu(const QString& path, bool flatpak, bool manageOnly
     setError(QStringLiteral("This game has an invalid Cemu target."));
     return false;
   }
-  if (!QProcess::startDetached(command.program, command.arguments)) {
+  if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Cemu could not be started. Open Cemu and try again."));
     return false;
   }
@@ -1064,10 +1155,6 @@ bool GameLauncher::launchBattleNet(const QString& id, const QString& prefix, con
     }
   }
 
-  QProcess process;
-  process.setProgram(command.program);
-  process.setArguments(command.arguments);
-  process.setWorkingDirectory(QFileInfo(exe).absolutePath());
   QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
   environment.insert(QStringLiteral("WINEPREFIX"), QDir::cleanPath(prefix));
   if (protonRunner) {
@@ -1080,8 +1167,7 @@ bool GameLauncher::launchBattleNet(const QString& id, const QString& prefix, con
                          QFileInfo(prefix + QStringLiteral("/..")).absoluteFilePath());
     }
   }
-  process.setProcessEnvironment(environment);
-  if (!process.startDetached()) {
+  if (!startCommand(command, !manageOnly, QFileInfo(exe).absolutePath(), environment)) {
     setError(QStringLiteral("Battle.net could not be started. Open Battle.net and try again."));
     return false;
   }

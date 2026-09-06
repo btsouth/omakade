@@ -652,6 +652,7 @@ private slots:
   void launchActivityPersistsAndSortsExactly();
   void organizationPersistsAndFilters();
   void lutrisLauncherBuildsSafeCommands();
+  void launcherTracksRunningGames();
   void heroicScannerImportsEpicGogAndAmazon();
   void gogScannerImportsLooseInstallsAndConfinesLaunchTasks();
   void heroicModelIsRepeatableAndPreservesLocalState();
@@ -1987,6 +1988,26 @@ void CoreTests::organizationPersistsAndFilters() {
   QVERIFY(library.deleteCollection(QStringLiteral("weekend")));
   QVERIFY(library.collectionNames().isEmpty());
   QVERIFY(library.get(0).value(QStringLiteral("collections")).toStringList().isEmpty());
+}
+
+void CoreTests::launcherTracksRunningGames() {
+  GameLauncher launcher;
+  QSignalSpy running(&launcher, &GameLauncher::gameRunningChanged);
+  QVERIFY(!launcher.gameRunning());
+  QVERIFY(!launcher.startTracked(
+      LaunchCommand{QStringLiteral("/nonexistent/omakade-missing-binary"), {}}));
+  QVERIFY(!launcher.gameRunning());
+  QCOMPARE(running.count(), 0);
+
+  QVERIFY(launcher.startTracked(
+      LaunchCommand{QStringLiteral("sleep"), {QStringLiteral("0.5")}}));
+  QVERIFY(launcher.gameRunning());
+  QCOMPARE(running.count(), 1);
+  QVERIFY(launcher.startTracked(
+      LaunchCommand{QStringLiteral("sleep"), {QStringLiteral("0.2")}}));
+  QCOMPARE(running.count(), 1);  // A second game does not toggle the flag.
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 10000);
+  QCOMPARE(running.count(), 2);
 }
 
 void CoreTests::lutrisLauncherBuildsSafeCommands() {
