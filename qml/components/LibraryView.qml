@@ -228,7 +228,11 @@ Item {
                 anchors.topMargin: 7
                 anchors.bottomMargin: 7
                 title: delegateRoot.title
-                subtitle: delegateRoot.subtitle
+                // Inside a console the heading already names the system, so the launcher's
+                // long core name is repetition. Drop it and let the rating and playtime have
+                // the room instead.
+                subtitle: Library.consoleFilter.length > 0 && delegateRoot.source.length > 0
+                          ? delegateRoot.source : delegateRoot.subtitle
                 hours: delegateRoot.hours
                 rating: delegateRoot.rating
                 progress: delegateRoot.progress
