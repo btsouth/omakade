@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#ef4444"/>
+  <rect x="100" y="190" width="60" height="180" rx="26" fill="#7f1d1d"/><rect x="240" y="190" width="60" height="180" rx="26" fill="#fecaca"/><rect x="160" y="200" width="80" height="160" rx="6" fill="#0f172a"/>
+  <text x="200" y="520" text-anchor="middle" fill="#fecaca" font-family="sans-serif" font-size="30" font-weight="700">NINTENDO SWITCH</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#1f2a1a"/>
+  <rect x="0" y="0" width="400" height="86" fill="#84cc16"/>
+  <rect x="110" y="140" width="180" height="250" rx="28" fill="#3f4d2c"/>
+  <rect x="132" y="168" width="136" height="96" rx="8" fill="#9ccc65"/>
+  <circle cx="168" cy="330" r="16" fill="#d9f99d"/>
+  <circle cx="232" cy="330" r="16" fill="#d9f99d"/>
+  <text x="200" y="520" text-anchor="middle" fill="#ecfccb" font-family="sans-serif" font-size="30" font-weight="700">GAME BOY</text>
+</svg>

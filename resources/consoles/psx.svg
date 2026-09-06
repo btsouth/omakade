@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111113"/>
+  <rect x="0" y="0" width="400" height="86" fill="#e11d48"/>
+  <circle cx="140" cy="250" r="36" fill="#f43f5e"/>
+  <rect x="196" y="214" width="72" height="72" rx="8" fill="#38bdf8"/>
+  <polygon points="140,330 176,394 104,394" fill="#22c55e"/>
+  <rect x="220" y="338" width="64" height="18" rx="4" transform="rotate(-35 252 347)" fill="#eab308"/>
+  <text x="200" y="520" text-anchor="middle" fill="#ffe4e6" font-family="sans-serif" font-size="30" font-weight="700">PLAYSTATION</text>
+</svg>

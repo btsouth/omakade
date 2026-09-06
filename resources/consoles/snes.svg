@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#2a2140"/>
+  <rect x="0" y="0" width="400" height="86" fill="#8b5cf6"/>
+  <rect x="36" y="150" width="328" height="220" rx="16" fill="#3b2d5c"/>
+  <rect x="70" y="196" width="260" height="28" rx="8" fill="#c4b5fd"/>
+  <rect x="70" y="248" width="160" height="18" rx="6" fill="#7c3aed"/>
+  <circle cx="300" cy="300" r="28" fill="#a78bfa"/>
+  <text x="200" y="520" text-anchor="middle" fill="#f5f3ff" font-family="sans-serif" font-size="28" font-weight="700">SUPER NINTENDO</text>
+</svg>

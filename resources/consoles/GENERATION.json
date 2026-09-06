@@ -1,0 +1,366 @@
+{
+  "tool": "built-in image_gen",
+  "date": "2026-09-06",
+  "assets": [
+    {
+      "id": "snes",
+      "file": "snes.png",
+      "reference": "snes.png",
+      "prompt": "Use case: compositing and lighting. Create a premium Omakade console cover, 1024x1536 portrait. Image 1 is an ACTUAL HARDWARE PHOTOGRAPH and is the authoritative source for the console and controller; preserve their real shape, camera view, proportions, panel seams, vents, ports, exact button counts, button positions, button colors and markings. Treat hardware as a photographic cutout to relight and place, not an object to redesign or reconstruct. Image 2 is STYLE ONLY: dark walnut tabletop, dark studio background with subtle colored ambient glow, realistic soft product lighting. Do not copy the SNES hardware from image 2. Place the hardware from image 1 on that tabletop with physically credible contact shadows, brighter soft key light making the hardware clearly readable. Fit the console and matching controller attractively within the portrait; controller may be repositioned lower in frame without changing its physical design or camera orientation. Preserve hardware identity rigorously. Full objects inside frame with margins; avoid tiny distant hardware. Bottom 15% is dark clear tabletop for Omakade title overlay. No added text, titles, borders, logos, new features, extra buttons, duplicate ports, mist or fantasy effects. Hardware details from image 1 override any textual description. System: snes. Background accent glow: violet.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "n64",
+      "file": "n64.png",
+      "reference": "n64.png",
+      "prompt": "Use case: compositing and lighting. Create a premium Omakade console cover, 1024x1536 portrait. Image 1 is an ACTUAL HARDWARE PHOTOGRAPH and is the authoritative source for the console and controller; preserve their real shape, camera view, proportions, panel seams, vents, ports, exact button counts, button positions, button colors and markings. Treat hardware as a photographic cutout to relight and place, not an object to redesign or reconstruct. Image 2 is STYLE ONLY: dark walnut tabletop, dark studio background with subtle colored ambient glow, realistic soft product lighting. Do not copy the SNES hardware from image 2. Place the hardware from image 1 on that tabletop with physically credible contact shadows, brighter soft key light making the hardware clearly readable. Fit the console and matching controller attractively within the portrait; controller may be repositioned lower in frame without changing its physical design or camera orientation. Preserve hardware identity rigorously. Full objects inside frame with margins; avoid tiny distant hardware. Bottom 15% is dark clear tabletop for Omakade title overlay. No added text, titles, borders, logos, new features, extra buttons, duplicate ports, mist or fantasy effects. Hardware details from image 1 override any textual description. System: n64. Background accent glow: emerald green.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "dreamcast",
+      "file": "dreamcast.png",
+      "reference": "dreamcast.png",
+      "prompt": "Use case: compositing and lighting. Create a premium Omakade console cover, 1024x1536 portrait. Image 1 is an ACTUAL HARDWARE PHOTOGRAPH and is the authoritative source for the console and controller; preserve their real shape, camera view, proportions, panel seams, vents, ports, exact button counts, button positions, button colors and markings. Treat hardware as a photographic cutout to relight and place, not an object to redesign or reconstruct. Image 2 is STYLE ONLY: dark walnut tabletop, dark studio background with subtle colored ambient glow, realistic soft product lighting. Do not copy the SNES hardware from image 2. Place the hardware from image 1 on that tabletop with physically credible contact shadows, brighter soft key light making the hardware clearly readable. Fit the console and matching controller attractively within the portrait; controller may be repositioned lower in frame without changing its physical design or camera orientation. Preserve hardware identity rigorously. Full objects inside frame with margins; avoid tiny distant hardware. Bottom 15% is dark clear tabletop for Omakade title overlay. No added text, titles, borders, logos, new features, extra buttons, duplicate ports, mist or fantasy effects. Hardware details from image 1 override any textual description. System: dreamcast. Background accent glow: warm amber orange.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "nes",
+      "file": "nes.png",
+      "reference": "nes.jpg",
+      "prompt": "Use case: compositing and lighting. Create a premium Omakade console cover, 1024x1536 portrait. Image 1 is an ACTUAL HARDWARE PHOTOGRAPH and is the authoritative source for the console and controller; preserve their real shape, camera view, proportions, panel seams, vents, ports, exact button counts, button positions, button colors and markings. Treat hardware as a photographic cutout to relight and place, not an object to redesign or reconstruct. Image 2 is STYLE ONLY: dark walnut tabletop, dark studio background with subtle colored ambient glow, realistic soft product lighting. Do not copy the SNES hardware from image 2. Place the hardware from image 1 on that tabletop with physically credible contact shadows, brighter soft key light making the hardware clearly readable. Fit the console and matching controller attractively within the portrait; controller may be repositioned lower in frame without changing its physical design or camera orientation. Preserve hardware identity rigorously. Full objects inside frame with margins; avoid tiny distant hardware. Bottom 15% is dark clear tabletop for Omakade title overlay. No added text, titles, borders, logos, new features, extra buttons, duplicate ports, mist or fantasy effects. Hardware details from image 1 override any textual description.  Crucial framing: scale the complete hardware arrangement down enough to keep at least 7% clear margin at left and right. No object can touch or cross the canvas edges. Preserve the actual hardware model and shell color shown in image 1 even if the text says a different revision. Subject hint, subordinate to real photo: Original North American Nintendo Entertainment System NES front-loader, two-tone gray rectangular console, black horizontal front stripe, red accents, hinged cartridge door. One original rectangular gray NES controller with black face, D-pad, two red action buttons and START SELECT. Restrained red glow.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "gamecube",
+      "file": "gamecube.png",
+      "reference": "gamecube.jpg",
+      "prompt": "Use case: compositing and lighting. Create a premium Omakade console cover, 1024x1536 portrait. Image 1 is an ACTUAL HARDWARE PHOTOGRAPH and is the authoritative source for the console and controller; preserve their real shape, camera view, proportions, panel seams, vents, ports, exact button counts, button positions, button colors and markings. Treat hardware as a photographic cutout to relight and place, not an object to redesign or reconstruct. Image 2 is STYLE ONLY: dark walnut tabletop, dark studio background with subtle colored ambient glow, realistic soft product lighting. Do not copy the SNES hardware from image 2. Place the hardware from image 1 on that tabletop with physically credible contact shadows, brighter soft key light making the hardware clearly readable. Fit the console and matching controller attractively within the portrait; controller may be repositioned lower in frame without changing its physical design or camera orientation. Preserve hardware identity rigorously. Full objects inside frame with margins; avoid tiny distant hardware. Bottom 15% is dark clear tabletop for Omakade title overlay. No added text, titles, borders, logos, new features, extra buttons, duplicate ports, mist or fantasy effects. Hardware details from image 1 override any textual description.  Crucial framing: scale the complete hardware arrangement down enough to keep at least 7% clear margin at left and right. No object can touch or cross the canvas edges. Preserve the actual hardware model and shell color shown in image 1 even if the text says a different revision. Subject hint, subordinate to real photo: Original indigo Nintendo GameCube console, cube-shaped with circular black disc lid and four controller ports on front, handle at rear. One authentic indigo GameCube controller with gray main analog stick, gray D-pad, yellow C-stick, large green A, small red B, gray kidney-shaped X/Y buttons. Violet-blue glow.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "wii",
+      "file": "wii.png",
+      "reference": "wii.jpg",
+      "prompt": "Use case: compositing and lighting. Create a premium Omakade console cover, 1024x1536 portrait. Image 1 is an ACTUAL HARDWARE PHOTOGRAPH and is the authoritative source for the console and controller; preserve their real shape, camera view, proportions, panel seams, vents, ports, exact button counts, button positions, button colors and markings. Treat hardware as a photographic cutout to relight and place, not an object to redesign or reconstruct. Image 2 is STYLE ONLY: dark walnut tabletop, dark studio background with subtle colored ambient glow, realistic soft product lighting. Do not copy the SNES hardware from image 2. Place the hardware from image 1 on that tabletop with physically credible contact shadows, brighter soft key light making the hardware clearly readable. Fit the console and matching controller attractively within the portrait; controller may be repositioned lower in frame without changing its physical design or camera orientation. Preserve hardware identity rigorously. Full objects inside frame with margins; avoid tiny distant hardware. Bottom 15% is dark clear tabletop for Omakade title overlay. No added text, titles, borders, logos, new features, extra buttons, duplicate ports, mist or fantasy effects. Hardware details from image 1 override any textual description.  Crucial framing: scale the complete hardware arrangement down enough to keep at least 7% clear margin at left and right. No object can touch or cross the canvas edges. Preserve the actual hardware model and shell color shown in image 1 even if the text says a different revision. Subject hint, subordinate to real photo: Original white Nintendo Wii standing vertically in its original silver-gray angled stand, narrow slot-loading front disc drive with subtle blue light. One original white Wii Remote and matching white Nunchuk neatly placed in foreground with correct cable. Cool ice-blue glow.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "gb",
+      "file": "gb.png",
+      "reference": "gb.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: olive green.",
+      "width": 1023,
+      "height": 1537
+    },
+    {
+      "id": "gbc",
+      "file": "gbc.png",
+      "reference": "gbc.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: muted teal.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "gba",
+      "file": "gba.png",
+      "reference": "gba.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: violet.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "wiiu",
+      "file": "wiiu.png",
+      "reference": "wiiu.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: cyan blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "switch",
+      "file": "switch.png",
+      "reference": "switch.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: red and blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "genesis",
+      "file": "genesis.png",
+      "reference": "genesis.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: deep red.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "psx",
+      "file": "psx.png",
+      "reference": "psx.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: cool blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "ps2",
+      "file": "ps2.png",
+      "reference": "ps2.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: cobalt blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "ps4",
+      "file": "ps4.png",
+      "reference": "ps4.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: deep blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "nds",
+      "file": "nds.png",
+      "reference": "nds.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: cool blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "3ds",
+      "file": "3ds.png",
+      "reference": "3ds.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: aqua.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "psp",
+      "file": "psp.png",
+      "reference": "psp.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: violet blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "psvita",
+      "file": "psvita.png",
+      "reference": "psvita.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: teal.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "ps3",
+      "file": "ps3.png",
+      "reference": "ps3.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: burgundy.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "xbox",
+      "file": "xbox.png",
+      "reference": "xbox.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: emerald green.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "xbox360",
+      "file": "xbox360.png",
+      "reference": "xbox360.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: lime green.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "mastersystem",
+      "file": "mastersystem.png",
+      "reference": "mastersystem.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: crimson.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "colecovision",
+      "file": "colecovision.png",
+      "reference": "colecovision.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "saturn",
+      "file": "saturn.png",
+      "reference": "saturn.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: violet blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "segacd",
+      "file": "segacd.png",
+      "reference": "segacd.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: red violet.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "sega32x",
+      "file": "sega32x.png",
+      "reference": "sega32x.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: amber.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "gamegear",
+      "file": "gamegear.png",
+      "reference": "gamegear.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: deep blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "atari2600",
+      "file": "atari2600.png",
+      "reference": "atari2600.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: warm amber.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "atari5200",
+      "file": "atari5200.png",
+      "reference": "atari5200.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: steel blue.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "atari7800",
+      "file": "atari7800.png",
+      "reference": "atari7800.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: warm red.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "atarilynx",
+      "file": "atarilynx.png",
+      "reference": "atarilynx.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: warm amber. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "atarijaguar",
+      "file": "atarijaguar.png",
+      "reference": "atarijaguar.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: red. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "pcengine",
+      "file": "pcengine.png",
+      "reference": "pcengine.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: warm rose. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "pcenginecd",
+      "file": "pcenginecd.png",
+      "reference": "pcenginecd.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: violet. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "neogeo",
+      "file": "neogeo.png",
+      "reference": "neogeo.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: gold. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "neogeocd",
+      "file": "neogeocd.png",
+      "reference": "neogeocd.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: deep blue. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "ngpc",
+      "file": "ngpc.png",
+      "reference": "ngpc.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: blue violet. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "wonderswancolor",
+      "file": "wonderswancolor.png",
+      "reference": "wonderswancolor.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: cool blue. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "3do",
+      "file": "3do.png",
+      "reference": "3do.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: warm amber. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "intellivision",
+      "file": "intellivision.png",
+      "reference": "intellivision.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: gold. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "odyssey2",
+      "file": "odyssey2.png",
+      "reference": "odyssey2.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: steel blue. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "virtualboy",
+      "file": "virtualboy.png",
+      "reference": "virtualboy.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: red. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "vectrex",
+      "file": "vectrex.png",
+      "reference": "vectrex.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: subtle green. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "cdi",
+      "file": "cdi.png",
+      "reference": "cdi.jpg",
+      "prompt": "Edit the supplied real hardware photograph into a portrait 1024x1536 premium game-library cover. Preserve ONLY the physical objects already present in the supplied photograph. Preserve their exact design, proportions, color, controls, button count, labels, vents, ports and camera perspective. Do not invent or add any object or accessory. Keep handhelds as handhelds with absolutely NO external gamepad or controller. Replace the plain background with a dark walnut tabletop and near-black studio wall with a restrained colored glow. Relight the existing hardware with tasteful soft studio lighting, realistic textured plastic and contact shadows, clearly visible hardware against dark surroundings. Keep all hardware inside the frame with at least 7% side margins, compose objects attractively in the middle 65% of the portrait, and leave bottom 15% clear dark tabletop for an app title overlay. If both a console and controller are in the source, you may move the controller into foreground but preserve its exact shape and view. No added typography, captions, borders, watermarks, smoke, new buttons or new ports. This is background replacement and photographic staging, not hardware redesign. Background accent glow: cool blue. The reference photograph is the edit target. Maintain exact real hardware geometry. Fit the entire object inside the portrait with generous space at both sides.",
+      "width": 1024,
+      "height": 1536
+    }
+  ]
+}

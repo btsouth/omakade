@@ -1,3 +1,7 @@
+#include <QNetworkReply>
+#include <QBuffer>
+#include <QProcess>
+#include "metadata/GameMetadata.h"
 #include "achievements/AchievementModel.h"
 #include "achievements/RetroAchievementsApi.h"
 #include "achievements/RetroAchievementsHasher.h"
@@ -6,8 +10,15 @@
 #include <zip.h>
 #include "achievements/SteamAchievementApi.h"
 #include "app/AppSettings.h"
+#include "artwork/SwitchTitleReader.h"
+#include "artwork/TgaImage.h"
+#include "artwork/ZArchiveReader.h"
+#include "backup/BackupArchive.h"
+#include "backup/BackupSnapshot.h"
+#include "backup/BackupDatabase.h"
 #include "app/SingleInstance.h"
 #include "input/ControllerInput.h"
+#include "input/ControllerFocusGuard.h"
 #include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
@@ -19,11 +30,17 @@
 #include "library/LibraryFilterModel.h"
 #include "library/LutrisGameModel.h"
 #include "library/MockGameModel.h"
+#include "library/ManualGameModel.h"
+#include "library/PersonalDataRules.h"
 #include "library/Pcsx2GameModel.h"
 #include "library/RyujinxGameModel.h"
+#include "library/Shadps4GameModel.h"
+#include "library/CemuGameModel.h"
 #include "library/RetroArchGameModel.h"
 #include "library/SteamGameModel.h"
 #include "library/SteamOwnedGamesApi.h"
+#include "library/ConsoleCatalog.h"
+#include "library/ConsolePortalModel.h"
 #include "library/UnifiedGameModel.h"
 #include "metadata/GameInsightsService.h"
 #include "metadata/IgdbApi.h"
@@ -32,7 +49,12 @@
 #include "sources/heroic/HeroicScanner.h"
 #include "sources/pcsx2/Pcsx2Scanner.h"
 #include "sources/ryujinx/RyujinxScanner.h"
+#include "sources/shadps4/Shadps4Scanner.h"
+#include "sources/cemu/CemuScanner.h"
+#include "sources/dolphin/DolphinScanner.h"
+#include "library/DolphinGameModel.h"
 #include "sources/lutris/LutrisScanner.h"
+#include "sources/retro/RomFolderScanner.h"
 #include "sources/retroarch/RetroArchScanner.h"
 #include "sources/steam/SteamScanner.h"
 #include "sources/steam/ValveKeyValues.h"
@@ -52,8 +74,13 @@
 #include <QScopeGuard>
 #include <QSignalSpy>
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlQuery>
+#include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QtEndian>
+#include <QRandomGenerator>
+#include <QBuffer>
 #include <QTest>
 #include <QTimer>
 #include <QUrl>
@@ -471,6 +498,117 @@ void createRyujinxFixture(const QString& root, const QString& romDirectory) {
   writeFile(root + QStringLiteral("/games/0100ABCD12345678/gui/metadata.json"),
             "{\"title\":\"Custom Title\",\"timespan_played\":\"01:00:00\","
             "\"last_played_utc\":\"2026-08-30T19:45:10Z\"}");
+  writeFile(root + QStringLiteral("/games/0100ABCD12345678/covers/box.jpg"), "icon");
+}
+
+QByteArray paramSfo(const QString& title, const QString& titleId, const QString& category) {
+  struct Entry {
+    QByteArray key;
+    QByteArray value;
+  };
+  const QList<Entry> entries = {
+      {QByteArrayLiteral("CATEGORY"), category.toUtf8()},
+      {QByteArrayLiteral("TITLE"), title.toUtf8()},
+      {QByteArrayLiteral("TITLE_ID"), titleId.toUtf8()},
+  };
+  QByteArray keys;
+  QByteArray values;
+  QByteArray index;
+  auto le16 = [](quint16 value) {
+    QByteArray bytes(2, 0);
+    bytes[0] = static_cast<char>(value & 0xff);
+    bytes[1] = static_cast<char>((value >> 8) & 0xff);
+    return bytes;
+  };
+  auto le32 = [](quint32 value) {
+    QByteArray bytes(4, 0);
+    for (int i = 0; i < 4; ++i) {
+      bytes[i] = static_cast<char>((value >> (8 * i)) & 0xff);
+    }
+    return bytes;
+  };
+  for (const Entry& entry : entries) {
+    const quint16 keyOffset = static_cast<quint16>(keys.size());
+    keys += entry.key;
+    keys += '\0';
+    const QByteArray value = entry.value + '\0';
+    const quint32 dataOffset = static_cast<quint32>(values.size());
+    values += value;
+    index += le16(keyOffset);
+    index += le16(0x0204);
+    index += le32(static_cast<quint32>(value.size()));
+    index += le32(static_cast<quint32>(value.size()));
+    index += le32(dataOffset);
+  }
+  const quint32 keyTable = 20 + static_cast<quint32>(index.size());
+  const quint32 dataTable = keyTable + static_cast<quint32>(keys.size());
+  QByteArray out(QByteArray("\0PSF", 4));
+  out += le32(0x00000101);
+  out += le32(keyTable);
+  out += le32(dataTable);
+  out += le32(static_cast<quint32>(entries.size()));
+  out += index;
+  out += keys;
+  out += values;
+  return out;
+}
+
+void createShadps4Fixture(const QString& root, const QString& gamesDirectory) {
+  writeFile(root + QStringLiteral("/config.toml"),
+            QStringLiteral("[GUI]\ninstallDirs = [\"%1\"]\n").arg(gamesDirectory).toUtf8());
+  const QString game = gamesDirectory + QStringLiteral("/CUSA00001");
+  writeFile(game + QStringLiteral("/eboot.bin"), "elf");
+  writeFile(game + QStringLiteral("/sce_sys/param.sfo"),
+            paramSfo(QStringLiteral("Bloodborne"), QStringLiteral("CUSA00001"),
+                     QStringLiteral("gd")));
+  writeFile(game + QStringLiteral("/sce_sys/icon0.png"), "icon");
+  writeFile(game + QStringLiteral("/sce_sys/pic0.png"), "hero");
+}
+
+void createCemuFixture(const QString& root, const QString& gamesDirectory) {
+  writeFile(root + QStringLiteral("/settings.xml"),
+            QStringLiteral("<content><GamePaths><Entry>%1</Entry></GamePaths></content>")
+                .arg(gamesDirectory)
+                .toUtf8());
+  const QString title = gamesDirectory + QStringLiteral("/Mario");
+  writeFile(title + QStringLiteral("/code/app.xml"),
+            "<title_id>0005000010101D00</title_id>");
+  writeFile(title + QStringLiteral("/code/game.rpx"), "rpx");
+  writeFile(title + QStringLiteral("/meta/meta.xml"),
+            "<menu><title_id>0005000010101D00</title_id>"
+            "<longname_en>Super Mario 3D World</longname_en></menu>");
+  writeFile(title + QStringLiteral("/meta/iconTex.png"), "icon");
+}
+
+QByteArray pfs0WithTicket(const QByteArray& titleId) {
+  const QByteArray name = titleId + QByteArrayLiteral("0000000000000012.tik");
+  QByteArray strings = name;
+  strings.append('\0');
+  auto le32 = [](quint32 value) {
+    QByteArray bytes(4, 0);
+    for (int i = 0; i < 4; ++i) {
+      bytes[i] = static_cast<char>((value >> (8 * i)) & 0xff);
+    }
+    return bytes;
+  };
+  auto le64 = [](quint64 value) {
+    QByteArray bytes(8, 0);
+    for (int i = 0; i < 8; ++i) {
+      bytes[i] = static_cast<char>((value >> (8 * i)) & 0xff);
+    }
+    return bytes;
+  };
+  QByteArray out(QByteArrayLiteral("PFS0"));
+  out += le32(1);
+  out += le32(static_cast<quint32>(strings.size()));
+  out += le32(0);
+  out += le64(0);
+  out += le64(1);
+  out += le32(0);
+  out += le32(0);
+  out += strings;
+  out += 'x';
+  return out;
 }
 
 } // namespace
@@ -481,6 +619,15 @@ class CoreTests final : public QObject {
 private slots:
   void mockLibraryIsDeterministic();
   void libraryFiltersByModeAndSearch();
+  void changingSourceLeavesConsoleDrillIn();
+  void randomPickRespectsFiltersAndLinkedIdentity();
+  void savedFiltersPersistAndPreserveQueries();
+  void completionWorkflowPersistsAtLibraryScale();
+  void bulkOrganizationIsAtomicAndPreservesSelection();
+  void backupArchiveRoundTripsAndRejectsInvalidContent();
+  void backupSnapshotConsolidatesLegacyPersonalState();
+  void backupDatabaseMergeReplaceAndRollback();
+  void backupSettingsApplyAtomicallyAndKeepAccounts();
   void themeLoadsSemanticColors();
   void themeFallsBackWithoutOmarchy();
   void themeReloadsWhenActiveFileChanges();
@@ -515,10 +662,12 @@ private slots:
   void unifiedLibraryFiltersSourcesAndRoutesFavorites();
   void unifiedLibraryCanDisableSourcesAtRuntime();
   void customCoverPersistsAndResets();
+  void artworkSlotsMigratePersistAndResetIndependently();
   void explicitLinksPersistAndPreserveInstallations();
   void launchActivityPersistsAndSortsExactly();
   void organizationPersistsAndFilters();
   void lutrisLauncherBuildsSafeCommands();
+  void launcherTracksRunningGames();
   void heroicScannerImportsEpicGogAndAmazon();
   void gogScannerImportsLooseInstallsAndConfinesLaunchTasks();
   void heroicModelIsRepeatableAndPreservesLocalState();
@@ -545,10 +694,30 @@ private slots:
   void pcsx2UnifiedFilterShowsGames();
   void pcsx2LauncherBuildsSafeCommands();
   void ryujinxScannerImportsRomsMetadataAndPlaytime();
+  void ryujinxScannerReadsNspTitleIdAndLocalCovers();
   void ryujinxScannerSkipsConfiguredAddOnsAndUpdates();
   void ryujinxModelIsRepeatableAndPreservesLocalState();
   void malformedRyujinxDataDoesNotReplaceCachedGames();
   void ryujinxLauncherBuildsSafeCommands();
+  void shadps4ScannerImportsGamesAndArtwork();
+  void shadps4ScannerSkipsPatches();
+  void shadps4ScannerKeepsMergedPatchDumps();
+  void shadps4ModelIsRepeatableAndPreservesLocalState();
+  void malformedShadps4DataDoesNotReplaceCachedGames();
+  void shadps4LauncherBuildsSafeCommands();
+  void cemuScannerImportsTitlesAndPackages();
+  void cemuScannerUsesTitleListCacheForPackages();
+  void cemuScannerSkipsUpdatesAndDlc();
+  void cemuModelIsRepeatableAndPreservesLocalState();
+  void malformedCemuDataDoesNotReplaceCachedGames();
+  void cemuLauncherBuildsSafeCommands();
+  void consolePortalsGroupRetroArchRomsAndCanFlatten();
+  void consolePortalsDoNotRebuildTheLibraryWhenCoversChange();
+  void consolePortalsDoNotMergeDifferentFiles();
+  void romFoldersMergeWithPlaylistsByCanonicalPath();
+  void romFoldersKeepSeparateCopies();
+  void cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone();
+  void libretroCoverUrlsAndCachePathsAreStable();
   void battleNetScannerImportsInstalledGamesAndArtwork();
   void battleNetScannerDiscoversKnownPrefixes();
   void battleNetScannerKeepsInstallsFromSeparatePrefixes();
@@ -568,6 +737,8 @@ private slots:
   void retroAchievementsServiceBlocksAccountSwitchWhileBusy();
   void stressLibraryContainsOneThousandGames();
   void settingsPersistReducedMotionAndCacheLimit();
+  void gogFoldersPersistAndHandleDisconnectedRoots();
+  void manualGamesImportEditLaunchAndRemove();
   void launchKeysRoundTripAndResolveInstallations();
   void singleInstanceForwardsPlayAndQuitCommands();
   void sunshineIntegrationWritesOnlyItsOwnEntries();
@@ -575,6 +746,22 @@ private slots:
   void couchCursorFollowsInputMode();
   void virtualControllerConnectsAndMapsPrimaryButton();
   void thousandGameSearchStaysResponsive();
+  void openingAConsoleDoesNotHangTheLibrary();
+  void consoleFilterKeepsOtherSourcesOut();
+  void dolphinScannerReadsDiscHeadersAndLaunches();
+  void dolphinModelIsRepeatableAndPreservesLocalState();
+  void dreamcastFoldersBecomeAPortal();
+  void consoleLayoutsPinAndExpand();
+  void metadataMatchingKeepsPlatformsAndEditions();
+  void coverSizesPersistIndependently();
+  void controllerNavigationFollowsWindowFocus();
+  void metadataPersistsRatingsAndPreservesCustomArt();
+  void portraitBatchContinuesAndKeepsRatingTimestamp();
+  void portraitSelectionCompletesOnlyAfterSuccessfulSave();
+  void startupBenchmarkDoesNotActivateAnotherInstance();
+  void probeEmbeddedArtwork();
+  void switchTitleReaderReadsSyntheticDump();
+  void zarchiveReaderAndTgaDecodeSyntheticArchive();
 };
 
 void CoreTests::mockLibraryIsDeterministic() {
@@ -603,6 +790,19 @@ void CoreTests::libraryFiltersByModeAndSearch() {
   library.setSearchText(QStringLiteral("Aster Vale"));
   QCOMPARE(library.rowCount(), 4);
   QCOMPARE(library.get(0).value(QStringLiteral("title")).toString(), QStringLiteral("Aster Vale"));
+}
+
+void CoreTests::changingSourceLeavesConsoleDrillIn() {
+  MockGameModel games;
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  library.setConsolePortalsEnabled(true);
+  library.setConsoleFilter(QStringLiteral("snes"));
+  QCOMPARE(library.consoleFilter(), QStringLiteral("snes"));
+  QCOMPARE(library.consoleTitle(), QStringLiteral("Super Nintendo"));
+  library.setSourceFilter(QStringLiteral("Steam"));
+  QVERIFY(library.consoleFilter().isEmpty());
+  QVERIFY(library.consoleTitle().isEmpty());
 }
 
 void CoreTests::themeLoadsSemanticColors() {
@@ -1586,6 +1786,738 @@ void CoreTests::unifiedLibraryCanDisableSourcesAtRuntime() {
   QCOMPARE(games.rowCount(), 3);
 }
 
+void CoreTests::artworkSlotsMigratePersistAndResetIndependently() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString database = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString source = directory.path() + QStringLiteral("/transparent logo.png");
+  QImage image(180, 90, QImage::Format_ARGB32);
+  image.fill(Qt::transparent);
+  image.setPixelColor(10, 10, Qt::white);
+  QVERIFY(image.save(source));
+  const QString legacy = directory.path() + QStringLiteral("/legacy.png");
+  QVERIFY(image.save(legacy));
+  // Migrate the exact pre-feature artwork table without discarding its cover.
+  const QString fixtureConnection = QStringLiteral("legacy-artwork");
+  {
+    QSqlDatabase fixture = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), fixtureConnection);
+    fixture.setDatabaseName(database);
+    QVERIFY(fixture.open());
+    QSqlQuery query(fixture);
+    QVERIFY(query.exec(QStringLiteral("CREATE TABLE artwork_overrides (source TEXT NOT NULL, runner TEXT NOT NULL, "
+                                     "app_id TEXT NOT NULL, cover_path TEXT NOT NULL, PRIMARY KEY(source, runner, app_id))")));
+    query.prepare(QStringLiteral("INSERT INTO artwork_overrides VALUES('Demo', '', 'demo-0', ?)"));
+    query.addBindValue(legacy);
+    QVERIFY(query.exec());
+  }
+  QSqlDatabase::removeDatabase(fixtureConnection);
+  QString heroPath, logoPath;
+  {
+    MockGameModel demo(nullptr, 2);
+    UnifiedGameModel games(database);
+    games.addSourceModel(&demo);
+    LibraryFilterModel library;
+    library.setSourceModel(&games);
+    QCOMPARE(library.get(0).value(QStringLiteral("coverPath")).toString(), QUrl::fromLocalFile(legacy).toString());
+    QVERIFY(library.setCustomArtwork(0, QStringLiteral("hero"), QUrl::fromLocalFile(source)));
+    QVERIFY(library.setCustomArtwork(0, QStringLiteral("logo"), QUrl::fromLocalFile(source)));
+    heroPath = QUrl(library.get(0).value(QStringLiteral("heroPath")).toString()).toLocalFile();
+    logoPath = QUrl(library.get(0).value(QStringLiteral("logoPath")).toString()).toLocalFile();
+    QVERIFY(heroPath != logoPath);
+    QVERIFY(QImage(logoPath).pixelColor(0, 0).alpha() == 0);
+    QVERIFY(!library.setCustomArtwork(0, QStringLiteral("invalid"), QUrl::fromLocalFile(source)));
+    writeFile(directory.path() + QStringLiteral("/invalid.png"), "not an image");
+    QVERIFY(!library.setCustomArtwork(0, QStringLiteral("logo"),
+                                     QUrl::fromLocalFile(directory.path() + QStringLiteral("/invalid.png"))));
+    QCOMPARE(QUrl(library.get(0).value(QStringLiteral("logoPath")).toString()).toLocalFile(), logoPath);
+    QVERIFY(library.get(0).value(QStringLiteral("customCover")).toBool());
+    QVERIFY(library.get(0).value(QStringLiteral("customHero")).toBool());
+    QVERIFY(library.get(0).value(QStringLiteral("customLogo")).toBool());
+    const QVariantMap second = library.installations(1).first().toMap();
+    QVERIFY(library.linkGames(0, second.value(QStringLiteral("source")).toString(),
+                              second.value(QStringLiteral("runner")).toString(),
+                              second.value(QStringLiteral("appId")).toString()));
+    QVERIFY(library.get(0).value(QStringLiteral("customLogo")).toBool());
+    QVERIFY(library.unlinkGames(0));
+    QVERIFY(QFile::remove(source));
+  }
+  MockGameModel demo(nullptr, 2);
+  UnifiedGameModel games(database);
+  games.addSourceModel(&demo);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  QVERIFY(library.get(0).value(QStringLiteral("customLogo")).toBool());
+  QVERIFY(library.resetCustomArtwork(0, QStringLiteral("hero")));
+  QVERIFY(!QFileInfo::exists(heroPath));
+  QVERIFY(QFileInfo::exists(logoPath));
+  QVERIFY(QFileInfo::exists(legacy));
+  QVERIFY(library.get(0).value(QStringLiteral("customCover")).toBool());
+  QVERIFY(library.get(0).value(QStringLiteral("customLogo")).toBool());
+  QVERIFY(!library.get(0).value(QStringLiteral("customHero")).toBool());
+  QCOMPARE(library.get(0).value(QStringLiteral("heroPath")), demo.data(demo.index(0), GameRoles::HeroPath));
+  QVERIFY(library.resetCustomArtwork(0, QStringLiteral("logo")));
+  QVERIFY(library.resetCustomCover(0));
+  // A migrated external path is not owned by Omakade and must never be deleted.
+  QVERIFY(QFileInfo::exists(legacy));
+}
+
+void CoreTests::backupSettingsApplyAtomicallyAndKeepAccounts() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("settings.toml");
+  AppSettings settings(path);
+  settings.setSteamId("76561198000000000");
+  settings.setIgdbClientId("localclient");
+  settings.setRetroAchievementsUsername("local-user");
+  QCOMPARE(settings.igdbClientId(), QString("localclient"));
+  settings.setSunshineGameApps(true);
+  settings.setCouchModeEnabled(true);
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}, {"gog_library_paths", QJsonArray{"/offline/GOG"}},
+                                        {"library_sort_mode", "recent"}}, false));
+  QVERIFY(settings.reducedMotion()); QVERIFY(settings.couchModeEnabled());
+  QCOMPARE(settings.gogLibraryPaths(), QStringList{"/offline/GOG"});
+  QCOMPARE(settings.librarySortMode(), 1);
+  QVERIFY(!settings.applyBackupSettings({{"library_sort_mode", "random"}}, false));
+  QCOMPARE(settings.librarySortMode(), 1);
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}}, true));
+  QVERIFY(settings.reducedMotion()); QVERIFY(!settings.couchModeEnabled());
+  QVERIFY(settings.gogLibraryPaths().isEmpty());
+  QCOMPARE(settings.librarySortMode(), 0);
+  QCOMPARE(settings.steamId(), QString("76561198000000000"));
+  QCOMPARE(settings.igdbClientId(), QString("localclient"));
+  QCOMPARE(settings.retroAchievementsUsername(), QString("local-user"));
+  QVERIFY(settings.sunshineGameApps());
+  AppSettings reopened(path);
+  QCOMPARE(reopened.backupSettings(), settings.backupSettings());
+  QCOMPARE(reopened.steamId(), settings.steamId());
+  const auto before = settings.backupSettings();
+  QVERIFY(!settings.applyBackupSettings({{"steam_id", "not-allowed"}}, false));
+  QCOMPARE(settings.backupSettings(), before);
+  const QString unavailable = temp.filePath("unavailable");
+  writeFile(unavailable, "a regular file blocks the parent directory");
+  AppSettings blocked(unavailable + "/settings.toml");
+  const auto unchanged = blocked.backupSettings();
+  QVERIFY(!blocked.applyBackupSettings({{"reduced_motion", true}}, false));
+  QCOMPARE(blocked.backupSettings(), unchanged);
+}
+
+void CoreTests::backupDatabaseMergeReplaceAndRollback() {
+  QTemporaryDir sourceRoot, targetRoot;
+  const QString sourcePath = sourceRoot.filePath("library.sqlite");
+  const QString targetPath = targetRoot.filePath("library.sqlite");
+  const QString executable = sourceRoot.filePath("native.sh");
+  writeFile(executable, "#!/bin/sh\nexit 0\n");
+  QVERIFY(QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QString manualId, archivedFilter;
+  {
+    ManualGameModel manual(sourcePath);
+    manualId = manual.saveEntry({{"title", "Portable manual"}, {"executable", executable},
+        {"directory", sourceRoot.path()}, {"arguments", QStringList{"", "literal argument"}}});
+    QVERIFY(!manualId.isEmpty());
+    MockGameModel source(nullptr, 4);
+    UnifiedGameModel model(sourcePath); model.addSourceModel(&source); model.addSourceModel(&manual);
+    LibraryFilterModel filter; filter.setSourceModel(&model);
+    QVERIFY(filter.linkGames(filter.indexOf("Demo", "", "demo-0"), "Demo", "", "demo-1"));
+    const int row = filter.indexOf("Demo", "", "demo-0");
+    QVERIFY(filter.setPreferredInstallation(row, "Demo", "", "demo-1"));
+    filter.toggleSelection(row);
+    QVERIFY(filter.applyBulkChanges({{"favorite", true}, {"status", "completed"},
+        {"tagsAdd", "portable"}, {"collection", "Weekend"}, {"collectionIncluded", true}}));
+    QImage image(32, 64, QImage::Format_ARGB32); image.fill(QColor(10, 50, 90, 100));
+    const QString cover = sourceRoot.filePath("cover.png"); QVERIFY(image.save(cover));
+    QVERIFY(filter.setCustomArtwork(row, "cover", QUrl::fromLocalFile(cover)));
+    archivedFilter = filter.saveCurrentFilter("Weekend"); QVERIFY(!archivedFilter.isEmpty());
+  }
+  BackupPayload incoming; QString error;
+  QVERIFY2(BackupSnapshot::capture(sourcePath, {}, &incoming, &error), qPrintable(error));
+  QVERIFY(QFile::remove(executable));
+  {
+    MockGameModel source(nullptr, 4);
+    UnifiedGameModel model(targetPath); model.addSourceModel(&source);
+    LibraryFilterModel filter; filter.setSourceModel(&model);
+    QVERIFY(filter.linkGames(filter.indexOf("Demo", "", "demo-1"), "Demo", "", "demo-2"));
+    QVERIFY(filter.linkGames(filter.indexOf("Demo", "", "demo-1"), "Demo", "", "demo-3"));
+    QVERIFY(filter.setPreferredInstallation(filter.indexOf("Demo", "", "demo-1"), "Demo", "", "demo-2"));
+    QVERIFY(!filter.saveCurrentFilter("Weekend").isEmpty());
+    QVERIFY(filter.createCollection("Local only"));
+  }
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", "restore-fixture"); database.setDatabaseName(targetPath); QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec("CREATE TABLE games(app_id TEXT PRIMARY KEY, favorite INTEGER, hidden INTEGER, title TEXT)"));
+    QVERIFY(query.exec("INSERT INTO games VALUES('target-only', 1, 1, 'cache stays')"));
+  }
+  QSqlDatabase::removeDatabase("restore-fixture");
+  QVERIFY2(BackupDatabase::restore(targetPath, incoming, BackupDatabase::Mode::Merge, &error), qPrintable(error));
+  BackupPayload merged;
+  QVERIFY2(BackupSnapshot::capture(targetPath, {}, &merged, &error), qPrintable(error));
+  QCOMPARE(merged.library.value("saved_filters").toArray().size(), 2);
+  QCOMPARE(merged.library.value("game_link_members").toArray().size(), 4);
+  QCOMPARE(merged.library.value("launch_preferences").toArray().size(), 2);
+  QString restoredName;
+  for (const auto& value : merged.library.value("saved_filters").toArray()) {
+    const auto row = value.toObject();
+    if (row.value("id").toString() == archivedFilter) restoredName = row.value("name").toString();
+  }
+  QVERIFY(restoredName.contains("restored"));
+  QVERIFY(BackupDatabase::restore(targetPath, incoming, BackupDatabase::Mode::Merge, &error));
+  BackupPayload replayed; QVERIFY(BackupSnapshot::capture(targetPath, {}, &replayed, &error));
+  QCOMPARE(replayed.library, merged.library); // Replaying a committed import is idempotent.
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", "restore-failure"); database.setDatabaseName(targetPath); QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec("CREATE TRIGGER reject_restore BEFORE INSERT ON game_organization BEGIN SELECT RAISE(ABORT, 'injected restore failure'); END"));
+  }
+  QSqlDatabase::removeDatabase("restore-failure");
+  QVERIFY(!BackupDatabase::restore(targetPath, incoming, BackupDatabase::Mode::Replace, &error));
+  BackupPayload afterFailure; QVERIFY(BackupSnapshot::capture(targetPath, {}, &afterFailure, &error));
+  QCOMPARE(afterFailure.library, merged.library);
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", "restore-failure"); database.setDatabaseName(targetPath); QVERIFY(database.open());
+    QSqlQuery query(database); QVERIFY(query.exec("DROP TRIGGER reject_restore"));
+  }
+  QSqlDatabase::removeDatabase("restore-failure");
+  QVERIFY2(BackupDatabase::restore(targetPath, incoming, BackupDatabase::Mode::Replace, &error), qPrintable(error));
+  BackupPayload replaced; QVERIFY2(BackupSnapshot::capture(targetPath, {}, &replaced, &error), qPrintable(error));
+  QCOMPARE(replaced.library.value("saved_filters").toArray().size(), 1);
+  QCOMPARE(replaced.library.value("saved_filters").toArray().first().toObject().value("name").toString(), QString("Weekend"));
+  QCOMPARE(replaced.library.value("game_link_members").toArray().size(), 2);
+  QCOMPARE(replaced.library.value("collections").toArray().size(), 1);
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", "restore-check"); database.setDatabaseName(targetPath); QVERIFY(database.open());
+    QSqlQuery query(database); QVERIFY(query.exec("SELECT favorite, hidden, title FROM games WHERE app_id='target-only'"));
+    QVERIFY(query.next()); QCOMPARE(query.value(0).toInt(), 0); QCOMPARE(query.value(1).toInt(), 0); QCOMPARE(query.value(2).toString(), QString("cache stays"));
+    query.finish();
+    QVERIFY(query.exec("SELECT cover_path FROM artwork_overrides")); QVERIFY(query.next());
+    QVERIFY(query.value(0).toString().startsWith(targetRoot.filePath("artwork/")));
+    QVERIFY(QFileInfo::exists(query.value(0).toString()));
+  }
+  QSqlDatabase::removeDatabase("restore-check");
+  ManualGameModel manual(targetPath);
+  QCOMPARE(manual.count(), 1);
+  QCOMPARE(manual.get(manualId).value("arguments").toStringList(), (QStringList{"", "literal argument"}));
+  QVERIFY(!QFileInfo::exists(manual.get(manualId).value("executable").toString()));
+}
+
+void CoreTests::backupSnapshotConsolidatesLegacyPersonalState() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("legacy.sqlite");
+  const QString cover = temp.filePath("cover.png");
+  QImage image(64, 96, QImage::Format_RGB32); image.fill(Qt::green); QVERIFY(image.save(cover));
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", "backup-legacy-fixture");
+    database.setDatabaseName(path); QVERIFY(database.open());
+    QSqlQuery query(database);
+    const QStringList statements{
+      "CREATE TABLE games(app_id TEXT, favorite INTEGER, hidden INTEGER, title TEXT)",
+      "INSERT INTO games VALUES('123', 1, 1, 'cached title not exported')",
+      "CREATE TABLE lutris_games(id TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO lutris_games VALUES('lutris-1', 1, 0)",
+      "CREATE TABLE heroic_games(app_id TEXT, runner TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO heroic_games VALUES('gog-1', 'gog-direct', 1, 0), ('epic-1', 'legendary', 0, 1)",
+      "CREATE TABLE faugus_games(game_id TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO faugus_games VALUES('faugus-1', 1, 0)",
+      "CREATE TABLE retroarch_games(game_id TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO retroarch_games VALUES('retro-1', 1, 0)",
+      "CREATE TABLE pcsx2_games(path TEXT, serial TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO pcsx2_games VALUES('/games/disc.iso', 'SLES-123', 1, 0)",
+      "CREATE TABLE ryujinx_games(game_id TEXT, flatpak_app_id TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO ryujinx_games VALUES('ryu-1', 'org.ryujinx.Ryujinx', 1, 0)",
+      "CREATE TABLE battlenet_games(game_id TEXT, runner TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO battlenet_games VALUES('battle-1', 'wine', 1, 0)",
+      "CREATE TABLE user_game_flags(source TEXT, runner TEXT, app_id TEXT, favorite INTEGER, hidden INTEGER)",
+      "INSERT INTO user_game_flags VALUES('Steam', '', '123', 0, NULL)",
+      "CREATE TABLE account_tokens(token TEXT)",
+      "INSERT INTO account_tokens VALUES('fake-private-token-must-stay-out')",
+      "CREATE TABLE artwork_overrides(source TEXT, runner TEXT, app_id TEXT, cover_path TEXT)"};
+    for (const auto& statement : statements) QVERIFY2(query.exec(statement), qPrintable(query.lastError().text()));
+    query.prepare("INSERT INTO artwork_overrides VALUES('Steam', '', '123', ?)"); query.addBindValue(cover); QVERIFY(query.exec());
+  }
+  QSqlDatabase::removeDatabase("backup-legacy-fixture");
+  AppSettings settings(temp.filePath("settings.toml"));
+  settings.setSteamId("76561198000000000");
+  settings.setIgdbClientId("fakeprivateclient");
+  settings.setRetroAchievementsUsername("private-user");
+  QFile original(path); QVERIFY(original.open(QIODevice::ReadOnly)); const auto originalBytes = original.readAll(); original.close();
+  BackupPayload snapshot;
+  QString error;
+  QVERIFY2(BackupSnapshot::capture(path, settings.backupSettings(), &snapshot, &error), qPrintable(error));
+  QCOMPARE(snapshot.library.value("user_game_flags").toArray().size(), 9);
+  QMap<QString, QJsonObject> flags;
+  for (const auto& entry : snapshot.library.value("user_game_flags").toArray()) {
+    const auto row = entry.toObject(); flags.insert(row.value("source").toString(), row);
+  }
+  QVERIFY(!flags.value("Steam").value("favorite").toBool());
+  QVERIFY(flags.value("Steam").value("hidden").toBool());
+  QCOMPARE(flags.value("GOG").value("runner").toString(), QString("gog-direct"));
+  QCOMPARE(flags.value("PCSX2").value("app_id").toString(), QString("path:/games/disc.iso"));
+  QCOMPARE(flags.value("PCSX2").value("runner").toString(), QString("SLES-123"));
+  QCOMPARE(flags.value("Ryujinx").value("runner").toString(), QString("org.ryujinx.Ryujinx"));
+  const auto serialized = QJsonDocument(snapshot.library).toJson() + QJsonDocument(snapshot.settings).toJson();
+  QVERIFY(!serialized.contains("fake-private"));
+  QVERIFY(!serialized.contains("fakeprivateclient"));
+  QVERIFY(!serialized.contains("private-user"));
+  QVERIFY(!serialized.contains("76561198000000000"));
+  QVERIFY(!serialized.contains("cached title"));
+  const auto artwork = snapshot.library.value("artwork_overrides").toArray().first().toObject();
+  QVERIFY(artwork.value("cover_path").toString().startsWith("artwork/"));
+  QVERIFY(artwork.value("hero_path").toString().isEmpty());
+  QCOMPARE(snapshot.artwork.size(), 1);
+  QVERIFY(original.open(QIODevice::ReadOnly)); QCOMPARE(original.readAll(), originalBytes); original.close();
+  QVERIFY2(BackupArchive::write(temp.filePath("export.omakade-backup"), snapshot, &error), qPrintable(error));
+  // A custom artwork file that has gone missing is dropped from the backup
+  // rather than blocking every export; the library already falls back for it.
+  QVERIFY(QFile::remove(cover));
+  BackupPayload withoutCover;
+  QVERIFY2(BackupSnapshot::capture(path, settings.backupSettings(), &withoutCover, &error), qPrintable(error));
+  QVERIFY(withoutCover.library.value("artwork_overrides").toArray().isEmpty());
+  QVERIFY(withoutCover.artwork.isEmpty());
+  QCOMPARE(withoutCover.library.value("user_game_flags").toArray().size(), 9);
+}
+
+void CoreTests::backupArchiveRoundTripsAndRejectsInvalidContent() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("library.omakade-backup");
+  QImage image(64, 32, QImage::Format_ARGB32);
+  image.fill(QColor(30, 70, 110, 120));
+  const QString imagePath = temp.filePath("source.png");
+  QVERIFY(image.save(imagePath));
+  QFile imageFile(imagePath); QVERIFY(imageFile.open(QIODevice::ReadOnly));
+  const QByteArray imageBytes = imageFile.readAll();
+  QString error;
+  const QString art = BackupArchive::artworkName(imageBytes, &error);
+  QVERIFY2(!art.isEmpty(), qPrintable(error));
+  const QJsonObject manual{{"id", "manual-test"}, {"title", "Missing native game"},
+      {"executable", "/missing/game/start.sh"}, {"directory", "/missing/game"},
+      {"arguments", QJsonArray{"two words", "", "$literal"}}};
+  BackupPayload original;
+  original.createdAt = "2026-09-05T12:00:00Z";
+  original.settings = {{"reduced_motion", true}, {"artwork_cache_limit_mb", 1024},
+      {"gog_library_paths", QJsonArray{"/mnt/offline/GOG Games"}}};
+  original.library = {
+      {"user_game_flags", QJsonArray{QJsonObject{{"source", "Steam"}, {"runner", ""}, {"app_id", "123"}, {"favorite", true}, {"hidden", QJsonValue::Null}}}},
+      {"manual_games", QJsonArray{QJsonObject{{"id", "manual-test"}, {"entry", QString::fromUtf8(QJsonDocument(manual).toJson(QJsonDocument::Compact))}, {"favorite", false}, {"hidden", false}, {"active", true}}}},
+      {"artwork_overrides", QJsonArray{QJsonObject{{"source", "Steam"}, {"runner", ""}, {"app_id", "123"}, {"cover_path", art}, {"hero_path", ""}, {"logo_path", ""}}}},
+      // Sources are a list now. A filter saved by an earlier build stored one name as a
+      // string, and an archive holding one must still export and import.
+      {"saved_filters", QJsonArray{
+          QJsonObject{{"id", "list-filter"}, {"name", "Two sources"}, {"name_key", "two sources"},
+              {"state_json", QString::fromUtf8(QJsonDocument(QJsonObject{{"version", 1},
+                  {"search", ""}, {"mode", 0}, {"sort", 4}, {"availability", 0},
+                  {"showHidden", false}, {"source", QJsonArray{"Steam", "Dolphin"}},
+                  {"status", ""}, {"collection", ""}, {"tag", ""}}).toJson(QJsonDocument::Compact))}},
+          QJsonObject{{"id", "legacy-filter"}, {"name", "One source"}, {"name_key", "one source"},
+              {"state_json", QString::fromUtf8(QJsonDocument(QJsonObject{{"version", 1},
+                  {"search", ""}, {"mode", 0}, {"sort", 0}, {"availability", 0},
+                  {"showHidden", false}, {"source", "Steam"},
+                  {"status", ""}, {"collection", ""}, {"tag", ""}}).toJson(QJsonDocument::Compact))}}}}};
+  original.artwork.insert(art, imageBytes);
+  QVERIFY2(BackupArchive::write(path, original, &error), qPrintable(error));
+  BackupPayload restored;
+  QVERIFY2(BackupArchive::read(path, &restored, &error), qPrintable(error));
+  QCOMPARE(restored.library, original.library);
+  QCOMPARE(restored.settings, original.settings);
+  QCOMPARE(restored.artwork, original.artwork);
+  QCOMPARE(restored.createdAt, original.createdAt);
+  QVERIFY(QFile::remove(imagePath));
+  QVERIFY(BackupArchive::read(path, &restored, &error));
+  QVERIFY((QFileInfo(path).permissions() & (QFile::ReadOther | QFile::WriteOther)) == 0);
+  QFile goodFile(path); QVERIFY(goodFile.open(QIODevice::ReadOnly)); const QByteArray before = goodFile.readAll(); goodFile.close();
+  auto invalid = original;
+  invalid.settings.insert("steam_api_key", "not-a-real-key");
+  QVERIFY(!BackupArchive::write(path, invalid, &error));
+  QVERIFY(goodFile.open(QIODevice::ReadOnly)); QCOMPARE(goodFile.readAll(), before); goodFile.close();
+  invalid = original; invalid.artwork[art] = "not an image";
+  QVERIFY(!BackupArchive::validate(invalid, &error));
+  invalid = original; invalid.library.insert("achievement_summary", QJsonArray{});
+  QVERIFY(!BackupArchive::validate(invalid, &error));
+  invalid = original; invalid.artwork.clear();
+  QVERIFY(!BackupArchive::validate(invalid, &error));
+  invalid = original;
+  auto flags = invalid.library.value("user_game_flags").toArray(); flags.append(flags.first());
+  invalid.library.insert("user_game_flags", flags);
+  QVERIFY(!BackupArchive::validate(invalid, &error));
+
+  const auto rawArchive = [&](const QString& file, const QJsonObject& manifest, const QString& extraPath) {
+    const QByteArray json = QJsonDocument(manifest).toJson(QJsonDocument::Compact);
+    int code = 0;
+    auto* zip = zip_open(QFile::encodeName(file).constData(), ZIP_CREATE | ZIP_TRUNCATE, &code);
+    QVERIFY(zip != nullptr);
+    auto* source = zip_source_buffer(zip, json.constData(), zip_uint64_t(json.size()), 0);
+    QVERIFY(source != nullptr);
+    QVERIFY(zip_file_add(zip, "manifest.json", source, ZIP_FL_ENC_UTF_8) >= 0);
+    if (!extraPath.isEmpty()) {
+      auto* extra = zip_source_buffer(zip, "unexpected", 10, 0);
+      QVERIFY(extra != nullptr);
+      QVERIFY(zip_file_add(zip, extraPath.toUtf8().constData(), extra, ZIP_FL_ENC_UTF_8) >= 0);
+    }
+    QCOMPARE(zip_close(zip), 0);
+  };
+  const QJsonObject emptyManifest{{"format", "omakade-backup"}, {"version", 1},
+      {"createdAt", original.createdAt}, {"library", QJsonObject{}}, {"settings", QJsonObject{}}, {"artwork", QJsonArray{}}};
+  const QString badPath = temp.filePath("bad.zip");
+  rawArchive(badPath, emptyManifest, "unexpected.txt");
+  restored = original;
+  QVERIFY(!BackupArchive::read(badPath, &restored, &error));
+  QCOMPARE(restored.library, original.library); // Invalid reads never replace the caller's payload.
+  auto future = emptyManifest; future.insert("version", 2);
+  rawArchive(badPath, future, {});
+  QVERIFY(!BackupArchive::read(badPath, &restored, &error));
+  writeFile(badPath, before.left(before.size() / 2));
+  QVERIFY(!BackupArchive::read(badPath, &restored, &error));
+}
+
+void CoreTests::completionWorkflowPersistsAtLibraryScale() {
+  QTemporaryDir original, restored;
+  const QString path = original.filePath("library.sqlite");
+  QString savedId;
+  {
+    MockGameModel source(nullptr, 1000);
+    UnifiedGameModel model(path);
+    model.addSourceModel(&source);
+    LibraryFilterModel filter;
+    filter.setSourceModel(&model);
+    filter.setShowHidden(true);
+    QCOMPARE(filter.rowCount(), 1000);
+    filter.selectAllFiltered();
+    QCOMPARE(filter.selectionCount(), 1000);
+    QVERIFY(filter.applyBulkChanges({{"favorite", true}, {"hidden", false},
+        {"status", "backlog"}, {"tagsAdd", "weekend"},
+        {"collection", "Large library"}, {"collectionIncluded", true}}));
+    QCOMPARE(filter.selectionCount(), 0);
+    QVERIFY(filter.linkGames(filter.indexOf("Demo", "", "demo-0"), "Demo", "", "demo-1"));
+    QCOMPARE(filter.rowCount(), 999);
+    const int linked = filter.indexOf("Demo", "", "demo-0");
+    QVERIFY(filter.setPreferredInstallation(linked, "Demo", "", "demo-1"));
+    QImage image(32, 64, QImage::Format_ARGB32);
+    image.fill(QColor(20, 40, 60, 100));
+    const QString artwork = original.filePath("chosen.png");
+    QVERIFY(image.save(artwork));
+    for (const QString& slot : {QString("cover"), QString("hero"), QString("logo")})
+      QVERIFY(filter.setCustomArtwork(linked, slot, QUrl::fromLocalFile(artwork)));
+    QVERIFY(QFile::remove(artwork));
+    filter.setMode(LibraryFilterModel::Mode::Favorites);
+    filter.setCollectionFilter("Large library");
+    filter.setTagFilter("weekend");
+    filter.setCompletionFilter("backlog");
+    filter.setSortMode(LibraryFilterModel::SortMode::RecentlyPlayed);
+    savedId = filter.saveCurrentFilter("Large weekend library");
+    QVERIFY(!savedId.isEmpty());
+  }
+  BackupPayload payload;
+  QString error;
+  QVERIFY2(BackupSnapshot::capture(path, {}, &payload, &error), qPrintable(error));
+  QCOMPARE(payload.library.value("game_organization").toArray().size(), 1000);
+  const QString archive = original.filePath("library.omakade-backup");
+  QVERIFY2(BackupArchive::write(archive, payload, &error), qPrintable(error));
+  BackupPayload imported;
+  QVERIFY2(BackupArchive::read(archive, &imported, &error), qPrintable(error));
+  const QString restoredPath = restored.filePath("library.sqlite");
+  QVERIFY2(BackupDatabase::restore(restoredPath, imported, BackupDatabase::Mode::Replace, &error),
+           qPrintable(error));
+  for (const QString& database : {path, restoredPath}) {
+    MockGameModel source(nullptr, 1000);
+    UnifiedGameModel model(database);
+    model.addSourceModel(&source);
+    LibraryFilterModel filter;
+    filter.setSourceModel(&model);
+    QVERIFY(filter.applySavedFilter(savedId));
+    QCOMPARE(filter.rowCount(), 999);
+    for (int row = 0; row < filter.rowCount(); ++row) {
+      const auto game = filter.get(row);
+      QVERIFY(game.value("favorite").toBool());
+      QCOMPARE(game.value("completionStatus").toString(), QString("backlog"));
+      QVERIFY(game.value("tags").toStringList().contains("weekend"));
+      QVERIFY(game.value("collections").toStringList().contains("Large library"));
+    }
+    const int linked = filter.indexOf("Demo", "", "demo-0");
+    const auto game = filter.get(linked);
+    for (const QString& flag : {QString("customCover"), QString("customHero"), QString("customLogo")})
+      QVERIFY(game.value(flag).toBool());
+    bool preferred = false;
+    for (const auto& item : filter.installations(linked)) {
+      const auto installation = item.toMap();
+      if (installation.value("appId").toString() == "demo-1")
+        preferred = installation.value("preferred").toBool();
+    }
+    QVERIFY(preferred);
+    QString previous;
+    for (int pick = 0; pick < 25; ++pick) {
+      const int row = filter.pickRandomGame();
+      QVERIFY(row >= 0);
+      const QString id = filter.get(row).value("appId").toString();
+      QVERIFY(id != previous);
+      previous = id;
+    }
+  }
+}
+
+void CoreTests::bulkOrganizationIsAtomicAndPreservesSelection() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("library.sqlite");
+  {
+    MockGameModel source(nullptr, 4);
+    UnifiedGameModel model(path);
+    model.addSourceModel(&source);
+    LibraryFilterModel filter;
+    filter.setSourceModel(&model);
+    QVERIFY(filter.createCollection("Focus"));
+    QVERIFY(filter.setCollectionMembership(0, "Focus", true));
+    QVERIFY(filter.setCollectionMembership(1, "Focus", true));
+    QVERIFY(filter.setTags(0, "old, keep"));
+    filter.setCollectionFilter("Focus");
+    filter.selectAllFiltered();
+    QCOMPARE(filter.selectionCount(), 2);
+    filter.setSortMode(LibraryFilterModel::SortMode::Playtime);
+    QVERIFY(filter.isSelected(0)); QVERIFY(filter.isSelected(1));
+    filter.setCollectionFilter({});
+    QCOMPARE(filter.rowCount(), 4);
+    QCOMPARE(filter.selectionCount(), 2);
+    const auto before0 = filter.get(filter.indexOf("Demo", "", "demo-0"));
+    const auto before1 = filter.get(filter.indexOf("Demo", "", "demo-1"));
+    {
+      auto database = QSqlDatabase::addDatabase("QSQLITE", "bulk-failure-fixture");
+      database.setDatabaseName(path);
+      QVERIFY(database.open());
+      QSqlQuery query(database);
+      QVERIFY(query.exec("CREATE TRIGGER fail_batch BEFORE INSERT ON user_game_flags "
+          "WHEN (SELECT count(*) FROM user_game_flags) > 0 BEGIN SELECT RAISE(ABORT, 'injected failure'); END"));
+      QVERIFY(!filter.applyBulkChanges({{"favorite", true}, {"status", "completed"}}));
+      QCOMPARE(filter.selectionCount(), 2);
+      QCOMPARE(filter.get(filter.indexOf("Demo", "", "demo-0")), before0);
+      QCOMPARE(filter.get(filter.indexOf("Demo", "", "demo-1")), before1);
+      QVERIFY(query.exec("SELECT count(*) FROM user_game_flags"));
+      QVERIFY(query.next()); QCOMPARE(query.value(0).toInt(), 0);
+      query.finish();
+      QVERIFY(query.exec("DROP TRIGGER fail_batch"));
+    }
+    QSqlDatabase::removeDatabase("bulk-failure-fixture");
+    QVERIFY(filter.applyBulkChanges({{"favorite", true}, {"status", "completed"},
+        {"tagsAdd", "new"}, {"tagsRemove", "old"}, {"collection", "Weekend"}, {"collectionIncluded", true}}));
+    QCOMPARE(filter.selectionCount(), 0);
+    for (const QString& id : {QStringLiteral("demo-0"), QStringLiteral("demo-1")}) {
+      const auto game = filter.get(filter.indexOf("Demo", "", id));
+      QVERIFY(game.value("favorite").toBool());
+      QCOMPARE(game.value("completionStatus").toString(), QString("completed"));
+      QVERIFY(game.value("tags").toStringList().contains("new"));
+      QVERIFY(!game.value("tags").toStringList().contains("old"));
+      QVERIFY(game.value("collections").toStringList().contains("Focus"));
+      QVERIFY(game.value("collections").toStringList().contains("Weekend"));
+    }
+    QVERIFY(filter.get(filter.indexOf("Demo", "", "demo-0")).value("tags").toStringList().contains("keep"));
+    QVERIFY(!filter.get(filter.indexOf("Demo", "", "demo-2")).value("favorite").toBool());
+    filter.toggleFavorite(filter.indexOf("Demo", "", "demo-0"));
+    QVERIFY(!filter.get(filter.indexOf("Demo", "", "demo-0")).value("favorite").toBool());
+    filter.setCollectionFilter("Focus");
+    filter.selectAllFiltered();
+    QVERIFY(filter.linkGames(filter.indexOf("Demo", "", "demo-0"), "Demo", "", "demo-1"));
+    QCOMPARE(filter.selectionCount(), 1);
+    QVERIFY(filter.applyBulkChanges({{"hidden", true}}));
+    QCOMPARE(filter.rowCount(), 0);
+    filter.setMode(LibraryFilterModel::Mode::Hidden);
+    QCOMPARE(filter.rowCount(), 1);
+    filter.toggleHidden(0);
+    QCOMPARE(filter.rowCount(), 0);
+    filter.setMode(LibraryFilterModel::Mode::All);
+    QCOMPARE(filter.rowCount(), 1);
+    QVERIFY(filter.unlinkGames(0));
+    QCOMPARE(filter.rowCount(), 2);
+    filter.selectAllFiltered();
+    QVERIFY(!filter.applyBulkChanges({{"favorite", "false"}}));
+    QCOMPARE(filter.selectionCount(), 2);
+    QVERIFY(filter.applyBulkChanges({{"collection", "Focus"}, {"collectionIncluded", false}}));
+    QCOMPARE(filter.rowCount(), 0);
+  }
+  {
+    MockGameModel source(nullptr, 4);
+    UnifiedGameModel model(path);
+    model.addSourceModel(&source);
+    LibraryFilterModel filter;
+    filter.setSourceModel(&model);
+    QCOMPARE(filter.rowCount(), 4);
+    const auto first = filter.get(filter.indexOf("Demo", "", "demo-0"));
+    QVERIFY(!first.value("favorite").toBool());
+    QVERIFY(!first.value("hidden").toBool());
+    QCOMPARE(first.value("completionStatus").toString(), QString("completed"));
+    QVERIFY(first.value("collections").toStringList().contains("Weekend"));
+    QVERIFY(!first.value("collections").toStringList().contains("Focus"));
+    filter.toggleSelection(filter.indexOf("Demo", "", "demo-3"));
+    QVERIFY(filter.applyBulkChanges({{"tagsAdd", "first tag"}}));
+    const auto fresh = filter.get(filter.indexOf("Demo", "", "demo-3"));
+    QVERIFY(fresh.value("completionStatus").toString().isEmpty());
+    QVERIFY(fresh.value("tags").toStringList().contains("first tag"));
+    ManualGameModel manual(path);
+    const QString executable = temp.filePath("bulk-native.sh");
+    writeFile(executable, "#!/bin/sh\nexit 0\n");
+    QVERIFY(QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const QString id = manual.saveEntry({{"title", "Zebra"}, {"executable", executable},
+        {"directory", temp.path()}, {"arguments", QStringList{}}});
+    QVERIFY(!id.isEmpty());
+    model.addSourceModel(&manual);
+    filter.toggleSelection(filter.indexOf("Manual", "", id));
+    auto edited = manual.get(id);
+    edited.insert("title", "A new title");
+    QCOMPARE(manual.saveEntry(edited), id); // Rebuilds the source model and reorders the proxy.
+    QCOMPARE(filter.selectionCount(), 1);
+    QVERIFY(filter.isSelected(filter.indexOf("Manual", "", id)));
+    QVERIFY(manual.removeEntry(id));
+    QVERIFY(!filter.applyBulkChanges({{"favorite", true}}));
+    QCOMPARE(filter.selectionCount(), 1); // Missing identities never turn into edits to a different row.
+    filter.clearSelection();
+  }
+}
+
+void CoreTests::savedFiltersPersistAndPreserveQueries() {
+  QTemporaryDir temp;
+  QString id;
+  QVariantMap expected;
+  {
+    MockGameModel source(nullptr, 4);
+    UnifiedGameModel model(temp.filePath("library.sqlite"));
+    model.addSourceModel(&source);
+    LibraryFilterModel filter;
+    filter.setSourceModel(&model);
+    QVERIFY(filter.createCollection("Weekend"));
+    QVERIFY(filter.setCollectionMembership(0, "Weekend", true));
+    QVERIFY(filter.setTags(0, "short, relaxing"));
+    QVERIFY(filter.setCompletionStatus(0, "backlog"));
+    filter.setSearchText("Aster");
+    filter.setSourceFilter("Demo");
+    filter.setCollectionFilter("Weekend");
+    filter.setTagFilter("short");
+    filter.setCompletionFilter("backlog");
+    filter.setSortMode(LibraryFilterModel::SortMode::RecentlyPlayed);
+    filter.setAvailability(LibraryFilterModel::Availability::AllGames);
+    filter.setShowHidden(true);
+    QCOMPARE(filter.rowCount(), 1);
+    expected = filter.filterState();
+    id = filter.saveCurrentFilter(" Weekend picks ");
+  // Names follow the same control-character rule the backup validator applies.
+  QVERIFY(filter.saveCurrentFilter(QStringLiteral("bad\u0085name")).isEmpty());
+  QVERIFY(filter.saveCurrentFilter(QString(PersonalDataRules::kMaxFilterNameLength + 1, QLatin1Char('n'))).isEmpty());
+    QVERIFY(!id.isEmpty());
+    QVERIFY(filter.saveCurrentFilter("WEEKEND PICKS").isEmpty());
+    QVERIFY(filter.saveCurrentFilter(" ").isEmpty());
+    QVERIFY(filter.saveCurrentFilter("bad\nname").isEmpty());
+    QCOMPARE(filter.savedFilters().size(), 1);
+    filter.setSearchText("no game");
+    filter.setMode(LibraryFilterModel::Mode::Hidden);
+    QVERIFY(filter.applySavedFilter(id));
+    QCOMPARE(filter.filterState(), expected);
+    QCOMPARE(filter.rowCount(), 1);
+    QVERIFY(filter.renameSavedFilter(id, "Quiet weekend"));
+    QCOMPARE(filter.savedFilters().first().toMap().value("id").toString(), id);
+    QCOMPARE(filter.savedFilters().first().toMap().value("name").toString(), QString("Quiet weekend"));
+  }
+  {
+    MockGameModel source(nullptr, 4);
+    UnifiedGameModel model(temp.filePath("library.sqlite"));
+    model.addSourceModel(&source);
+    LibraryFilterModel filter;
+    filter.setSourceModel(&model);
+    QVERIFY(filter.applySavedFilter(id));
+    QCOMPARE(filter.filterState(), expected);
+    QCOMPARE(filter.rowCount(), 1);
+    QVERIFY(filter.deleteCollection("Weekend"));
+    QVERIFY(filter.applySavedFilter(id));
+    QCOMPARE(filter.collectionFilter(), QString("Weekend"));
+    QCOMPARE(filter.rowCount(), 0);
+    QVERIFY(filter.savedFilterMessage().contains("Weekend"));
+    QVERIFY(filter.createCollection("Weekend"));
+    filter.setCollectionFilter({});
+    QVERIFY(filter.setCollectionMembership(0, "Weekend", true));
+    QVERIFY(filter.applySavedFilter(id));
+    QCOMPARE(filter.rowCount(), 1);
+    QVERIFY(filter.savedFilterMessage().isEmpty());
+    // Several source chips at once round trip, since a saved filter stores the whole selection.
+    filter.setSourceFilters({QStringLiteral("Demo"), QStringLiteral("Mock")});
+    const QVariantMap multiple = filter.filterState();
+    const QString multipleId = filter.saveCurrentFilter(QStringLiteral("Two sources"));
+    QVERIFY(!multipleId.isEmpty());
+    filter.setSourceFilters({});
+    QVERIFY(filter.applySavedFilter(multipleId));
+    QCOMPARE(filter.sourceFilters(), QStringList({QStringLiteral("Demo"), QStringLiteral("Mock")}));
+    QCOMPARE(filter.filterState(), multiple);
+    // A filter saved before sources became multi-select stored one name as a bare string.
+    // It still applies, rather than being reported as an unsupported format.
+    QVariantMap legacy = expected;
+    legacy.insert(QStringLiteral("source"), QStringLiteral("Demo"));
+    QVERIFY(model.saveFilter(QStringLiteral("legacy"), QStringLiteral("Legacy format"), legacy));
+    filter.setSourceFilters({});
+    QVERIFY(filter.applySavedFilter(QStringLiteral("legacy")));
+    QCOMPARE(filter.sourceFilters(), QStringList{QStringLiteral("Demo")});
+    QVERIFY(filter.savedFilterMessage().isEmpty());
+    QVariantMap future = expected;
+    future.insert("version", 999);
+    QVERIFY(model.saveFilter("future", "Future format", future));
+    const QVariantMap before = filter.filterState();
+    QVERIFY(!filter.applySavedFilter("future"));
+    QCOMPARE(filter.filterState(), before);
+    QVERIFY(!filter.renameSavedFilter(id, "Future format"));
+    QVERIFY(filter.removeSavedFilter(id));
+    QVERIFY(!filter.removeSavedFilter(id));
+    QCOMPARE(filter.filterState(), before); // Deleting a saved view does not alter the current query.
+    QVERIFY(!filter.applySavedFilter(id));
+  }
+}
+
+void CoreTests::randomPickRespectsFiltersAndLinkedIdentity() {
+  QTemporaryDir temp;
+  MockGameModel source(nullptr, 4, true);
+  UnifiedGameModel model(temp.filePath("library.sqlite"));
+  model.addSourceModel(&source);
+  LibraryFilterModel filter;
+  filter.setSourceModel(&model);
+  filter.setAvailability(LibraryFilterModel::Availability::AllGames);
+  QString previous;
+  for (int i = 0; i < 30; ++i) {
+    const int row = filter.pickRandomGame();
+    QVERIFY(row >= 0);
+    const auto game = filter.get(row);
+    QVERIFY(game.value("installed").toBool());
+    QVERIFY(game.value("appId").toString() != previous);
+    previous = game.value("appId").toString();
+  }
+  filter.setSearchText("Black Meridian");
+  QCOMPARE(filter.rowCount(), 1);
+  QCOMPARE(filter.pickRandomGame(), 0);
+  QCOMPARE(filter.pickRandomGame(), 0);
+  filter.setSearchText({});
+  filter.setAvailability(LibraryFilterModel::Availability::ReadyToInstall);
+  QCOMPARE(filter.pickRandomGame(), -1);
+  filter.setAvailability(LibraryFilterModel::Availability::Installed);
+  QVERIFY(filter.linkGames(0, "Demo", "", "demo-2"));
+  QCOMPARE(filter.rowCount(), 2);
+  previous.clear();
+  for (int i = 0; i < 20; ++i) {
+    const int row = filter.pickRandomGame();
+    QVERIFY(row >= 0);
+    const QString id = filter.get(row).value("appId").toString();
+    QVERIFY(id != previous);
+    previous = id;
+    filter.setSortMode(i % 2 ? LibraryFilterModel::SortMode::Title : LibraryFilterModel::SortMode::Playtime);
+  }
+  filter.setSearchText("no matching game");
+  QCOMPARE(filter.pickRandomGame(), -1);
+
+  ManualGameModel manual(temp.filePath("manual.sqlite"));
+  const QString executable = temp.filePath("game.sh");
+  writeFile(executable, "#!/bin/sh\nexit 0\n");
+  QVERIFY(QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QVERIFY(!manual.saveEntry({{"title", "Manual pick"}, {"executable", executable},
+      {"directory", temp.path()}, {"arguments", QStringList{}}}).isEmpty());
+  UnifiedGameModel manualLibrary(temp.filePath("manual.sqlite"));
+  manualLibrary.addSourceModel(&manual);
+  LibraryFilterModel manualFilter;
+  manualFilter.setSourceModel(&manualLibrary);
+  QCOMPARE(manualFilter.pickRandomGame(), 0);
+  manualFilter.toggleHidden(0);
+  QCOMPARE(manualFilter.pickRandomGame(), -1);
+  manualFilter.setMode(LibraryFilterModel::Mode::Hidden);
+  QCOMPARE(manualFilter.pickRandomGame(), 0); // Explicit hidden filter is respected.
+  QVERIFY(QFile::remove(executable));
+  QCOMPARE(manualFilter.pickRandomGame(), -1);
+}
+
 void CoreTests::customCoverPersistsAndResets() {
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -1627,6 +2559,19 @@ void CoreTests::explicitLinksPersistAndPreserveInstallations() {
   const QString dataRoot = directory.path() + QStringLiteral("/lutris");
   const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
   createLutrisFixture(dataRoot);
+  const QString installedPath = directory.path() + QStringLiteral("/installed");
+  QVERIFY(QDir().mkpath(installedPath));
+  const QString fixtureConnection = QStringLiteral("preference-fixture");
+  {
+    QSqlDatabase fixture = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), fixtureConnection);
+    fixture.setDatabaseName(dataRoot + QStringLiteral("/pga.db"));
+    QVERIFY(fixture.open());
+    QSqlQuery update(fixture);
+    update.prepare(QStringLiteral("UPDATE games SET directory = ? WHERE id = 7"));
+    update.addBindValue(installedPath);
+    QVERIFY(update.exec());
+  }
+  QSqlDatabase::removeDatabase(fixtureConnection);
 
   {
     MockGameModel demo(nullptr, 2);
@@ -1650,6 +2595,39 @@ void CoreTests::explicitLinksPersistAndPreserveInstallations() {
              QStringLiteral("Lutris"));
     QCOMPARE(installations.at(1).toMap().value(QStringLiteral("appId")).toString(),
              QStringLiteral("7"));
+    QVERIFY(!games.setPreferredInstallation(0, QStringLiteral("Lutris"), QString{},
+                                            QStringLiteral("missing")));
+    LibraryFilterModel preferenceView;
+    preferenceView.setSourceModel(&games);
+    preferenceView.setSourceFilter(QStringLiteral("Lutris"));
+    QCOMPARE(preferenceView.rowCount(), 1);
+    QVERIFY(preferenceView.setPreferredInstallation(0, QStringLiteral("Lutris"), QString{},
+                                                    QStringLiteral("7")));
+    QVERIFY(games.installations(0).at(1).toMap().value(QStringLiteral("preferred")).toBool());
+    QCOMPARE(games.preferredInstallation(0).value(QStringLiteral("source")).toString(),
+             QStringLiteral("Lutris"));
+    QVERIFY(QDir().rmdir(installedPath));
+    QVERIFY(games.installations(0)
+                .at(0)
+                .toMap()
+                .value(QStringLiteral("preferredUnavailable"))
+                .toBool());
+    QVERIFY(QDir().mkpath(installedPath));
+    QCOMPARE(games.preferredInstallation(0).value(QStringLiteral("source")).toString(),
+             QStringLiteral("Lutris"));
+    games.setSourceEnabled(QStringLiteral("Lutris"), false);
+    QVERIFY(games.installations(0)
+                .at(0)
+                .toMap()
+                .value(QStringLiteral("preferredUnavailable"))
+                .toBool());
+    games.setSourceEnabled(QStringLiteral("Lutris"), true);
+    QVERIFY(games.installations(0).at(1).toMap().value(QStringLiteral("preferred")).toBool());
+    QVERIFY(!games.installations(0)
+                 .at(1)
+                 .toMap()
+                 .value(QStringLiteral("preferredUnavailable"))
+                 .toBool());
     games.setSourceEnabled(QStringLiteral("Demo"), false);
     QCOMPARE(games.rowCount(), 1);
     QCOMPARE(games.data(games.index(0), GameRoles::Source).toString(), QStringLiteral("Lutris"));
@@ -1690,8 +2668,38 @@ void CoreTests::explicitLinksPersistAndPreserveInstallations() {
            QStringLiteral("completed"));
   QCOMPARE(games.data(games.index(0), GameRoles::Collections).toStringList(),
            QStringList({QStringLiteral("Finished")}));
+  QVERIFY(games.installations(0).at(1).toMap().value(QStringLiteral("preferred")).toBool());
+  // Explicit CLI requests still select their named source, regardless of the default.
+  QCOMPARE(
+      PlayRequest::findInstallation(games, LaunchKey::parse(QStringLiteral("Demo::demo-0")), nullptr)
+          .value(QStringLiteral("source")).toString(), QStringLiteral("Demo"));
+  QCOMPARE(
+      PlayRequest::findInstallation(games, LaunchKey::parse(QStringLiteral("Lutris::7")), nullptr)
+          .value(QStringLiteral("source"))
+          .toString(),
+      QStringLiteral("Lutris"));
   QVERIFY(games.unlinkGames(0));
   QCOMPARE(games.rowCount(), 3);
+  QVERIFY(games.linkGames(0, QStringLiteral("Lutris"), QString{}, QStringLiteral("7")));
+  for (const QVariant& value : games.installations(0)) {
+    QVERIFY(!value.toMap().value(QStringLiteral("preferred")).toBool());
+  }
+  QVERIFY(
+      games.setPreferredInstallation(0, QStringLiteral("Lutris"), QString{}, QStringLiteral("7")));
+  // Merging another game into the group retains the group's existing default.
+  const QVariantMap third = games.installations(1).first().toMap();
+  QVERIFY(games.linkGames(0, third.value(QStringLiteral("source")).toString(),
+                          third.value(QStringLiteral("runner")).toString(),
+                          third.value(QStringLiteral("appId")).toString()));
+  QCOMPARE(games.rowCount(), 1);
+  int defaults = 0;
+  for (const QVariant& value : games.installations(0)) {
+    if (value.toMap().value(QStringLiteral("preferred")).toBool()) {
+      ++defaults;
+      QCOMPARE(value.toMap().value(QStringLiteral("source")).toString(), QStringLiteral("Lutris"));
+    }
+  }
+  QCOMPARE(defaults, 1);
 }
 
 void CoreTests::launchActivityPersistsAndSortsExactly() {
@@ -1805,6 +2813,26 @@ void CoreTests::organizationPersistsAndFilters() {
   QVERIFY(library.deleteCollection(QStringLiteral("weekend")));
   QVERIFY(library.collectionNames().isEmpty());
   QVERIFY(library.get(0).value(QStringLiteral("collections")).toStringList().isEmpty());
+}
+
+void CoreTests::launcherTracksRunningGames() {
+  GameLauncher launcher;
+  QSignalSpy running(&launcher, &GameLauncher::gameRunningChanged);
+  QVERIFY(!launcher.gameRunning());
+  QVERIFY(!launcher.startTracked(
+      LaunchCommand{QStringLiteral("/nonexistent/omakade-missing-binary"), {}}));
+  QVERIFY(!launcher.gameRunning());
+  QCOMPARE(running.count(), 0);
+
+  QVERIFY(launcher.startTracked(
+      LaunchCommand{QStringLiteral("sleep"), {QStringLiteral("0.5")}}));
+  QVERIFY(launcher.gameRunning());
+  QCOMPARE(running.count(), 1);
+  QVERIFY(launcher.startTracked(
+      LaunchCommand{QStringLiteral("sleep"), {QStringLiteral("0.2")}}));
+  QCOMPARE(running.count(), 1);  // A second game does not toggle the flag.
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 10000);
+  QCOMPARE(running.count(), 2);
 }
 
 void CoreTests::lutrisLauncherBuildsSafeCommands() {
@@ -2424,6 +3452,11 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
                         QStringLiteral("-L"), core, content}));
   QVERIFY(!GameLauncher::retroArchCommand(content, QStringLiteral("DETECT"), false).isValid());
   QVERIFY(!GameLauncher::retroArchCommand({}, core, false).isValid());
+  const LaunchCommand playlist =
+      GameLauncher::resolvedCartridgeCommand(content, core, false, true, QStringLiteral("snes9x"),
+                                             QStringLiteral("/cores/snes9x_libretro.so"));
+  QCOMPARE(playlist.program, QStringLiteral("retroarch"));
+  QCOMPARE(playlist.arguments.constLast(), content);
 
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -2431,7 +3464,7 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
   writeFile(archive, "archive");
   GameLauncher launcher;
   QVERIFY(!launcher.launch(QStringLiteral("RetroArch"), QStringLiteral("id"), false, {},
-                           archive + QStringLiteral("#Sonic.bin"), {}));
+                           archive + QStringLiteral("#Sonic.unknown"), {}));
   QVERIFY(!launcher.lastError().startsWith(QStringLiteral("The installed files are missing.")));
 }
 
@@ -2513,6 +3546,8 @@ void CoreTests::battleNetScannerDiscoversKnownPrefixes() {
   writeFile(data + QStringLiteral("/bottles/bottles/Wow/bottle.yml"), "Name: Wow\n");
   createBattleNetFixture(home + QStringLiteral("/Games/battlenet"));
   writeFile(home + QStringLiteral("/Games/battlenet/version"), "GE-Proton11-6\n");
+  QVERIFY(QFile::link(home + QStringLiteral("/Games/battlenet"),
+                      home + QStringLiteral("/Games/battlenet/pfx")));
   const QString steamRoot = home + QStringLiteral("/.local/share/Steam");
   createBattleNetFixture(steamRoot + QStringLiteral("/steamapps/compatdata/4242/pfx"));
   writeFile(steamRoot + QStringLiteral("/steamapps/compatdata/4242/version"), "9.0\n");
@@ -2591,6 +3626,22 @@ void CoreTests::battleNetModelIsRepeatableAndPreservesLocalState() {
   QCOMPARE(reloaded.detectedPaths(), QStringList({QDir::cleanPath(prefix)}));
   QCOMPARE(reloaded.lastScan(), model.lastScan());
   QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+
+  // Issue #27: a rescan must repair the runner cached by 1.5.0 without losing
+  // the user's state or duplicating games in an Omarchy-style Proton prefix.
+  writeFile(prefix + QStringLiteral("/version"), "GE-Proton11-6\n");
+  QVERIFY(QFile::link(prefix, prefix + QStringLiteral("/pfx")));
+  reloaded.refreshFromPrefixes({prefix});
+  QCOMPARE(reloaded.rowCount(), 3);
+  for (int row = 0; row < reloaded.rowCount(); ++row) {
+    QCOMPARE(reloaded.data(reloaded.index(row), GameRoles::Runner).toString(),
+             QStringLiteral("proton"));
+  }
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Hidden).toBool());
+  BattleNetGameModel repaired(database);
+  QCOMPARE(repaired.data(repaired.index(0), GameRoles::Runner).toString(),
+           QStringLiteral("proton"));
 }
 
 void CoreTests::battleNetModelMigratesLegacyRowsSafely() {
@@ -3271,6 +4322,186 @@ void CoreTests::stressLibraryContainsOneThousandGames() {
            QStringLiteral("Wild Orbit 40"));
 }
 
+void CoreTests::manualGamesImportEditLaunchAndRemove() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString executable = directory.path() + QStringLiteral("/native game");
+  writeFile(executable, "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\" > launch-result.txt\n");
+  QVERIFY(QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const QString database = directory.path() + QStringLiteral("/library.sqlite3");
+  QString id;
+  {
+    ManualGameModel manual(database);
+    QVariantMap draft = manual.draftFromFile(QUrl::fromLocalFile(executable));
+    QCOMPARE(draft.value(QStringLiteral("executable")).toString(), executable);
+    draft.insert(QStringLiteral("title"), QStringLiteral("Native Test"));
+    draft.insert(QStringLiteral("arguments"), QStringList{QStringLiteral("two words"), QString{}, QStringLiteral("$literal")});
+    id = manual.saveEntry(draft);
+    QVERIFY2(!id.isEmpty(), qPrintable(manual.lastError()));
+    QCOMPARE(manual.rowCount(), 1);
+    UnifiedGameModel unified(database);
+    unified.addSourceModel(&manual);
+    LibraryFilterModel library;
+    library.setSourceModel(&unified);
+    library.setSourceFilter(QStringLiteral("Manual"));
+    QCOMPARE(library.rowCount(), 1);
+    library.toggleFavorite(0);
+    QVERIFY(library.setTags(0, QStringLiteral("native, indie")));
+    QVERIFY(library.createCollection(QStringLiteral("Local")));
+    QVERIFY(library.setCollectionMembership(0, QStringLiteral("Local"), true));
+    GameLauncher launcher;
+    QString error;
+    QVERIFY2(PlayRequest::perform(unified, launcher, LaunchKey::parse(QStringLiteral("Manual::") + id), &error),
+             qPrintable(error));
+    const QString output = directory.path() + QStringLiteral("/launch-result.txt");
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(output), 3000);
+    QFile result(output);
+    QVERIFY(result.open(QIODevice::ReadOnly));
+    QCOMPARE(result.readAll(), directory.path().toUtf8() + "\ntwo words\n\n$literal\n");
+    QVERIFY(library.get(0).value(QStringLiteral("lastPlayed")).toLongLong() > 0);
+    draft = manual.get(id);
+    draft.insert(QStringLiteral("title"), QStringLiteral("Renamed Test"));
+    QCOMPARE(manual.saveEntry(draft), id);
+    QCOMPARE(manual.rowCount(), 1);
+    QVERIFY(library.get(0).value(QStringLiteral("favorite")).toBool());
+    QCOMPARE(library.get(0).value(QStringLiteral("title")).toString(), QStringLiteral("Renamed Test"));
+  }
+  ManualGameModel reloaded(database);
+  QCOMPARE(reloaded.get(id).value(QStringLiteral("title")).toString(), QStringLiteral("Renamed Test"));
+  QVERIFY(reloaded.get(id).value(QStringLiteral("favorite")).toBool());
+  const QString desktop = directory.path() + QStringLiteral("/native.desktop");
+  writeFile(desktop, QStringLiteral("[Desktop Entry]\nType=Application\nName=Desktop Game\nIcon=game-icon\n"
+                                   "Exec=\"%1\" \"two words\" %% %c %k %i %U\nPath=%2\n")
+                        .arg(executable, directory.path()).toUtf8());
+  const QVariantMap imported = reloaded.draftFromFile(QUrl::fromLocalFile(desktop));
+  QCOMPARE(imported.value(QStringLiteral("arguments")).toStringList(),
+           QStringList({QStringLiteral("two words"), QStringLiteral("%"), QStringLiteral("Desktop Game"),
+                        desktop, QStringLiteral("--icon"), QStringLiteral("game-icon")}));
+  QCOMPARE(imported.value(QStringLiteral("directory")).toString(), directory.path());
+  QVERIFY(!reloaded.saveEntry(imported).isEmpty());
+  QCOMPARE(reloaded.rowCount(), 2);
+  writeFile(desktop, "[Desktop Entry]\nType=Application\nName=Bad\nExec=true %Z\n");
+  QVERIFY(reloaded.draftFromFile(QUrl::fromLocalFile(desktop)).isEmpty());
+  QVERIFY(QFile::rename(executable, executable + QStringLiteral(" moved")));
+  QString error;
+  const QString target = reloaded.data(reloaded.index(0), GameRoles::LaunchTarget).toString();
+  const QString targetId = reloaded.data(reloaded.index(0), GameRoles::AppId).toString();
+  QVERIFY(!ManualGameModel::validateLaunch(target, targetId, nullptr, nullptr, nullptr, &error));
+  QVERIFY(error.contains(QStringLiteral("missing")));
+  QCOMPARE(reloaded.rowCount(), 2);
+  MockGameModel demo(nullptr, 1);
+  UnifiedGameModel linked(database);
+  linked.addSourceModel(&demo);
+  linked.addSourceModel(&reloaded);
+  QVERIFY(linked.linkGames(0, QStringLiteral("Manual"), QString{}, id));
+  LibraryFilterModel filtered;
+  filtered.setSourceModel(&linked);
+  filtered.setSourceFilter(QStringLiteral("Manual"));
+  QVERIFY(filtered.indexOf(QStringLiteral("Manual"), QString{}, id) >= 0);
+  QVERIFY(reloaded.removeEntry(id));
+  QCOMPARE(filtered.indexOf(QStringLiteral("Manual"), QString{}, id), -1);
+  QVERIFY(reloaded.get(id).isEmpty());
+  QVERIFY(QFileInfo::exists(executable + QStringLiteral(" moved")));
+  ManualGameModel afterRemoval(database);
+  QCOMPARE(afterRemoval.rowCount(), 1);
+  // Removed entries are inactive rows; backups carry only what the library shows.
+  BackupPayload snapshot;
+  QString snapshotError;
+  QVERIFY2(BackupSnapshot::capture(database, {}, &snapshot, &snapshotError), qPrintable(snapshotError));
+  QCOMPARE(snapshot.library.value("manual_games").toArray().size(), 1);
+  for (const auto& flag : snapshot.library.value("user_game_flags").toArray())
+    QVERIFY(flag.toObject().value("app_id").toString() != id);
+  // The editor and the backup validator share one title limit.
+  QVariantMap longTitle = afterRemoval.get(afterRemoval.data(afterRemoval.index(0), GameRoles::AppId).toString());
+  longTitle.insert(QStringLiteral("title"), QString(PersonalDataRules::kMaxManualTitleLength + 1, QLatin1Char('x')));
+  QVERIFY(afterRemoval.saveEntry(longTitle).isEmpty());
+  longTitle.insert(QStringLiteral("title"), QStringLiteral("bad\u0085title"));
+  QVERIFY(afterRemoval.saveEntry(longTitle).isEmpty());
+}
+
+void CoreTests::gogFoldersPersistAndHandleDisconnectedRoots() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString config = directory.path() + QStringLiteral("/settings.toml");
+  const QString first = directory.path() + QStringLiteral("/GOG \"one\" é");
+  const QString second = directory.path() + QStringLiteral("/GOG two");
+  const auto addGame = [](const QString& root, const QString& id, const QString& title) {
+    const QJsonObject task{{QStringLiteral("type"), QStringLiteral("FileTask")},
+                           {QStringLiteral("isPrimary"), true},
+                           {QStringLiteral("path"), QStringLiteral("start.sh")}};
+    const QJsonObject manifest{{QStringLiteral("name"), title},
+                               {QStringLiteral("playTasks"), QJsonArray{task}}};
+    writeFile(root + QStringLiteral("/game/goggame-%1.info").arg(id),
+              QJsonDocument(manifest).toJson());
+    writeFile(root + QStringLiteral("/game/start.sh"), "#!/bin/sh\n");
+  };
+  addGame(first, QStringLiteral("101"), QStringLiteral("First"));
+  addGame(second, QStringLiteral("202"), QStringLiteral("Second"));
+  {
+    AppSettings settings(config);
+    QVERIFY(settings.addGogLibraryPath(QUrl::fromLocalFile(first).toString()));
+    QVERIFY(settings.addGogLibraryPath(first + QStringLiteral("/../") + QFileInfo(first).fileName()));
+    QCOMPARE(settings.gogLibraryPaths().size(), 1);
+    QVERIFY(settings.addGogLibraryPath(second));
+    QVERIFY(!settings.addGogLibraryPath(QStringLiteral("relative/path")));
+    QVERIFY(!settings.addGogLibraryPath(QStringLiteral("https://example.test/games")));
+    QVERIFY(!settings.addGogLibraryPath(first + QLatin1Char('\n')));
+    QCOMPARE(settings.gogLibraryPathStatus(first), QStringLiteral("Available"));
+  }
+  AppSettings reloaded(config);
+  QCOMPARE(reloaded.gogLibraryPaths(), QStringList({first, second}));
+  const auto discovered = HeroicScanner::discoverRoots(reloaded.gogLibraryPaths());
+  QVERIFY(discovered.contains(first));
+  QVERIFY(discovered.contains(second));
+  const auto scan = HeroicScanner::scan({first, second, first});
+  QCOMPARE(scan.games.size(), 2);
+  HeroicGameModel model(directory.path() + QStringLiteral("/library.sqlite3"));
+  model.setGogLibraryPaths({first, second});
+  model.refreshFromRoots({first, second});
+  QCOMPARE(model.rowCount(), 2);
+  const auto rowFor = [&model](const QString& id) {
+    for (int row = 0; row < model.rowCount(); ++row)
+      if (model.data(model.index(row), GameRoles::AppId).toString() == id) return row;
+    return -1;
+  };
+  model.toggleFavorite(rowFor(QStringLiteral("101")));
+  QVERIFY(QDir().rename(first, first + QStringLiteral(" offline")));
+  QVERIFY(HeroicScanner::discoverRoots(reloaded.gogLibraryPaths()).contains(first));
+  QVERIFY(reloaded.gogLibraryPathStatus(first).startsWith(QStringLiteral("Unavailable")));
+  addGame(second, QStringLiteral("202"), QStringLiteral("Updated"));
+  model.refreshFromRoots({first, second});
+  QCOMPARE(model.rowCount(), 2);
+  QVERIFY(model.errorText().contains(first));
+  QCOMPARE(model.data(model.index(rowFor(QStringLiteral("202"))), GameRoles::Title).toString(),
+           QStringLiteral("Updated"));
+  QVERIFY(model.data(model.index(rowFor(QStringLiteral("101"))), GameRoles::Favorite).toBool());
+  QVERIFY(QDir().rename(first + QStringLiteral(" offline"), first));
+  model.refreshFromRoots({first, second});
+  QVERIFY(!model.errorText().contains(QStringLiteral("GOG folder unavailable")));
+  QVERIFY(reloaded.removeGogLibraryPath(first));
+  QVERIFY(reloaded.removeGogLibraryPath(second));
+  model.setGogLibraryPaths(reloaded.gogLibraryPaths());
+  model.refreshFromRoots({});
+  QCOMPARE(model.rowCount(), 0);
+  QVERIFY(QFileInfo::exists(first + QStringLiteral("/game/goggame-101.info")));
+  model.setGogLibraryPaths({first});
+  model.refreshFromRoots({first});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+  // Closing before the rescan finishes cannot resurrect an explicitly removed folder.
+  model.setGogLibraryPaths({});
+  HeroicGameModel restarted(directory.path() + QStringLiteral("/library.sqlite3"));
+  restarted.setGogLibraryPaths({});
+  restarted.refreshFromRoots({});
+  QCOMPARE(restarted.rowCount(), 0);
+  AppSettings empty(config);
+  QVERIFY(empty.gogLibraryPaths().isEmpty());
+  // A failed settings write must not report a folder as saved in memory.
+  AppSettings unwritable(directory.path());
+  QVERIFY(!unwritable.addGogLibraryPath(first));
+  QVERIFY(unwritable.gogLibraryPaths().isEmpty());
+}
+
 void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -3292,8 +4523,16 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setRetroArchEnabled(false);
     QVERIFY(settings.pcsx2AutoEnabled());
     QVERIFY(settings.ryujinxAutoEnabled());
+    QVERIFY(settings.shadps4AutoEnabled());
+    QVERIFY(settings.cemuAutoEnabled());
+    QVERIFY(settings.consolePortalsEnabled());
     settings.setPcsx2Enabled(false);  // explicit: clears the auto flag
     settings.setRyujinxEnabled(false);
+    settings.setShadps4Enabled(false);
+    settings.setCemuEnabled(false);
+    settings.setConsolePortalsEnabled(false);
+    settings.setPreferStandaloneEmulators(true);
+    settings.setRomFolders({QStringLiteral("/roms/snes|snes")});
     settings.setBattleNetEnabled(false);
     settings.setCloseAfterLaunch(true);
     settings.setCouchModeEnabled(true);
@@ -3313,8 +4552,15 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(!reloaded.retroArchEnabled());
   QVERIFY(!reloaded.pcsx2Enabled());
   QVERIFY(!reloaded.ryujinxEnabled());
+  QVERIFY(!reloaded.shadps4Enabled());
+  QVERIFY(!reloaded.cemuEnabled());
   QVERIFY(!reloaded.pcsx2AutoEnabled());  // explicit write cleared auto-detection
   QVERIFY(!reloaded.ryujinxAutoEnabled());
+  QVERIFY(!reloaded.shadps4AutoEnabled());
+  QVERIFY(!reloaded.cemuAutoEnabled());
+  QVERIFY(!reloaded.consolePortalsEnabled());
+  QVERIFY(reloaded.preferStandaloneEmulators());
+  QCOMPARE(reloaded.romFolders(), QStringList({QStringLiteral("/roms/snes|snes")}));
   QVERIFY(!reloaded.battleNetEnabled());
   QVERIFY(reloaded.closeAfterLaunch());
   QVERIFY(reloaded.couchModeEnabled());
@@ -3336,9 +4582,14 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   autoConfig.close();
   QVERIFY(!autoContents.contains(QStringLiteral("pcsx2_enabled")));
   QVERIFY(!autoContents.contains(QStringLiteral("ryujinx_enabled")));
+  QVERIFY(!autoContents.contains(QStringLiteral("shadps4_enabled")));
+  QVERIFY(!autoContents.contains(QStringLiteral("cemu_enabled")));
   AppSettings autoReloaded(autoPath);
   QVERIFY(autoReloaded.pcsx2AutoEnabled());
   QVERIFY(autoReloaded.ryujinxAutoEnabled());
+  QVERIFY(autoReloaded.shadps4AutoEnabled());
+  QVERIFY(autoReloaded.cemuAutoEnabled());
+  QVERIFY(autoReloaded.consolePortalsEnabled());
   QVERIFY(!autoReloaded.pcsx2Enabled());
 }
 
@@ -3534,6 +4785,24 @@ void CoreTests::sunshineIntegrationWritesOnlyItsOwnEntries() {
   QCOMPARE(readApps().value(QStringLiteral("apps")).toArray().size(), 6);
   QCOMPARE(QFileInfo(appsPath).lastModified(), before);
   QCOMPARE(sunshine.statusText(), QStringLiteral("Sunshine app list is up to date"));
+
+  // A linked game's exported launch target follows its saved default.
+  QVERIFY(unified.linkGames(1, QStringLiteral("Lutris"), QString{}, QStringLiteral("celeste")));
+  QVERIFY(unified.setPreferredInstallation(1, QStringLiteral("Lutris"), QString{},
+                                           QStringLiteral("celeste")));
+  QVERIFY(sunshine.sync());
+  settle();
+  apps = readApps().value(QStringLiteral("apps")).toArray();
+  QCOMPARE(apps.size(), 5);
+  bool exportedPreferred = false;
+  for (const QJsonValue& value : apps) {
+    const QString key = value.toObject().value(QStringLiteral("omakade")).toString();
+    QVERIFY(key != QStringLiteral("Demo::demo-1"));
+    if (key == QStringLiteral("Lutris::celeste")) {
+      exportedPreferred = true;
+    }
+  }
+  QVERIFY(exportedPreferred);
 
   settings.setSunshineGameApps(false);
   settings.setSunshineOmakadeApp(false);
@@ -3804,6 +5073,26 @@ void CoreTests::thousandGameSearchStaysResponsive() {
            qPrintable(QStringLiteral("100 searches took %1 ms").arg(timer.elapsed())));
 }
 
+void CoreTests::openingAConsoleDoesNotHangTheLibrary() {
+  MockGameModel games(nullptr, 1500);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  library.setConsolePortalsEnabled(true);
+  QCOMPARE(library.rowCount(), 1500);
+  QElapsedTimer timer;
+  timer.start();
+  library.setConsoleFilter(QStringLiteral("snes"));
+  QVERIFY(library.consoleFilter() == QStringLiteral("snes"));
+  QCOMPARE(library.rowCount(), 0);
+  QVERIFY2(timer.elapsed() < 250,
+           qPrintable(QStringLiteral("opening SNES took %1 ms").arg(timer.elapsed())));
+  timer.restart();
+  library.setConsoleFilter({});
+  QCOMPARE(library.rowCount(), 1500);
+  QVERIFY2(timer.elapsed() < 250,
+           qPrintable(QStringLiteral("leaving SNES took %1 ms").arg(timer.elapsed())));
+}
+
 
 void CoreTests::pcsx2ScannerImportsCacheGamesAndPlaytime() {
   QTemporaryDir directory;
@@ -3946,9 +5235,59 @@ void CoreTests::ryujinxScannerImportsRomsMetadataAndPlaytime() {
   QCOMPARE(result.games.size(), 1);
   QCOMPARE(result.games.constFirst().titleId, QStringLiteral("0100ABCD12345678"));
   QCOMPARE(result.games.constFirst().title, QStringLiteral("Custom Title"));
+  QVERIFY(result.games.constFirst().coverPath.endsWith(QStringLiteral("box.jpg")));
   QCOMPARE(result.games.constFirst().playtimeSeconds, 3600);
   QVERIFY(result.games.constFirst().lastPlayed > 0);
   QVERIFY(!result.games.constFirst().flatpak);
+}
+
+void CoreTests::ryujinxScannerReadsNspTitleIdAndLocalCovers() {
+  // Keep the scanner away from this machine's real icon cache and keys, so
+  // the fixture's local cover files decide the result.
+  QStandardPaths::setTestModeEnabled(true);
+  const auto restoreCache = qScopeGuard([] { QStandardPaths::setTestModeEnabled(false); });
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/ryujinx");
+  const QString roms = directory.path() + QStringLiteral("/switch-roms");
+  writeFile(root + QStringLiteral("/Config.json"),
+            QStringLiteral("{\"version\":70,\"game_dirs\":[\"%1\"]}").arg(roms).toUtf8());
+  writeFile(roms + QStringLiteral("/Mystery.nsp"), pfs0WithTicket("0100FEED00000000"));
+  writeFile(root + QStringLiteral("/games/0100FEED00000000/covers/icon.png"), "icon");
+  writeFile(root + QStringLiteral("/games/0100FEED00000000/gui/metadata.json"),
+            "{\"title\":\"Mystery Castle\"}");
+  writeFile(roms + QStringLiteral("/Super Mario Odyssey.xci"), "xci");
+  writeFile(root + QStringLiteral("/games/0100000000010000/gui/metadata.json"),
+            "{\"title\":\"SUPER MARIO ODYSSEY\"}");
+  writeFile(root + QStringLiteral("/games/0100000000010000/covers/box.jpg"), "odyssey");
+  writeFile(roms + QStringLiteral("/Metroid Prime Remastered/data/games/MPR.nsp"), "mpr");
+  writeFile(root + QStringLiteral("/games/010012101468C000/gui/metadata.json"),
+            "{\"title\":\"Metroid Prime Remastered\"}");
+  writeFile(root + QStringLiteral("/games/010012101468C000/covers/box.jpg"), "mpr-art");
+
+  const RyujinxScanResult result = RyujinxScanner::scan({root});
+  QCOMPARE(result.games.size(), 3);
+  const RyujinxGameRecord* mystery = nullptr;
+  const RyujinxGameRecord* odyssey = nullptr;
+  const RyujinxGameRecord* metroid = nullptr;
+  for (const RyujinxGameRecord& game : result.games) {
+    if (game.titleId == QStringLiteral("0100FEED00000000")) {
+      mystery = &game;
+    } else if (game.titleId == QStringLiteral("0100000000010000")) {
+      odyssey = &game;
+    } else if (game.titleId == QStringLiteral("010012101468C000")) {
+      metroid = &game;
+    }
+  }
+  QVERIFY(mystery);
+  QVERIFY(odyssey);
+  QVERIFY(metroid);
+  QCOMPARE(mystery->title, QStringLiteral("Mystery Castle"));
+  QVERIFY(mystery->coverPath.endsWith(QStringLiteral("icon.png")));
+  QCOMPARE(odyssey->title, QStringLiteral("SUPER MARIO ODYSSEY"));
+  QVERIFY(odyssey->coverPath.endsWith(QStringLiteral("box.jpg")));
+  QCOMPARE(metroid->title, QStringLiteral("Metroid Prime Remastered"));
+  QVERIFY(metroid->coverPath.endsWith(QStringLiteral("box.jpg")));
 }
 
 void CoreTests::ryujinxScannerSkipsConfiguredAddOnsAndUpdates() {
@@ -3964,14 +5303,23 @@ void CoreTests::ryujinxScannerSkipsConfiguredAddOnsAndUpdates() {
   const QString combinedCartridge = roms + QStringLiteral("/Game Bundle [0100ABCD12347800].xci");
   const QString unclassifiedPackage =
       roms + QStringLiteral("/Bonus Pack [0100ABCD12347002].nsp");
+  const QString addOnDir = directory.path() + QStringLiteral("/DLCs-Updates");
+  const QString namedDlc =
+      addOnDir + QStringLiteral("/Pokemon Legends Z-A [DLC Mega Dimensions].nsp");
+  const QString versionedCopy =
+      addOnDir + QStringLiteral("/Pokemon Brilliant Diamond v1.3.0.nsp");
   writeFile(root + QStringLiteral("/Config.json"),
-            QStringLiteral("{\"version\":70,\"game_dirs\":[\"%1\"]}").arg(roms).toUtf8());
+            QStringLiteral("{\"version\":70,\"game_dirs\":[\"%1\",\"%2\"]}")
+                .arg(roms, addOnDir)
+                .toUtf8());
   writeFile(base, "base");
   writeFile(configuredUpdate, "update");
   writeFile(configuredDlc, "dlc");
   writeFile(titleIdUpdate, "update");
   writeFile(combinedCartridge, "combined");
   writeFile(unclassifiedPackage, "ambiguous");
+  writeFile(namedDlc, "dlc-file");
+  writeFile(versionedCopy, "version-file");
   writeFile(root + QStringLiteral("/games/0100ABCD12346000/updates.json"),
             QStringLiteral("{\"paths\":[\"%1\"],\"selected\":\"%1\"}")
                 .arg(configuredUpdate)
@@ -3996,6 +5344,8 @@ void CoreTests::ryujinxScannerSkipsConfiguredAddOnsAndUpdates() {
   QVERIFY(!paths.contains(configuredUpdate));
   QVERIFY(!paths.contains(configuredDlc));
   QVERIFY(!paths.contains(titleIdUpdate));
+  QVERIFY(!paths.contains(namedDlc));
+  QVERIFY(!paths.contains(versionedCopy));
   for (const RyujinxGameRecord& game : result.games) {
     if (game.path == base) {
       QCOMPARE(game.playtimeSeconds, qint64(108000));
@@ -4098,5 +5448,1428 @@ void CoreTests::ryujinxLauncherBuildsSafeCommands() {
                .isValid());
 }
 
+void CoreTests::shadps4ScannerImportsGamesAndArtwork() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/shadps4");
+  const QString games = directory.path() + QStringLiteral("/ps4");
+  createShadps4Fixture(root, games);
+
+  const Shadps4ScanResult result = Shadps4Scanner::scan({root});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.roots, QStringList({root}));
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.constFirst().titleId, QStringLiteral("CUSA00001"));
+  QCOMPARE(result.games.constFirst().title, QStringLiteral("Bloodborne"));
+  QVERIFY(result.games.constFirst().path.endsWith(QStringLiteral("/eboot.bin")));
+  QVERIFY(result.games.constFirst().coverPath.endsWith(QStringLiteral("icon0.png")));
+  QVERIFY(result.games.constFirst().heroPath.endsWith(QStringLiteral("pic0.png")));
+}
+
+void CoreTests::shadps4ScannerSkipsPatches() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/shadps4");
+  const QString games = directory.path() + QStringLiteral("/ps4");
+  createShadps4Fixture(root, games);
+  const QString patch = games + QStringLiteral("/CUSA00001_patch");
+  writeFile(patch + QStringLiteral("/eboot.bin"), "patch");
+  writeFile(patch + QStringLiteral("/sce_sys/param.sfo"),
+            paramSfo(QStringLiteral("Bloodborne Update"), QStringLiteral("CUSA00001"),
+                     QStringLiteral("gp")));
+
+  const Shadps4ScanResult result = Shadps4Scanner::scan({root});
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.constFirst().title, QStringLiteral("Bloodborne"));
+}
+
+void CoreTests::shadps4ScannerKeepsMergedPatchDumps() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/shadps4");
+  const QString games = directory.path() + QStringLiteral("/ps4");
+  writeFile(root + QStringLiteral("/config.toml"),
+            QStringLiteral("[GUI]\ninstallDirs = [\"%1\"]\n").arg(games).toUtf8());
+  writeFile(games + QStringLiteral("/CUSA00900/eboot.bin"), "elf");
+  writeFile(games + QStringLiteral("/CUSA00900/sce_sys/param.sfo"),
+            paramSfo(QStringLiteral("Bloodborne"), QStringLiteral("CUSA00900"),
+                     QStringLiteral("gp")));
+  writeFile(games + QStringLiteral("/CUSA00900/sce_sys/icon0.png"), "icon");
+
+  const Shadps4ScanResult result = Shadps4Scanner::scan({root});
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.constFirst().title, QStringLiteral("Bloodborne"));
+  QCOMPARE(result.games.constFirst().titleId, QStringLiteral("CUSA00900"));
+}
+
+void CoreTests::shadps4ModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/shadps4");
+  const QString games = directory.path() + QStringLiteral("/ps4");
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  createShadps4Fixture(root, games);
+
+  Shadps4GameModel model(database);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(), QStringLiteral("shadPS4"));
+  model.toggleFavorite(0);
+  model.toggleHidden(0);
+  model.refreshFromRoots({root});
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(model.data(model.index(0), GameRoles::Hidden).toBool());
+}
+
+void CoreTests::malformedShadps4DataDoesNotReplaceCachedGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/shadps4");
+  const QString games = directory.path() + QStringLiteral("/ps4");
+  createShadps4Fixture(root, games);
+  Shadps4GameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  writeFile(root + QStringLiteral("/config.toml"),
+            QStringLiteral("[GUI]\ninstallDirs = [\"%1/missing\"]\n").arg(games).toUtf8());
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("shadPS4 scan interrupted")));
+}
+
+void CoreTests::shadps4LauncherBuildsSafeCommands() {
+  const LaunchCommand native = GameLauncher::shadps4Command(
+      QStringLiteral("/games/CUSA00001/eboot.bin"), QStringLiteral("shadps4"));
+  QCOMPARE(native.program, QStringLiteral("shadps4"));
+  QCOMPARE(native.arguments, QStringList({QStringLiteral("-g"),
+                                          QStringLiteral("/games/CUSA00001/eboot.bin")}));
+  const LaunchCommand flatpak = GameLauncher::shadps4Command(
+      QStringLiteral("/games/CUSA00001/eboot.bin"), {}, QStringLiteral("net.shadps4.shadPS4"));
+  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
+  QCOMPARE(flatpak.arguments.at(1), QStringLiteral("net.shadps4.shadPS4"));
+  QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/games/CUSA00001/eboot.bin"));
+  QVERIFY(!GameLauncher::shadps4Command(QStringLiteral("bad;id"), QStringLiteral("shadps4"))
+               .isValid());
+  QVERIFY(!GameLauncher::shadps4Command(QStringLiteral("/games/notes.txt"),
+                                        QStringLiteral("shadps4"))
+               .isValid());
+}
+
+void CoreTests::cemuScannerImportsTitlesAndPackages() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/cemu");
+  const QString games = directory.path() + QStringLiteral("/wiiu");
+  createCemuFixture(root, games);
+  writeFile(games + QStringLiteral("/Wind Waker (USA).wua"), "wua");
+  writeFile(games + QStringLiteral("/Wind Waker (USA).png"), "cover");
+
+  const CemuScanResult result = CemuScanner::scan({root});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.games.size(), 2);
+  const CemuGameRecord* mario = nullptr;
+  const CemuGameRecord* windWaker = nullptr;
+  for (const CemuGameRecord& game : result.games) {
+    if (game.titleId == QStringLiteral("0005000010101D00")) {
+      mario = &game;
+    } else if (game.path.endsWith(QStringLiteral(".wua"))) {
+      windWaker = &game;
+    }
+  }
+  QVERIFY(mario);
+  QVERIFY(windWaker);
+  QCOMPARE(mario->title, QStringLiteral("Super Mario 3D World"));
+  QVERIFY(mario->coverPath.endsWith(QStringLiteral("iconTex.png")));
+  QCOMPARE(windWaker->title, QStringLiteral("Wind Waker"));
+  QVERIFY(windWaker->coverPath.endsWith(QStringLiteral(".png")));
+}
+
+void CoreTests::cemuScannerUsesTitleListCacheForPackages() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/cemu");
+  const QString games = directory.path() + QStringLiteral("/wiiu");
+  createCemuFixture(root, games);
+  const QString package = games + QStringLiteral("/Breath of the Wild (USA) (DLC) (v208).wua");
+  writeFile(package, "wua");
+  writeFile(root + QStringLiteral("/mlc01/usr/save/00050000/101c9400/meta/iconTex.png"), "icon");
+  writeFile(root + QStringLiteral("/title_list_cache.xml"),
+            QStringLiteral("<?xml version=\"1.0\"?>\n<title_list>\n"
+                           "<title titleId=\"0005000e101c9400\"><name>Update</name>"
+                           "<path>%1</path></title>\n"
+                           "<title titleId=\"00050000101c9400\"><name>Breath of the Wild</name>"
+                           "<path>%1</path></title>\n"
+                           "</title_list>\n")
+                .arg(package)
+                .toUtf8());
+
+  const CemuScanResult result = CemuScanner::scan({root});
+  const CemuGameRecord* botw = nullptr;
+  for (const CemuGameRecord& game : result.games) {
+    if (game.titleId == QStringLiteral("00050000101C9400")) {
+      botw = &game;
+    }
+  }
+  QVERIFY(botw);
+  QCOMPARE(botw->gameId, QStringLiteral("00050000101C9400"));
+  QCOMPARE(botw->title, QStringLiteral("Breath of the Wild"));
+  QVERIFY(botw->coverPath.endsWith(QStringLiteral("iconTex.png")));
+}
+
+void CoreTests::cemuScannerSkipsUpdatesAndDlc() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/cemu");
+  const QString games = directory.path() + QStringLiteral("/wiiu");
+  createCemuFixture(root, games);
+  const QString update = games + QStringLiteral("/MarioUpdate");
+  writeFile(update + QStringLiteral("/code/app.xml"),
+            "<title_id>0005000E10101D00</title_id>");
+  writeFile(update + QStringLiteral("/code/game.rpx"), "rpx");
+  writeFile(update + QStringLiteral("/meta/meta.xml"),
+            "<menu><title_id>0005000E10101D00</title_id>"
+            "<longname_en>Mario Update</longname_en></menu>");
+
+  const CemuScanResult result = CemuScanner::scan({root});
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.constFirst().title, QStringLiteral("Super Mario 3D World"));
+}
+
+void CoreTests::cemuModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/cemu");
+  const QString games = directory.path() + QStringLiteral("/wiiu");
+  createCemuFixture(root, games);
+  CemuGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(), QStringLiteral("Cemu"));
+  model.toggleFavorite(0);
+  model.refreshFromRoots({root});
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+}
+
+void CoreTests::malformedCemuDataDoesNotReplaceCachedGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/cemu");
+  const QString games = directory.path() + QStringLiteral("/wiiu");
+  createCemuFixture(root, games);
+  CemuGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  writeFile(root + QStringLiteral("/settings.xml"),
+            QStringLiteral("<content><GamePaths><string>%1/missing</string></GamePaths></content>")
+                .arg(games)
+                .toUtf8());
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.statusText().startsWith(QStringLiteral("Cemu scan interrupted")));
+}
+
+void CoreTests::consolePortalsGroupRetroArchRomsAndCanFlatten() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/retroarch");
+  const QString snes = directory.path() + QStringLiteral("/roms/Chrono Trigger.sfc");
+  const QString nes = directory.path() + QStringLiteral("/roms/Metroid.nes");
+  const QString switchRom = directory.path() + QStringLiteral("/roms/Zelda.nsp");
+  writeFile(snes, "sfc");
+  writeFile(nes, "nes");
+  writeFile(switchRom, "nsp");
+  writeFile(root + QStringLiteral("/retroarch.cfg"),
+            QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root).toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Chrono Trigger","db_name":"Nintendo - SNES.lpl"}]})json")
+                .arg(snes)
+                .toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - NES.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Metroid","db_name":"Nintendo - NES.lpl"}]})json")
+                .arg(nes)
+                .toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - Nintendo Switch.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Zelda","db_name":"Nintendo - Nintendo Switch.lpl"}]})json")
+                .arg(switchRom)
+                .toUtf8());
+  const QString cemuRoot = directory.path() + QStringLiteral("/cemu");
+  createCemuFixture(cemuRoot, directory.path() + QStringLiteral("/wiiu"));
+
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  RetroArchGameModel roms(database);
+  roms.refreshFromRoots({root});
+  QCOMPARE(roms.rowCount(), 3);
+  CemuGameModel cemu(database);
+  cemu.refreshFromRoots({cemuRoot});
+  QCOMPARE(cemu.rowCount(), 1);
+
+  ConsolePortalModel portals;
+  portals.addRomModel(&roms);
+  QCOMPARE(portals.rowCount(), 3);
+
+  UnifiedGameModel games;
+  games.addSourceModel(&roms);
+  games.addSourceModel(&cemu);
+  games.addSourceModel(&portals);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  library.setConsolePortalsEnabled(true);
+  QCOMPARE(library.rowCount(), 4);
+  QStringList titles;
+  int portalCount = 0;
+  for (int row = 0; row < library.rowCount(); ++row) {
+    const QVariantMap game = library.get(row);
+    titles.append(game.value(QStringLiteral("title")).toString());
+    if (game.value(QStringLiteral("isPortal")).toBool()) {
+      ++portalCount;
+    }
+  }
+  QCOMPARE(portalCount, 3);
+  QVERIFY(titles.contains(QStringLiteral("Nintendo Switch")));
+  QVERIFY(titles.contains(QStringLiteral("Super Mario 3D World")));
+  QVERIFY(!titles.contains(QStringLiteral("Chrono Trigger")));
+
+  library.setConsoleFilter(QStringLiteral("snes"));
+  QCOMPARE(library.rowCount(), 1);
+  QCOMPARE(library.get(0).value(QStringLiteral("title")).toString(),
+           QStringLiteral("Chrono Trigger"));
+  QVERIFY(!library.get(0).value(QStringLiteral("isPortal")).toBool());
+
+  library.setConsoleFilter({});
+  library.setConsolePortalsEnabled(false);
+  QCOMPARE(library.rowCount(), 4);
+  for (int row = 0; row < library.rowCount(); ++row) {
+    QVERIFY(!library.get(row).value(QStringLiteral("isPortal")).toBool());
+  }
+}
+
+void CoreTests::consolePortalsDoNotRebuildTheLibraryWhenCoversChange() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/retroarch");
+  const QString snes = directory.path() + QStringLiteral("/roms/Chrono Trigger.sfc");
+  writeFile(snes, "sfc");
+  writeFile(root + QStringLiteral("/retroarch.cfg"),
+            QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root).toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Chrono Trigger","db_name":"Nintendo - SNES.lpl"}]})json")
+                .arg(snes)
+                .toUtf8());
+
+  RetroArchGameModel roms(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  roms.refreshFromRoots({root});
+  QCOMPARE(roms.rowCount(), 1);
+
+  ConsolePortalModel portals;
+  portals.addRomModel(&roms);
+  UnifiedGameModel games;
+  games.addSourceModel(&roms);
+  games.addSourceModel(&portals);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  library.setConsolePortalsEnabled(true);
+  library.setConsoleFilter(QStringLiteral("snes"));
+  QCOMPARE(library.rowCount(), 1);
+
+  QSignalSpy portalResets(&portals, &QAbstractItemModel::modelReset);
+  QSignalSpy libraryResets(&library, &QAbstractItemModel::modelReset);
+  roms.toggleFavorite(0);
+  QCOMPARE(portalResets.count(), 0);
+  QCOMPARE(libraryResets.count(), 0);
+  QCOMPARE(library.rowCount(), 1);
+}
+
+void CoreTests::consolePortalsDoNotMergeDifferentFiles() {
+  QCOMPARE(ConsoleCatalog::idFor(QStringLiteral("Nintendo - SNES")), QStringLiteral("snes"));
+  QCOMPARE(ConsoleCatalog::displayNameFor(QStringLiteral("snes")),
+           QStringLiteral("Super Nintendo"));
+  QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("Sony - PlayStation 2")));
+  QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("Nintendo Switch")));
+  QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("Wii U")));
+  QVERIFY(!ConsoleCatalog::isDedicatedSource(QStringLiteral("Nintendo - SNES")));
+}
+
+void CoreTests::romFoldersMergeWithPlaylistsByCanonicalPath() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString rom = directory.path() + QStringLiteral("/roms/snes/Chrono Trigger (USA).sfc");
+  const QString sidecar = directory.path() + QStringLiteral("/roms/snes/Chrono Trigger (USA).png");
+  writeFile(rom, "sfc");
+  writeFile(sidecar, "art");
+  const QString root = directory.path() + QStringLiteral("/retroarch");
+  writeFile(root + QStringLiteral("/retroarch.cfg"),
+            QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root).toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Chrono Trigger","core_path":"/cores/snes9x_libretro.so","db_name":"Nintendo - SNES.lpl"}]})json")
+                .arg(rom)
+                .toUtf8());
+
+  RetroArchGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromSources({root}, {RomFolderScanner::encode(
+                                       directory.path() + QStringLiteral("/roms/snes"),
+                                       QStringLiteral("snes"))});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0), GameRoles::Title).toString(),
+           QStringLiteral("Chrono Trigger"));
+  QCOMPARE(model.data(model.index(0), GameRoles::LaunchTarget).toString(),
+           QStringLiteral("/cores/snes9x_libretro.so"));
+  QVERIFY(model.data(model.index(0), GameRoles::CoverPath).toString().contains(
+      QStringLiteral("Chrono Trigger (USA).png")));
+}
+
+void CoreTests::romFoldersKeepSeparateCopies() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString play = directory.path() + QStringLiteral("/play/Mario.sfc");
+  const QString backup = directory.path() + QStringLiteral("/backup/Mario.sfc");
+  writeFile(play, "play");
+  writeFile(backup, "backup");
+  RetroArchGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromSources(
+      {}, {RomFolderScanner::encode(directory.path() + QStringLiteral("/play"),
+                                    QStringLiteral("snes")),
+           RomFolderScanner::encode(directory.path() + QStringLiteral("/backup"),
+                                    QStringLiteral("snes"))});
+  QCOMPARE(model.rowCount(), 2);
+}
+
+void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {
+  const QString rom = QStringLiteral("/roms/Chrono Trigger.sfc");
+  const LaunchCommand playlist = GameLauncher::resolvedCartridgeCommand(
+      rom, QStringLiteral("/cores/snes9x_libretro.so"), false, true, QStringLiteral("snes9x"),
+      QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
+  QCOMPARE(playlist.program, QStringLiteral("retroarch"));
+  QCOMPARE(playlist.arguments,
+           QStringList({QStringLiteral("-L"), QStringLiteral("/cores/snes9x_libretro.so"), rom}));
+
+  const LaunchCommand standalone = GameLauncher::resolvedCartridgeCommand(
+      rom, {}, false, true, QStringLiteral("snes9x"),
+      QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
+  QCOMPARE(standalone.program, QStringLiteral("snes9x"));
+  QCOMPARE(standalone.arguments, QStringList({rom}));
+
+  const LaunchCommand mapped = GameLauncher::resolvedCartridgeCommand(
+      rom, {}, false, false, QStringLiteral("snes9x"),
+      QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"));
+  QCOMPARE(mapped.program, QStringLiteral("retroarch"));
+  QCOMPARE(mapped.arguments,
+           QStringList({QStringLiteral("-L"),
+                        QStringLiteral("/usr/lib/libretro/snes9x_libretro.so"), rom}));
+
+  const LaunchCommand fallback = GameLauncher::resolvedCartridgeCommand(
+      rom, {}, false, false, QStringLiteral("snes9x"), {});
+  QCOMPARE(fallback.program, QStringLiteral("snes9x"));
+  QVERIFY(!GameLauncher::resolvedCartridgeCommand(rom, {}, false, false, {}, {}).isValid());
+}
+
+void CoreTests::libretroCoverUrlsAndCachePathsAreStable() {
+  QCOMPARE(RetroArchGameModel::libretroCoverUrl(
+               QStringLiteral("Nintendo - Super Nintendo Entertainment System"),
+               QStringLiteral("Chrono Trigger")),
+           QStringLiteral("https://thumbnails.libretro.com/"
+                          "Nintendo%20-%20Super%20Nintendo%20Entertainment%20System/"
+                          "Named_Boxarts/Chrono%20Trigger.png"));
+  const QString gameId = QStringLiteral("abc123");
+  const QString cached = RetroArchGameModel::libretroCoverCachePath(gameId);
+  QVERIFY(cached.endsWith(QStringLiteral("/omakade/covers/libretro/abc123.png")));
+  QVERIFY(RetroArchGameModel::libretroCoverCachePath(QStringLiteral("../x")).isEmpty());
+  const QStringList naLabels = RetroArchGameModel::coverLabelCandidates(
+      QStringLiteral("Aladdin (NA)"), QStringLiteral("Aladdin (NA)"));
+  QCOMPARE(naLabels.constFirst(), QStringLiteral("Aladdin (USA)"));
+  QVERIFY(naLabels.contains(QStringLiteral("Aladdin (NA)")));
+  QVERIFY(naLabels.contains(QStringLiteral("Aladdin")));
+  const QStringList jpLabels = RetroArchGameModel::coverLabelCandidates(
+      QStringLiteral("Chrono Trigger (JP)"), QStringLiteral("Chrono Trigger (Japan)"));
+  QVERIFY(jpLabels.contains(QStringLiteral("Chrono Trigger (Japan)")));
+
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString rom = directory.path() + QStringLiteral("/Chrono Trigger.sfc");
+  const QString sidecar = directory.path() + QStringLiteral("/Chrono Trigger.png");
+  writeFile(rom, "sfc");
+  writeFile(sidecar, "art");
+  RetroArchGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromSources(
+      {}, {RomFolderScanner::encode(directory.path(), QStringLiteral("snes"))});
+  int row = -1;
+  for (int index = 0; index < model.rowCount(); ++index) {
+    if (model.data(model.index(index), GameRoles::Title).toString() ==
+        QStringLiteral("Chrono Trigger")) {
+      row = index;
+      break;
+    }
+  }
+  QVERIFY(row >= 0);
+  const QString appId = model.data(model.index(row), GameRoles::AppId).toString();
+  const QString before = model.data(model.index(row), GameRoles::CoverPath).toString();
+  QVERIFY(before.contains(QStringLiteral("Chrono Trigger.png")));
+  model.requestCover(appId);
+  QCOMPARE(model.data(model.index(row), GameRoles::CoverPath).toString(), before);
+}
+
+void CoreTests::cemuLauncherBuildsSafeCommands() {
+  const LaunchCommand native =
+      GameLauncher::cemuCommand(QStringLiteral("/games/mario.rpx"), false);
+  QCOMPARE(native.program, QStringLiteral("cemu"));
+  QCOMPARE(native.arguments,
+           QStringList({QStringLiteral("-g"), QStringLiteral("/games/mario.rpx")}));
+  const LaunchCommand flatpak =
+      GameLauncher::cemuCommand(QStringLiteral("/games/mario.wua"), true);
+  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
+  QCOMPARE(flatpak.arguments.at(1), QStringLiteral("info.cemu.Cemu"));
+  QCOMPARE(flatpak.arguments.constLast(), QStringLiteral("/games/mario.wua"));
+  QVERIFY(!GameLauncher::cemuCommand(QStringLiteral("bad;id"), false).isValid());
+  QVERIFY(!GameLauncher::cemuCommand(QStringLiteral("/games/notes.txt"), false).isValid());
+}
+
 QTEST_MAIN(CoreTests)
 #include "CoreTests.moc"
+
+void CoreTests::consoleFilterKeepsOtherSourcesOut() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/retroarch");
+  const QString chrono = directory.path() + QStringLiteral("/roms/Chrono Trigger.sfc");
+  const QString mario = directory.path() + QStringLiteral("/roms/Super Mario World.sfc");
+  const QString metroid = directory.path() + QStringLiteral("/roms/Metroid.nes");
+  writeFile(chrono, "sfc");
+  writeFile(mario, "sfc");
+  writeFile(metroid, "nes");
+  writeFile(root + QStringLiteral("/retroarch.cfg"),
+            QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root).toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Super Mario World","db_name":"Nintendo - SNES.lpl"},{"path":"%2","label":"Chrono Trigger","db_name":"Nintendo - SNES.lpl"}]})json")
+                .arg(mario, chrono)
+                .toUtf8());
+  writeFile(root + QStringLiteral("/playlists/Nintendo - NES.lpl"),
+            QStringLiteral(R"json({"version":"1.5","items":[{"path":"%1","label":"Metroid","db_name":"Nintendo - NES.lpl"}]})json")
+                .arg(metroid)
+                .toUtf8());
+
+  // A large non-RetroArch source stands in for Steam, Ryujinx, and friends.
+  MockGameModel others(nullptr, 300);
+  RetroArchGameModel roms(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  roms.refreshFromRoots({root});
+  QCOMPARE(roms.rowCount(), 3);
+  ConsolePortalModel portals;
+  portals.addRomModel(&roms);
+  QCOMPARE(portals.rowCount(), 2);
+
+  UnifiedGameModel games;
+  games.addSourceModel(&others);
+  games.addSourceModel(&roms);
+  games.addSourceModel(&portals);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  library.setConsolePortalsEnabled(true);
+  QCOMPARE(library.rowCount(), 302);
+
+  const auto onlyRomsFor = [&library](const QString& system, int expected) {
+    QCOMPARE(library.rowCount(), expected);
+    QStringList titles;
+    for (int row = 0; row < library.rowCount(); ++row) {
+      const QVariantMap game = library.get(row);
+      QCOMPARE(game.value(QStringLiteral("source")).toString(), QStringLiteral("RetroArch"));
+      QCOMPARE(game.value(QStringLiteral("system")).toString(), system);
+      QVERIFY(!game.value(QStringLiteral("isPortal")).toBool());
+      titles.append(game.value(QStringLiteral("title")).toString());
+    }
+    QStringList sorted = titles;
+    std::sort(sorted.begin(), sorted.end(), [](const QString& a, const QString& b) {
+      return a.localeAwareCompare(b) < 0;
+    });
+    QCOMPARE(titles, sorted);
+  };
+
+  library.setConsoleFilter(QStringLiteral("snes"));
+  onlyRomsFor(QStringLiteral("snes"), 2);
+  library.setConsoleFilter(QStringLiteral("nes"));
+  onlyRomsFor(QStringLiteral("nes"), 1);
+  library.setConsoleFilter({});
+  QCOMPARE(library.rowCount(), 302);
+  library.setConsoleFilter(QStringLiteral("snes"));
+  onlyRomsFor(QStringLiteral("snes"), 2);
+
+  // Picking a source chip leaves the console and never mixes the two views.
+  library.setSourceFilter(QStringLiteral("Demo"));
+  QVERIFY(library.consoleFilter().isEmpty());
+  QCOMPARE(library.rowCount(), 300);
+  library.setSourceFilter({});
+  library.setConsoleFilter(QStringLiteral("snes"));
+  onlyRomsFor(QStringLiteral("snes"), 2);
+
+  // A search inside a console stays inside the console.
+  library.setSearchText(QStringLiteral("Mario"));
+  onlyRomsFor(QStringLiteral("snes"), 1);
+  library.setSearchText({});
+  onlyRomsFor(QStringLiteral("snes"), 2);
+
+  // Scans and cover updates finishing while a console is open must not leak
+  // other sources back in: the unified model resets, the proxy re-filters.
+  roms.refreshFromRoots({root});
+  onlyRomsFor(QStringLiteral("snes"), 2);
+  others.toggleFavorite(0);
+  onlyRomsFor(QStringLiteral("snes"), 2);
+  games.setSourceEnabled(QStringLiteral("Demo"), false);
+  onlyRomsFor(QStringLiteral("snes"), 2);
+  games.setSourceEnabled(QStringLiteral("Demo"), true);
+  onlyRomsFor(QStringLiteral("snes"), 2);
+
+  // Flattening portals shows everything as first-class tiles again.
+  library.setConsolePortalsEnabled(false);
+  QVERIFY(library.consoleFilter().isEmpty());
+  QCOMPARE(library.rowCount(), 303);
+  library.setConsolePortalsEnabled(true);
+  QCOMPARE(library.rowCount(), 302);
+}
+
+// Diagnostics against real dumps on this machine. Skipped unless the
+// OMAKADE_PROBE_SWITCH (NSP/XCI) or OMAKADE_PROBE_WUA (.wua) variables are set.
+void CoreTests::probeEmbeddedArtwork() {
+  const QString rom = qEnvironmentVariable("OMAKADE_PROBE_SWITCH");
+  const QString wua = qEnvironmentVariable("OMAKADE_PROBE_WUA");
+  if (qEnvironmentVariableIsSet("OMAKADE_PROBE_SCANNERS")) {
+    for (const RyujinxGameRecord& game : RyujinxScanner::scan(RyujinxScanner::discoverRoots()).games)
+      qWarning().noquote() << QStringLiteral("RYUJINX %1 | %2 | %3").arg(game.titleId, game.title, game.coverPath);
+    for (const CemuGameRecord& game : CemuScanner::scan(CemuScanner::discoverRoots()).games)
+      qWarning().noquote() << QStringLiteral("CEMU %1 | %2 | %3").arg(game.titleId, game.title, game.coverPath);
+    const DolphinScanResult dolphin = DolphinScanner::scan(DolphinScanner::discoverRoots(), {}, true);
+    qWarning().noquote() << QStringLiteral("DOLPHIN installed=%1 roots=%2 folders=%3").arg(DolphinScanner::dolphinInstalled()).arg(dolphin.roots.join(",")).arg(dolphin.folders.join(","));
+    for (const DolphinGameRecord& game : dolphin.games)
+      qWarning().noquote() << QStringLiteral("DOLPHIN %1 | %2 | %3 | %4 | cover=%5").arg(game.discId, game.title, game.platform, game.path, game.coverPath);
+    for (const RomFolder& folder : RomFolderScanner::discoverAutoFolders())
+      qWarning().noquote() << QStringLiteral("ROMFOLDER %1 -> %2").arg(folder.path, folder.system);
+    return;
+  }
+  if (rom.isEmpty() && wua.isEmpty()) QSKIP("set OMAKADE_PROBE_SWITCH or OMAKADE_PROBE_WUA");
+  for (const QString& path : rom.split(QLatin1Char(':'), Qt::SkipEmptyParts)) {
+    QElapsedTimer timer; timer.start();
+    const SwitchTitleInfo info = SwitchTitleReader::read(path);
+    qWarning().noquote() << QStringLiteral("SWITCH %1 | id=%2 | title=%3 | icon=%4 bytes | %5 | %6 ms")
+        .arg(QFileInfo(path).fileName(), info.titleId, info.title).arg(info.icon.size()).arg(info.failure).arg(timer.elapsed());
+    for (const QString& note : info.notes) qWarning().noquote() << "   " << note;
+    if (info.hasIcon()) {
+      QImage image = QImage::fromData(info.icon);
+      qWarning().noquote() << QStringLiteral("   decoded %1x%2").arg(image.width()).arg(image.height());
+    }
+  }
+  if (!wua.isEmpty()) {
+    QElapsedTimer timer; timer.start();
+    auto reader = ZArchiveReader::open(wua);
+    if (!reader) { qWarning() << "WUA: could not open"; return; }
+    for (const QString& name : reader->list(QString{})) {
+      qWarning().noquote() << QStringLiteral("WUA root: %1 (dir=%2)").arg(name).arg(reader->isDirectory(name));
+      const QByteArray icon = reader->readFile(name + QStringLiteral("/meta/iconTex.tga"), 4 * 1024 * 1024);
+      const QByteArray meta = reader->readFile(name + QStringLiteral("/meta/meta.xml"), 1024 * 1024);
+      const QImage image = decodeTgaImage(icon);
+      qWarning().noquote() << QStringLiteral("   tga header %1").arg(QString::fromLatin1(icon.left(18).toHex(' ')));
+      qWarning().noquote() << QStringLiteral("   iconTex=%1 bytes decoded %2x%3, meta.xml=%4 bytes, longname=%5")
+          .arg(icon.size()).arg(image.width()).arg(image.height()).arg(meta.size())
+          .arg(QString::fromUtf8(meta).section("<longname_en", 1, 1).section('>', 1, 1).section('<', 0, 0));
+    }
+    qWarning().noquote() << QStringLiteral("   %1 ms").arg(timer.elapsed());
+  }
+}
+
+namespace {
+QByteArray le32(quint32 value) { QByteArray b(4, '\0'); qToLittleEndian(value, b.data()); return b; }
+QByteArray le64(quint64 value) { QByteArray b(8, '\0'); qToLittleEndian(value, b.data()); return b; }
+QByteArray be32(quint32 value) { QByteArray b(4, '\0'); qToBigEndian(value, b.data()); return b; }
+QByteArray be64(quint64 value) { QByteArray b(8, '\0'); qToBigEndian(value, b.data()); return b; }
+QByteArray padded(QByteArray bytes, qsizetype alignment) {
+  while (bytes.size() % alignment != 0) bytes.append('\0');
+  return bytes;
+}
+QByteArray randomBytes(int count) {
+  QByteArray bytes(count, '\0');
+  for (char& byte : bytes) byte = static_cast<char>(QRandomGenerator::global()->bounded(256));
+  return bytes;
+}
+QByteArray smallJpeg() {
+  QImage image(48, 48, QImage::Format_RGB32);
+  image.fill(Qt::magenta);
+  QByteArray bytes;
+  QBuffer buffer(&bytes);
+  buffer.open(QIODevice::WriteOnly);
+  image.save(&buffer, "JPEG");
+  return bytes;
+}
+}  // namespace
+
+// Builds an NSP the way the console tools lay one out: a PFS0 holding one
+// control NCA whose header is XTS-encrypted with a header key and whose RomFS
+// section is CTR-encrypted with a key-area key, all generated for this test.
+void CoreTests::switchTitleReaderReadsSyntheticDump() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QByteArray headerKey = randomBytes(32);
+  const QByteArray keyAreaKey = randomBytes(16);
+  const QByteArray ctrKey = randomBytes(16);
+  const QByteArray sectionCtr = randomBytes(8);
+  const QString keysPath = temp.filePath("prod.keys");
+  writeFile(keysPath, QStringLiteral("header_key = %1\nkey_area_key_application_00 = %2\n")
+                          .arg(QString::fromLatin1(headerKey.toHex()), QString::fromLatin1(keyAreaKey.toHex()))
+                          .toUtf8());
+
+  // RomFS with control.nacp and one icon in the root directory.
+  const QByteArray icon = smallJpeg();
+  QByteArray nacp(0x4000, '\0');
+  const QByteArray name = QStringLiteral("Synthetic Adventure").toUtf8();
+  nacp.replace(0, name.size(), name);
+  nacp.replace(0x3038, 8, le64(0x0100ABCDEF123000ULL));
+  QByteArray fileData = padded(nacp, 0x10) + padded(icon, 0x10);
+  QByteArray fileTable;
+  const auto fileEntry = [&](const QByteArray& entryName, quint64 offset, quint64 size, quint32 sibling) {
+    QByteArray entry = le32(0) + le32(sibling) + le64(offset) + le64(size) + le32(0xFFFFFFFF) + le32(entryName.size());
+    entry += padded(entryName, 4);
+    return entry;
+  };
+  const QByteArray first = fileEntry("control.nacp", 0, nacp.size(), 0);
+  fileTable += fileEntry("control.nacp", 0, nacp.size(), first.size());
+  fileTable += fileEntry("icon_AmericanEnglish.dat", padded(nacp, 0x10).size(), icon.size(), 0xFFFFFFFF);
+  const QByteArray dirTable = le32(0) + le32(0xFFFFFFFF) + le32(0) + le32(0xFFFFFFFF) + le32(0xFFFFFFFF) + le32(0);
+  const quint64 dirHashOffset = 0x50;
+  const quint64 dirTableOffset = dirHashOffset + 0x10;
+  const quint64 fileHashOffset = dirTableOffset + dirTable.size();
+  const quint64 fileTableOffset = fileHashOffset + 0x10;
+  const quint64 dataOffset = (fileTableOffset + fileTable.size() + 0xF) & ~quint64(0xF);
+  QByteArray romfs = le64(0x50) + le64(dirHashOffset) + le64(0x10) + le64(dirTableOffset) + le64(dirTable.size()) +
+                     le64(fileHashOffset) + le64(0x10) + le64(fileTableOffset) + le64(fileTable.size()) + le64(dataOffset);
+  romfs += QByteArray(0x10, '\xFF') + dirTable + QByteArray(0x10, '\xFF') + fileTable;
+  romfs = padded(romfs, 0x10) + fileData;
+  QCOMPARE(static_cast<quint64>(romfs.indexOf(fileData)), dataOffset);
+  romfs = padded(romfs, 0x200);
+
+  // Plain NCA header, then encrypt the key area and the header itself.
+  QByteArray header(0xC00, '\0');
+  header.replace(0x200, 4, "NCA3");
+  header[0x205] = 2;  // control
+  header.replace(0x240, 4, le32(6));
+  header.replace(0x244, 4, le32(6 + romfs.size() / 0x200));
+  QByteArray keyArea(0x40, '\0');
+  keyArea.replace(0x20, 16, ctrKey);
+  header.replace(0x300, 0x40, SwitchCrypto::ecb(keyAreaKey, keyArea, true));
+  header[0x400 + 2] = 0;  // RomFS
+  header[0x400 + 3] = 3;
+  header[0x400 + 4] = 3;  // CTR
+  header.replace(0x408, 4, "IVFC");
+  header.replace(0x400 + 0x90, 8, le64(0));
+  header.replace(0x540, 8, sectionCtr);
+  const QByteArray encryptedHeader = SwitchCrypto::xtsSectors(headerKey, header, 0, true);
+  QCOMPARE(encryptedHeader.size(), 0xC00);
+  QCOMPARE(SwitchCrypto::xtsSectors(headerKey, encryptedHeader, 0, false), header);
+  QByteArray iv(16, '\0');
+  for (int index = 0; index < 8; ++index) iv[index] = sectionCtr.at(7 - index);
+  qToBigEndian<quint64>(0xC00 >> 4, iv.data() + 8);
+  const QByteArray nca = encryptedHeader + SwitchCrypto::ctr(ctrKey, iv, romfs);
+
+  // PFS0 container.
+  const QByteArray ncaName = QByteArray("control.nca") + '\0';
+  const QByteArray strings = padded(ncaName, 0x20);
+  const QByteArray nsp = QByteArray("PFS0") + le32(1) + le32(strings.size()) + le32(0) + le64(0) + le64(nca.size()) +
+                         le32(0) + le32(0) + strings + nca;
+  const QString nspPath = temp.filePath("game.nsp");
+  writeFile(nspPath, nsp);
+
+  const SwitchTitleInfo info = SwitchTitleReader::read(nspPath, {keysPath}, {});
+  QVERIFY2(info.failure.isEmpty(), qPrintable(info.failure + " " + info.notes.join(" | ")));
+  QCOMPARE(info.title, QStringLiteral("Synthetic Adventure"));
+  QCOMPARE(info.titleId, QStringLiteral("0100ABCDEF123000"));
+  QCOMPARE(info.icon, icon);
+
+  // The cache writes the icon once and reuses it.
+  const QString cacheRoot = temp.filePath("cache");
+  QVERIFY(QFileInfo::exists(SwitchTitleReader::cachedIcon(nspPath, info.titleId, cacheRoot, nullptr)) == false);
+  const SwitchTitleInfo unreadable = SwitchTitleReader::read(nspPath, {temp.filePath("missing.keys")}, {});
+  QVERIFY(!unreadable.hasIcon());
+  QVERIFY(unreadable.failure.contains(QStringLiteral("prod.keys")));
+  const SwitchTitleInfo wrongKeys = SwitchTitleReader::read(
+      nspPath, {[&] {
+        const QString path = temp.filePath("wrong.keys");
+        writeFile(path, QStringLiteral("header_key = %1\n").arg(QString::fromLatin1(randomBytes(32).toHex())).toUtf8());
+        return path;
+      }()}, {});
+  QVERIFY(!wrongKeys.hasIcon());
+}
+
+void CoreTests::zarchiveReaderAndTgaDecodeSyntheticArchive() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  // A 2x2 bottom-left origin 32-bit TGA: red, green / blue, white.
+  QByteArray tga(18, '\0');
+  tga[2] = 2;
+  tga[12] = 2;
+  tga[14] = 2;
+  tga[16] = 32;
+  tga[17] = 8;
+  const auto bgra = [](int r, int g, int b, int a) { return QByteArray().append(char(b)).append(char(g)).append(char(r)).append(char(a)); };
+  tga += bgra(0, 0, 255, 255) + bgra(255, 255, 255, 255);  // bottom row first
+  tga += bgra(255, 0, 0, 255) + bgra(0, 255, 0, 255);
+  tga += QByteArray("TRUEVISION-XFILE.\0", 18);
+  const QImage decoded = decodeTgaImage(tga);
+  QCOMPARE(decoded.size(), QSize(2, 2));
+  QCOMPARE(decoded.pixel(0, 0), qRgb(255, 0, 0));
+  QCOMPARE(decoded.pixel(1, 0), qRgb(0, 255, 0));
+  QCOMPARE(decoded.pixel(0, 1), qRgb(0, 0, 255));
+  QCOMPARE(decoded.pixel(1, 1), qRgb(255, 255, 255));
+
+  // Archive: /00050000ABCDEF12_v0/meta/{iconTex.tga, meta.xml} stored in raw
+  // 64 KiB blocks, with the footer the ZArchive tools write.
+  const QByteArray metaXml = QByteArrayLiteral("<menu><longname_en>Synthetic\nTitle</longname_en></menu>");
+  QByteArray stream = tga + metaXml;
+  const qsizetype block = 64 * 1024;
+  stream = padded(stream, block);
+  const int blockCount = stream.size() / block;
+  QByteArray records = be64(0);
+  for (int index = 0; index < 16; ++index) records += QByteArray(2, index < blockCount ? '\xFF' : '\0');
+  QByteArray names;
+  const auto addName = [&names](const QByteArray& value) {
+    const quint32 offset = names.size();
+    names.append(static_cast<char>(value.size()));
+    names += value;
+    return offset;
+  };
+  const quint32 rootName = addName("");
+  const quint32 titleName = addName("00050000ABCDEF12_v0");
+  const quint32 metaName = addName("meta");
+  const quint32 iconName = addName("iconTex.tga");
+  const quint32 xmlName = addName("meta.xml");
+  const auto dirNode = [](quint32 nameOffset, quint32 first, quint32 count) {
+    return be32(nameOffset) + be32(first) + be32(count) + be32(0);
+  };
+  const auto fileNode = [](quint32 nameOffset, quint64 offset, quint64 size) {
+    return be32(0x80000000u | nameOffset) + be32(quint32(offset)) + be32(quint32(size)) +
+           be32(quint32((offset >> 32) & 0xFFFF) | quint32((size >> 16) & 0xFFFF0000));
+  };
+  QByteArray tree = dirNode(rootName, 1, 1) + dirNode(titleName, 2, 1) + dirNode(metaName, 3, 2) +
+                    fileNode(iconName, 0, tga.size()) + fileNode(xmlName, tga.size(), metaXml.size());
+  QByteArray archive = stream + records + names + tree;
+  const quint64 recordsOffset = stream.size();
+  const quint64 namesOffset = recordsOffset + records.size();
+  const quint64 treeOffset = namesOffset + names.size();
+  QByteArray footer = be64(0) + be64(stream.size()) + be64(recordsOffset) + be64(records.size()) + be64(namesOffset) +
+                      be64(names.size()) + be64(treeOffset) + be64(tree.size()) + be64(0) + be64(0) + be64(0) + be64(0);
+  footer += QByteArray(32, '\0');
+  footer += be64(archive.size() + footer.size() + 8 + 4 + 4 + 32 - 32);
+  footer += be32(0x61bf3a01) + be32(0x169f52d6);
+  archive += footer;
+  // Fix the total size now that the footer length is known.
+  archive.replace(archive.size() - 16, 8, be64(archive.size()));
+  const QString path = temp.filePath("game.wua");
+  writeFile(path, archive);
+
+  auto reader = ZArchiveReader::open(path);
+  QVERIFY(reader != nullptr);
+  QCOMPARE(reader->list(QString{}), QStringList{QStringLiteral("00050000ABCDEF12_v0")});
+  QVERIFY(reader->isDirectory(QStringLiteral("00050000abcdef12_v0/META")));
+  QCOMPARE(reader->readFile(QStringLiteral("00050000ABCDEF12_v0/meta/iconTex.tga"), 1024 * 1024), tga);
+  QCOMPARE(reader->readFile(QStringLiteral("00050000ABCDEF12_v0/meta/meta.xml"), 1024 * 1024), metaXml);
+  QVERIFY(reader->readFile(QStringLiteral("00050000ABCDEF12_v0/meta/missing"), 1024).isEmpty());
+  QVERIFY(reader->readFile(QStringLiteral("00050000ABCDEF12_v0/meta/meta.xml"), 4).isEmpty());
+  QVERIFY(ZArchiveReader::open(temp.filePath("prod.keys")) == nullptr);
+
+  // The Cemu scanner reads the same archive: title id and name from the
+  // archive, icon converted to PNG in the cache. Test mode keeps that cache
+  // out of the real one.
+  QStandardPaths::setTestModeEnabled(true);
+  const auto restoreCache = qScopeGuard([] { QStandardPaths::setTestModeEnabled(false); });
+  const QString cemuRoot = temp.filePath("cemu");
+  writeFile(cemuRoot + QStringLiteral("/settings.xml"),
+            QStringLiteral("<content><GamePaths><Entry>%1</Entry></GamePaths></content>").arg(temp.path()).toUtf8());
+  const CemuScanResult scan = CemuScanner::scan({cemuRoot});
+  QCOMPARE(scan.games.size(), 1);
+  QCOMPARE(scan.games.first().titleId, QStringLiteral("00050000ABCDEF12"));
+  QCOMPARE(scan.games.first().title, QStringLiteral("Synthetic - Title"));
+  QVERIFY2(scan.games.first().coverPath.endsWith(QStringLiteral("/wiiu/00050000ABCDEF12.png")), qPrintable(scan.games.first().coverPath));
+  QCOMPARE(QImage(scan.games.first().coverPath).size(), QSize(2, 2));
+}
+
+namespace {
+QByteArray discHeaderBytes(const QByteArray& id, const QByteArray& internalName, bool wii) {
+  QByteArray header(0x80, '\0');
+  header.replace(0, id.size(), id);
+  if (wii) {
+    header.replace(0x18, 4, QByteArray("\x5D\x1C\x9E\xA3", 4));
+  } else {
+    header.replace(0x1C, 4, QByteArray("\xC2\x33\x9F\x3D", 4));
+  }
+  header.replace(0x20, internalName.size(), internalName);
+  return header;
+}
+
+QByteArray rvzBytes(const QByteArray& id, const QByteArray& internalName, bool wii) {
+  QByteArray file(0x48, '\0');
+  file.replace(0, 4, "RVZ\x01");
+  QByteArray header2(0x10, '\0');
+  header2[3] = wii ? 2 : 1;
+  file += header2 + discHeaderBytes(id, internalName, wii);
+  file += QByteArray(0x100, '\0');
+  return file;
+}
+
+void createDolphinFixture(const QString& root, const QString& games) {
+  writeFile(root + QStringLiteral("/Dolphin.ini"),
+            QStringLiteral("[General]\nISOPaths = 1\nISOPath0 = %1\nRecursiveISOPaths = True\n").arg(games).toUtf8());
+  writeFile(games + QStringLiteral("/Legend of Zelda, The - The Wind Waker (USA).rvz"),
+            rvzBytes("GZLE01", "ZELDA WIND WAKER", false));
+  writeFile(games + QStringLiteral("/Legend of Zelda, The - The Wind Waker (USA).png"), "cover");
+  writeFile(games + QStringLiteral("/nested/Mario Kart Wii (USA).wbfs"),
+            QByteArray("WBFS") + QByteArray(0x1FC, '\0') + discHeaderBytes("RMCE01", "MARIO KART WII", true));
+  writeFile(games + QStringLiteral("/Plain Disc (USA).iso"), discHeaderBytes("GPLE01", "PLAIN DISC", false) + QByteArray(0x100, '\0'));
+  writeFile(games + QStringLiteral("/notes.txt"), "not a game");
+}
+}  // namespace
+
+void CoreTests::dolphinScannerReadsDiscHeadersAndLaunches() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/dolphin-emu");
+  const QString games = directory.path() + QStringLiteral("/GameCube");
+  createDolphinFixture(root, games);
+
+  const DolphinScanResult result = DolphinScanner::scan({root});
+  QVERIFY2(!result.incomplete, qPrintable(result.warnings.join(" | ")));
+  QCOMPARE(result.roots, QStringList({root}));
+  QCOMPARE(result.games.size(), 3);
+  QMap<QString, DolphinGameRecord> byId;
+  for (const DolphinGameRecord& game : result.games) byId.insert(game.discId, game);
+  QCOMPARE(byId.value("GZLE01").title, QStringLiteral("The Legend of Zelda - The Wind Waker"));
+  QCOMPARE(byId.value("GZLE01").platform, QStringLiteral("GameCube"));
+  QVERIFY(byId.value("GZLE01").coverPath.endsWith(QStringLiteral(".png")));
+  QCOMPARE(byId.value("RMCE01").title, QStringLiteral("Mario Kart Wii"));
+  QCOMPARE(byId.value("RMCE01").platform, QStringLiteral("Wii"));
+  QCOMPARE(byId.value("GPLE01").platform, QStringLiteral("GameCube"));
+  QVERIFY(byId.value("GPLE01").coverPath.isEmpty());
+
+  // Explicit folders work without any Dolphin configuration.
+  const DolphinScanResult direct = DolphinScanner::scan({}, {games});
+  QCOMPARE(direct.games.size(), 3);
+  QVERIFY(direct.roots.isEmpty());
+
+  QCOMPARE(DolphinGameModel::gameTdbCoverUrl(QStringLiteral("GZLE01")), QStringLiteral("https://art.gametdb.com/wii/cover/US/GZLE01.png"));
+  QCOMPARE(DolphinGameModel::gameTdbCoverUrl(QStringLiteral("GZLP01")), QStringLiteral("https://art.gametdb.com/wii/cover/EN/GZLP01.png"));
+  QCOMPARE(DolphinGameModel::gameTdbCoverUrl(QStringLiteral("GZLJ01")), QStringLiteral("https://art.gametdb.com/wii/cover/JA/GZLJ01.png"));
+  QVERIFY(DolphinGameModel::gameTdbCoverUrl(QStringLiteral("../x")).isEmpty());
+
+  const LaunchCommand native = GameLauncher::dolphinCommand(byId.value("GZLE01").path, QStringLiteral("dolphin-emu"), false);
+  QCOMPARE(native.program, QStringLiteral("dolphin-emu"));
+  QCOMPARE(native.arguments, (QStringList{QStringLiteral("-b"), QStringLiteral("-e"), byId.value("GZLE01").path}));
+  const LaunchCommand flatpak = GameLauncher::dolphinCommand(QStringLiteral("path:") + byId.value("RMCE01").path, QString{}, true);
+  QCOMPARE(flatpak.program, QStringLiteral("flatpak"));
+  QCOMPARE(flatpak.arguments.first(), QStringLiteral("run"));
+  QCOMPARE(flatpak.arguments.last(), byId.value("RMCE01").path);
+  QVERIFY(!GameLauncher::dolphinCommand(games + QStringLiteral("/notes.txt"), QStringLiteral("dolphin-emu"), false).isValid());
+  QVERIFY(!GameLauncher::dolphinCommand(QStringLiteral("relative.rvz"), QStringLiteral("dolphin-emu"), false).isValid());
+}
+
+void CoreTests::dolphinModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/dolphin-emu");
+  const QString games = directory.path() + QStringLiteral("/GameCube");
+  createDolphinFixture(root, games);
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  {
+    DolphinGameModel model(database);
+    model.refreshFromRoots({root});
+    QCOMPARE(model.rowCount(), 3);
+    model.toggleFavorite(0);
+    model.refreshFromRoots({root});
+    QCOMPARE(model.rowCount(), 3);
+    QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+    QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(), QStringLiteral("Dolphin"));
+    QVERIFY(model.data(model.index(0), GameRoles::Subtitle).toString().startsWith(QStringLiteral("Dolphin · ")));
+    QVERIFY(!model.data(model.index(0), GameRoles::LaunchTarget).toString().isEmpty());
+  }
+  DolphinGameModel reloaded(database);
+  QCOMPARE(reloaded.rowCount(), 3);
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+  // A scan that cannot read its folder keeps the cached library.
+  QVERIFY(QDir(games).removeRecursively());
+  reloaded.refreshFromRoots({root});
+  QCOMPARE(reloaded.rowCount(), 3);
+  QVERIFY(reloaded.statusText().contains(QStringLiteral("interrupted")));
+}
+
+void CoreTests::dreamcastFoldersBecomeAPortal() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString folder = directory.path() + QStringLiteral("/Dreamcast");
+  writeFile(folder + QStringLiteral("/Crazy Taxi (USA)/Crazy Taxi (USA).gdi"), "gdi");
+  writeFile(folder + QStringLiteral("/Crazy Taxi (USA)/track01.bin"), "bin");
+  writeFile(folder + QStringLiteral("/Crazy Taxi (USA)/track02.raw"), "raw");
+  writeFile(folder + QStringLiteral("/Jet Grind Radio (USA)/Jet Grind Radio (USA).gdi"), "gdi");
+  writeFile(folder + QStringLiteral("/Jet Grind Radio (USA)/track03.bin"), "bin");
+  RetroArchGameModel roms(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  roms.refreshFromSources({}, {folder + QStringLiteral("|dreamcast")});
+  QCOMPARE(roms.rowCount(), 2);
+  QCOMPARE(roms.data(roms.index(0), GameRoles::System).toString(), QStringLiteral("dreamcast"));
+  QCOMPARE(roms.data(roms.index(0), GameRoles::Title).toString(), QStringLiteral("Crazy Taxi"));
+  ConsolePortalModel portals;
+  portals.addRomModel(&roms);
+  QCOMPARE(portals.rowCount(), 1);
+  QCOMPARE(portals.data(portals.index(0), GameRoles::Title).toString(), QStringLiteral("Sega Dreamcast"));
+  QVERIFY(!ConsoleCatalog::isDedicatedSource(QStringLiteral("dreamcast")));
+  QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("gamecube")));
+  // No playlist core: the Flycast core hosts the game, with RetroArch's menu never shown.
+  QVERIFY(roms.data(roms.index(0), GameRoles::LaunchTarget).toString().isEmpty());  // no playlist core
+  const LaunchCommand command = GameLauncher::resolvedCartridgeCommand(
+      roms.data(roms.index(0), GameRoles::InstallPath).toString(), QString{}, false, false, QString{},
+      QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
+  QCOMPARE(command.program, QStringLiteral("retroarch"));
+  QCOMPARE(command.arguments.at(1), QStringLiteral("/usr/lib/libretro/flycast_libretro.so"));
+}
+
+void CoreTests::consoleLayoutsPinAndExpand() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  // Three SNES carts, one N64 cart, two GameCube discs, and a large "PC" source.
+  const QString roms = directory.path() + QStringLiteral("/roms");
+  for (const QString& name : {QStringLiteral("snes/A.sfc"), QStringLiteral("snes/B.sfc"), QStringLiteral("snes/C.sfc"),
+                              QStringLiteral("n64/Mario.z64")}) {
+    writeFile(roms + QLatin1Char('/') + name, "rom");
+  }
+  const QString dolphinRoot = directory.path() + QStringLiteral("/dolphin-emu");
+  const QString discs = directory.path() + QStringLiteral("/GameCube");
+  createDolphinFixture(dolphinRoot, discs);
+  QVERIFY(QFile::remove(discs + QStringLiteral("/nested/Mario Kart Wii (USA).wbfs")));
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  MockGameModel pc(nullptr, 50);
+  RetroArchGameModel carts(database);
+  carts.refreshFromSources({}, {roms + QStringLiteral("/snes|snes"), roms + QStringLiteral("/n64|n64")});
+  QCOMPARE(carts.rowCount(), 4);
+  DolphinGameModel cubes(database);
+  cubes.refreshFromRoots({dolphinRoot});
+  QCOMPARE(cubes.rowCount(), 2);
+
+  ConsolePortalModel portals;
+  portals.addRomModel(&carts);
+  portals.addRomModel(&cubes);
+  AppSettings settings(directory.path() + QStringLiteral("/config.toml"));
+  QCOMPARE(settings.consoleLayout(QStringLiteral("snes")), QStringLiteral("follow"));
+  QCOMPARE(settings.consoleLayout(QStringLiteral("gamecube")), QStringLiteral("follow"));
+  portals.setCardSystems(settings.cardSystems());
+  QCOMPARE(portals.rowCount(), 3);  // snes, n64, gamecube
+
+  UnifiedGameModel games(database);
+  games.addSourceModel(&pc);
+  games.addSourceModel(&carts);
+  games.addSourceModel(&cubes);
+  games.addSourceModel(&portals);
+  LibraryFilterModel library;
+  library.setSourceModel(&games);
+  library.setConsolePortalsEnabled(true);
+  library.setCardSystems(settings.cardSystems());
+  const auto count = [&library](const QString& source) {
+    int total = 0;
+    for (int row = 0; row < library.rowCount(); ++row)
+      if (library.get(row).value("source").toString() == source && !library.get(row).value("isPortal").toBool()) ++total;
+    return total;
+  };
+  const auto portalCount = [&library] {
+    int total = 0;
+    for (int row = 0; row < library.rowCount(); ++row) total += library.get(row).value("isPortal").toBool();
+    return total;
+  };
+  QCOMPARE(library.rowCount(), 50 + 3);  // PC games and all three consoles
+  QCOMPARE(count("Dolphin"), 0);
+
+  // GameCube moves behind a card; the card is built from Dolphin games and carries that source.
+  settings.setConsoleLayout(QStringLiteral("gamecube"), QStringLiteral("card"));
+  portals.setCardSystems(settings.cardSystems());
+  library.setCardSystems(settings.cardSystems());
+  QCOMPARE(portals.rowCount(), 3);
+  QCOMPARE(count("Dolphin"), 0);
+  QCOMPARE(portalCount(), 3);
+  AppSettings reloaded(directory.path() + QStringLiteral("/config.toml"));
+  QCOMPARE(reloaded.consoleLayout(QStringLiteral("gamecube")), QStringLiteral("card"));
+  QCOMPARE(reloaded.consoleLayouts(), QStringList{QStringLiteral("gamecube=card")});
+  settings.setConsoleLayout(QStringLiteral("gamecube"), QStringLiteral("library"));
+  QCOMPARE(settings.consoleLayouts(), QStringList{QStringLiteral("gamecube=library")});
+  settings.setConsoleLayout(QStringLiteral("gamecube"), QStringLiteral("card"));
+
+  // A single pinned game holds a library spot while its system stays a card.
+  library.setConsoleFilter(QStringLiteral("gamecube"));
+  QCOMPARE(library.rowCount(), 2);
+  const int zelda = library.indexOf(QStringLiteral("Dolphin"), QString{}, QStringLiteral("GZLE01"));
+  QVERIFY(zelda >= 0);
+  QVERIFY(library.setPinned(zelda, true));
+  library.setConsoleFilter({});
+  QCOMPARE(count("Dolphin"), 1);
+  QCOMPARE(portalCount(), 3);
+  QVERIFY(library.get(library.indexOf(QStringLiteral("Dolphin"), QString{}, QStringLiteral("GZLE01"))).value("pinned").toBool());
+  UnifiedGameModel reopened(database);
+  reopened.addSourceModel(&cubes);
+  QVERIFY(reopened.data(reopened.index(0), GameRoles::Pinned).toBool() ||
+          reopened.data(reopened.index(1), GameRoles::Pinned).toBool());
+
+  // Source filters combine, and the console card follows its games' source.
+  library.setFixedCardSystems({QStringLiteral("gamecube")});
+  library.setSourceFilters({QStringLiteral("Dolphin")});
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);  // one system goes straight to its games
+  QVERIFY(!library.hasConsoleCards());
+  library.toggleSource(QStringLiteral("Demo"));
+  QCOMPARE(library.rowCount(), 50 + 1 + 1);
+  QVERIFY(library.sourceSelected(QStringLiteral("demo")));
+  library.setSourceFilter(QStringLiteral("Emulated"));
+  QCOMPARE(library.sourceFilter(), QStringLiteral("Emulated"));
+  QVERIFY(library.sourcesSelected(LibraryFilterModel::emulatorSources()));
+  QCOMPARE(count("Demo"), 0);
+  QCOMPARE(portalCount(), 3);
+  library.toggleSources(LibraryFilterModel::emulatorSources());
+  QVERIFY(library.sourceFilters().isEmpty());
+
+  // Games view ignores the old size cap. Only explicit overrides keep cards.
+  QVERIFY(library.hasConsoleCards());
+  library.setConsoleExpandLimit(2);
+  library.setFixedCardSystems(settings.fixedCardSystems());
+  library.setExpandConsoles(true);
+  QCOMPARE(count("Dolphin"), 1);  // explicit card override, plus pinned Zelda
+  QCOMPARE(count("RetroArch"), 4);
+  QCOMPARE(portalCount(), 1);
+  settings.setConsoleLayout(QStringLiteral("gamecube"), QStringLiteral("follow"));
+  library.setFixedCardSystems(settings.fixedCardSystems());
+  QVERIFY(settings.consoleLayouts().isEmpty());
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);
+  QCOMPARE(count("RetroArch"), 4);
+  library.setExpandConsoles(false);
+  QCOMPARE(portalCount(), 3);
+  QCOMPARE(count("RetroArch"), 0);
+
+  // Inside a console, every game of that system shows, pinned or not, and search stays inside.
+  library.setConsoleFilter(QStringLiteral("snes"));
+  QCOMPARE(library.rowCount(), 3);
+  library.setSearchText(QStringLiteral("B"));
+  QCOMPARE(library.rowCount(), 1);
+  library.setSearchText({});
+  library.setSourceFilters({QStringLiteral("Demo")});
+  QVERIFY(library.consoleFilter().isEmpty());
+  QCOMPARE(library.rowCount(), 50);
+  // Favorites and search count the games inside cards, not the portal's own flags.
+  library.setSourceFilters({});
+  library.setConsoleFilter(QStringLiteral("snes"));
+  library.toggleFavorite(0);
+  library.setConsoleFilter({});
+  library.setMode(LibraryFilterModel::Mode::Favorites);
+  QCOMPARE(portalCount(),1);
+  for (int row = 0; row < library.rowCount(); ++row)
+    if (library.get(row).value("isPortal").toBool()) QCOMPARE(library.get(row).value("subtitle").toString(),QStringLiteral("1 game"));
+  library.setMode(LibraryFilterModel::Mode::All);
+  settings.setConsoleLayout(QStringLiteral("snes"),QStringLiteral("library"));
+  portals.setCardSystems(settings.cardSystems());
+  library.setCardSystems(settings.cardSystems());
+  QCOMPARE(count("RetroArch"),3);
+  QCOMPARE(portalCount(),2);
+  library.setExpandConsoles(true);
+  QCOMPARE(count("RetroArch"),4);
+  QCOMPARE(portalCount(),0);
+
+  // Discovery of a second Dolphin system restores grouping. Search alone must
+  // not change that decision, and returning to one system flattens it again.
+  library.setExpandConsoles(false);
+  library.setSourceFilters({QStringLiteral("Dolphin")});
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);
+  createDolphinFixture(dolphinRoot, discs);
+  cubes.refreshFromRoots({dolphinRoot});
+  QCOMPARE(cubes.rowCount(), 3);
+  QCOMPARE(count("Dolphin"), 1); // pinned Zelda
+  QCOMPARE(portalCount(), 2);
+  library.setSearchText(QStringLiteral("Mario Kart Wii"));
+  QCOMPARE(library.rowCount(), 1);
+  QCOMPARE(portalCount(), 1);
+  library.setSearchText({});
+  QVERIFY(QFile::remove(discs + QStringLiteral("/nested/Mario Kart Wii (USA).wbfs")));
+  cubes.refreshFromRoots({dolphinRoot});
+  QCOMPARE(count("Dolphin"), 2);
+  QCOMPARE(portalCount(), 0);
+}
+
+void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
+  QCOMPARE(GameMetadata::normalizedTitle("Chrono Trigger (USA)"), QStringLiteral("chrono trigger"));
+  QVERIFY(GameMetadata::normalizedTitle("Metroid Prime") != GameMetadata::normalizedTitle("Metroid Prime Remastered"));
+  QVERIFY(GameMetadata::normalizedTitle("Final Fantasy VII") != GameMetadata::normalizedTitle("Final Fantasy VIII"));
+  QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));
+  QVERIFY(!GameMetadata::searchQuery("Super Mario World (USA)", "snes").contains("USA"));
+  QVERIFY(GameMetadata::searchQuery("Mario", "unknown-console").isEmpty());
+  QVERIFY(GameMetadata::searchQuery("Mario", "gamecube").contains("platforms = (21)"));
+  const auto matches = GameMetadata::parseMatches(R"json([
+    {"id":1,"name":"Metroid Prime","platforms":[21],"total_rating":89.5,"total_rating_count":300},
+    {"id":2,"name":"Metroid Prime Remastered","platforms":[130],"total_rating":94,"total_rating_count":90},
+    {"id":3,"name":"Unrated","platforms":[21]},
+    {"id":4,"name":"Bad rating","platforms":[21],"total_rating":999,"total_rating_count":1},
+    {"id":0,"name":"Invalid","platforms":[21]}])json",21);
+  QCOMPARE(matches.size(),3);
+  QCOMPARE(matches.at(0).toMap().value("rating").toInt(),90);
+  QCOMPARE(matches.at(1).toMap().value("rating").toInt(),-1);
+  QCOMPARE(matches.at(2).toMap().value("rating").toInt(),-1);
+  QVERIFY(GameMetadata::parseMatches("{broken",21).isEmpty());
+  const auto covers = GameMetadata::parseCovers(R"json({"success":true,"data":[
+    {"id":1,"width":600,"height":900,"url":"https://cdn2.steamgriddb.com/grid/good.png"},
+    {"id":2,"width":512,"height":512,"url":"https://cdn2.steamgriddb.com/grid/square.png"},
+    {"id":3,"width":600,"height":900,"nsfw":true,"url":"https://cdn2.steamgriddb.com/grid/flagged.png"},
+    {"id":4,"width":600,"height":900,"url":"https://untrusted.example/image.png"}]})json");
+  QCOMPARE(covers.size(),1);
+  QVERIFY(!GameMetadata::trustedImageUrl(QUrl("http://cdn2.steamgriddb.com/grid/image.png")));
+  QVERIFY(!GameMetadata::trustedImageUrl(QUrl("https://cdn2.steamgriddb.com.evil.example/image.png")));
+}
+
+void CoreTests::metadataPersistsRatingsAndPreservesCustomArt() {
+  QTemporaryDir temp;
+  const QString database = temp.filePath("library.sqlite3");
+  MockGameModel source(nullptr, 3);
+  UnifiedGameModel games(database);
+  games.addSourceModel(&source);
+  const QString key = games.data(games.index(1),GameRoles::MetadataKey).toString();
+  QVERIFY(!key.isEmpty());
+  const QString portrait = temp.filePath("portrait.png");
+  const QString custom = temp.filePath("custom.png");
+  QImage image(600,900,QImage::Format_RGB32); image.fill(Qt::blue); QVERIFY(image.save(portrait));
+  image.fill(Qt::red); QVERIFY(image.save(custom));
+  { GameMetadata metadata(database,nullptr); }
+  {
+    auto db = QSqlDatabase::addDatabase("QSQLITE","metadata-test"); db.setDatabaseName(database); QVERIFY(db.open());
+    QSqlQuery query(db); query.prepare("INSERT INTO game_metadata(game_key,payload) VALUES(?,?)");
+    query.addBindValue(key);
+    query.addBindValue(QJsonDocument(QJsonObject{{"igdbId",1},{"rating",92},{"ratingCount",20},{"portrait",portrait}}).toJson());
+    QVERIFY(query.exec()); db.close();
+  }
+  QSqlDatabase::removeDatabase("metadata-test");
+  {
+    GameMetadata metadata(database,nullptr); games.setMetadata(&metadata);
+    QCOMPARE(games.data(games.index(1),GameRoles::Rating).toInt(),92);
+    QCOMPARE(games.data(games.index(0),GameRoles::Rating).toInt(),-1);
+    QCOMPARE(games.data(games.index(1),GameRoles::CoverPath).toString(),QUrl::fromLocalFile(portrait).toString());
+    LibraryFilterModel library; library.setSourceModel(&games); library.setSortMode(LibraryFilterModel::SortMode::Rating);
+    QCOMPARE(library.get(0).value("metadataKey").toString(),key);
+    QVERIFY(games.setCustomCover(1,QUrl::fromLocalFile(custom)));
+    const QVariant chosen = games.data(games.index(1),GameRoles::CoverPath);
+    QVERIFY(chosen.toString() != QUrl::fromLocalFile(portrait).toString());
+    metadata.inspect({{"metadataKey",key}}); metadata.rejectMatch();
+    QCOMPARE(games.data(games.index(1),GameRoles::CoverPath),chosen);
+    QCOMPARE(games.data(games.index(1),GameRoles::Rating).toInt(),-1);
+    games.setMetadata(nullptr);
+  }
+  GameMetadata reopened(database,nullptr);
+  QVERIFY(reopened.entry(key).value("rejected").toBool());
+  QVERIFY(!reopened.entry(key).contains("igdbId"));
+}
+
+void CoreTests::coverSizesPersistIndependently() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("config.toml");
+  AppSettings settings(path);
+  QCOMPARE(settings.coverSize(),100);
+  QCOMPARE(settings.couchCoverSize(),100);
+  settings.setCoverSize(70); settings.setCouchCoverSize(140);
+  AppSettings restored(path);
+  QCOMPARE(restored.coverSize(),70); QCOMPARE(restored.couchCoverSize(),140);
+  restored.setCoverSize(-100); restored.setCouchCoverSize(10000);
+  QCOMPARE(restored.coverSize(),60); QCOMPARE(restored.couchCoverSize(),160);
+  AppSettings clamped(path);
+  QCOMPARE(clamped.coverSize(),60); QCOMPARE(clamped.couchCoverSize(),160);
+  clamped.setCoverSize(100);
+  QCOMPARE(clamped.couchCoverSize(),160);
+}
+
+void CoreTests::controllerNavigationFollowsWindowFocus() {
+  ControllerInput controller;
+  controller.setWindowFocused(true);
+  QVERIFY(controller.inputEnabled());
+  controller.setWindowFocused(false);
+  QVERIFY(!controller.inputEnabled());
+  controller.setWindowFocused(true);
+  QVERIFY(controller.inputEnabled());
+  controller.setWindowFocused(false);
+  QVERIFY(!controller.inputEnabled());
+  controller.setWindowFocused(true);
+  QVERIFY(controller.inputEnabled());
+  QWindow root, dialog, other;
+  dialog.setTransientParent(&root);
+  QVERIFY(ControllerFocusGuard::ownsWindow(&root,&root));
+  QVERIFY(ControllerFocusGuard::ownsWindow(&root,&dialog));
+  QVERIFY(!ControllerFocusGuard::ownsWindow(&root,&other));
+  QVERIFY(!ControllerFocusGuard::ownsWindow(&root,nullptr));
+}
+
+
+namespace {
+class PortraitFixtureReply final : public QNetworkReply {
+public:
+  PortraitFixtureReply(const QNetworkRequest& request, QByteArray body, QObject* parent)
+      : QNetworkReply(parent), m_body(std::move(body)) {
+    setRequest(request);
+    setUrl(request.url());
+    setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 200);
+    open(QIODevice::ReadOnly);
+    QTimer::singleShot(0, this, [this] {
+      emit readyRead();
+      setFinished(true);
+      emit finished();
+    });
+  }
+  void abort() override {}
+  qint64 bytesAvailable() const override { return m_body.size() - m_offset + QNetworkReply::bytesAvailable(); }
+protected:
+  qint64 readData(char* data, qint64 maximum) override {
+    const qint64 length = qMin(maximum, m_body.size() - m_offset);
+    if (length <= 0) return -1;
+    memcpy(data, m_body.constData() + m_offset, length);
+    m_offset += length;
+    return length;
+  }
+private:
+  QByteArray m_body;
+  qint64 m_offset = 0;
+};
+class PortraitFixtureNetwork final : public QNetworkAccessManager {
+public:
+  QList<QNetworkRequest> requests;
+  QByteArray png;
+protected:
+  QNetworkReply* createRequest(Operation, const QNetworkRequest& request, QIODevice*) override {
+    requests.append(request);
+    QByteArray body = png;
+    if (request.url().host() == "www.steamgriddb.com") {
+      const QString id = request.url().path().section('/', -1);
+      body = QString(R"({"success":true,"data":[{"id":%1,"width":600,"height":900,"url":"https://cdn2.steamgriddb.com/grid/%1.png"}]})").arg(id).toUtf8();
+    }
+    return new PortraitFixtureReply(request, body, this);
+  }
+};
+}
+
+void CoreTests::portraitBatchContinuesAndKeepsRatingTimestamp() {
+  QTemporaryDir temp;
+  PortraitFixtureNetwork network;
+  QImage image(600, 900, QImage::Format_RGB32);
+  image.fill(Qt::blue);
+  QBuffer buffer(&network.png);
+  QVERIFY(buffer.open(QIODevice::WriteOnly));
+  QVERIFY(image.save(&buffer, "PNG"));
+  MockGameModel source(nullptr, 2);
+  UnifiedGameModel games;
+  games.addSourceModel(&source);
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  metadata.setLibrary(&games);
+  metadata.m_gridKey = "offline-fixture-key";
+  const qint64 ratingUpdated = QDateTime::currentSecsSinceEpoch() - 3600;
+  QStringList keys;
+  for (int row = 0; row < games.rowCount(); ++row) {
+    const QString key = games.data(games.index(row), GameRoles::MetadataKey).toString();
+    keys.append(key);
+    metadata.persist(key, {{"igdbId", row + 1}, {"gridId", row + 11},
+                           {"updated", ratingUpdated}, {"rating", 90}});
+  }
+  QCOMPARE(keys.size(), 2);
+  bool idleWithPendingGames = false;
+  connect(&metadata, &GameMetadata::changed, &metadata, [&] {
+    if (metadata.pending() > 0 && !metadata.busy())
+      idleWithPendingGames = true;
+  });
+  metadata.refreshLibrary();
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy() && metadata.pending() == 0, 5000);
+  QVERIFY(!idleWithPendingGames);
+  QCOMPARE(network.requests.size(), 4);
+  for (const auto& key : keys) {
+    const auto entry = metadata.entry(key);
+    QVERIFY(QFileInfo::exists(entry.value("portrait").toString()));
+    QCOMPARE(entry.value("updated").toLongLong(), ratingUpdated);
+    QCOMPARE(entry.value("rating").toInt(), 90);
+    QVERIFY(entry.value("portraitUpdated").toLongLong() >= ratingUpdated);
+  }
+  for (const auto& request : network.requests) {
+    if (request.url().host() == "www.steamgriddb.com")
+      QCOMPARE(request.rawHeader("Authorization"), QByteArray("Bearer offline-fixture-key"));
+    else
+      QVERIFY(request.rawHeader("Authorization").isEmpty());
+  }
+
+  // A queued game still owns the updater between requests. Credential actions
+  // must not start in that gap, and a scheduled next() must respect Stop.
+  metadata.m_queue.enqueue({{"metadataKey", keys.first()}});
+  QVERIFY(metadata.busy());
+  metadata.storeGridKey("invalid");
+  QVERIFY(metadata.status() != "That SteamGridDB API key is invalid");
+  metadata.cancel();
+  QVERIFY(!metadata.busy());
+  QCOMPARE(metadata.pending(), 0);
+  metadata.next();
+  QCOMPARE(metadata.status(), QString("Metadata update stopped"));
+  QCOMPARE(network.requests.size(), 4);
+}
+
+void CoreTests::portraitSelectionCompletesOnlyAfterSuccessfulSave() {
+  QTemporaryDir temp;
+  PortraitFixtureNetwork network;
+  QImage image(600, 900, QImage::Format_RGB32);
+  image.fill(Qt::blue);
+  QBuffer buffer(&network.png);
+  QVERIFY(buffer.open(QIODevice::WriteOnly));
+  QVERIFY(image.save(&buffer, "PNG"));
+  MockGameModel source(nullptr, 1);
+  UnifiedGameModel games(temp.filePath("library.sqlite3"));
+  games.addSourceModel(&source);
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  metadata.setLibrary(&games);
+  metadata.m_gridKey = "offline-fixture-key";
+  const QString key = games.data(games.index(0), GameRoles::MetadataKey).toString();
+  metadata.persist(key, {{"igdbId", 1}, {"gridId", 11}});
+  metadata.inspect({{"metadataKey", key}});
+  QSignalSpy selected(&metadata, &GameMetadata::portraitSelected);
+  metadata.findCovers();
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(metadata.covers().size(), 1);
+  QSignalSpy stateChanges(&metadata, &GameMetadata::changed);
+  metadata.chooseCover(0);
+  QVERIFY(metadata.busy());
+  QVERIFY(!stateChanges.isEmpty());
+  QCOMPARE(selected.count(), 0);
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(selected.count(), 1);
+  QCOMPARE(selected.first().first().toString(), key);
+  QVERIFY(metadata.covers().isEmpty());
+  QVERIFY(QFileInfo::exists(metadata.current().value("portrait").toString()));
+
+  metadata.findCovers();
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(metadata.covers().size(), 1);
+  network.png = "invalid image";
+  metadata.chooseCover(0);
+  QTRY_VERIFY(!metadata.busy());
+  QCOMPARE(selected.count(), 1);
+  QCOMPARE(metadata.covers().size(), 1);
+  QCOMPARE(metadata.status(), QString("Portrait has unexpected dimensions"));
+}
+
+void CoreTests::startupBenchmarkDoesNotActivateAnotherInstance() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  QLocalServer otherInstance;
+  QVERIFY(otherInstance.listen(temp.filePath(SingleInstance::defaultServerName())));
+  QProcess benchmark;
+  auto environment = QProcessEnvironment::systemEnvironment();
+  environment.insert("TMPDIR", temp.path());
+  environment.insert("XDG_CONFIG_HOME", temp.filePath("config"));
+  environment.insert("XDG_DATA_HOME", temp.filePath("data"));
+  environment.insert("XDG_CACHE_HOME", temp.filePath("cache"));
+  environment.insert("QT_QPA_PLATFORM", "offscreen");
+  environment.insert("QT_QUICK_BACKEND", "software");
+  environment.insert("QT_FORCE_STDERR_LOGGING", "1");
+  environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "");
+  environment.insert("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + temp.filePath("no-session-bus"));
+  benchmark.setProcessEnvironment(environment);
+  benchmark.setProcessChannelMode(QProcess::MergedChannels);
+  benchmark.start(QCoreApplication::applicationDirPath() + "/../omakade",
+                  {"--couch", "--stress-test", "--benchmark"});
+  QVERIFY(benchmark.waitForFinished(10000));
+  const QByteArray output = benchmark.readAll();
+  QCOMPARE(benchmark.exitStatus(), QProcess::NormalExit);
+  QCOMPARE(benchmark.exitCode(), 0);
+  QVERIFY2(output.contains("First frame in"), output.constData());
+  QVERIFY(!otherInstance.waitForNewConnection(20));
+  QVERIFY(!otherInstance.hasPendingConnections());
+  QVERIFY(!QFileInfo::exists(temp.filePath("config/omakade/config.toml")));
+}

@@ -17,6 +17,7 @@ FocusScope {
     property bool browseOpen: false
     readonly property var sourceOptions: [
         { label: "ALL SOURCES", value: "" },
+        { label: "EMULATED", value: "Emulated" },
         { label: "STEAM", value: "Steam", enabled: Preferences.steamEnabled },
         { label: "BATTLE.NET", value: "Battle.net", enabled: Preferences.battleNetEnabled },
         { label: "LUTRIS", value: "Lutris", enabled: Preferences.lutrisEnabled },
@@ -25,7 +26,11 @@ FocusScope {
         { label: "FAUGUS", value: "Faugus", enabled: Preferences.faugusEnabled },
         { label: "RETROARCH", value: "RetroArch", enabled: Preferences.retroArchEnabled },
         { label: "PCSX2", value: "PCSX2", enabled: Preferences.pcsx2Enabled },
-        { label: "RYUJINX", value: "Ryujinx", enabled: Preferences.ryujinxEnabled }
+        { label: "RYUJINX", value: "Ryujinx", enabled: Preferences.ryujinxEnabled },
+        { label: "SHADPS4", value: "shadPS4", enabled: Preferences.shadps4Enabled },
+        { label: "CEMU", value: "Cemu", enabled: Preferences.cemuEnabled },
+        { label: "DOLPHIN", value: "Dolphin", enabled: Preferences.dolphinEnabled },
+        { label: "MANUAL", value: "Manual", enabled: true }
     ].filter(function(option) { return option.enabled === undefined || option.enabled })
     readonly property bool detailView: (viewOverride.length > 0
                                         ? viewOverride : Preferences.couchLibraryView) !== "grid"
@@ -36,6 +41,9 @@ FocusScope {
 
     signal gameActivated(int index)
     signal favoriteToggled(int index)
+    signal organizeRequested()
+    signal savedFiltersRequested()
+    signal randomRequested()
     signal settingsRequested()
     signal desktopRequested()
     signal coverRequested(string source, string appId)
@@ -117,6 +125,8 @@ FocusScope {
     }
 
     function openBrowse() {
+        couchBrowse.categoryIndex = 0
+        couchBrowse.rebuildOptions()
         browseOpen = true
         Qt.callLater(couchBrowse.focusPanel)
     }
@@ -330,6 +340,23 @@ FocusScope {
             Layout.alignment: Qt.AlignVCenter
 
             GlassButton {
+                id: consoleButton
+                objectName: "couchConsoleButton"
+                // Inside a console the grid only shows that system's cartridges;
+                // this is the visible way back on a controller.
+                visible: root.libraryModel.consoleTitle.length > 0
+                text: "\u2190 " + root.libraryModel.consoleTitle.toUpperCase()
+                compact: true
+                primary: true
+                displayScale: Math.max(1, root.uiScale * 1.18)
+                onClicked: {
+                    root.libraryModel.consoleFilter = ""
+                    root.currentIndex = root.libraryModel.rowCount() > 0 ? 0 : -1
+                }
+                KeyNavigation.right: allButton
+                KeyNavigation.down: root.detailView ? viewButton : gameGrid
+            }
+            GlassButton {
                 id: allButton
                 objectName: "couchAllButton"
                 text: "ALL"
@@ -337,6 +364,7 @@ FocusScope {
                 displayScale: Math.max(1, root.uiScale * 1.18)
                 selected: root.libraryModel.mode === 0
                 onClicked: root.selectMode(0)
+                KeyNavigation.left: consoleButton.visible ? consoleButton : null
                 KeyNavigation.right: favoritesButton
                 KeyNavigation.down: root.detailView ? viewButton : gameGrid
             }
@@ -361,6 +389,23 @@ FocusScope {
                 selected: root.libraryModel.mode === 2
                 onClicked: root.selectMode(2)
                 KeyNavigation.left: favoritesButton
+                KeyNavigation.right: consoleViewButton
+                KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
+            }
+            GlassButton {
+                id: consoleViewButton
+                objectName: "couchConsoleViewButton"
+                text: root.libraryModel.expandConsoles ? "CONSOLES: GAMES" : "CONSOLES: CARDS"
+                Accessible.name: "Console view: " + (root.libraryModel.expandConsoles ? "games" : "cards")
+                compact: true
+                displayScale: Math.max(1, root.uiScale * 1.18)
+                selected: !root.libraryModel.expandConsoles
+                onClicked: {
+                    root.libraryModel.expandConsoles = !root.libraryModel.expandConsoles
+                    root.currentIndex = root.libraryModel.rowCount() > 0 ? 0 : -1
+                    root.refreshCurrentGame()
+                }
+                KeyNavigation.left: recentButton
                 KeyNavigation.right: layoutButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
@@ -373,7 +418,7 @@ FocusScope {
                 displayScale: Math.max(1, root.uiScale * 1.18)
                 selected: true
                 onClicked: root.toggleLibraryView()
-                KeyNavigation.left: recentButton
+                KeyNavigation.left: consoleViewButton
                 KeyNavigation.right: browseButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
@@ -473,14 +518,9 @@ FocusScope {
                 }
             }
 
-            Image {
+            CoverArtwork {
                 anchors.fill: parent
                 source: root.currentGame.coverPath || ""
-                asynchronous: true
-                cache: false
-                fillMode: Image.PreserveAspectCrop
-                sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-                sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
             }
 
             Rectangle {
@@ -737,14 +777,9 @@ FocusScope {
                     GradientStop { position: 1; color: card.accentEnd }
                 }
 
-                Image {
+                CoverArtwork {
                     anchors.fill: parent
                     source: card.coverPath
-                    asynchronous: true
-                    cache: false
-                    fillMode: Image.PreserveAspectCrop
-                    sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-                    sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
                 }
 
                 Text {
@@ -838,9 +873,11 @@ FocusScope {
         anchors.bottomMargin: 24 * root.uiScale
         anchors.leftMargin: 58 * root.uiScale
         anchors.rightMargin: 58 * root.uiScale
-        cellWidth: 212 * root.uiScale
-        cellHeight: 350 * root.uiScale
-        readonly property int columnCount: Math.max(1, Math.floor(width / cellWidth))
+        readonly property real coverScale: Preferences.couchCoverSize / 100
+        cellWidth: width / columnCount
+        cellHeight: (258 * coverScale + 92) * root.uiScale
+        onCellWidthChanged: Qt.callLater(function() { if (gameGrid.currentIndex >= 0) gameGrid.positionViewAtIndex(gameGrid.currentIndex, GridView.Contain) })
+        readonly property int columnCount: Math.max(1, Math.floor(width / ((196 * coverScale + 16) * root.uiScale)))
         model: null
         currentIndex: root.currentIndex
         keyNavigationEnabled: true
@@ -893,8 +930,9 @@ FocusScope {
             required property color accentEnd
             readonly property bool current: gameGrid.currentIndex === index
 
-            width: 196 * root.uiScale
-            height: 330 * root.uiScale
+            width: 196 * gameGrid.coverScale * root.uiScale
+            height: (258 * gameGrid.coverScale + 72) * root.uiScale
+            transform: Translate { x: (gameGrid.cellWidth - gridCard.width) / 2 }
             transformOrigin: Item.TopLeft
             scale: current ? 1.025 : 1
             z: current ? 2 : 1
@@ -937,7 +975,7 @@ FocusScope {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.margins: 10 * root.uiScale
-                height: 258 * root.uiScale
+                height: 258 * gameGrid.coverScale * root.uiScale
                 radius: Math.max(8 * root.uiScale, Theme.cornerRadius)
                 clip: true
                 gradient: Gradient {
@@ -945,14 +983,9 @@ FocusScope {
                     GradientStop { position: 1; color: gridCard.accentEnd }
                 }
 
-                Image {
+                CoverArtwork {
                     anchors.fill: parent
                     source: gridCard.coverPath
-                    asynchronous: true
-                    cache: false
-                    fillMode: Image.PreserveAspectCrop
-                    sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-                    sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
                 }
 
                 Text {
@@ -1151,6 +1184,9 @@ FocusScope {
             root.currentIndex = root.libraryModel.rowCount() > 0 ? 0 : -1
             root.refreshCurrentGame()
         }
+        onOrganizeRequested: { root.closeBrowse(); root.organizeRequested() }
+        onSavedFiltersRequested: { root.closeBrowse(); root.savedFiltersRequested() }
+        onRandomRequested: { root.closeBrowse(); root.randomRequested() }
         onClosed: root.closeBrowse()
     }
 

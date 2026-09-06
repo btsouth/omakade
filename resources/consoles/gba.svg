@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#0f172a"/>
+  <rect x="0" y="0" width="400" height="86" fill="#6366f1"/>
+  <rect x="46" y="210" width="308" height="140" rx="48" fill="#1e293b"/>
+  <rect x="118" y="236" width="164" height="88" rx="10" fill="#818cf8"/>
+  <text x="200" y="520" text-anchor="middle" fill="#e0e7ff" font-family="sans-serif" font-size="28" font-weight="700">GAME BOY ADVANCE</text>
+</svg>

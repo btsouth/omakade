@@ -1,6 +1,7 @@
 #include "library/SteamGameModel.h"
 
 #include "app/AppSettings.h"
+#include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
 
 #include <QCryptographicHash>
@@ -47,10 +48,14 @@ QString coverCacheRoot() {
 
 qint64 otherCoverCacheBytes() {
   qint64 total = 0;
-  QDirIterator iterator(coverCacheRoot() + QStringLiteral("/battlenet"), QDir::Files,
-                        QDirIterator::Subdirectories);
-  while (iterator.hasNext()) {
-    total += QFileInfo(iterator.next()).size();
+  for (const QString& subdirectory :
+       {QStringLiteral("/battlenet"), QStringLiteral("/libretro"), QStringLiteral("/switch"),
+        QStringLiteral("/wiiu")}) {
+    QDirIterator iterator(coverCacheRoot() + subdirectory, QDir::Files,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext()) {
+      total += QFileInfo(iterator.next()).size();
+    }
   }
   return total;
 }
@@ -71,6 +76,9 @@ SteamGameModel::SteamGameModel(const QString& databasePath, AppSettings* setting
     : QAbstractListModel(parent),
       m_connectionName(QStringLiteral("omakade-%1").arg(reinterpret_cast<quintptr>(this))),
       m_settings(settings) {
+  m_coverWriteTimer.setSingleShot(true);
+  m_coverWriteTimer.setInterval(750);
+  connect(&m_coverWriteTimer, &QTimer::timeout, this, &SteamGameModel::flushCoverWrites);
   m_rescanTimer.setSingleShot(true);
   m_rescanTimer.setInterval(700);
   connect(&m_rescanTimer, &QTimer::timeout, this,
@@ -102,6 +110,7 @@ SteamGameModel::SteamGameModel(const QString& databasePath, AppSettings* setting
 }
 
 SteamGameModel::~SteamGameModel() {
+  flushCoverWrites();
   if (m_scanWatcher.isRunning()) {
     m_scanWatcher.waitForFinished();
   }
@@ -338,7 +347,7 @@ bool SteamGameModel::openDatabase(const QString& path) {
   }
   m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
   m_database.setDatabaseName(path);
-  if (!m_database.open()) {
+  if (!openTunedDatabase(m_database)) {
     setStatus(QStringLiteral("Library database unavailable"), m_database.lastError().text());
     return false;
   }
@@ -849,17 +858,34 @@ void SteamGameModel::applyCover(const QString& appId, const QString& path) {
       continue;
     }
     m_games[row].steam.coverPath = path;
-    if (m_database.isOpen()) {
-      QSqlQuery query(m_database);
-      query.prepare(QStringLiteral("UPDATE installations SET cover_path = ? WHERE app_id = ?"));
-      query.addBindValue(path);
-      query.addBindValue(appId);
-      query.exec();
+    m_pendingCoverWrites.insert(appId, path);
+    if (!m_coverWriteTimer.isActive()) {
+      m_coverWriteTimer.start();
     }
     emit dataChanged(index(row), index(row), {GameRoles::CoverPath});
     emit statusChanged();
     return;
   }
+}
+
+void SteamGameModel::flushCoverWrites() {
+  if (m_pendingCoverWrites.isEmpty() || !m_database.isOpen()) {
+    m_pendingCoverWrites.clear();
+    return;
+  }
+  const QHash<QString, QString> pending = m_pendingCoverWrites;
+  m_pendingCoverWrites.clear();
+  if (!m_database.transaction()) {
+    return;
+  }
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral("UPDATE installations SET cover_path = ? WHERE app_id = ?"));
+  for (auto it = pending.cbegin(); it != pending.cend(); ++it) {
+    query.addBindValue(it.value());
+    query.addBindValue(it.key());
+    query.exec();
+  }
+  m_database.commit();
 }
 
 void SteamGameModel::pruneCoverCache() {

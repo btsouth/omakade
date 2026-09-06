@@ -89,22 +89,10 @@ FocusScope {
             GradientStop { position: 1.0; color: root.accentEnd }
         }
 
-        Image {
+        CoverArtwork {
             id: artwork
             anchors.fill: parent
             source: root.coverPath
-            asynchronous: true
-            cache: false
-            fillMode: Image.PreserveAspectCrop
-            // Round the decode size up to 64px steps so window resizes and tiling changes do
-            // not reload every visible cover on each step.
-            sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-            sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-            opacity: status === Image.Ready ? 1 : 0
-            Behavior on opacity {
-                enabled: !Preferences.reducedMotion
-                NumberAnimation { duration: 160 }
-            }
         }
 
         Rectangle {
@@ -138,7 +126,10 @@ FocusScope {
             font.weight: Font.Light
         }
 
+        // The caption under the card already names the game; the overlay only
+        // labels cards that have no cover art to show.
         Rectangle {
+            visible: artwork.status !== Image.Ready
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -150,6 +141,7 @@ FocusScope {
         }
 
         Column {
+            visible: artwork.status !== Image.Ready
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom

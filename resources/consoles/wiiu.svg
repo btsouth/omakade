@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#0ea5e9"/>
+  <rect x="90" y="200" width="220" height="150" rx="30" fill="#0c4a6e"/><rect x="140" y="230" width="120" height="90" rx="8" fill="#bae6fd"/>
+  <text x="200" y="520" text-anchor="middle" fill="#bae6fd" font-family="sans-serif" font-size="34" font-weight="700">WII U</text>
+</svg>

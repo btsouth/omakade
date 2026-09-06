@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#3b82f6"/>
+  <rect x="100" y="200" width="200" height="140" rx="10" fill="#1e3a8a"/><rect x="128" y="228" width="144" height="16" rx="6" fill="#bfdbfe"/><rect x="128" y="264" width="80" height="16" rx="6" fill="#bfdbfe"/>
+  <text x="200" y="520" text-anchor="middle" fill="#bfdbfe" font-family="sans-serif" font-size="30" font-weight="700">PLAYSTATION 2</text>
+</svg>

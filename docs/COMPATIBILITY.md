@@ -19,6 +19,24 @@ The reference library contains 45 installed Steam games. Theme colors, font,
 launcher transparency, one-click details, keyboard navigation, and the
 controller input path have been exercised on this system.
 
+## 1.7 candidate
+
+The maintainer has exercised the development build on this desktop with Ryujinx,
+Dolphin, and Cemu. Exact 1.7.0 package validation and architecture CI are separate
+release gates. Automated fixtures now cover Dolphin, Cemu, shadPS4, ROM folders,
+console grouping, Switch/Wii U metadata extraction, IGDB matching, portrait batches,
+cover sizing, and source-filter scrolling. Fixtures do not establish compatibility
+with every real native or Flatpak launcher installation.
+
+Known limitations:
+
+- If a game accepts controller input while Omakade retains keyboard focus on a
+  second monitor, both can react. Unfocused Omakade ignores controller input;
+  no manual-resume workflow or automatic game-session tracking is enabled.
+- SteamGridDB requires a separate key. Its API responses and image handling are
+  tested offline; live verification for this candidate is pending.
+- Additional bundled console artwork does not add emulator or scanner support.
+
 ## 1.6 release validation
 
 Published 1.6.0 is commit `c91b14e40437a14849f37c188d5762c12655299e`. The
@@ -44,6 +62,15 @@ The role-name cleanup in PR #28 merged as `2de11d5`. All nine models retain
 identical role IDs and names, and all 41 release tests pass on the integrated
 code. This is an unreleased maintenance change, not an update to the 1.6.0
 packages. It does not add hardware or real-library compatibility evidence.
+
+## 1.7 candidate validation
+
+The completion candidate passes 81 automated checks covering personal-data
+migration, backup recovery, controller flows, offscreen layouts, and a cached
+large-library fixture. The maintainer confirmed the installed grid fix looks
+good. Physical controller, broader real-launcher, and native ARM64 validation
+remain separate from these checks. See
+[COMPLETION-PROGRESS.md](COMPLETION-PROGRESS.md) for evidence and limitations.
 
 ## Automated visual matrix
 

@@ -11,6 +11,7 @@
 
 class ControllerInput final : public QObject {
   Q_OBJECT
+  Q_PROPERTY(bool inputEnabled READ inputEnabled NOTIFY inputEnabledChanged)
   Q_PROPERTY(bool connected READ connected NOTIFY controllerChanged)
   Q_PROPERTY(QString name READ name NOTIFY controllerChanged)
   Q_PROPERTY(int controllerCount READ controllerCount NOTIFY controllerChanged)
@@ -35,10 +36,13 @@ public:
   [[nodiscard]] bool focusNavigation() const;
   void setFocusNavigation(bool enabled);
   void setInputEnabled(bool enabled);
+  bool inputEnabled() const { return m_inputEnabled; }
+  void setWindowFocused(bool focused);
   void start();
 
 signals:
   void controllerChanged();
+  void inputEnabledChanged();
   void focusNavigationChanged();
   void favoriteRequested();
   void toolbarRequested();

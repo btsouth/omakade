@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" rx="18" fill="#111827"/>
+  <rect x="0" y="0" width="400" height="86" fill="#2563eb"/>
+  <path d="M100 230 L300 200 L300 330 L100 360 Z" fill="#172554"/><rect x="130" y="250" width="140" height="14" rx="6" fill="#93c5fd" transform="rotate(-8 200 257)"/>
+  <text x="200" y="520" text-anchor="middle" fill="#93c5fd" font-family="sans-serif" font-size="30" font-weight="700">PLAYSTATION 4</text>
+</svg>
