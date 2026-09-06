@@ -330,6 +330,10 @@ void GameMetadata::setVisibleLibrary(QAbstractItemModel* visible) {
   connect(m_visible, &QAbstractItemModel::modelReset, this, viewChanged);
   connect(m_visible, &QAbstractItemModel::rowsInserted, this, viewChanged);
   connect(m_visible, &QAbstractItemModel::rowsRemoved, this, viewChanged);
+  // Opening a console swaps the whole view in one pass and reports it as a layout change, not
+  // as rows coming and going. Without this, walking into a console never reordered anything and
+  // its games waited behind the rest of the library.
+  connect(m_visible, &QAbstractItemModel::layoutChanged, this, viewChanged);
 }
 
 void GameMetadata::setEditing(bool editing) {
@@ -481,6 +485,18 @@ void GameMetadata::inspect(const QVariantMap& game) {
   m_selected = game;
   m_candidates.clear();
   m_covers.clear();
+  // Someone looking at a game's details is waiting on that game, so it goes to the front rather
+  // than taking its turn behind the rest of the library.
+  const QString key = game.value("metadataKey").toString();
+  if (!key.isEmpty()) {
+    for (qsizetype at = 0; at < m_queue.size(); ++at) {
+      if (m_queue.at(at).value("metadataKey").toString() != key)
+        continue;
+      if (at > 0)
+        m_queue.move(at, 0);
+      break;
+    }
+  }
   emit changed();
 }
 QByteArray GameMetadata::matchingRulesFingerprint() {
