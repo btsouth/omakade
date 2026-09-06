@@ -129,21 +129,17 @@ QString GameMetadata::normalizedTitle(QString title) {
 }
 bool GameMetadata::wantsPortraitCover(const QString& system, const QString& source,
                                       const QString& sourceCover) {
-  // Retro consoles get real box scans from the Libretro thumbnail server, and GameCube and Wii
-  // covers come from GameTDB. That artwork is authentic and a fan-made portrait would replace
-  // it, so those systems never ask for one. Switch, Wii U and PS4 dumps carry only a square
-  // icon, which crops a logo off the card, so they may.
-  const QString id = ConsoleCatalog::idFor(system);
-  static const QSet<QString> iconOnly{QStringLiteral("switch"), QStringLiteral("wiiu"),
-                                      QStringLiteral("ps4")};
-  if (!id.isEmpty() && !iconOnly.contains(id))
-    return false;
+  Q_UNUSED(system);
   // Steam ships an official 600x900 capsule for every game. It downloads on demand, so judging
   // by the file alone would hand a fan portrait to any game whose capsule had not arrived yet.
   if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) == 0)
     return false;
-  // Elsewhere, artwork that is already portrait shaped is the artwork to keep. Replacing a
-  // publisher's cover with fan art is a downgrade, so a portrait only fills a gap or a bad shape.
+  // Everything else is decided by the shape of the artwork the game already has, not by which
+  // system it came from. A physical box that was printed portrait, an NES box or a GameTDB
+  // cover, already works as a cover and is authentic, so it is kept. A box that was printed
+  // wide or square, an N64 carton or a Dreamcast case, cannot fill a card without being cropped
+  // or letterboxed, and a portrait reads better there even when it is fan made. Artwork that
+  // arrives later is reconsidered, since dropUnwantedPortraits applies this same rule.
   QString path = sourceCover;
   if (path.startsWith(QStringLiteral("file://")))
     path = QUrl(path).toLocalFile();
@@ -834,13 +830,18 @@ void GameMetadata::response(const QByteArray& data, const QString& stage) {
       return;
     }
     QDir().mkpath(m_cacheRoot);
+    // Covers are photographs and illustrations, and lossless storage was costing about 750 KB
+    // each. A library of a thousand games would have filled the artwork cache on its own and
+    // then spent the rest of its life evicting and downloading the same covers. JPEG at this
+    // quality is indistinguishable on a card and roughly a fifth of the size.
     const QString path =
         m_cacheRoot + '/' +
         QString::fromLatin1(
             QCryptographicHash::hash(key().toUtf8(), QCryptographicHash::Sha256).toHex()) +
-        '-' + QString::number(m_downloadId) + ".png";
+        '-' + QString::number(m_downloadId) + ".jpg";
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || !image.save(&file, "PNG") || !file.commit()) {
+    const QImage opaque = image.convertToFormat(QImage::Format_RGB32);
+    if (!file.open(QIODevice::WriteOnly) || !opaque.save(&file, "JPG", 92) || !file.commit()) {
       finish("Could not save portrait");
       return;
     }
@@ -1060,7 +1061,8 @@ void GameMetadata::trimPortraitCache() {
   const QDir cache(m_cacheRoot);
   qint64 kept = 0;
   QSet<QString> removed;
-  for (const auto& file : cache.entryInfoList({"*.png"}, QDir::Files, QDir::Time)) {
+  for (const auto& file :
+       cache.entryInfoList({"*.jpg", "*.png"}, QDir::Files, QDir::Time)) {
     if (kept + file.size() <= m_cacheLimitBytes)
       kept += file.size();
     else if (QFile::remove(file.absoluteFilePath()))

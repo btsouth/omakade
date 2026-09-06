@@ -6806,10 +6806,17 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   // A square icon crops a logo off the card, so those games may take a portrait.
   QVERIFY(GameMetadata::wantsPortraitCover("switch", "Ryujinx", icon));
   QVERIFY(GameMetadata::wantsPortraitCover("ps4", "shadPS4", icon));
-  // Retro consoles keep their authentic box art even though it is the wrong shape.
-  QVERIFY(!GameMetadata::wantsPortraitCover("snes", "RetroArch", boxScan));
-  QVERIFY(!GameMetadata::wantsPortraitCover("Nintendo - Super Nintendo Entertainment System", "RetroArch", boxScan));
-  QVERIFY(!GameMetadata::wantsPortraitCover("gamecube", "Dolphin", ""));
+  // A box printed wide cannot fill a card, so those take a portrait whatever system they are.
+  QVERIFY(GameMetadata::wantsPortraitCover("snes", "RetroArch", boxScan));
+  QVERIFY(GameMetadata::wantsPortraitCover("n64", "RetroArch", boxScan));
+  QVERIFY(GameMetadata::wantsPortraitCover("dreamcast", "RetroArch", icon));
+  // A box printed portrait already works as a cover and is authentic, so it is kept. NES boxes
+  // and GameTDB covers are both this shape.
+  const QString nesBox = write("nes.png", 640, 880);
+  QVERIFY(!nesBox.isEmpty());
+  QVERIFY(!GameMetadata::wantsPortraitCover("nes", "RetroArch", nesBox));
+  QVERIFY(!GameMetadata::wantsPortraitCover("Nintendo - Nintendo Entertainment System", "RetroArch", nesBox));
+  QVERIFY(!GameMetadata::wantsPortraitCover("gamecube", "Dolphin", capsule));
   // A game with no artwork at all has nothing to lose.
   QVERIFY(GameMetadata::wantsPortraitCover("", "Lutris", ""));
   QVERIFY(GameMetadata::wantsPortraitCover("", "Lutris", artwork.filePath("missing.png")));
