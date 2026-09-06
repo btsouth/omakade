@@ -54,6 +54,10 @@ public:
                                                                             : QVariantList{};
   }
   Q_INVOKABLE void inspect(const QVariantMap& game);
+  // While someone is identifying a game by hand, the background pass stands down. Without this
+  // the queue keeps the service busy and every manual control stays disabled, because they are
+  // all gated on the same busy state.
+  Q_INVOKABLE void setEditing(bool editing);
   Q_INVOKABLE void refreshLibrary();
   // Continues the library pass on its own: after the library settles, whenever games are added,
   // and whenever the view changes. Stopping it by hand keeps it stopped until the next launch.
@@ -131,6 +135,8 @@ private:
   QElapsedTimer m_sinceGridRequest;
   bool m_reviewedPortraits = false;
   bool m_stoppedByHand = false;
+  bool m_editing = false;
+  QQueue<QVariantMap> m_pausedQueue;
   QAbstractItemModel* m_visible = nullptr;
   QTimer m_settle;
   void continueLibraryPass();

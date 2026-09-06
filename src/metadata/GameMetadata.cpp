@@ -319,9 +319,34 @@ void GameMetadata::setVisibleLibrary(QAbstractItemModel* visible) {
   connect(m_visible, &QAbstractItemModel::rowsRemoved, this, viewChanged);
 }
 
+void GameMetadata::setEditing(bool editing) {
+  if (m_editing == editing)
+    return;
+  m_editing = editing;
+  if (editing) {
+    // Stand the queue down and hold it, rather than dropping it, so nothing already worked out
+    // is repeated when the person is done.
+    m_pausedQueue = m_queue;
+    m_queue.clear();
+    m_settle.stop();
+    const auto saved = entry(m_selected.value("metadataKey").toString());
+    const QString state = saved.value("matchStatus").toString();
+    m_status = state.isEmpty() ? QStringLiteral("Not identified yet") : state;
+    emit changed();
+    return;
+  }
+  m_queue = m_pausedQueue;
+  m_pausedQueue.clear();
+  if (!m_queue.isEmpty())
+    next();
+  else
+    m_settle.start();
+  emit changed();
+}
+
 void GameMetadata::continueLibraryPass() {
   // Stopping by hand means stopped, until the next launch or an explicit update.
-  if (m_stoppedByHand || busy() || m_library == nullptr)
+  if (m_stoppedByHand || m_editing || busy() || m_library == nullptr)
     return;
   if ((m_insights == nullptr || !m_insights->configured()) && !hasGridKey())
     return;
