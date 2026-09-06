@@ -149,6 +149,10 @@ private:
   QHash<QByteArray, QByteArray> m_queryCache;
   QByteArray m_queryKey;
   QString m_igdbStage;
+  // A ROM set can number its files, as 1636 - Pokemon Fire Red. Searching for that finds
+  // nothing, so a failed search is tried once more without the number. Held here so a title
+  // that genuinely starts with a number is only ever searched for as written first.
+  QString m_numberedRetryTitle;
   bool m_cancelled = false;
   bool m_busy = false;
   bool m_manual = false;

@@ -533,6 +533,7 @@ void GameMetadata::next() {
   }
   m_active = m_queue.dequeue();
   m_manual = false;
+  m_numberedRetryTitle.clear();
   m_busy = true;
   m_igdbStage = "games";
   auto saved = entry(key());
@@ -575,6 +576,7 @@ void GameMetadata::search(const QString& title) {
   m_igdbStage = "games";
   m_active = m_selected;
   m_manual = true;
+  m_numberedRetryTitle.clear();
   m_candidateProvider = "igdb";
   m_candidates.clear();
   m_covers.clear();
@@ -669,7 +671,9 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     if (m_igdbStage == "mappedGame" ||
         saved.value("igdbId").toLongLong() == match.toMap().value("id").toLongLong() ||
         sameGame(normalizedTitle(match.toMap().value("title").toString()),
-                 normalizedTitle(m_active.value("title").toString())))
+                 normalizedTitle(m_numberedRetryTitle.isEmpty()
+                                     ? m_active.value("title").toString()
+                                     : m_numberedRetryTitle)))
       exact.append(match);
   }
   if (exact.size() == 1)
@@ -689,6 +693,22 @@ void GameMetadata::matchResult(const QByteArray& data, const QString& error) {
     }
     acceptMatch(best);
   } else {
+    // Some ROM sets number their files, as "1636 - Pokemon Fire Red". Searching for the number
+    // finds nothing. Trying again without it only after the title as written has failed means a
+    // game that really begins with a number, 1080 Snowboarding or 1942, is never mangled.
+    static const QRegularExpression catalogueNumber(QStringLiteral("^\\d{2,5}\\s*-\\s*(?=\\S)"));
+    const QString written = m_active.value("title").toString();
+    if (!m_manual && m_numberedRetryTitle.isEmpty() &&
+        catalogueNumber.match(written).hasMatch()) {
+      QString withoutNumber = written;
+      withoutNumber.remove(catalogueNumber);
+      const QByteArray retry = searchQuery(withoutNumber, m_active.value("system").toString());
+      if (!retry.isEmpty()) {
+        m_numberedRetryTitle = withoutNumber;
+        requestIgdb(retry, "games", "games");
+        return;
+      }
+    }
     auto value = saved;
     value["matchStatus"] = "Needs identification";
     value["updated"] = QDateTime::currentSecsSinceEpoch();
@@ -748,6 +768,7 @@ void GameMetadata::findCovers() {
   m_cancelled = false;
   m_active = m_selected;
   m_manual = true;
+  m_numberedRetryTitle.clear();
   m_busy = true;
   m_candidates.clear();
   m_covers.clear();
