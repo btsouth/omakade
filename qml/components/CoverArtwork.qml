@@ -28,7 +28,11 @@ Item {
     Image {
         id: artwork
         anchors.fill: parent
-        source: root.source
+        // Wait for the card to have a size before loading. A delegate is created before layout
+        // gives it one, so binding straight through decoded every cover twice: once at its full
+        // size while the frame was still zero, then again at the size actually wanted. The
+        // second decode missed the cache, which is what made covers blink on every filter change.
+        source: width > 0 && height > 0 ? root.source : ""
         asynchronous: true
         cache: true
         fillMode: root.nearFit ? Image.Stretch
@@ -39,8 +43,19 @@ Item {
         sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
         sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
         opacity: status === Image.Ready ? 1 : 0
+
+        // A cover already decoded is ready within a frame or two, so fading it in is what makes
+        // a filter change look like the library is reloading. The fade is kept for art that
+        // genuinely has to be read from disk or downloaded.
+        property bool fadeIn: false
+        Timer {
+            id: settleDelay
+            interval: 90
+            onTriggered: if (artwork.status !== Image.Ready) artwork.fadeIn = true
+        }
+        Component.onCompleted: settleDelay.start()
         Behavior on opacity {
-            enabled: !Preferences.reducedMotion
+            enabled: !Preferences.reducedMotion && artwork.fadeIn
             NumberAnimation { duration: 160 }
         }
     }

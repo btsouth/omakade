@@ -126,7 +126,8 @@ QString GameMetadata::normalizedTitle(QString title) {
   static const QRegularExpression leadingArticle(QStringLiteral("^(?:the|a|an) (?=.)"));
   return normalized.remove(leadingArticle);
 }
-bool GameMetadata::wantsPortraitCover(const QString& system, const QString& sourceCover) {
+bool GameMetadata::wantsPortraitCover(const QString& system, const QString& source,
+                                      const QString& sourceCover) {
   // Retro consoles get real box scans from the Libretro thumbnail server, and GameCube and Wii
   // covers come from GameTDB. That artwork is authentic and a fan-made portrait would replace
   // it, so those systems never ask for one. Switch, Wii U and PS4 dumps carry only a square
@@ -136,9 +137,12 @@ bool GameMetadata::wantsPortraitCover(const QString& system, const QString& sour
                                       QStringLiteral("ps4")};
   if (!id.isEmpty() && !iconOnly.contains(id))
     return false;
-  // Whatever the source, artwork that is already portrait shaped is the artwork to keep. Steam
-  // ships an official 600x900 capsule, and other launchers carry publisher covers; replacing
-  // those with fan art is a downgrade, so a portrait only fills a gap or a bad shape.
+  // Steam ships an official 600x900 capsule for every game. It downloads on demand, so judging
+  // by the file alone would hand a fan portrait to any game whose capsule had not arrived yet.
+  if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) == 0)
+    return false;
+  // Elsewhere, artwork that is already portrait shaped is the artwork to keep. Replacing a
+  // publisher's cover with fan art is a downgrade, so a portrait only fills a gap or a bad shape.
   QString path = sourceCover;
   if (path.startsWith(QStringLiteral("file://")))
     path = QUrl(path).toLocalFile();
@@ -250,7 +254,52 @@ GameMetadata::~GameMetadata() {
   m_database = {};
   QSqlDatabase::removeDatabase(m_connection);
 }
-void GameMetadata::setLibrary(UnifiedGameModel* library) { m_library = library; }
+void GameMetadata::setLibrary(UnifiedGameModel* library) {
+  m_library = library;
+  if (m_library == nullptr)
+    return;
+  // Sources populate the library over the first few seconds, so wait for rows to arrive before
+  // judging what artwork a game has. The review runs once and is cheap: only entries that
+  // actually hold a portrait are examined.
+  const auto review = [this] {
+    if (m_reviewedPortraits || m_library == nullptr || m_library->rowCount() == 0)
+      return;
+    m_reviewedPortraits = true;
+    dropUnwantedPortraits();
+  };
+  connect(m_library, &QAbstractItemModel::rowsInserted, this, review);
+  connect(m_library, &QAbstractItemModel::modelReset, this, review);
+}
+
+void GameMetadata::dropUnwantedPortraits() {
+  if (m_library == nullptr)
+    return;
+  int dropped = 0;
+  for (int row = 0; row < m_library->rowCount(); ++row) {
+    const QModelIndex game = m_library->index(row);
+    const QString id = game.data(GameRoles::MetadataKey).toString();
+    if (id.isEmpty())
+      continue;
+    auto value = entry(id);
+    if (!value.contains("portrait"))
+      continue;
+    if (wantsPortraitCover(game.data(GameRoles::System).toString(),
+                           game.data(GameRoles::Source).toString(),
+                           game.data(GameRoles::SourceCoverPath).toString()))
+      continue;
+    // A portrait the user chose is stored as a custom cover, which outranks this and stays.
+    value.remove("portrait");
+    value.remove("gridCoverId");
+    persist(id, value);
+    ++dropped;
+  }
+  if (dropped > 0) {
+    m_status = QStringLiteral("Restored artwork on %1 %2")
+                   .arg(dropped)
+                   .arg(dropped == 1 ? "game" : "games");
+    emit changed();
+  }
+}
 void GameMetadata::persist(const QString& id, const QVariantMap& value) {
   if (id.isEmpty())
     return;
@@ -293,6 +342,7 @@ void GameMetadata::enqueue(const QVariantMap& game) {
   const bool ratings = m_insights && m_insights->configured() && needsIdentifying(saved, now);
   const bool portrait = hasGridKey() &&
                         wantsPortraitCover(game.value("system").toString(),
+                                           game.value("source").toString(),
                                            game.value("sourceCoverPath").toString()) &&
                         !QFileInfo::exists(saved.value("portrait").toString()) &&
                         saved.value("coverAttempt").toLongLong() <= now - 86400;
@@ -556,6 +606,7 @@ void GameMetadata::gridSearch() {
     return;
   }
   if (!m_manual && !wantsPortraitCover(m_active.value("system").toString(),
+                                       m_active.value("source").toString(),
                                        m_active.value("sourceCoverPath").toString())) {
     // An earlier run may have downloaded a portrait over artwork that should have been kept.
     // Drop it so the game shows its own art again. A portrait the user picked is stored as a
