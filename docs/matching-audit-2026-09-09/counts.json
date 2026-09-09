@@ -1,0 +1,13 @@
+{
+  "snes": 1387,
+  "unidentified": 180,
+  "missing": 243,
+  "recoverable": 68,
+  "ambiguous": 10,
+  "unresolved": 102,
+  "available": 191,
+  "remaining": 52,
+  "libretro": 107,
+  "grid": 20,
+  "igdb": 76
+}

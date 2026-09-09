@@ -12,6 +12,8 @@
 #include <QProcess>
 #include <QQmlEngine>
 #include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlPropertyMap>
 #include <QStandardItemModel>
 #include <openssl/evp.h>
 #include <unistd.h>
@@ -777,6 +779,7 @@ private slots:
   void pcsx2UnifiedFilterShowsGames();
   void pcsx2LauncherBuildsSafeCommands();
   void ryujinxScannerImportsRomsMetadataAndPlaytime();
+  void ryujinxScannerRejectsCorruptedDisplayTitles();
   void ryujinxScannerReadsNspTitleIdAndLocalCovers();
   void ryujinxScannerSkipsConfiguredAddOnsAndUpdates();
   void ryujinxModelIsRepeatableAndPreservesLocalState();
@@ -809,6 +812,7 @@ private slots:
   void cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone();
   void libretroCoverUrlsAndCachePathsAreStable();
   void downloadedCoversSurviveARescan();
+  void libretroCoverFailuresRemainRetryable();
   void gridMatchPrefersTheClosestYearAndRefusesTies();
   void battleNetScannerImportsInstalledGamesAndArtwork();
   void battleNetScannerDiscoversKnownPrefixes();
@@ -879,6 +883,10 @@ private slots:
   void artworkAliasesAndSharedIdentityRecoverMissingCovers();
   void portraitSelectionCompletesOnlyAfterSuccessfulSave();
   void unconfirmedGridSelectionIsDroppedOnARulesChange();
+  void manualSearchFieldsSurviveMetadataUpdates();
+  void metadataCatalogueSpellingsKeepIdentityBoundaries();
+  void metadataAuditRecoversLiveCatalogueMatches();
+  void igdbCoverFallbackRespectsPriorityAndFailures();
   void startupBenchmarkDoesNotActivateAnotherInstance();
   void probeEmbeddedArtwork();
   void switchTitleReaderReadsSyntheticDump();
@@ -5500,6 +5508,24 @@ void CoreTests::ryujinxScannerImportsRomsMetadataAndPlaytime() {
   QVERIFY(!result.games.constFirst().flatpak);
 }
 
+void CoreTests::ryujinxScannerRejectsCorruptedDisplayTitles() {
+  QStandardPaths::setTestModeEnabled(true);
+  const auto restore = qScopeGuard([] { QStandardPaths::setTestModeEnabled(false); });
+  QTemporaryDir temp;
+  const QString root = temp.filePath("ryujinx");
+  const QString roms = temp.filePath("roms");
+  writeFile(root + "/Config.json", QJsonDocument(QJsonObject{{"game_dirs", QJsonArray{roms}}}).toJson());
+  writeFile(roms + "/Pokemon Fire Red [0100554023408000][v0].nsp", "fixture");
+  const QString metadata = root + "/games/0100554023408000/gui/metadata.json";
+  writeFile(metadata, QJsonDocument(QJsonObject{{"title", QString(QChar::ReplacementCharacter)}}).toJson());
+  auto result = RyujinxScanner::scan({root});
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.first().title, QString("Pokemon Fire Red"));
+  writeFile(metadata, QJsonDocument(QJsonObject{{"title", QString::fromUtf8("ポケットモンスター")}}).toJson());
+  result = RyujinxScanner::scan({root});
+  QCOMPARE(result.games.first().title, QString::fromUtf8("ポケットモンスター"));
+}
+
 void CoreTests::ryujinxScannerReadsNspTitleIdAndLocalCovers() {
   // Keep the scanner away from this machine's real icon cache and keys, so
   // the fixture's local cover files decide the result.
@@ -6191,6 +6217,13 @@ void CoreTests::libretroCoverUrlsAndCachePathsAreStable() {
   const QStringList jpLabels = RetroArchGameModel::coverLabelCandidates(
       QStringLiteral("Chrono Trigger (JP)"), QStringLiteral("Chrono Trigger (Japan)"));
   QVERIFY(jpLabels.contains(QStringLiteral("Chrono Trigger (Japan)")));
+  const auto translated = RetroArchGameModel::coverLabelCandidates(
+      "Aretha (English Translated by Dynamic Designs)", "Aretha (English Translated by Dynamic Designs)");
+  QVERIFY(translated.contains("Aretha (Japan)"));
+  const auto revision = RetroArchGameModel::coverLabelCandidates("Battle Tycoon (JP, Rev 1)", "Battle Tycoon (JP, Rev 1)");
+  QCOMPARE(revision.first(), QString("Battle Tycoon (Japan)"));
+  QVERIFY(!translated.contains("Aretha II (Japan)"));
+
 
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -6371,6 +6404,37 @@ void CoreTests::gridMatchPrefersTheClosestYearAndRefusesTies() {
                {QVariantMap{{"id", 4}, {"title", "Pokémon Stadium 2"}, {"year", 2000}}},
                QStringLiteral("Pokemon Stadium 2"), 2000),
            qint64(4));
+
+  // The reported SNES cover exists under the macron spelling in SteamGridDB.
+  const QString mickey = QStringLiteral("Mickey no Tokyo Disneyland Daibouken");
+  const QString macron = QStringLiteral("Mickey no Tokyo Disneyland Daibōken");
+  const QVariantMap mickeyGrid{{"id", 5342779}, {"title", macron}, {"year", 1994}};
+  QCOMPARE(GameMetadata::chooseGridMatch({mickeyGrid}, mickey, 1994), qint64(5342779));
+  QCOMPARE(GameMetadata::chooseGridMatch(
+               {QVariantMap{{"id", 1}, {"title", mickey}, {"year", 1994}}}, macron, 1994),
+           qint64(1));
+  QCOMPARE(GameMetadata::chooseGridMatch(
+               {QVariantMap{{"id", 1}, {"title", macron + " 2"}, {"year", 1994}}}, mickey, 1994),
+           qint64(0));
+  QCOMPARE(GameMetadata::chooseGridMatch(
+               {mickeyGrid, QVariantMap{{"id", 2}, {"title", macron}, {"year", 1994}}},
+               mickey, 1994), qint64(0));
+  QCOMPARE(GameMetadata::chooseGridMatch(
+               {QVariantMap{{"id", 1}, {"title", "Tokyo"}, {"year", 1994}}}, "Toukyou", 1994),
+           qint64(0));
+
+  const QVariantList alien{
+      QVariantMap{{"id", 1235}, {"title", "Aliens vs. Predator"}, {"year", 2010}},
+      QVariantMap{{"id", 36110}, {"title", "Alien vs. Predator: The Last of His Clan"}, {"year", 1993}},
+      QVariantMap{{"id", 36481}, {"title", "Alien vs. Predator (Nintendo)"}, {"year", 1993}},
+      QVariantMap{{"id", 5340703}, {"title", "Alien vs. Predator (Atari)"}, {"year", 1994}},
+      QVariantMap{{"id", 5419537}, {"title", "Alien vs. Predator (Capcom)"}, {"year", 1994}}};
+  QCOMPARE(GameMetadata::chooseGridMatch(alien, "Alien vs. Predator", 1993, "snes"), qint64(36481));
+  QCOMPARE(GameMetadata::chooseGridMatch(alien, "Alien vs. Predator", 1993), qint64(0));
+  QCOMPARE(GameMetadata::chooseGridMatch(alien, "Alien vs. Predator", 1993, "psx"), qint64(0));
+  auto competingAlien = alien;
+  competingAlien.append(QVariantMap{{"id", 99}, {"title", "Alien vs. Predator (SNES)"}, {"year", 1993}});
+  QCOMPARE(GameMetadata::chooseGridMatch(competingAlien, "Alien vs. Predator", 1993, "snes"), qint64(0));
 
   // IGDB catalogues a licensed game under its publisher: a cartridge labelled Goof Troop is
   // "Disney's Goof Troop". SteamGridDB files it as plain Goof Troop, so searching and matching
@@ -7359,7 +7423,7 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QCOMPARE(GameMetadata::normalizedTitle("The Legend of Zelda: A Link to the Past"), zelda);
   QCOMPARE(GameMetadata::normalizedTitle("Lion King, The (NA)"), QStringLiteral("lion king"));
   // Editions, remasters and real subtitles are not dump tags and stay in the title.
-  QCOMPARE(GameMetadata::normalizedTitle("Sonic 3 (& Knuckles)"), QStringLiteral("sonic 3 knuckles"));
+  QCOMPARE(GameMetadata::normalizedTitle("Sonic 3 (& Knuckles)"), QStringLiteral("sonic 3 and knuckles"));
   QVERIFY(GameMetadata::normalizedTitle("Alan Wake (Remastered)").contains("remastered"));
   QVERIFY(GameMetadata::normalizedTitle("Persona 3 Reload (Digital Deluxe Edition)").contains("deluxe"));
   QVERIFY(GameMetadata::normalizedTitle("Runner2 (Future Legend of Rhythm Alien)").contains("rhythm alien"));
@@ -7370,8 +7434,8 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   // Every identification rule folded into one value. If this fails, a rule changed: raise
   // GameMetadata::kMatchVersion alongside it and update this expectation, or every library
   // already out there stays on answers the rules would no longer give.
-  QCOMPARE(GameMetadata::matchingRulesFingerprint(), QByteArray("506f0b8fef280446"));
-  QCOMPARE(GameMetadata::kMatchVersion, 5);
+  QCOMPARE(GameMetadata::matchingRulesFingerprint(), QByteArray("cbe9aefe37ef0dbc"));
+  QCOMPARE(GameMetadata::kMatchVersion, 6);
 
   // An entry decided by older matching rules is stale however recently it was written, so a
   // matching fix reaches an existing library on the next update instead of a month later.
@@ -7453,6 +7517,10 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QVERIFY(GameMetadata::normalizedTitle("Final Fantasy VII") != GameMetadata::normalizedTitle("Final Fantasy VIII"));
   QVERIFY(GameMetadata::normalizedTitle("Super Mario World") != GameMetadata::normalizedTitle("Super \"Mario\" World"));
   QVERIFY(!GameMetadata::searchQuery("Super Mario World (USA)", "snes").contains("USA"));
+  QVERIFY(GameMetadata::searchQuery("Super Mario World (USA)", "snes", false)
+              .contains("search \"Super Mario World (USA)\";"));
+  QVERIFY(GameMetadata::searchQuery("Super Back to the Future (English Translated)", "snes", false)
+              .contains("search \"Super Back to the Future (English Translated)\";"));
   QVERIFY(GameMetadata::searchQuery("Mario", "unknown-console").isEmpty());
   // A Japanese release is catalogued under its own machine, so both are searched.
   QVERIFY(GameMetadata::searchQuery("Alcahest", "snes").contains("platforms = (19,58)"));
@@ -7613,11 +7681,12 @@ void CoreTests::controllerNavigationFollowsWindowFocus() {
 namespace {
 class PortraitFixtureReply final : public QNetworkReply {
 public:
-  PortraitFixtureReply(const QNetworkRequest& request, QByteArray body, QObject* parent)
+  PortraitFixtureReply(const QNetworkRequest& request, QByteArray body, QObject* parent, int status = 200)
       : QNetworkReply(parent), m_body(std::move(body)) {
     setRequest(request);
     setUrl(request.url());
-    setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 200);
+    setAttribute(QNetworkRequest::HttpStatusCodeAttribute, status);
+    if (status >= 400) setError(QNetworkReply::ContentNotFoundError, "fixture error");
     open(QIODevice::ReadOnly);
     QTimer::singleShot(0, this, [this] {
       emit readyRead();
@@ -7639,6 +7708,17 @@ private:
   QByteArray m_body;
   qint64 m_offset = 0;
 };
+class LibretroFixtureNetwork final : public QNetworkAccessManager {
+public:
+  int status = 503;
+  int requests = 0;
+  QByteArray png;
+protected:
+  QNetworkReply* createRequest(Operation, const QNetworkRequest& request, QIODevice*) override {
+    ++requests;
+    return new PortraitFixtureReply(request, png, this, status);
+  }
+};
 class PortraitFixtureNetwork final : public QNetworkAccessManager {
 public:
   QList<QNetworkRequest> requests;
@@ -7657,6 +7737,87 @@ protected:
     return new PortraitFixtureReply(request, body, this);
   }
 };
+}
+
+void CoreTests::igdbCoverFallbackRespectsPriorityAndFailures() {
+  QTemporaryDir temp;
+  PortraitFixtureNetwork network;
+  QImage image(400, 600, QImage::Format_RGB32);
+  image.fill(Qt::green);
+  QBuffer buffer(&network.png);
+  QVERIFY(buffer.open(QIODevice::WriteOnly));
+  QVERIFY(image.save(&buffer, "PNG"));
+  LauncherOnlyModel source("Fallback game");
+  UnifiedGameModel games;
+  games.addSourceModel(&source);
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  games.setMetadata(&metadata);
+  const QString key = games.data(games.index(0), GameRoles::MetadataKey).toString();
+  const QVariantMap original{{"igdbId", 123}, {"title", "Fallback game"},
+      {"igdbCoverUrl", "https://images.igdb.com/igdb/image/upload/t_cover_big_2x/co123.jpg"}};
+  metadata.persist(key, original);
+  QSignalSpy changes(&games, &UnifiedGameModel::dataChanged);
+  metadata.m_active = {{"metadataKey", key}, {"system", "snes"}};
+  metadata.m_busy = true;
+  metadata.gridSearch();
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy(), 5000);
+  const QString fallback = metadata.entry(key).value("fallbackCover").toString();
+  QVERIFY(QFileInfo::exists(fallback));
+  QCOMPARE(games.data(games.index(0), GameRoles::CoverPath).toString(), QUrl::fromLocalFile(fallback).toString());
+  QVERIFY(!changes.isEmpty());
+  QCOMPARE(network.requests.size(), 1);
+  QVERIFY(network.requests.first().rawHeader("Authorization").isEmpty());
+
+  const QString preferred = temp.filePath("preferred.png");
+  QVERIFY(image.save(preferred));
+  auto entry = metadata.entry(key);
+  entry["portrait"] = preferred;
+  metadata.persist(key, entry);
+  QCOMPARE(games.data(games.index(0), GameRoles::CoverPath).toString(), QUrl::fromLocalFile(preferred).toString());
+  entry.remove("portrait");
+  entry["identityAmbiguous"] = true;
+  metadata.persist(key, entry);
+  QVERIFY(games.data(games.index(0), GameRoles::CoverPath).toString().isEmpty());
+  entry.remove("identityAmbiguous");
+  metadata.persist(key, entry);
+  LauncherOnlyModel covered("Fallback game", preferred);
+  UnifiedGameModel coveredGames;
+  coveredGames.addSourceModel(&covered);
+  coveredGames.setMetadata(&metadata);
+  QCOMPARE(coveredGames.data(coveredGames.index(0), GameRoles::CoverPath).toString(), QUrl::fromLocalFile(preferred).toString());
+  metadata.clearPortraitCache();
+  QVERIFY(!QFileInfo::exists(fallback));
+  QVERIFY(!metadata.entry(key).contains("fallbackCover"));
+  QVERIFY(!metadata.entry(key).contains("igdbCoverAttempt"));
+
+  // Invalid image responses finish once and respect the retry delay.
+  network.png = "not an image";
+  metadata.persist(key, original);
+  metadata.m_busy = true;
+  metadata.gridSearch();
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy(), 5000);
+  QCOMPARE(network.requests.size(), 2);
+  QVERIFY(!metadata.entry(key).contains("fallbackCover"));
+  metadata.m_busy = true;
+  metadata.gridSearch();
+  QVERIFY(!metadata.busy());
+  QCOMPARE(network.requests.size(), 2);
+  auto untrusted = original;
+  untrusted["igdbCoverUrl"] = "https://example.com/igdb/image/upload/t_cover_big_2x/co123.jpg";
+  metadata.persist(key, untrusted);
+  metadata.m_busy = true;
+  metadata.gridSearch();
+  QVERIFY(!metadata.busy());
+  QCOMPARE(network.requests.size(), 2);
+  // The SNES bootleg has the same title as the official N64 game. A known
+  // IGDB identity must not make a title-only SteamGridDB result safe to choose.
+  metadata.m_gridKey = "offline-fixture-key";
+  metadata.m_active["title"] = "Pokemon Stadium (TW)";
+  metadata.persist(key, {{"igdbId", 163098}, {"title", "Pokémon Stadium"}});
+  metadata.m_busy = true;
+  metadata.gridSearch();
+  QVERIFY(!metadata.busy());
+  QCOMPARE(network.requests.size(), 2);
 }
 
 void CoreTests::artworkAliasesAndSharedIdentityRecoverMissingCovers() {
@@ -7812,6 +7973,78 @@ void CoreTests::portraitSelectionCompletesOnlyAfterSuccessfulSave() {
   QCOMPARE(metadata.status(), QString("Downloaded cover has unexpected dimensions"));
 }
 
+void CoreTests::libretroCoverFailuresRemainRetryable() {
+  QTemporaryDir temp;
+  LibretroFixtureNetwork network;
+  QImage image(32, 48, QImage::Format_RGB32);
+  image.fill(Qt::blue);
+  QBuffer buffer(&network.png);
+  QVERIFY(buffer.open(QIODevice::WriteOnly));
+  QVERIFY(image.save(&buffer, "PNG"));
+  RetroArchGameModel model(temp.filePath("library.sqlite3"), nullptr, nullptr, nullptr, &network);
+  const QString id = QUuid::createUuid().toString(QUuid::Id128);
+  const QString path = RetroArchGameModel::libretroCoverCachePath(id);
+  const auto cleanup = qScopeGuard([&] {
+    QFile::remove(path);
+    QFile::remove(path + ".missing");
+    QFile::remove(path + ".missing-v2");
+  });
+  RetroArchGameModel::Game game;
+  game.retroArch.gameId = id;
+  game.retroArch.title = "Fixture (NA)";
+  game.retroArch.system = "Nintendo - Super Nintendo Entertainment System";
+  model.m_games.append(game);
+  // Old markers may have come from a timeout and cannot be trusted.
+  writeFile(path + ".missing", "");
+  model.requestCover(id);
+  QTRY_COMPARE(model.m_activeCoverDownloads, 0);
+  QCOMPARE(network.requests, 1);
+  QVERIFY(!QFileInfo::exists(path + ".missing-v2"));
+  QVERIFY(!model.m_failedCovers.contains(id));
+  model.requestCover(id);
+  QCOMPARE(network.requests, 1); // Transient failures have a short retry delay.
+  model.m_coverRetryAfter.clear();
+  network.status = 429;
+  model.requestCover(id);
+  QTRY_COMPARE(model.m_activeCoverDownloads, 0);
+  QCOMPARE(network.requests, 2);
+  QVERIFY(!QFileInfo::exists(path + ".missing-v2"));
+  QVERIFY(!model.m_failedCovers.contains(id));
+  model.m_coverRetryAfter.clear();
+  network.status = 200;
+  model.requestCover(id);
+  QTRY_VERIFY(QFileInfo::exists(path));
+  QVERIFY(model.m_pendingCovers.isEmpty());
+  QCOMPARE(model.data(model.index(0), GameRoles::CoverPath).toString(), QUrl::fromLocalFile(path).toString());
+
+  QFile::remove(path);
+  model.m_games[0].retroArch.coverPath.clear();
+  network.status = 404;
+  model.requestCover(id);
+  QTRY_VERIFY(model.m_failedCovers.contains(id));
+  QVERIFY(QFileInfo::exists(path + ".missing-v2"));
+  const int attempts = network.requests;
+  model.requestCover(id);
+  QCOMPARE(network.requests, attempts);
+
+  // Fast scrolling exceeds the bounded queue. An evicted request must be accepted
+  // again when the visible-card timer asks for it, rather than remaining pending.
+  network.status = 503;
+  QString evicted;
+  for (int i = 0; i < 80; ++i) {
+    auto queued = game;
+    queued.retroArch.gameId = id + QString::number(i);
+    if (i == 4) evicted = queued.retroArch.gameId;
+    model.m_games.append(queued);
+    model.requestCover(queued.retroArch.gameId);
+  }
+  QVERIFY(!model.m_pendingCovers.contains(evicted));
+  model.requestCover(evicted);
+  QVERIFY(model.m_pendingCovers.contains(evicted));
+  QTRY_VERIFY(model.m_pendingCovers.isEmpty());
+  QCOMPARE(model.m_activeCoverDownloads, 0);
+}
+
 void CoreTests::unconfirmedGridSelectionIsDroppedOnARulesChange() {
   // Opening a candidate in the cover panel used to store it immediately. Since the background
   // pass short circuits on a stored grid game, one glance at the wrong Disney game pinned Goof
@@ -7872,8 +8105,145 @@ void CoreTests::unconfirmedGridSelectionIsDroppedOnARulesChange() {
   QTRY_VERIFY(!metadata.busy());
   QVERIFY(std::any_of(network.requests.cbegin(), network.requests.cend(), [](const auto& request) {
     return QUrl::fromPercentEncoding(request.url().path().toUtf8())
-        .contains(QStringLiteral("Hand of the Heavenly Bride"));
+        .endsWith(QStringLiteral("/Hand of the Heavenly Bride"));
   }));
+  network.requests.clear();
+  metadata.searchCovers(QStringLiteral("looney tones (nintendo)"));
+  QTRY_VERIFY(!metadata.busy());
+  QVERIFY(!network.requests.isEmpty());
+  QVERIFY(network.requests.last().url().path().endsWith("/looney tones (nintendo)"));
+
+}
+
+void CoreTests::metadataCatalogueSpellingsKeepIdentityBoundaries() {
+  QVERIFY(GameMetadata::equivalentTitle("Clay Fighter 2", "ClayFighter 2"));
+  QVERIFY(GameMetadata::equivalentTitle("Dream T.V.", "Dream TV"));
+  QVERIFY(GameMetadata::equivalentTitle("Mickey & Donald", "Mickey and Donald"));
+  QVERIFY(GameMetadata::equivalentTitle("Super Back to the Future, Part II", "Super Back to the Future II"));
+  QVERIFY(!GameMetadata::equivalentTitle("Game 1 2", "Game 12"));
+  QVERIFY(!GameMetadata::equivalentTitle("Super Back to the Future II", "Super Back to the Future III"));
+  QVERIFY(!GameMetadata::equivalentTitle("The Lion King", "The Lion King III: Timon & Pumbaa"));
+  QVERIFY(!GameMetadata::equivalentTitle("Mr. Bloppy Saves the World", "Mr. Bloopy Saves the World"));
+  QVERIFY(GameMetadata::discoveryQuery("Super Back to the Future, Part II", "snes")
+              .contains("name ~ *\"fut\"*"));
+  QVERIFY(GameMetadata::discoveryQuery("Game", "unknown").isEmpty());
+  QVERIFY(GameMetadata::discoveryQuery("123", "snes").isEmpty());
+
+  QFile file(QStringLiteral(OMAKADE_FIXTURE_DIR "/matching-audit/snes-spellings.json"));
+  QVERIFY(file.open(QIODevice::ReadOnly));
+  const auto fixture = QJsonDocument::fromJson(file.readAll()).array();
+  QTemporaryDir temp;
+  QFile sourceCover(temp.filePath("source.png"));
+  QVERIFY(sourceCover.open(QIODevice::WriteOnly));
+  sourceCover.close();
+  PortraitFixtureNetwork network;
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  const QList<QPair<QString, qint64>> cases{
+      {"Clay Fighter 2 - Judgment Clay (NA)", 73298},
+      {"Dream T.V. (NA)", 93573},
+      {"Bushi Seiryuuden - Futari no Yuusha (English Translated by DDSTranslation, Rev 2)", 16294},
+      {"Super Back to the Future, Part II (English Translated by Mteam)", 8520},
+      {"Wolfenstein 3-D (NA)", 306944},
+      {"EarthBound (NA)", 2899},
+      {"Mother 2: Perfect Edition", 305370}};
+  for (const auto& [title, expected] : cases) {
+    metadata.m_active = {{"metadataKey", title}, {"title", title}, {"system", "snes"}, {"sourceCoverPath", sourceCover.fileName()}};
+    metadata.m_manual = false;
+    metadata.m_busy = true;
+    metadata.m_aliasRetried = true;
+    metadata.m_igdbStage = "discovery";
+    metadata.matchResult(QJsonDocument(fixture).toJson(), {});
+    QCOMPARE(metadata.entry(title).value("igdbId").toLongLong(), expected);
+  }
+  const QByteArray regional = R"([{"id":1,"name":"Regional Game","platforms":[19]},
+                                  {"id":2,"name":"Regional Game","platforms":[58]}])";
+  for (const auto& [title, expected] : QList<QPair<QString, qint64>>{
+           {"Regional Game (NA)", 1}, {"Regional Game (JP)", 2},
+           {"Regional Game", 0}, {"Regional Game (USA, Japan)", 0}}) {
+    metadata.m_active = {{"metadataKey", title}, {"title", title}, {"system", "snes"}};
+    metadata.m_busy = true;
+    metadata.m_aliasRetried = true;
+    metadata.m_igdbStage = "discovery";
+    metadata.matchResult(regional, {});
+    QCOMPARE(metadata.entry(title).value("igdbId").toLongLong(), expected);
+  }
+  // A matching name from another platform still cannot identify this ROM.
+  metadata.m_active = {{"metadataKey", "wrong-platform"}, {"title", "Dream TV"}, {"system", "n64"}};
+  metadata.m_busy = true;
+  metadata.matchResult(QJsonDocument(fixture).toJson(), {});
+  QVERIFY(!metadata.entry("wrong-platform").contains("igdbId"));
+}
+
+void CoreTests::metadataAuditRecoversLiveCatalogueMatches() {
+  QFile file(QStringLiteral(OMAKADE_FIXTURE_DIR "/matching-audit/snes-recovery.json"));
+  QVERIFY(file.open(QIODevice::ReadOnly));
+  const auto cases = QJsonDocument::fromJson(file.readAll()).array();
+  QCOMPARE(cases.size(), 68);
+  QTemporaryDir temp;
+  QFile sourceCover(temp.filePath("source.png"));
+  QVERIFY(sourceCover.open(QIODevice::WriteOnly));
+  sourceCover.close();
+  PortraitFixtureNetwork network;
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  for (const auto& value : cases) {
+    const auto row = value.toObject();
+    const QString title = row.value("title").toString();
+    metadata.m_active = {{"metadataKey", title}, {"title", title}, {"system", "snes"}, {"sourceCoverPath", sourceCover.fileName()}};
+    metadata.m_manual = false;
+    metadata.m_busy = true;
+    metadata.m_aliasRetried = true;
+    metadata.m_discoveryRetried = true;
+    metadata.m_igdbStage = row.value("stage").toString();
+    metadata.matchResult(QJsonDocument(row.value("response").toArray()).toJson(), {});
+    QVERIFY2(metadata.entry(title).value("igdbId").toLongLong() == row.value("expected").toInteger(),
+             qPrintable(title));
+  }
+}
+
+void CoreTests::manualSearchFieldsSurviveMetadataUpdates() {
+  QTemporaryDir temp;
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr);
+  OmarchyTheme theme(temp.filePath("state"), temp.filePath("config"));
+  struct Preferences : QQmlPropertyMap {
+    Preferences() : QQmlPropertyMap(this, nullptr) {}
+  } preferences;
+  preferences.insert("reducedMotion", true);
+  QQmlEngine engine;
+  engine.rootContext()->setContextProperty("Metadata", &metadata);
+  engine.rootContext()->setContextProperty("Theme", &theme);
+  engine.rootContext()->setContextProperty("Preferences", &preferences);
+  engine.rootContext()->setContextProperty("Controller", static_cast<QObject*>(nullptr));
+  engine.rootContext()->setContextProperty("Insights", static_cast<QObject*>(nullptr));
+  QQmlComponent component(&engine, QUrl::fromLocalFile(
+      QStringLiteral(OMAKADE_FIXTURE_DIR "/../../qml/components/GameMetadataEditor.qml")));
+  const QVariantMap game{{"metadataKey", "search-test"}, {"system", "snes"},
+                         {"title", "Super Back to the Future, Part II (English Translated)"}};
+  QScopedPointer<QObject> editor(component.createWithInitialProperties({{"game", game}}));
+  QVERIFY2(editor, qPrintable(component.errorString()));
+  auto* title = editor->findChild<QObject*>("metadataTitleField");
+  auto* cover = editor->findChild<QObject*>("metadataCoverField");
+  QVERIFY(title && cover);
+  // TextInput's native editing keeps a text binding alive. remove()/insert() reproduce
+  // the user's edit, unlike setProperty("text"), which can hide this regression.
+  auto edit = [](QObject* field, const QString& text) {
+    const int length = field->property("text").toString().size();
+    QMetaObject::invokeMethod(field, "remove", Q_ARG(int, 0), Q_ARG(int, length));
+    QMetaObject::invokeMethod(field, "insert", Q_ARG(int, 0), Q_ARG(QString, text));
+  };
+  edit(title, "Super Back to the Future, Part II");
+  edit(cover, "looney tones (nintendo)");
+  metadata.inspect(game); // Updating the panel must not reset either draft.
+  QCOMPARE(title->property("text").toString(), QString("Super Back to the Future, Part II"));
+  QCOMPARE(cover->property("text").toString(), QString("looney tones (nintendo)"));
+  edit(title, "");
+  edit(cover, "");
+  metadata.inspect(game);
+  QCOMPARE(title->property("text").toString(), QString());
+  QCOMPARE(cover->property("text").toString(), QString());
+  const QVariantMap next{{"metadataKey", "other-game"}, {"title", "Next Game"}, {"system", "snes"}};
+  editor->setProperty("game", next);
+  QTRY_COMPARE(title->property("text").toString(), QString("Next Game"));
+  QCOMPARE(cover->property("text").toString(), QString("Next Game"));
 }
 
 void CoreTests::startupBenchmarkDoesNotActivateAnotherInstance() {
@@ -8735,7 +9105,7 @@ void CoreTests::regionalCatalogRegressionMatrix() {
   const Case cases[] = {
       {"regional-ff3.json", "Final Fantasy III (NA, Rev 1)", "snes", 426},
       {"regional-ff3-jp.json", "Final Fantasy III (Japan)", "nes", 77234},
-      {"regional-ff2.json", "Final Fantasy II (USA)", "snes", 0},
+      {"regional-ff2.json", "Final Fantasy II (USA)", "snes", 387},
       {"regional-starwing.json", "Starwing (Europe)", "snes", 8581},
       {"regional-paperboy.json", "Paperboy (USA)", "nes", 256083},
   };

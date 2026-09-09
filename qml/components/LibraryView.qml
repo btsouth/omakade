@@ -84,7 +84,7 @@ Item {
         keyNavigationEnabled: true
         highlightFollowsCurrentItem: true
         highlightMoveDuration: 110
-        cacheBuffer: height * 0.25
+        cacheBuffer: height
         // Reused delegates can retain stale caption positions after hidden
         // Recent updates. Keep normal viewport caching, without the reuse pool.
         reuseItems: false
@@ -224,9 +224,22 @@ Item {
                 })
             }
 
+            // Dropped queue entries and transient failures must recover while the card
+            // stays on screen, without requiring the user to leave and return.
+            Timer {
+                interval: 1000
+                repeat: true
+                running: root.visible && delegateRoot.visible && delegateRoot.coverPath.length === 0
+                         && delegateRoot.y + delegateRoot.height > grid.contentY
+                         && delegateRoot.y < grid.contentY + grid.height
+                onTriggered: delegateRoot.requestVisibleCover()
+            }
+
             Component.onCompleted: requestVisibleCover()
             onAppIdChanged: requestVisibleCover()
             onVisibleChanged: requestVisibleCover()
+            onCoverPathChanged: requestVisibleCover()
+            GridView.onReused: requestVisibleCover()
 
             GameCard {
                 anchors.fill: parent

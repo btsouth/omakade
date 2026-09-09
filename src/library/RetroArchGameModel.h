@@ -28,7 +28,8 @@ class RetroArchGameModel final : public QAbstractListModel {
 
 public:
   explicit RetroArchGameModel(const QString& databasePath, AppSettings* settings = nullptr,
-                              PlaySessionStore* playSessions = nullptr, QObject* parent = nullptr);
+                              PlaySessionStore* playSessions = nullptr, QObject* parent = nullptr,
+                              QNetworkAccessManager* network = nullptr);
   ~RetroArchGameModel() override;
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
@@ -57,6 +58,7 @@ signals:
   void statusChanged();
 
 private:
+  friend class CoreTests;
   struct Game {
     RetroArchGameRecord retroArch;
     bool favorite = false;
@@ -103,10 +105,12 @@ private:
   QFutureWatcher<RetroArchScanResult> m_scanWatcher;
   bool m_scanning = false;
   QStringList m_configuredRomFolders;
-  QNetworkAccessManager m_network;
+  QNetworkAccessManager m_ownedNetwork;
+  QNetworkAccessManager* m_network = nullptr;
   QHash<QNetworkReply*, QByteArray> m_coverBuffers;
   QQueue<CoverRequest> m_coverQueue;
   QSet<QString> m_pendingCovers;
   QSet<QString> m_failedCovers;
+  QHash<QString, qint64> m_coverRetryAfter;
   int m_activeCoverDownloads = 0;
 };

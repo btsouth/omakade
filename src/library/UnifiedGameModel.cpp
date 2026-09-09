@@ -209,7 +209,16 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
       const QString portrait = m_metadata->entry(gameKey(source)).value("portrait").toString();
       if (!portrait.isEmpty() && QFileInfo::exists(portrait)) return localUrl(portrait);
     }
-    return source.model->index(source.row, 0).data(role);
+    const QString sourceCover = source.model->index(source.row, 0).data(role).toString();
+    if (!sourceCover.isEmpty() && (!sourceCover.startsWith("file:") ||
+        QFileInfo::exists(QUrl(sourceCover).toLocalFile()))) return sourceCover;
+    if (m_metadata) {
+      const auto metadata = m_metadata->entry(gameKey(source));
+      const QString fallback = metadata.value("fallbackCover").toString();
+      if (!metadata.value("identityAmbiguous").toBool() && !metadata.value("rejected").toBool() &&
+          QFileInfo::exists(fallback)) return localUrl(fallback);
+    }
+    return QString{};
   }
   case GameRoles::SourceCoverPath:
     return source.model->index(source.row, 0).data(GameRoles::CoverPath);
@@ -1469,7 +1478,10 @@ void UnifiedGameModel::setMetadata(GameMetadata* metadata) {
                        [this](const QString& key, const QVariantMap& previous) {
     const auto current = m_metadata->entry(key);
     QList<int> roles;
-    if (previous.value("portrait") != current.value("portrait") ||
+    if (previous.value("fallbackCover") != current.value("fallbackCover") ||
+        previous.value("identityAmbiguous") != current.value("identityAmbiguous") ||
+        previous.value("rejected") != current.value("rejected") ||
+        previous.value("portrait") != current.value("portrait") ||
         (!current.value("portrait").toString().isEmpty() &&
          previous.value("portraitUpdated") != current.value("portraitUpdated")))
       roles.append(GameRoles::CoverPath);

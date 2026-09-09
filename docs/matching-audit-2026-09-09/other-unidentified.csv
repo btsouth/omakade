@@ -1,0 +1,6 @@
+source,title,finding,next_step
+NES,Contra,Multiple platform-compatible IGDB records remain,Confirm the NES edition manually
+Ryujinx,Pokemon Fire Red,Imported display title is a replacement character; IGDB discovery returns Pokemon FireRed Version 1559,Rescan with filename fallback and confirm the edition
+Ryujinx,Pokemon Leaf Green,Imported display title is a replacement character; IGDB discovery returns Pokemon LeafGreen Version 1516,Rescan with filename fallback and confirm the edition
+Steam,Lossless Scaling,IGDB search returned no game record; this is a utility,Keep the Steam identity and artwork
+Steam,Onimusha Way of the Sword DEMO,Search returned the full game and related entries but no matching demo,Do not automatically substitute the full game

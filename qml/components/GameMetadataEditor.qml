@@ -46,8 +46,26 @@ ColumnLayout {
     spacing: 10
     visible: Metadata !== null && !game.isPortal
     readonly property string gameKey: game.metadataKey || ""
-    onGameKeyChanged: { matchControlsOpen = false; coverControlsOpen = false; editing = false; if (Metadata) Metadata.inspect(game) }
-    Component.onCompleted: if (Metadata) Metadata.inspect(game)
+    // Seed once per game. A text binding would overwrite native typing whenever
+    // metadata emits changed, including when a search starts or finishes.
+    property bool searchFieldsReady: false
+    function resetSearchFields() {
+        const initialTitle = (Metadata ? Metadata.current.title : "") || root.game.title || ""
+        titleSearch.text = initialTitle
+        coverSearch.text = initialTitle
+    }
+    onGameKeyChanged: {
+        matchControlsOpen = false
+        coverControlsOpen = false
+        editing = false
+        if (Metadata) Metadata.inspect(game)
+        if (searchFieldsReady) resetSearchFields()
+    }
+    Component.onCompleted: {
+        if (Metadata) Metadata.inspect(game)
+        searchFieldsReady = true
+        resetSearchFields()
+    }
     // Identifying a game by hand takes precedence over the background pass, which would
     // otherwise hold the service busy and leave every control here disabled.
     onEditingChanged: {
@@ -129,7 +147,7 @@ ColumnLayout {
             visible: root.matchControlsOpen || !(root.entry.igdbId > 0)
             Layout.fillWidth: true
             TextField {
-                id: titleSearch; objectName: "metadataTitleField"; Layout.fillWidth: true; text: root.entry.title || root.game.title || ""
+                id: titleSearch; objectName: "metadataTitleField"; Layout.fillWidth: true; text: ""
                 placeholderTextColor: Theme.mutedText
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
@@ -221,7 +239,7 @@ ColumnLayout {
             Layout.fillWidth: true
             visible: root.coverControlsOpen && Metadata && Metadata.hasGridKey
             TextField {
-                id: coverSearch; objectName: "metadataCoverField"; Layout.fillWidth: true; text: root.entry.title || root.game.title || ""
+                id: coverSearch; objectName: "metadataCoverField"; Layout.fillWidth: true; text: ""
                 placeholderText: "Search SteamGridDB by name"
                 placeholderTextColor: Theme.mutedText
                 background: Rectangle {

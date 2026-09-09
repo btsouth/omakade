@@ -816,3 +816,7 @@ foreach(recorder_overlay IN ITEMS recorder-details settings-recorder-on settings
       FAIL_REGULAR_EXPRESSION "polish.*loop;Binding loop;TypeError;ReferenceError" TIMEOUT 20)
   endforeach()
 endforeach()
+
+# Explicitly built offline audit adapter; no provider credentials or library writes.
+add_executable(omakade_metadata_audit EXCLUDE_FROM_ALL ../tools/MetadataAudit.cpp)
+target_link_libraries(omakade_metadata_audit PRIVATE omakade_core Qt6::Core)

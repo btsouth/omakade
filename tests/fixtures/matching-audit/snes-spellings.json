@@ -1,0 +1,284 @@
+[
+  {
+    "id": 2899,
+    "alternative_names": [
+      {
+        "id": 74847,
+        "comment": "Japanese title - romanization",
+        "name": "Mother 2: Gyiyg no Gyakushuu"
+      },
+      {
+        "id": 74905,
+        "comment": "Alternative title",
+        "name": "Mother 2"
+      },
+      {
+        "id": 93054,
+        "comment": "Japanese title - translated",
+        "name": "Mother 2: Giygas Strikes Back"
+      },
+      {
+        "id": 93055,
+        "comment": "Japanese title - alternative title",
+        "name": "マザー2"
+      },
+      {
+        "id": 131649,
+        "comment": "Japanese title - stylized",
+        "name": "MOTHER2 ギーグの逆襲"
+      },
+      {
+        "id": 137928,
+        "comment": "Korean title - alternative",
+        "name": "어스바운드"
+      }
+    ],
+    "cover": {
+      "id": 320119,
+      "image_id": "co6v07"
+    },
+    "first_release_date": 777945600,
+    "name": "EarthBound",
+    "platforms": [
+      19,
+      41,
+      137,
+      24,
+      58
+    ],
+    "slug": "earthbound",
+    "game_localizations": [
+      {
+        "id": 700,
+        "name": "Mother 2 ギーグの逆襲"
+      },
+      {
+        "id": 29827
+      }
+    ],
+    "game_type": 0
+  },
+  {
+    "id": 8520,
+    "alternative_names": [
+      {
+        "id": 155500,
+        "comment": "Alternative spelling",
+        "name": "Super Back to the Future 2"
+      }
+    ],
+    "cover": {
+      "id": 240583,
+      "image_id": "co55mv"
+    },
+    "first_release_date": 743385600,
+    "name": "Super Back to the Future II",
+    "platforms": [
+      58
+    ],
+    "slug": "super-back-to-the-future-ii",
+    "game_localizations": [
+      {
+        "id": 4561,
+        "name": "スーパー・バック・トゥ・ザ・フューチャー II"
+      }
+    ],
+    "game_type": 0
+  },
+  {
+    "id": 15908,
+    "alternative_names": [
+      {
+        "id": 78028,
+        "comment": "Japanese title - romanization",
+        "name": "DoReMi Fantasy: Milon no Doki-doki Daibouken"
+      },
+      {
+        "id": 78029,
+        "comment": "Abbreviation",
+        "name": "DoReMi Fantasy"
+      },
+      {
+        "id": 52529,
+        "comment": "Japanese title - translated",
+        "name": "DoReMi Fantasy: Milon's Heart-Pounding Adventure"
+      }
+    ],
+    "cover": {
+      "id": 141753,
+      "image_id": "co31dl"
+    },
+    "first_release_date": 827452800,
+    "name": "DoReMi Fantasy: Milon's DokiDoki Adventure",
+    "platforms": [
+      5,
+      58
+    ],
+    "slug": "doremi-fantasy-milons-dokidoki-adventure",
+    "game_localizations": [
+      {
+        "id": 2188,
+        "name": "ドレミファンタジー ミロンのドキドキ大冒険"
+      }
+    ],
+    "game_type": 0
+  },
+  {
+    "id": 16294,
+    "alternative_names": [
+      {
+        "id": 118245,
+        "comment": "Japanese title - stylized",
+        "name": "BUSHI ～青龍伝二人の勇者～"
+      },
+      {
+        "id": 154674,
+        "comment": "Working title",
+        "name": "勾玉伝説"
+      },
+      {
+        "id": 154675,
+        "comment": "Working title",
+        "name": "The Legend of Magatama"
+      },
+      {
+        "id": 154676,
+        "comment": "Working title",
+        "name": "Magatama no Densetsu"
+      }
+    ],
+    "cover": {
+      "id": 301095,
+      "image_id": "co6gbr"
+    },
+    "first_release_date": 853459200,
+    "name": "Bushi Seiryuu-den: Futari no Yuusha",
+    "platforms": [
+      58
+    ],
+    "slug": "bushi-seiryuu-den-futari-no-yuusha",
+    "game_localizations": [
+      {
+        "id": 2173,
+        "name": "Bushi 青龍伝二人の勇者"
+      }
+    ],
+    "game_type": 0
+  },
+  {
+    "id": 42341,
+    "alternative_names": [
+      {
+        "id": 117642,
+        "comment": "Japanese title - translated",
+        "name": "Pretty Soldier Sailor Moon Super S: All Members!! Championship Contest"
+      }
+    ],
+    "cover": {
+      "id": 272168,
+      "image_id": "co5u08"
+    },
+    "first_release_date": 828057600,
+    "name": "Bishoujo Senshi Sailor Moon Super S: Zenin Sanka!! Shuyaku Soudatsusen",
+    "platforms": [
+      58
+    ],
+    "slug": "bishoujo-senshi-sailor-moon-super-s-zenin-sanka-shuyaku-soudatsusen",
+    "game_localizations": [
+      {
+        "id": 22720,
+        "name": "美少女戦士セーラームーン Super S 全員参加!! 主役争奪戦"
+      }
+    ],
+    "game_type": 0
+  },
+  {
+    "id": 73298,
+    "alternative_names": [
+      {
+        "id": 68609,
+        "comment": "Alternative spelling",
+        "name": "ClayFighters 2: Judgment Clay"
+      },
+      {
+        "id": 68610,
+        "comment": "Alternative title",
+        "name": "C2: Judgement Clay"
+      }
+    ],
+    "cover": {
+      "id": 139928,
+      "image_id": "co2zyw"
+    },
+    "first_release_date": 788918400,
+    "name": "ClayFighter 2: Judgment Clay",
+    "platforms": [
+      19,
+      30
+    ],
+    "slug": "clayfighter-2-judgment-clay",
+    "game_type": 0
+  },
+  {
+    "id": 93573,
+    "cover": {
+      "id": 217585,
+      "image_id": "co4nw1"
+    },
+    "first_release_date": 765158400,
+    "name": "Dream TV",
+    "platforms": [
+      19
+    ],
+    "slug": "dream-tv",
+    "game_type": 0
+  },
+  {
+    "id": 305370,
+    "alternative_names": [
+      {
+        "id": 153337,
+        "comment": "Alternative spelling",
+        "name": "Mother 2"
+      },
+      {
+        "id": 153338,
+        "comment": "Alternative title",
+        "name": "EarthBound"
+      }
+    ],
+    "cover": {
+      "id": 392465,
+      "image_id": "co8ett"
+    },
+    "first_release_date": 1654992000,
+    "name": "Mother 2: Perfect Edition",
+    "platforms": [
+      19
+    ],
+    "slug": "mother-2-perfect-edition",
+    "game_type": 5
+  },
+  {
+    "id": 306944,
+    "alternative_names": [
+      {
+        "id": 153965,
+        "comment": "Japanese title - romanization",
+        "name": "Wolfenstein 3D: The Claw of Eisenfaust"
+      }
+    ],
+    "cover": {
+      "id": 455399,
+      "image_id": "co9rdz"
+    },
+    "first_release_date": 760838400,
+    "name": "Wolfenstein 3D",
+    "platforms": [
+      19,
+      58
+    ],
+    "slug": "wolfenstein-3d--3",
+    "game_type": 0
+  }
+]

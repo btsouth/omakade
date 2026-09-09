@@ -41,8 +41,8 @@ QString localUrl(const QString& path) {
 }
 
 constexpr qint64 kMaximumCoverBytes = 8 * 1024 * 1024;
-constexpr int kMaximumConcurrentCoverDownloads = 2;
-constexpr int kMaximumQueuedCoverDownloads = 24;
+constexpr int kMaximumConcurrentCoverDownloads = 4;
+constexpr int kMaximumQueuedCoverDownloads = 64;
 
 QString sanitizedThumbnailName(QString name) {
   static const QRegularExpression invalid(QStringLiteral("[&*/:`<>?\\\\|]"));
@@ -63,7 +63,7 @@ QString shortenedLabel(QString label) {
 constexpr qint64 kMissingCoverRetryDays = 7;
 
 QString missingCoverMarkerPath(const QString& cachePath) {
-  return cachePath.isEmpty() ? QString{} : cachePath + QStringLiteral(".missing");
+  return cachePath.isEmpty() ? QString{} : cachePath + QStringLiteral(".missing-v2");
 }
 
 bool coverRecentlyMissing(const QString& cachePath) {
@@ -128,8 +128,11 @@ void appendRegionVariants(QStringList* labels, const QString& seed) {
   static const QRegularExpression parens(QStringLiteral("\\(([^)]+)\\)"));
   auto iterator = parens.globalMatch(seed);
   while (iterator.hasNext()) {
-    for (const QString& alias : regionAliases(iterator.next().captured(1))) {
-      appendUniqueLabel(labels, QStringLiteral("%1 (%2)").arg(shortened, alias));
+    const auto parts = iterator.next().captured(1).split(
+        QRegularExpression(QStringLiteral(",| - ")), Qt::SkipEmptyParts);
+    for (const QString& part : parts) {
+      for (const QString& alias : regionAliases(part))
+        appendUniqueLabel(labels, QStringLiteral("%1 (%2)").arg(shortened, alias));
     }
   }
   appendUniqueLabel(labels, seed);
@@ -158,11 +161,13 @@ QString coverCacheRoot() {
 } // namespace
 
 RetroArchGameModel::RetroArchGameModel(const QString& databasePath, AppSettings* settings,
-                                       PlaySessionStore* playSessions, QObject* parent)
+                                       PlaySessionStore* playSessions, QObject* parent,
+                                       QNetworkAccessManager* network)
     : QAbstractListModel(parent),
       m_connectionName(
           QStringLiteral("omakade-retroarch-%1").arg(reinterpret_cast<quintptr>(this))),
-      m_settings(settings), m_playSessions(playSessions) {
+      m_settings(settings), m_playSessions(playSessions),
+      m_network(network ? network : &m_ownedNetwork) {
   if (m_playSessions != nullptr) {
     connect(m_playSessions, &PlaySessionStore::totalsChanged, this, [this] {
       if (!m_games.isEmpty()) {
@@ -695,6 +700,15 @@ QStringList RetroArchGameModel::coverLabelCandidates(const QString& title,
   QStringList labels;
   appendRegionVariants(&labels, title);
   appendRegionVariants(&labels, fileBase);
+  // Translation and patch labels often replace the region entirely. Libretro keeps
+  // the original box under (Japan), (USA), etc. Keep exact requests first, then try
+  // only the same full title in the catalogue's standard region forms.
+  for (const auto& seed : {title, fileBase}) {
+    const QString base = shortenedLabel(seed);
+    if (base.isEmpty()) continue;
+    for (const auto& region : {"Japan", "USA", "Europe", "USA, Europe", "Japan, USA", "World", "Taiwan"})
+      appendUniqueLabel(&labels, base + " (" + QLatin1String(region) + ')');
+  }
   return labels;
 }
 
@@ -714,6 +728,8 @@ void RetroArchGameModel::requestCover(const QString& appId) {
 }
 
 void RetroArchGameModel::requestCoverForGame(const Game& game) {
+  if (m_coverRetryAfter.value(game.retroArch.gameId) > QDateTime::currentSecsSinceEpoch())
+    return;
   if (m_pendingCovers.contains(game.retroArch.gameId) ||
       m_failedCovers.contains(game.retroArch.gameId)) {
     return;
@@ -782,7 +798,7 @@ void RetroArchGameModel::downloadCover(const QString& gameId, int attempt) {
   request.setPriority(QNetworkRequest::LowPriority);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                        QNetworkRequest::NoLessSafeRedirectPolicy);
-  QNetworkReply* reply = m_network.get(request);
+  QNetworkReply* reply = m_network->get(request);
   ++m_activeCoverDownloads;
   m_coverBuffers.insert(reply, {});
   connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
@@ -820,10 +836,17 @@ void RetroArchGameModel::downloadCover(const QString& gameId, int attempt) {
     }
     reply->deleteLater();
     --m_activeCoverDownloads;
-    if (!saved) {
+    if (!saved && (status == 404 || status == 410)) {
+      // Only confirmed missing images advance toward the persistent negative cache.
       m_coverQueue.enqueue({gameId, attempt + 1});
     } else {
       m_pendingCovers.remove(gameId);
+      if (!saved) {
+        // Timeouts, rate limits, invalid downloads and disk errors are retryable.
+        m_coverRetryAfter.insert(gameId, QDateTime::currentSecsSinceEpoch() + 30);
+      } else {
+        m_coverRetryAfter.remove(gameId);
+      }
     }
     startNextCoverDownloads();
   });

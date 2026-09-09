@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "sources/ryujinx/RyujinxScanner.h"
 
 #include "artwork/SwitchTitleReader.h"
@@ -145,6 +146,13 @@ QString cleanGameName(const QString& fileName) {
   name.remove(parenthesizedDlc);
   name.remove(versionSuffix);
   return name.trimmed();
+}
+
+bool usableDisplayTitle(const QString& title) {
+  if (title.trimmed().isEmpty() || title.contains(QChar::ReplacementCharacter)) return false;
+  return std::none_of(title.cbegin(), title.cend(), [](QChar character) {
+    return character.category() == QChar::Other_Control;
+  });
 }
 
 QString normalizedTitle(QString title) {
@@ -364,7 +372,7 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
             QJsonDocument::fromJson(metadataFile.readAll(), &parseError).object();
         if (parseError.error == QJsonParseError::NoError) {
           const QString customTitle = metadata.value(QStringLiteral("title")).toString().trimmed();
-          if (!customTitle.isEmpty()) {
+          if (usableDisplayTitle(customTitle)) {
             displayTitles.insert(titleId, customTitle);
           }
           // Newer fields: timespan_played (.NET TimeSpan) and last_played_utc (ISO-8601).
@@ -396,7 +404,7 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
             QJsonDocument::fromJson(guiFile.readAll(), &parseError).object();
         if (parseError.error == QJsonParseError::NoError) {
           const QString customTitle = gui.value(QStringLiteral("TitleName")).toString().trimmed();
-          if (!customTitle.isEmpty()) {
+          if (usableDisplayTitle(customTitle)) {
             displayTitles.insert(titleId, customTitle);
           }
         }
@@ -524,7 +532,7 @@ RyujinxScanResult RyujinxScanner::scan(const QStringList& roots) {
         QString title = cleanGameName(fileName);
         if (!titleId.isEmpty() && displayTitles.contains(titleId)) {
           title = displayTitles.value(titleId);
-        } else if (!embeddedTitle.isEmpty()) {
+        } else if (usableDisplayTitle(embeddedTitle)) {
           title = embeddedTitle;
         }
         if (title.isEmpty()) {

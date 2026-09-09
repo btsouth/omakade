@@ -801,10 +801,20 @@ FocusScope {
             Accessible.name: title
             Accessible.role: Accessible.ListItem
 
-            Component.onCompleted: {
-                if (coverPath.length === 0) {
+            function requestMissingCover() {
+                if (visible && coverPath.length === 0)
                     root.coverRequested(source, appId)
-                }
+            }
+            Component.onCompleted: requestMissingCover()
+            onAppIdChanged: requestMissingCover()
+            onCoverPathChanged: requestMissingCover()
+            Timer {
+                interval: 1000
+                repeat: true
+                running: root.visible && gameStrip.visible && card.visible && card.coverPath.length === 0
+                         && card.x + card.width > gameStrip.contentX
+                         && card.x < gameStrip.contentX + gameStrip.width
+                onTriggered: card.requestMissingCover()
             }
 
             Rectangle {
@@ -993,10 +1003,20 @@ FocusScope {
                 NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
             }
 
-            Component.onCompleted: {
-                if (coverPath.length === 0) {
+            function requestMissingCover() {
+                if (visible && coverPath.length === 0)
                     root.coverRequested(source, appId)
-                }
+            }
+            Component.onCompleted: requestMissingCover()
+            onAppIdChanged: requestMissingCover()
+            onCoverPathChanged: requestMissingCover()
+            Timer {
+                interval: 1000
+                repeat: true
+                running: root.visible && gameGrid.visible && gridCard.visible && gridCard.coverPath.length === 0
+                         && gridCard.y + gridCard.height > gameGrid.contentY
+                         && gridCard.y < gameGrid.contentY + gameGrid.height
+                onTriggered: gridCard.requestMissingCover()
             }
 
             Rectangle {
