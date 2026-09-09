@@ -21,9 +21,10 @@ It defaults on and is local to the machine, excluded from organization-backup pr
 Existing versions remain available when automatic copying is off. A copy failure does not block
 launch; it remains visible and prevents automatic Omakade closure on that failed-protection launch.
 
-## Deliberate first-version scope
+## Supported layouts
 
-- Native Snes9x (`.sfc`/`.smc`), Nestopia (`.nes`), and Mupen64Plus-Next (`.n64`/`.z64`/`.v64`).
+- Native Snes9x (`.sfc`/`.smc`), Nestopia (`.nes`), Mupen64Plus-Next (`.n64`/`.z64`/`.v64`),
+  mGBA Game Boy Advance (`.gba`), and Genesis Plus GX cartridges (`.md`/`.gen`/`.smd`/`.sms`/`.gg`).
 - One existing `.srm` file, at most 8 MiB. Configured save folders, core-name sorting, and saves
   beside content are supported. Configuration values must be explicit and interpretable.
 - Save-location overrides, content-directory sorting, include directives, redirected/symlinked
@@ -92,3 +93,35 @@ Installation rollback: `/home/bts/.local/state/omakade/local-install-a44a535ea31
 Restore the saved command links, desktop entry, and service override to roll back the binary,
 then reload the user service manager. Leave the live library and save files in place. Save
 backup copies are independent and can remain when using the older app. No push, tag, or release.
+
+## Cartridge coverage extension
+
+The next local candidate adds mGBA Game Boy Advance and Genesis Plus GX cartridge saves
+using the existing atomic single-file snapshot and restore path. No migration is needed:
+existing snapshots remain readable. Both adapters honor the same configured save folders,
+override checks, process guard, integrity checks, and storage limits.
+
+This is a partial coverage expansion. Complete save sets, Gambatte, mGBA Game Boy/Color,
+Flycast, Dolphin, and PCSX2 are not implemented in this candidate. Other standalone sources
+also remain unsupported. Launch support does not imply save-protection support.
+
+The upstream [mGBA libretro implementation](https://github.com/mgba-emu/mgba/blob/master/src/platform/libretro/libretro.c)
+exposes Game Boy RTC data separately from SRAM. That requires coordinated restore and is
+excluded even when only an SRAM file currently exists. The [Genesis Plus GX implementation](https://github.com/libretro/Genesis-Plus-GX/blob/master/libretro/libretro.c)
+exposes cartridge SRAM through the frontend, while CD backup storage follows separate rules.
+CD formats and ambiguous `.bin` inputs are excluded.
+
+Before adding these remaining layouts, implement a save-set manifest, interrupted-restore
+recovery, and rollback tests. Shared memory-card restores must identify that other games on
+the card are affected. Discover files from emulator configuration and game identity, without
+copying entire emulator data folders or changing the user's launch setup.
+
+Extension regression cases cover discovery and restore for each added cartridge extension,
+protection of current progress before restore, changed save overrides, and rejection of
+clock-dependent, archive, disc, and ambiguous content. Tests use disposable files.
+
+Extension validation: Release build, all 225 isolated CTests, staged startup smoke, desktop-file
+and AppStream checks passed. Six existing save copies totaling 1,038,336 bytes were verified,
+including the newly covered FireRed GBA save. Original save and emulator-wrapper hashes were
+unchanged. Evidence and exact candidate hashes are in `build/save-sets-20260909/`. Live restore
+and gameplay acceptance remain unperformed. Nothing has been pushed or released.

@@ -61,6 +61,46 @@ private slots:
     put(f.cfg, get(f.cfg).replace("sort_savefiles_by_content_enable = \"false\"", "sort_savefiles_by_content_enable = \"true\""));
     QVERIFY(f.backups.discover(f.game, f.core).isEmpty());
   }
+  void additionalCartridgeSaves_data() {
+    QTest::addColumn<QString>("core");
+    QTest::addColumn<QString>("folder");
+    QTest::addColumn<QString>("extension");
+    QTest::newRow("gba") << "mgba" << "mGBA" << "gba";
+    for (const QString ext : {"md", "gen", "smd", "sms", "gg"})
+      QTest::newRow(qPrintable(ext)) << "genesis_plus_gx" << "Genesis Plus GX" << ext;
+  }
+  void additionalCartridgeSaves() {
+    QFETCH(QString, core); QFETCH(QString, folder); QFETCH(QString, extension);
+    Fixture f;
+    const QString game = f.home + "/roms/Cartridge." + extension;
+    const QString corePath = f.home + '/' + core + "_libretro.so";
+    const QString save = f.home + "/saves/" + folder + "/Cartridge.srm";
+    put(game, "rom"); put(save, "previous progress");
+    QCOMPARE(f.backups.discover(game, corePath), save);
+    QVERIFY(f.backups.protect(game, corePath));
+    f.backups.selectGame(game);
+    const QString version = f.backups.versions().first().toMap()["id"].toString();
+    put(save, "new progress");
+    QVERIFY(f.backups.restore(version));
+    QCOMPARE(get(save), QByteArray("previous progress"));
+    QCOMPARE(f.backups.count(game), 2);
+    put(f.home + "/config/" + folder + "/Cartridge.cfg", "savefile_directory = \"/elsewhere\"\n");
+    QVERIFY(f.backups.discover(game, corePath).isEmpty());
+    QVERIFY(!f.backups.restore(version));
+  }
+  void additionalCoresRejectMultiFileAndAmbiguousContent() {
+    Fixture f;
+    for (const QString ext : {"gb", "gbc", "zip", "7z"}) {
+      const QString game = f.home + "/Game." + ext;
+      put(game, "rom"); put(f.home + "/saves/mGBA/Game.srm", "save");
+      QVERIFY(f.backups.discover(game, "mgba_libretro.so").isEmpty());
+    }
+    for (const QString ext : {"cue", "chd", "iso", "bin", "m3u", "zip"}) {
+      const QString game = f.home + "/Game." + ext;
+      put(game, "rom"); put(f.home + "/saves/Genesis Plus GX/Game.srm", "save");
+      QVERIFY(f.backups.discover(game, "genesis_plus_gx_libretro.so").isEmpty());
+    }
+  }
   void duplicatesAndRetentionNeverChangeTheSave() {
     Fixture f;
     QVERIFY(f.backups.protect(f.game, f.core));

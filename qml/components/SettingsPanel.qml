@@ -1451,7 +1451,7 @@ GlassButton {
                 }
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Keeps previous in-game saves before supported native RetroArch launches (Snes9x, Nestopia, Mupen64Plus-Next). Restore from Manage Game > Save Backups. Custom save layouts may be skipped; save states and cloud sync are not included."
+                    text: "Keeps previous in-game saves before supported native RetroArch launches (SNES, NES, N64, mGBA Game Boy Advance, and Genesis Plus GX cartridges). Restore from Manage Game > Save Backups. Custom save layouts may be skipped; save states and cloud sync are not included."
                     color: Theme.mutedText; font.family: Theme.fontFamily
                 }
                 GlassButton { compact: true; text: "CLEAR DOWNLOADED PORTRAITS"; enabled: Metadata && !Metadata.busy; onClicked: Metadata.clearPortraitCache() }

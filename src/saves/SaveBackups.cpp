@@ -58,7 +58,8 @@ QMap<QString, QString> config(const QString& path, bool* okay) {
 QString coreName(const QString& core) {
   static const QMap<QString, QString> supported = {
     {"snes9x_libretro.so", "Snes9x"}, {"nestopia_libretro.so", "Nestopia"},
-    {"mupen64plus_next_libretro.so", "Mupen64Plus-Next"}};
+    {"mupen64plus_next_libretro.so", "Mupen64Plus-Next"},
+    {"mgba_libretro.so", "mGBA"}, {"genesis_plus_gx_libretro.so", "Genesis Plus GX"}};
   return supported.value(QFileInfo(core).fileName());
 }
 bool retroArchRunning() {
@@ -85,7 +86,12 @@ QString SaveBackups::discover(const QString& game, const QString& core, bool all
   const QString extension = QFileInfo(game).suffix().toLower();
   if ((name == "Snes9x" && extension != "sfc" && extension != "smc") ||
       (name == "Nestopia" && extension != "nes") ||
-      (name == "Mupen64Plus-Next" && extension != "n64" && extension != "z64" && extension != "v64")) return {};
+      (name == "Mupen64Plus-Next" && extension != "n64" && extension != "z64" && extension != "v64") ||
+      (name == "mGBA" && extension != "gba") ||
+      (name == "Genesis Plus GX" && extension != "md" && extension != "gen"
+       && extension != "smd" && extension != "sms" && extension != "gg")) return {};
+  // mGBA Game Boy titles may require a separate RTC file. Genesis CD titles
+  // use different backup storage. Keep both outside this single-file adapter.
   bool okay = false;
   const auto settings = config(m_config, &okay);
   if (!okay) return {};
