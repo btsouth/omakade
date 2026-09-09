@@ -42,6 +42,8 @@ public:
                                                     const QString& nativeExecutable,
                                                     const QString& flatpakAppId = {});
   [[nodiscard]] static LaunchCommand cemuCommand(const QString& path, bool flatpak);
+  [[nodiscard]] static LaunchCommand xeniaCommand(const QString& path);
+  [[nodiscard]] static QString xeniaExecutable();
   [[nodiscard]] static LaunchCommand dolphinCommand(const QString& path, const QString& nativeExecutable,
                                                     bool flatpak);
   [[nodiscard]] static LaunchCommand battleNetCommand(const QString& id, const QString& prefix,
@@ -72,6 +74,7 @@ private:
   bool launchShadps4(const QString& path, bool flatpak, const QString& flatpakAppId,
                      bool manageOnly);
   bool launchCemu(const QString& path, bool flatpak, bool manageOnly);
+  bool launchXenia(const QString& path, bool manageOnly);
   bool launchDolphin(const QString& path, bool flatpak, bool manageOnly);
   bool launchBattleNet(const QString& id, const QString& prefix, const QString& runner,
                        bool flatpak, bool manageOnly);

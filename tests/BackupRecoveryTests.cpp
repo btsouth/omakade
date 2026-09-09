@@ -109,6 +109,8 @@ void BackupRecoveryTests::consoleChoicesSurviveBackupAndRecovery() {
       "INSERT INTO cemu_games VALUES('wiiu',1,1)",
       "CREATE TABLE shadps4_games(game_id TEXT,flatpak_app_id TEXT,favorite INTEGER,hidden INTEGER)",
       "INSERT INTO shadps4_games VALUES('ps4','flatpak-ps4',1,1)",
+      "CREATE TABLE xenia_games(game_id TEXT,favorite INTEGER,hidden INTEGER)",
+      "INSERT INTO xenia_games VALUES('xbox360',1,1)",
       "CREATE TABLE user_game_flags(source TEXT,runner TEXT,app_id TEXT,favorite INTEGER,hidden INTEGER,PRIMARY KEY(source,runner,app_id))",
       "INSERT INTO user_game_flags VALUES('Cemu','','wiiu',0,NULL)"};
     for (const auto& sql : statements) QVERIFY(q.exec(sql));
@@ -117,7 +119,7 @@ void BackupRecoveryTests::consoleChoicesSurviveBackupAndRecovery() {
   BackupPayload snapshot;
   QVERIFY2(BackupSnapshot::capture(p.database, {}, &snapshot, &error), qPrintable(error));
   const auto flags = snapshot.library.value("user_game_flags").toArray();
-  QCOMPARE(flags.size(), 3);
+  QCOMPARE(flags.size(), 4);
   for (const auto& value : flags) {
     const auto row = value.toObject();
     const auto source = row.value("source").toString();

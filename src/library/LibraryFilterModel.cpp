@@ -331,7 +331,7 @@ void LibraryFilterModel::setShowHidden(bool value) {
 
 QStringList LibraryFilterModel::emulatorSources() {
   return {QStringLiteral("RetroArch"), QStringLiteral("Dolphin"), QStringLiteral("Ryujinx"),
-          QStringLiteral("Cemu"), QStringLiteral("PCSX2"), QStringLiteral("shadPS4")};
+          QStringLiteral("Cemu"), QStringLiteral("Xenia"), QStringLiteral("PCSX2"), QStringLiteral("shadPS4")};
 }
 
 QString LibraryFilterModel::sourceFilter() const {

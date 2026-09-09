@@ -336,6 +336,19 @@ void AppSettings::setCemuEnabled(bool value) {
   emit sourcesChanged();
 }
 
+bool AppSettings::xeniaEnabled() const { return m_xeniaEnabled; }
+
+void AppSettings::setXeniaEnabled(bool value) {
+  const bool wasAuto = m_xeniaAuto;
+  m_xeniaAuto = false;
+  if (m_xeniaEnabled == value && !wasAuto) {
+    return;
+  }
+  m_xeniaEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
 bool AppSettings::dolphinEnabled() const { return m_dolphinEnabled; }
 
 void AppSettings::setDolphinEnabled(bool value) {
@@ -360,6 +373,10 @@ void AppSettings::setShadps4AutoEnabled(bool value) { m_shadps4Auto = value; }
 bool AppSettings::cemuAutoEnabled() const { return m_cemuAuto; }
 
 void AppSettings::setCemuAutoEnabled(bool value) { m_cemuAuto = value; }
+
+bool AppSettings::xeniaAutoEnabled() const { return m_xeniaAuto; }
+
+void AppSettings::setXeniaAutoEnabled(bool value) { m_xeniaAuto = value; }
 
 bool AppSettings::consolePortalsEnabled() const { return m_consolePortalsEnabled; }
 
@@ -637,6 +654,10 @@ void AppSettings::load() {
       QStringLiteral("(?m)^cemu_enabled\\s*=\\s*(true|false)\\s*$"));
   m_cemuAuto = !cemuKey.match(contents).hasMatch();
   m_cemuEnabled = readEnabled(QStringLiteral("cemu_enabled"), false);
+  const QRegularExpression xeniaKey(
+      QStringLiteral("(?m)^xenia_enabled\\s*=\\s*(true|false)\\s*$"));
+  m_xeniaAuto = !xeniaKey.match(contents).hasMatch();
+  m_xeniaEnabled = readEnabled(QStringLiteral("xenia_enabled"), false);
   const QRegularExpression dolphinKey(QStringLiteral("(?m)^dolphin_enabled\\s*=\\s*(true|false)\\s*$"));
   m_dolphinAuto = !dolphinKey.match(contents).hasMatch();
   m_dolphinEnabled = readEnabled(QStringLiteral("dolphin_enabled"), false);
@@ -755,6 +776,10 @@ bool AppSettings::save() const {
   if (!m_cemuAuto) {
     contents += QStringLiteral("cemu_enabled = %1\n")
                     .arg(m_cemuEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  }
+  if (!m_xeniaAuto) {
+    contents += QStringLiteral("xenia_enabled = %1\n")
+                    .arg(m_xeniaEnabled ? QStringLiteral("true") : QStringLiteral("false"));
   }
   if (!m_dolphinAuto) {
     contents += QStringLiteral("dolphin_enabled = %1\n")

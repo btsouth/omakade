@@ -1657,7 +1657,7 @@ ApplicationWindow {
                         id: cemuSourceButton
                         objectName: "cemuSourceButton"
                         property Item controllerLeftTarget: shadps4SourceButton
-                        property Item controllerRightTarget: dolphinSourceButton
+                        property Item controllerRightTarget: xeniaSourceButton
                         property Item controllerDownTarget: statusFilterButton
                         text: "CEMU"
                         compact: true
@@ -1674,9 +1674,29 @@ ApplicationWindow {
                         }
                     }
                     GlassButton {
+                        id: xeniaSourceButton
+                        objectName: "xeniaSourceButton"
+                        property Item controllerLeftTarget: cemuSourceButton
+                        property Item controllerRightTarget: dolphinSourceButton
+                        property Item controllerDownTarget: statusFilterButton
+                        text: "XENIA"
+                        compact: true
+                        visible: Preferences.xeniaEnabled
+                        property string sourceName: "Xenia"
+                        selected: Library.sourceFilters.indexOf("Xenia") >= 0
+                        onClicked: {
+                            Library.sourceFilters = ["Xenia"]
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                        onSecondaryClicked: {
+                            Library.toggleSource("Xenia")
+                            libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                        }
+                    }
+                    GlassButton {
                         id: dolphinSourceButton
                         objectName: "dolphinSourceButton"
-                        property Item controllerLeftTarget: cemuSourceButton
+                        property Item controllerLeftTarget: xeniaSourceButton
                         property Item controllerRightTarget: manualSourceButton
                         property Item controllerDownTarget: statusFilterButton
                         text: "DOLPHIN"
@@ -1981,6 +2001,8 @@ ApplicationWindow {
                             ? "shadPS4 was not found"
                             : Library.sourceFilter === "Cemu" && CemuLibrary && !CemuLibrary.cemuDetected
                             ? "Cemu was not found"
+                            : Library.sourceFilter === "Xenia" && XeniaLibrary && !XeniaLibrary.xeniaDetected
+                            ? "Xenia was not found"
                             : Library.sourceFilter === "Dolphin" && DolphinLibrary && !DolphinLibrary.dolphinDetected
                             ? "Dolphin was not found"
                             : Library.sourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
@@ -2009,6 +2031,8 @@ ApplicationWindow {
                               ? Shadps4Library.errorText
                               : Library.sourceFilter === "Cemu" && CemuLibrary && CemuLibrary.errorText.length > 0
                               ? CemuLibrary.errorText
+                              : Library.sourceFilter === "Xenia" && XeniaLibrary && XeniaLibrary.errorText.length > 0
+                              ? XeniaLibrary.errorText
                               : Library.sourceFilter === "Dolphin" && DolphinLibrary && DolphinLibrary.errorText.length > 0
                               ? DolphinLibrary.errorText
                               : Library.sourceFilter === "GOG" && HeroicLibrary && HeroicLibrary.errorText.length > 0

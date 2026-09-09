@@ -511,6 +511,7 @@ Item {
                                  || root.selectedInstallation.source === "Ryujinx"
                                  || root.selectedInstallation.source === "shadPS4"
                                  || root.selectedInstallation.source === "Cemu"
+                                 || root.selectedInstallation.source === "Xenia"
                                  || root.selectedInstallation.source === "Dolphin"
                                  || root.selectedInstallation.source === "Battle.net"
                         text: "MANAGE IN " + (root.selectedInstallation.source || "LAUNCHER").toUpperCase()

@@ -258,6 +258,11 @@ import QtQuick.Layouts
                           error: CemuLibrary ? CemuLibrary.errorText : "",
                           paths: CemuLibrary ? CemuLibrary.detectedPaths : [],
                           lastScan: CemuLibrary ? CemuLibrary.lastScan : 0 },
+                        { name: "XENIA", enabled: Preferences.xeniaEnabled,
+                          status: XeniaLibrary ? XeniaLibrary.statusText : "Unavailable",
+                          error: XeniaLibrary ? XeniaLibrary.errorText : "",
+                          paths: XeniaLibrary ? XeniaLibrary.detectedPaths : [],
+                          lastScan: XeniaLibrary ? XeniaLibrary.lastScan : 0 },
                         { name: "DOLPHIN", enabled: Preferences.dolphinEnabled,
                           status: DolphinLibrary ? DolphinLibrary.statusText : "Unavailable",
                           error: DolphinLibrary ? DolphinLibrary.errorText : "",
@@ -330,6 +335,10 @@ import QtQuick.Layouts
                                         Preferences.cemuEnabled = !Preferences.cemuEnabled
                                         nowEnabled = Preferences.cemuEnabled
                                         if (Preferences.cemuEnabled) CemuLibrary.refresh()
+                                    } else if (modelData.name === "XENIA") {
+                                        Preferences.xeniaEnabled = !Preferences.xeniaEnabled
+                                        nowEnabled = Preferences.xeniaEnabled
+                                        if (Preferences.xeniaEnabled) XeniaLibrary.refresh()
                                     } else if (modelData.name === "DOLPHIN") {
                                         Preferences.dolphinEnabled = !Preferences.dolphinEnabled
                                         nowEnabled = Preferences.dolphinEnabled
@@ -367,6 +376,7 @@ import QtQuick.Layouts
                                     else if (modelData.name === "RYUJINX") RyujinxLibrary.refresh()
                                     else if (modelData.name === "SHADPS4") Shadps4Library.refresh()
                                     else if (modelData.name === "CEMU") CemuLibrary.refresh()
+                                    else if (modelData.name === "XENIA") XeniaLibrary.refresh()
                                     else if (modelData.name === "DOLPHIN") DolphinLibrary.refresh()
                                     else RetroArchLibrary.refresh()
                                 }
