@@ -77,6 +77,11 @@ bool validCemuPath(const QString& id) {
                          true);
 }
 
+bool validXeniaPath(const QString& id) {
+  const QString path = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
+  return validLaunchPath(path, {QStringLiteral("iso"), QStringLiteral("xex")}, false);
+}
+
 bool validRyujinxId(const QString& id) {
   // Ryujinx launches a ROM file path; title ids are display metadata only.
   // QProcess passes this as one argument without a shell, so ordinary filename punctuation is
@@ -506,6 +511,18 @@ LaunchCommand GameLauncher::cemuCommand(const QString& path, bool flatpak) {
                        {QStringLiteral("--fullscreen"), QStringLiteral("-g"), target}};
 }
 
+LaunchCommand GameLauncher::xeniaCommand(const QString& path) {
+  if (!validXeniaPath(path)) {
+    return {};
+  }
+  const QString target = path.startsWith(QStringLiteral("path:")) ? path.mid(5) : path;
+  const QString executable = xeniaExecutable();
+  if (executable.isEmpty()) {
+    return {};
+  }
+  return LaunchCommand{executable, {target}};
+}
+
 LaunchCommand GameLauncher::battleNetCommand(const QString& id, const QString& prefix,
                                              const QString& runner, bool flatpak) {
   if (!validBattleNetId(id) || !validBattleNetPrefix(prefix) ||
@@ -650,6 +667,13 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
                                                   : launchTarget;
     return launchDolphin(target, flatpak, false);
   }
+  if (source.compare(QStringLiteral("Xenia"), Qt::CaseInsensitive) == 0) {
+    const QString target = launchTarget.isEmpty() ? (id.startsWith(QStringLiteral("path:"))
+                                                         ? id.mid(5)
+                                                         : installPath)
+                                                  : launchTarget;
+    return launchXenia(target, false);
+  }
   if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
     return launchBattleNet(id, launchTarget, runner, flatpak, false);
   }
@@ -697,6 +721,9 @@ bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0) {
     return launchDolphin(launchTarget.isEmpty() ? id : launchTarget, flatpak, true);
+  }
+  if (source.compare(QStringLiteral("Xenia"), Qt::CaseInsensitive) == 0) {
+    return launchXenia(launchTarget.isEmpty() ? id : launchTarget, true);
   }
   if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
     return launchBattleNet(id, launchTarget, runner, flatpak, true);
@@ -1049,6 +1076,39 @@ bool GameLauncher::launchShadps4(const QString& path, bool flatpak, const QStrin
   }
   if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("shadPS4 could not be started. Open shadPS4 and try again."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
+QString GameLauncher::xeniaExecutable() {
+  // Xenia ships as AppImages and bare binaries under a handful of names; the
+  // user's PATH decides. Common aliases cover canary and canary-experimental.
+  for (const QString& candidate :
+       {QStringLiteral("xenia_canary"), QStringLiteral("xenia-canary"),
+        QStringLiteral("xenia_canary-linux"), QStringLiteral("xenia")}) {
+    const QString found = QStandardPaths::findExecutable(candidate);
+    if (!found.isEmpty()) {
+      return found;
+    }
+  }
+  return {};
+}
+
+bool GameLauncher::launchXenia(const QString& path, bool manageOnly) {
+  if (xeniaExecutable().isEmpty()) {
+    setError(QStringLiteral("Xenia is not installed."));
+    return false;
+  }
+  const LaunchCommand command =
+      manageOnly ? LaunchCommand{xeniaExecutable(), {}} : xeniaCommand(path);
+  if (!command.isValid()) {
+    setError(QStringLiteral("This game has an invalid Xenia target."));
+    return false;
+  }
+  if (!startCommand(command, !manageOnly)) {
+    setError(QStringLiteral("Xenia could not be started. Open Xenia and try again."));
     return false;
   }
   setError({});

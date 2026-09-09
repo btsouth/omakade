@@ -125,7 +125,7 @@ bool restoreDatabase(QSqlDatabase& database, const QString& artworkDirectory,
           QStringLiteral("faugus_games"), QStringLiteral("retroarch_games"),
           QStringLiteral("pcsx2_games"), QStringLiteral("ryujinx_games"),
           QStringLiteral("battlenet_games"), QStringLiteral("dolphin_games"),
-          QStringLiteral("cemu_games"), QStringLiteral("shadps4_games")})
+          QStringLiteral("cemu_games"), QStringLiteral("xenia_games"), QStringLiteral("shadps4_games")})
       if (tables.contains(table) && !query.exec("UPDATE " + table + " SET favorite=0, hidden=0"))
         return fail("Could not reset legacy personal flags.");
   }

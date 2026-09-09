@@ -64,6 +64,7 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
       {"battlenet_games", "'Battle.net'", "game_id", "COALESCE(runner, '')"},
       {"dolphin_games", "'Dolphin'", "game_id", "COALESCE(flatpak_app_id, '')"},
       {"cemu_games", "'Cemu'", "game_id", "''"},
+      {"xenia_games", "'Xenia'", "game_id", "''"},
       {"shadps4_games", "'shadPS4'", "game_id", "COALESCE(flatpak_app_id, '')"},
       {"manual_games", "'Manual'", "id", "''", "WHERE active = 1"}};
   for (const auto& source : sources) {
