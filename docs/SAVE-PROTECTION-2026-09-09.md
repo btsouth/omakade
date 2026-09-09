@@ -73,3 +73,22 @@ Before publication, test a normal supported game launch with its existing progre
 Omakade, and confirm the new backup appears. Check physical-controller navigation in the restore
 menu without confirming a live restore unless intentionally testing recovery. No new title-specific
 performance profile, first-class Eden/Xenia integration, or broad save synchronization is included.
+
+## Installation update
+
+Installed source candidate `a44a535ea31edc6b00af485c1db0eb8528a783e2` at
+`/home/bts/.local/lib/omakade/a44a535ea31e/`. Installed smoke and binary/link checks passed.
+Both commands, the desktop entry, and the recorder override select this candidate. Recorder
+PID 136485 remains on its prior, byte-identical binary; no restart was needed. Omakade was not
+reopened automatically. The next normal start uses this installation.
+
+Five existing supported saves were copied and checked against both their originals and the
+manifest SHA-256 values. All originals and the four game/emulator wrappers remain unchanged.
+Saved Omakade configuration was preserved. The new save-protection preference defaults on
+when its key is absent. The live copies make Save Backups available for these existing games.
+
+Previous app: `/home/bts/.local/lib/omakade/c9ea15ddd21c/`.
+Installation rollback: `/home/bts/.local/state/omakade/local-install-a44a535ea31e-20260909-183600/`.
+Restore the saved command links, desktop entry, and service override to roll back the binary,
+then reload the user service manager. Leave the live library and save files in place. Save
+backup copies are independent and can remain when using the older app. No push, tag, or release.
