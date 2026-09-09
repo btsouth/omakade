@@ -110,12 +110,26 @@ bool validFaugusId(const QString& id) {
   return gameId.match(id).hasMatch();
 }
 
-bool installedTargetExists(const QString& path) {
-  if (QFileInfo::exists(path)) {
-    return true;
+qsizetype retroArchArchiveSeparator(const QString& path) {
+  // A real filename can contain '#'; only interpret archive-entry syntax otherwise.
+  if (QFileInfo::exists(path)) return -1;
+  for (qsizetype marker = path.indexOf(QLatin1Char('#')); marker > 0;
+       marker = path.indexOf(QLatin1Char('#'), marker + 1)) {
+    const QString suffix = QFileInfo(path.left(marker)).suffix();
+    if (suffix.compare(QStringLiteral("zip"), Qt::CaseInsensitive) == 0 ||
+        suffix.compare(QStringLiteral("7z"), Qt::CaseInsensitive) == 0)
+      return marker;
   }
-  const qsizetype archiveSeparator = path.indexOf(QLatin1Char('#'));
-  return archiveSeparator > 0 && QFileInfo::exists(path.left(archiveSeparator));
+  return -1;
+}
+
+bool installedTargetExists(const QString& path, bool allowArchiveEntry) {
+  if (QFileInfo::exists(path)) return true;
+  if (!allowArchiveEntry) return false;
+  const qsizetype marker = retroArchArchiveSeparator(path);
+  if (marker < 0 || marker + 1 == path.size()) return false;
+  const QFileInfo archive(path.left(marker));
+  return archive.isFile() && archive.isReadable();
 }
 
 bool validBattleNetId(const QString& id) {
@@ -210,7 +224,7 @@ QString findStandalone(const QStringList& executables) {
 }
 
 QString romFileName(const QString& contentPath) {
-  const qsizetype archive = contentPath.lastIndexOf(QLatin1Char('#'));
+  const qsizetype archive = retroArchArchiveSeparator(contentPath);
   return archive >= 0 ? contentPath.mid(archive + 1) : contentPath;
 }
 
@@ -403,13 +417,14 @@ LaunchCommand GameLauncher::resolvedCartridgeCommand(const QString& contentPath,
   if (havePlaylistCore) {
     return retroArchAvailable ? retroArchCommand(contentPath, corePath, flatpak) : LaunchCommand{};
   }
-  if (preferStandalone && !standaloneExecutable.isEmpty()) {
+  const bool archiveEntry = retroArchArchiveSeparator(contentPath) >= 0;
+  if (!archiveEntry && preferStandalone && !standaloneExecutable.isEmpty()) {
     return LaunchCommand{standaloneExecutable, {contentPath}};
   }
   if (retroArchAvailable && !mappedCorePath.isEmpty()) {
     return retroArchCommand(contentPath, mappedCorePath, flatpak);
   }
-  if (!standaloneExecutable.isEmpty()) {
+  if (!archiveEntry && !standaloneExecutable.isEmpty()) {
     return LaunchCommand{standaloneExecutable, {contentPath}};
   }
   return {};
@@ -592,7 +607,8 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
     return true;
   }
   if (source.compare(QStringLiteral("Faugus"), Qt::CaseInsensitive) != 0 &&
-      !installPath.isEmpty() && !installedTargetExists(installPath)) {
+      !installPath.isEmpty() && !installedTargetExists(installPath,
+          source.compare(QStringLiteral("RetroArch"), Qt::CaseInsensitive) == 0)) {
     setError(QStringLiteral(
                  "The installed files are missing. Rescan or repair this game in %1.")
                  .arg(source));
@@ -901,6 +917,8 @@ LaunchCommand GameLauncher::plannedCartridgeCommand(const QString& contentPath,
   const auto command = resolvedCartridgeCommand(contentPath, corePath, flatpak,
       m_preferStandaloneEmulators, standalone, mappedCore, runtimeError.isEmpty());
   if (!command.isValid()) {
+    if (retroArchArchiveSeparator(contentPath) >= 0)
+      return fail(QStringLiteral("This archive entry needs RetroArch and a compatible core. Install them, or extract the game and rescan its ROM folder."));
     if (!console)
       return fail(QStringLiteral("Omakade cannot determine this ROM's console. Set the system for its ROM folder in Settings."));
     return fail(QStringLiteral("No available emulator or RetroArch core was found for %1. Install a compatible emulator or core.").arg(console->displayName));

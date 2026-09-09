@@ -855,3 +855,10 @@ set_tests_properties(omakade_automatic_launch_tests PROPERTIES TIMEOUT 30)
 
 add_executable(omakade_launch_audit EXCLUDE_FROM_ALL ../tools/LaunchAudit.cpp)
 target_link_libraries(omakade_launch_audit PRIVATE omakade_core Qt6::Core)
+
+add_test(NAME omakade_library_empty_review COMMAND omakade
+  --render-overlay=library-empty-review --render-size=640x600
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/library-empty-review.png)
+set_tests_properties(omakade_library_empty_review PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  TIMEOUT 20)

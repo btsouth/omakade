@@ -70,6 +70,54 @@ private slots:
     QCOMPARE(command.arguments, (QStringList{"--fullscreen", "-L", core, path}));
     QVERIFY(!GameLauncher::resolvedCartridgeCommand({}, {}, false, true, "snes9x", {}, true).isValid());
   }
+  void archiveEntriesKeepRetroArchSyntaxWithRetroArch() {
+    const QString entry = "/games/Collection.zip#Game.sfc";
+    const QString core = "/cores/snes9x_libretro.so";
+    auto command = GameLauncher::resolvedCartridgeCommand(entry, {}, false, true, "snes9x", core, true);
+    QCOMPARE(command.program, QString("retroarch"));
+    QCOMPARE(command.arguments.constLast(), entry);
+    QVERIFY(!GameLauncher::resolvedCartridgeCommand(entry, {}, false, true, "snes9x", {}, false).isValid());
+    QVERIFY(!GameLauncher::resolvedCartridgeCommand(entry, {}, false, true, "snes9x", {}, true).isValid());
+    command = GameLauncher::resolvedCartridgeCommand("/games/Set.7Z#Game.sfc", {}, false, true, "snes9x", core, true);
+    QCOMPARE(command.program, QString("retroarch"));
+    command = GameLauncher::resolvedCartridgeCommand("/games/Game #1.sfc", {}, false, true, "snes9x", core, true);
+    QCOMPARE(command.program, QString("snes9x"));
+  }
+  void archivePreflightRejectsMissingTargets() {
+    QTemporaryDir temp;
+    QVERIFY(temp.isValid());
+    const auto previousPath = qgetenv("PATH");
+    const auto previousOutput = qgetenv("OMAKADE_LAUNCH_TEST_OUTPUT");
+    const auto restore = qScopeGuard([&] {
+      qputenv("PATH", previousPath);
+      if (previousOutput.isNull()) qunsetenv("OMAKADE_LAUNCH_TEST_OUTPUT");
+      else qputenv("OMAKADE_LAUNCH_TEST_OUTPUT", previousOutput);
+    });
+    qputenv("PATH", temp.path().toUtf8());
+    const auto output = temp.filePath("arguments.txt");
+    qputenv("OMAKADE_LAUNCH_TEST_OUTPUT", output.toUtf8());
+    executable(temp.path(), "retroarch");
+    QFile core(temp.filePath("core.so"));
+    QVERIFY(core.open(QIODevice::WriteOnly)); core.close();
+    QFile archive(temp.filePath("Set #1.zip"));
+    QVERIFY(archive.open(QIODevice::WriteOnly)); archive.close();
+    GameLauncher launcher;
+    const QString entry = archive.fileName() + "#Game #2.sfc";
+    QVERIFY(launcher.launch("RetroArch", "entry", false, {}, entry, core.fileName(), "snes"));
+    QTRY_VERIFY(contents(output).contains(entry.toUtf8()));
+    QVERIFY(QFile::remove(output));
+    QVERIFY(!launcher.launch("RetroArch", "entry", false, {}, archive.fileName() + "#", core.fileName(), "snes"));
+    QVERIFY(launcher.lastError().contains("installed files are missing"));
+    QVERIFY(QDir().mkdir(temp.filePath("folder.zip")));
+    QVERIFY(!launcher.launch("RetroArch", "entry", false, {}, temp.filePath("folder.zip#Game.sfc"), core.fileName(), "snes"));
+    QVERIFY(launcher.lastError().contains("installed files are missing"));
+    QVERIFY(!launcher.launch("RetroArch", "entry", false, {}, temp.path() + "#missing.sfc", core.fileName(), "snes"));
+    QVERIFY(launcher.lastError().contains("installed files are missing"));
+    // Archive syntax belongs to RetroArch, not arbitrary launcher installation paths.
+    QVERIFY(!launcher.launch("Steam", "123", false, {}, entry));
+    QVERIFY(launcher.lastError().contains("installed files are missing"));
+    QVERIFY(!QFile::exists(output));
+  }
   void missingConfiguredCoreIsReportedBeforeLaunch() {
     QTemporaryDir temp;
     QVERIFY(temp.isValid());

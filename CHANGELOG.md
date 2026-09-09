@@ -2,6 +2,9 @@
 
 ## Unreleased (local candidate)
 
+- Keep archived ROM entries on RetroArch and reject missing archive containers before launch.
+- Clarify empty Favorites, Recent, and Needs Review views; keep source errors relevant to the selected sources.
+
 - Use the library's console identity for automatic ROM launch selection, including shared
   disc formats. Skip unavailable automatic runtimes and report missing configured cores
   without replacing a game's chosen setup.

@@ -1449,6 +1449,37 @@ int main(int argc, char* argv[]) {
           });
         });
       }
+      if (renderOverlay == QStringLiteral("library-empty-review")) {
+        unifiedGames.setSourceEnabled("Demo", false);
+        quickWindow->setProperty("homeOpen", false);
+        QTimer::singleShot(120, quickWindow, [quickWindow, &library, &application] {
+          auto* view = quickWindow->findChild<QObject*>("libraryView");
+          if (!view) { application.exit(EXIT_FAILURE); return; }
+          library.setSourceFilters({"RetroArch", "Dolphin"});
+          if (!quickWindow->property("emptySourceFilter").toString().isEmpty()) {
+            qCritical() << "Multiple sources were presented as one missing source";
+            application.exit(EXIT_FAILURE); return;
+          }
+          library.setSourceFilters({"RetroArch"});
+          if (quickWindow->property("emptySourceFilter").toString() != "RetroArch") {
+            application.exit(EXIT_FAILURE); return;
+          }
+          library.setSourceFilters({});
+          library.setMode(LibraryFilterModel::Mode::Favorites);
+          if (view->property("emptyTitle").toString() != "No favorites in this view") {
+            application.exit(EXIT_FAILURE); return;
+          }
+          library.setMode(LibraryFilterModel::Mode::Recent);
+          if (view->property("emptyTitle").toString() != "No recently played games in this view") {
+            application.exit(EXIT_FAILURE); return;
+          }
+          library.setMode(LibraryFilterModel::Mode::All);
+          library.setReviewFilter("artwork");
+          if (view->property("emptyTitle").toString() != "No games are missing artwork in this view") {
+            application.exit(EXIT_FAILURE); return;
+          }
+        });
+      }
       if (renderOverlay == QStringLiteral("home-empty")) {
         unifiedGames.setSourceEnabled("Demo", false);
         quickWindow->setProperty("homeOpen", true);

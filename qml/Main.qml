@@ -715,6 +715,8 @@ ApplicationWindow {
 
     // Names the search or filter that produced an empty library, or returns "" when the
     // library itself is empty.
+    readonly property string emptySourceFilter: Library.sourceFilters.length === 1 ? Library.sourceFilters[0] : ""
+
     function emptyTitleForFilters() {
         if (Library.searchText !== "") {
             return "No games match \"" + Library.searchText + "\""
@@ -724,7 +726,10 @@ ApplicationWindow {
         if (active > 1) {
             return "No games match these filters"
         }
-        if (Library.genreFilter || Library.decadeFilter || Library.platformFilter || Library.reviewFilter) {
+        if (Library.reviewFilter === "identification") return "No games need identification in this view"
+        if (Library.reviewFilter === "artwork") return "No games are missing artwork in this view"
+        if (Library.reviewFilter === "either") return "No games need review in this view"
+        if (Library.genreFilter || Library.decadeFilter || Library.platformFilter) {
             return "No games match these filters"
         }
         if (Library.completionFilter !== "") {
@@ -1589,30 +1594,32 @@ ApplicationWindow {
                 filtersActive: root.organizationFiltersActive || Library.searchText !== ""
                 onClearFiltersRequested: root.clearLibraryFilters()
                 emptyTitle: root.emptyTitleForFilters() !== "" ? root.emptyTitleForFilters()
-                            : Library.sourceFilter === "GOG" && HeroicLibrary && !HeroicLibrary.gogDetected
+                            : root.emptySourceFilter === "GOG" && HeroicLibrary && !HeroicLibrary.gogDetected
                             ? "GOG was not found"
-                            : Library.sourceFilter === "Heroic" && HeroicLibrary && !HeroicLibrary.heroicDetected
+                            : root.emptySourceFilter === "Heroic" && HeroicLibrary && !HeroicLibrary.heroicDetected
                             ? "Heroic was not found"
-                            : Library.sourceFilter === "Faugus" && FaugusLibrary && !FaugusLibrary.faugusDetected
+                            : root.emptySourceFilter === "Faugus" && FaugusLibrary && !FaugusLibrary.faugusDetected
                             ? "Faugus was not found"
-                            : Library.sourceFilter === "RetroArch" && RetroArchLibrary && !RetroArchLibrary.retroArchDetected
+                            : root.emptySourceFilter === "RetroArch" && RetroArchLibrary && !RetroArchLibrary.retroArchDetected
                             ? "RetroArch was not found"
-                            : Library.sourceFilter === "PCSX2" && Pcsx2Library && !Pcsx2Library.pcsx2Detected
+                            : root.emptySourceFilter === "PCSX2" && Pcsx2Library && !Pcsx2Library.pcsx2Detected
                             ? "PCSX2 was not found"
-                            : Library.sourceFilter === "Ryujinx" && RyujinxLibrary && !RyujinxLibrary.ryujinxDetected
+                            : root.emptySourceFilter === "Ryujinx" && RyujinxLibrary && !RyujinxLibrary.ryujinxDetected
                             ? "Ryujinx was not found"
-                            : Library.sourceFilter === "shadPS4" && Shadps4Library && !Shadps4Library.shadps4Detected
+                            : root.emptySourceFilter === "shadPS4" && Shadps4Library && !Shadps4Library.shadps4Detected
                             ? "shadPS4 was not found"
-                            : Library.sourceFilter === "Cemu" && CemuLibrary && !CemuLibrary.cemuDetected
+                            : root.emptySourceFilter === "Cemu" && CemuLibrary && !CemuLibrary.cemuDetected
                             ? "Cemu was not found"
-                            : Library.sourceFilter === "Dolphin" && DolphinLibrary && !DolphinLibrary.dolphinDetected
+                            : root.emptySourceFilter === "Dolphin" && DolphinLibrary && !DolphinLibrary.dolphinDetected
                             ? "Dolphin was not found"
-                            : Library.sourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
+                            : root.emptySourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
                             ? "Battle.net was not found"
-                            : Library.sourceFilter === "Lutris" && LutrisLibrary && !LutrisLibrary.lutrisDetected
+                            : root.emptySourceFilter === "Lutris" && LutrisLibrary && !LutrisLibrary.lutrisDetected
                             ? "Lutris was not found"
-                            : Library.sourceFilter === "Steam" && SteamLibrary && !SteamLibrary.steamDetected
+                            : root.emptySourceFilter === "Steam" && SteamLibrary && !SteamLibrary.steamDetected
                               ? "Steam was not found"
+                              : Library.mode === 1 ? "No favorites in this view"
+                              : Library.mode === 2 ? "No recently played games in this view"
                               : Library.mode === 3 ? "No hidden games"
                               : Library.availability === 2 ? "No games ready to install"
                               : Library.availability === 1 ? "No games in this library"
@@ -1620,31 +1627,34 @@ ApplicationWindow {
                 emptyMessage: Library.searchText !== ""
                               ? "Try a different search, or clear it to see the whole library."
                               : root.organizationFiltersActive
-                              ? "This is a filter, not your library. Clear or change it to see your games."
-                              : Library.sourceFilter === "Faugus" && FaugusLibrary && FaugusLibrary.errorText.length > 0
+                              ? "Clear or change these filters to see more games."
+                              : root.emptySourceFilter === "Faugus" && FaugusLibrary && FaugusLibrary.errorText.length > 0
                               ? FaugusLibrary.errorText
-                              : Library.sourceFilter === "RetroArch" && RetroArchLibrary && RetroArchLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "RetroArch" && RetroArchLibrary && RetroArchLibrary.errorText.length > 0
                               ? RetroArchLibrary.errorText
-                              : Library.sourceFilter === "PCSX2" && Pcsx2Library && Pcsx2Library.errorText.length > 0
+                              : root.emptySourceFilter === "PCSX2" && Pcsx2Library && Pcsx2Library.errorText.length > 0
                               ? Pcsx2Library.errorText
-                              : Library.sourceFilter === "Ryujinx" && RyujinxLibrary && RyujinxLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "Ryujinx" && RyujinxLibrary && RyujinxLibrary.errorText.length > 0
                               ? RyujinxLibrary.errorText
-                              : Library.sourceFilter === "shadPS4" && Shadps4Library && Shadps4Library.errorText.length > 0
+                              : root.emptySourceFilter === "shadPS4" && Shadps4Library && Shadps4Library.errorText.length > 0
                               ? Shadps4Library.errorText
-                              : Library.sourceFilter === "Cemu" && CemuLibrary && CemuLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "Cemu" && CemuLibrary && CemuLibrary.errorText.length > 0
                               ? CemuLibrary.errorText
-                              : Library.sourceFilter === "Dolphin" && DolphinLibrary && DolphinLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "Dolphin" && DolphinLibrary && DolphinLibrary.errorText.length > 0
                               ? DolphinLibrary.errorText
-                              : Library.sourceFilter === "GOG" && HeroicLibrary && HeroicLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "GOG" && HeroicLibrary && HeroicLibrary.errorText.length > 0
                               ? HeroicLibrary.errorText
-                              : Library.sourceFilter === "Heroic" && HeroicLibrary && HeroicLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "Heroic" && HeroicLibrary && HeroicLibrary.errorText.length > 0
                               ? HeroicLibrary.errorText
-                              : Library.sourceFilter === "Lutris" && LutrisLibrary && LutrisLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "Lutris" && LutrisLibrary && LutrisLibrary.errorText.length > 0
                               ? LutrisLibrary.errorText
-                              : Library.sourceFilter === "Battle.net" && BattleNetLibrary && BattleNetLibrary.errorText.length > 0
+                              : root.emptySourceFilter === "Battle.net" && BattleNetLibrary && BattleNetLibrary.errorText.length > 0
                               ? BattleNetLibrary.errorText
-                              : SteamLibrary && SteamLibrary.errorText.length > 0
+                              : (Library.sourceFilters.length === 0 || Library.sourceFilters.indexOf("Steam") >= 0)
+                                && SteamLibrary && SteamLibrary.errorText.length > 0
                                 ? SteamLibrary.errorText
+                                : Library.mode === 1 ? "Mark games as favorites from their details, or change this view to see more games."
+                                : Library.mode === 2 ? "Games you play appear here when they match this view."
                                 : "Install a game in Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, shadPS4, Cemu, Dolphin, or Battle.net, then rescan your library."
                 onGameActivated: index => root.openGame(index)
                 onFavoriteToggled: index => Library.toggleFavorite(index)

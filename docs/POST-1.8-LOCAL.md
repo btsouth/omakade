@@ -1,5 +1,7 @@
 # Post-1.8 local work
 
+> Latest continuation: [everyday launch and library polish](EVERYDAY-POLISH-2026-09-09.md).
+
 > Latest: [automatic launch audit](AUTOMATIC-LAUNCH-AUDIT-2026-09-09.md) records
 > the installed library-review candidate and separately staged launch fixes.
 
