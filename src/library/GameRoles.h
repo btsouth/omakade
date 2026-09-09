@@ -55,6 +55,7 @@ enum Role {
   PlaytimeText,
   Genres,
   PlaytimeProvenance,
+  NeedsIdentification,
 };
 
 inline QString formatPlaytime(qint64 seconds) {
@@ -103,6 +104,7 @@ inline QHash<int, QByteArray> names() {
       {IsPortal, "isPortal"},
       {Pinned, "pinned"},
       {MetadataKey, "metadataKey"},
+      {NeedsIdentification, "needsIdentification"},
       {Rating, "rating"},
       {RatingCount, "ratingCount"},
       {Popularity, "popularity"},

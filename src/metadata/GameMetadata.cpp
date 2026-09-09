@@ -1001,7 +1001,8 @@ void GameMetadata::next() {
     // quantity rather than something to discover one game at a time.
     int unidentified = 0;
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
-      if (it.value().value("matchStatus").toString() == "Needs identification")
+      if (!it.value().value("rejected").toBool() &&
+          it.value().value("matchStatus").toString().startsWith("Needs identification"))
         ++unidentified;
     m_status = unidentified == 0
                    ? QStringLiteral("Library metadata is up to date")
@@ -1072,6 +1073,8 @@ void GameMetadata::next() {
   }
   gridSearch();
 }
+QString GameMetadata::searchTitle(const QString& title) const { return cleanTitle(title); }
+
 void GameMetadata::search(const QString& title) {
   if (busy() || !m_insights || !m_insights->configured() || m_selected.isEmpty())
     return;

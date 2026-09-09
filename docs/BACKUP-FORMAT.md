@@ -264,10 +264,15 @@ and image bytes, retains the original custom-art file, leaves account/cache rows
 local, and keeps them out of portable personal data. This validates database
 migration, not game launching or hardware compatibility.
 
-### Saved-filter state version 2
+### Saved-filter state versions
 
 Saved filters now record genre, release decade, platform, and console scope in addition to the
 original ten fields. This nested state version is independent of the archive version. Readers
-accept nested versions 1 and 2; applying version 1 clears the newer criteria. Both library and
+accept nested versions 1, 2, and 3; applying version 1 clears the newer criteria. Both library and
 archive validation use SavedFilterRules. Older builds reject the unsupported nested state rather
 than restoring a broader query. Automatic metadata remains regenerable and excluded from backups.
+
+Saved filters with a library review criterion use state version 3. The `review` value is
+`identification`, `artwork`, or `either`; version 1 and 2 filters still load and clear this
+criterion. Filters without a review criterion continue to use version 2. Older builds cannot
+apply version 3 filters or restore an archive containing them. The archive format remains 2.

@@ -10,6 +10,17 @@ delegation, source filters, organization, settings, release checks, explicit
 linking, RetroAchievements, and Sunshine/Moonlight integration are implemented.
 M6 shipped in 1.6.0; remaining hardware and real-library validation is tracked below.
 
+## Current local work and launch direction
+
+The latest library audit and optional review filters are documented in
+[library-review-2026-09-09](docs/library-review-2026-09-09/README.md).
+
+Play should launch immediately using a sensible installed emulator/core and preserve
+known-working game-specific choices. Do not add a first-launch questionnaire. Keep any
+advanced overrides optional. Existing preferred linked installations already handle some
+exceptions; assess the remaining gaps before adding a new profile system. Runner changes
+need real game testing and save-continuity checks, not claims of universally optimal settings.
+
 ## Product statement
 
 Omakade is a beautiful, local-first game library built for Omarchy. It brings

@@ -699,6 +699,7 @@ private slots:
   void randomPickRespectsFiltersAndLinkedIdentity();
   void savedFiltersPersistAndPreserveQueries();
   void metadataDiscoveryFiltersPersistAndRefresh();
+  void libraryReviewFiltersTrackRepairsAndPersist();
   void metadataUpdatesOnlyInvalidateChangedRoles();
   void homeQueuePreservesIdentityAndStorage();
   void homeQueueCapacityAndRecovery();
@@ -8223,6 +8224,10 @@ void CoreTests::manualSearchFieldsSurviveMetadataUpdates() {
   auto* title = editor->findChild<QObject*>("metadataTitleField");
   auto* cover = editor->findChild<QObject*>("metadataCoverField");
   QVERIFY(title && cover);
+  QCOMPARE(title->property("text").toString(), QString("Super Back to the Future, Part II"));
+  QCOMPARE(cover->property("text").toString(), QString("Super Back to the Future, Part II"));
+  QCOMPARE(metadata.searchTitle("Game (Director's Cut) (USA, Rev 1)"), QString("Game (Director's Cut)"));
+  QCOMPARE(metadata.searchTitle("Legend of Zelda, The (USA)"), QString("The Legend of Zelda"));
   // TextInput's native editing keeps a text binding alive. remove()/insert() reproduce
   // the user's edit, unlike setProperty("text"), which can hide this regression.
   auto edit = [](QObject* field, const QString& text) {
@@ -9322,6 +9327,92 @@ void CoreTests::metadataDiscoveryFiltersPersistAndRefresh() {
   const auto stateBefore = filter.filterState();
   filter.setDecadeFilter("1994");
   QCOMPARE(filter.filterState(), stateBefore);
+}
+
+void CoreTests::libraryReviewFiltersTrackRepairsAndPersist() {
+  QTemporaryDir temp;
+  const auto database = temp.filePath("library.sqlite3");
+  MockGameModel source(nullptr, 4);
+  UnifiedGameModel games(database);
+  games.addSourceModel(&source);
+  GameMetadata metadata(database, nullptr);
+  games.setMetadata(&metadata);
+  const auto key = [&](int row) { return games.index(row).data(GameRoles::MetadataKey).toString(); };
+  QVERIFY(metadata.persist(key(0), {{"igdbId", 1}, {"matchStatus", "Matched to IGDB"}}));
+  QVERIFY(metadata.persist(key(1), {{"igdbId", 2}, {"identityAmbiguous", true},
+                                    {"matchStatus", "Needs identification: multiple matching editions"}}));
+  QVERIFY(metadata.persist(key(2), {{"matchStatus", "Needs identification"}}));
+  QVERIFY(metadata.persist(key(3), {{"rejected", true}, {"matchStatus", "Automatic matching disabled"}}));
+  LibraryFilterModel filter;
+  filter.setSourceModel(&games);
+  filter.setReviewFilter("identification");
+  QCOMPARE(filter.rowCount(), 2);
+  QCOMPARE(filter.get(0).value("appId").toString(), QString("demo-1"));
+  const auto saved = filter.filterState();
+  const auto id = filter.saveCurrentFilter("Identify these games");
+  QVERIFY(!id.isEmpty());
+  QSignalSpy resets(&filter, &QAbstractItemModel::modelReset);
+  QVERIFY(metadata.persist(key(1), {{"igdbId", 2}, {"matchStatus", "Matched to IGDB"}}));
+  QCOMPARE(filter.rowCount(), 1);
+  QCOMPARE(filter.get(0).value("appId").toString(), QString("demo-2"));
+  QCOMPARE(resets.count(), 0);
+  filter.setReviewFilter("artwork");
+  QCOMPARE(filter.rowCount(), 4);
+  QImage cover(80, 120, QImage::Format_RGB32);
+  cover.fill(Qt::red);
+  const auto coverPath = temp.filePath("cover.png");
+  QVERIFY(cover.save(coverPath));
+  QVERIFY(metadata.persist(key(0), {{"igdbId", 1}, {"fallbackCover", coverPath}}));
+  QCOMPARE(filter.rowCount(), 3);
+  QVERIFY(games.setCustomCover(1, QUrl::fromLocalFile(coverPath)));
+  QCOMPARE(filter.rowCount(), 2);
+  // An unidentified game with a custom cover still belongs to the combined view.
+  QVERIFY(games.setCustomCover(2, QUrl::fromLocalFile(coverPath)));
+  QCOMPARE(filter.rowCount(), 1);
+  filter.setReviewFilter("either");
+  QCOMPARE(filter.rowCount(), 2);
+  QVERIFY(metadata.persist(key(2), {{"igdbId", 3}, {"matchStatus", "Matched to IGDB"}}));
+  QCOMPARE(filter.rowCount(), 1);
+  QVERIFY(games.resetCustomCover(1));
+  QCOMPARE(filter.rowCount(), 2);
+  QVERIFY(filter.applySavedFilter(id));
+  QCOMPARE(filter.rowCount(), 0);
+  QCOMPARE(filter.filterState(), saved);
+  const auto before = filter.filterState();
+  filter.setReviewFilter("unknown");
+  QCOMPARE(filter.filterState(), before);
+  auto invalid = before;
+  invalid["review"] = true;
+  QVERIFY(!filter.applyFilterState(invalid));
+  auto legacy = before;
+  legacy["version"] = 2;
+  legacy.remove("review");
+  QVERIFY(filter.applyFilterState(legacy));
+  QVERIFY(filter.reviewFilter().isEmpty());
+  QCOMPARE(filter.rowCount(), 4);
+  filter.setReviewFilter("artwork");
+  QCOMPARE(filter.revealGame("Demo", "", "demo-0"), 0);
+  QVERIFY(filter.reviewFilter().isEmpty());
+  UnifiedGameModel reopened(database);
+  reopened.addSourceModel(&source);
+  reopened.setMetadata(&metadata);
+  LibraryFilterModel restored;
+  restored.setSourceModel(&reopened);
+  QVERIFY(restored.applySavedFilter(id));
+  QCOMPARE(restored.filterState(), saved);
+  BackupPayload payload, read;
+  QString error;
+  QVERIFY2(BackupSnapshot::capture(database, {}, &payload, &error), qPrintable(error));
+  const auto archive = temp.filePath("review.omakade-backup");
+  QVERIFY2(BackupArchive::write(archive, payload, &error), qPrintable(error));
+  QVERIFY2(BackupArchive::read(archive, &read, &error), qPrintable(error));
+  QCOMPARE(read.library.value("saved_filters"), payload.library.value("saved_filters"));
+  metadata.next();
+  QVERIFY(!metadata.status().contains("needs identification"));
+  QVERIFY(metadata.persist(key(1), {{"igdbId", 2}, {"identityAmbiguous", true},
+                                    {"matchStatus", "Needs identification: multiple matching editions"}}));
+  metadata.next();
+  QVERIFY(metadata.status().contains("1 game needs identification"));
 }
 
 void CoreTests::homeDiscoveryRespectsLibraryState() {

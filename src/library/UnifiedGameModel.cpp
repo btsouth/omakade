@@ -165,6 +165,14 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
     return {};
   }
   if (role == GameRoles::MetadataKey) return gameKey(source);
+  if (role == GameRoles::NeedsIdentification) {
+    const auto metadata = m_metadata ? m_metadata->entry(gameKey(source)) : QVariantMap{};
+    const auto sourceIndex = source.model->index(source.row, 0);
+    return !sourceIndex.data(GameRoles::IsPortal).toBool() &&
+           !GameMetadata::platformIds(sourceIndex.data(GameRoles::System).toString()).isEmpty() &&
+           !metadata.value("rejected").toBool() &&
+           (metadata.value("igdbId").toLongLong() <= 0 || metadata.value("identityAmbiguous").toBool());
+  }
   if (role == GameRoles::Genres || role == GameRoles::Year) {
     const auto metadata = m_metadata ? m_metadata->entry(gameKey(source)) : QVariantMap{};
     const bool confirmed =
@@ -344,6 +352,7 @@ QHash<int, QByteArray> UnifiedGameModel::roleNames() const {
   roles.insert(GameRoles::PlaytimeSeconds, "playtimeSeconds");
   roles.insert(GameRoles::PlaytimeText, "playtimeText");
   roles.insert(GameRoles::MetadataKey, "metadataKey");
+  roles.insert(GameRoles::NeedsIdentification, "needsIdentification");
   roles.insert(GameRoles::Genres, "genres");
   roles.insert(GameRoles::Rating, "rating");
   roles.insert(GameRoles::RatingCount, "ratingCount");
@@ -1478,6 +1487,11 @@ void UnifiedGameModel::setMetadata(GameMetadata* metadata) {
                        [this](const QString& key, const QVariantMap& previous) {
     const auto current = m_metadata->entry(key);
     QList<int> roles;
+    const auto needsReview = [](const QVariantMap& value) {
+      return !value.value("rejected").toBool() &&
+             (value.value("igdbId").toLongLong() <= 0 || value.value("identityAmbiguous").toBool());
+    };
+    if (needsReview(previous) != needsReview(current)) roles.append(GameRoles::NeedsIdentification);
     if (previous.value("fallbackCover") != current.value("fallbackCover") ||
         previous.value("identityAmbiguous") != current.value("identityAmbiguous") ||
         previous.value("rejected") != current.value("rejected") ||
@@ -1512,5 +1526,5 @@ void UnifiedGameModel::setMetadata(GameMetadata* metadata) {
   if (!m_rows.isEmpty())
     emit dataChanged(index(0), index(m_rows.size() - 1),
                      {GameRoles::CoverPath, GameRoles::Rating, GameRoles::RatingCount,
-                      GameRoles::Popularity, GameRoles::Genres, GameRoles::Year});
+                      GameRoles::Popularity, GameRoles::Genres, GameRoles::Year, GameRoles::NeedsIdentification});
 }

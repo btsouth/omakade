@@ -2,6 +2,11 @@
 
 ## Unreleased (local candidate)
 
+- Add Needs Review library filters for unidentified games and missing artwork, including
+  saved filters. Count ambiguous matches in the metadata summary.
+- Start manual game and artwork searches with ROM tags removed while preserving editions
+  and subsequent edits.
+
 - Improve ROM identification, artwork recovery and retry behavior, and preserve
   edits in manual game and artwork searches.
 - Add optional cached ProtonDB community badges for Steam store games in the

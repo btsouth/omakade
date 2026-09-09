@@ -50,7 +50,8 @@ ColumnLayout {
     // metadata emits changed, including when a search starts or finishes.
     property bool searchFieldsReady: false
     function resetSearchFields() {
-        const initialTitle = (Metadata ? Metadata.current.title : "") || root.game.title || ""
+        const initialTitle = (Metadata ? Metadata.current.title : "")
+            || (Metadata ? Metadata.searchTitle(root.game.title || "") : root.game.title || "")
         titleSearch.text = initialTitle
         coverSearch.text = initialTitle
     }

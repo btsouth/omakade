@@ -95,6 +95,7 @@ ApplicationWindow {
             const value = Library[field.key]
             if (value) result.push({key: field.key, label: field.label + ": " + value, empty: ""})
         }
+        if (Library.reviewFilter) result.push({key: "reviewFilter", label: reviewFilterLabel(Library.reviewFilter), empty: ""})
         if (Library.mode === 3) result.push({key: "mode", label: "Hidden games", empty: 0})
         if (Library.availability !== 0) result.push({key: "availability", label: Library.availability === 1 ? "All owned games" : "Ready to install", empty: 0})
         return result
@@ -102,7 +103,7 @@ ApplicationWindow {
     function clearContextFilters() {
         if (Library.mode === 3) Library.mode = 0
         Library.completionFilter = ""; Library.collectionFilter = ""; Library.tagFilter = ""
-        Library.genreFilter = ""; Library.decadeFilter = ""; Library.platformFilter = ""
+        Library.genreFilter = ""; Library.decadeFilter = ""; Library.platformFilter = ""; Library.reviewFilter = ""
         Library.availability = 0
     }
 
@@ -125,12 +126,19 @@ ApplicationWindow {
         filterPickerOpen = true
     }
 
+    function reviewFilterLabel(value) {
+        return value === "identification" ? "Needs identification"
+             : value === "artwork" ? "Missing artwork"
+             : value === "either" ? "Needs identification or artwork" : "Any review status"
+    }
+
     function filterPickerCurrent() {
         return filterPickerKind === "status" ? Library.completionFilter
              : filterPickerKind === "collection" ? Library.collectionFilter
              : filterPickerKind === "genre" ? Library.genreFilter
              : filterPickerKind === "decade" ? Library.decadeFilter
              : filterPickerKind === "platform" ? Library.platformFilter
+             : filterPickerKind === "review" ? Library.reviewFilter
              : Library.tagFilter
     }
 
@@ -143,6 +151,8 @@ ApplicationWindow {
             Library.genreFilter = value
         } else if (filterPickerKind === "decade") {
             Library.decadeFilter = value
+        } else if (filterPickerKind === "review") {
+            Library.reviewFilter = value
         } else if (filterPickerKind === "platform") {
             Library.platformFilter = value
         } else {
@@ -701,7 +711,7 @@ ApplicationWindow {
                                                       || Library.tagFilter !== ""
                                                       || Library.genreFilter !== ""
                                                       || Library.decadeFilter !== ""
-                                                      || Library.platformFilter !== ""
+                                                      || Library.platformFilter !== "" || Library.reviewFilter !== ""
 
     // Names the search or filter that produced an empty library, or returns "" when the
     // library itself is empty.
@@ -709,12 +719,12 @@ ApplicationWindow {
         if (Library.searchText !== "") {
             return "No games match \"" + Library.searchText + "\""
         }
-        const active = [Library.completionFilter, Library.collectionFilter, Library.tagFilter, Library.genreFilter, Library.decadeFilter, Library.platformFilter]
+        const active = [Library.completionFilter, Library.collectionFilter, Library.tagFilter, Library.genreFilter, Library.decadeFilter, Library.platformFilter, Library.reviewFilter]
                        .filter(value => value !== "").length
         if (active > 1) {
             return "No games match these filters"
         }
-        if (Library.genreFilter || Library.decadeFilter || Library.platformFilter) {
+        if (Library.genreFilter || Library.decadeFilter || Library.platformFilter || Library.reviewFilter) {
             return "No games match these filters"
         }
         if (Library.completionFilter !== "") {
@@ -736,6 +746,7 @@ ApplicationWindow {
         Library.genreFilter = ""
         Library.decadeFilter = ""
         Library.platformFilter = ""
+        Library.reviewFilter = ""
         searchField.clear()
         libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
         libraryView.focusGrid()
@@ -2139,8 +2150,9 @@ ApplicationWindow {
                         text: modelData === ""
                               ? (root.filterPickerKind === "status" ? "ANY STATUS"
                                  : root.filterPickerKind === "collection" ? "ALL COLLECTIONS"
+                                 : root.filterPickerKind === "review" ? "ANY REVIEW STATUS"
                                  : "ANY " + root.filterPickerKind.toUpperCase())
-                              : modelData.toUpperCase()
+                              : root.filterPickerKind === "review" ? root.reviewFilterLabel(modelData).toUpperCase() : modelData.toUpperCase()
                         onClicked: root.applyFilterPick(modelData)
                     }
                 }
@@ -2600,13 +2612,22 @@ ApplicationWindow {
                 onClicked: root.openFilterPicker("platform", Library.platformNames)
             }
             GlassButton {
+                objectName: "reviewFilterButton"
+                maximumLabelWidth: Math.max(80, libraryFilters.width - 80)
                 compact: true
-                visible: Library.genreFilter !== "" || Library.decadeFilter !== "" || Library.platformFilter !== ""
+                text: Library.reviewFilter ? root.reviewFilterLabel(Library.reviewFilter).toUpperCase() : "NEEDS REVIEW"
+                selected: Library.reviewFilter !== ""
+                onClicked: root.openFilterPicker("review", ["identification", "artwork", "either"])
+            }
+            GlassButton {
+                compact: true
+                visible: Library.genreFilter !== "" || Library.decadeFilter !== "" || Library.platformFilter !== "" || Library.reviewFilter !== ""
                 text: "CLEAR METADATA FILTERS"
                 onClicked: {
                     Library.genreFilter = ""
                     Library.decadeFilter = ""
                     Library.platformFilter = ""
+                    Library.reviewFilter = ""
                 }
             }
         }

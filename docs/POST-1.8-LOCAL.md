@@ -1,5 +1,8 @@
 # Post-1.8 local work
 
+> Later follow-up: [library review and local candidate](library-review-2026-09-09/README.md)
+> records the refreshed audit, review filters, and automatic-launch product direction.
+
 > Installation update: the tested candidate is now installed locally. See
 > [LOCAL-INSTALL-PROTONDB-2026-09-09.md](LOCAL-INSTALL-PROTONDB-2026-09-09.md)
 > for verified runtime paths, rollback and remaining manual acceptance. The

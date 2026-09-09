@@ -43,6 +43,7 @@ class LibraryFilterModel final : public QSortFilterProxyModel {
       QString decadeFilter READ decadeFilter WRITE setDecadeFilter NOTIFY organizationFilterChanged)
   Q_PROPERTY(QString platformFilter READ platformFilter WRITE setPlatformFilter NOTIFY
                  organizationFilterChanged)
+  Q_PROPERTY(QString reviewFilter READ reviewFilter WRITE setReviewFilter NOTIFY organizationFilterChanged)
   Q_PROPERTY(QStringList genreNames READ genreNames NOTIFY metadataOptionsChanged)
   Q_PROPERTY(QStringList decadeNames READ decadeNames NOTIFY metadataOptionsChanged)
   Q_PROPERTY(QStringList platformNames READ platformNames NOTIFY metadataOptionsChanged)
@@ -105,6 +106,8 @@ public:
   void setCollectionFilter(const QString& value);
   [[nodiscard]] QString tagFilter() const;
   void setTagFilter(const QString& value);
+  QString reviewFilter() const { return m_reviewFilter; }
+  void setReviewFilter(const QString& value);
   QString genreFilter() const { return m_genreFilter; }
   QString decadeFilter() const { return m_decadeFilter; }
   QString platformFilter() const { return m_platformFilter; }
@@ -219,7 +222,7 @@ private:
   QString m_completionFilter;
   QString m_collectionFilter;
   QString m_tagFilter;
-  QString m_genreFilter, m_decadeFilter, m_platformFilter;
+  QString m_genreFilter, m_decadeFilter, m_platformFilter, m_reviewFilter;
   QStringList metadataOptions(int role) const;
   static QString platformFor(const QModelIndex& index);
   bool m_consolePortalsEnabled = true;

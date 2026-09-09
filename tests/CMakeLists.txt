@@ -832,3 +832,18 @@ target_compile_definitions(omakade_protondb_ui_tests PRIVATE OMAKADE_SOURCE_DIR=
 add_test(NAME omakade_protondb_ui_tests COMMAND omakade_protondb_ui_tests)
 set_tests_properties(omakade_protondb_ui_tests PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
+
+foreach(review_size IN ITEMS 640x600 1280x900)
+  add_test(NAME omakade_review_filters_${review_size} COMMAND omakade
+    --render-overlay=review-filters --render-size=${review_size}
+    --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/review-filters-${review_size}.png)
+  set_tests_properties(omakade_review_filters_${review_size} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 20)
+endforeach()
+add_test(NAME omakade_review_filters_couch COMMAND omakade --couch
+  --render-overlay=review-filters --render-size=1920x1080
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/review-filters-couch.png)
+set_tests_properties(omakade_review_filters_couch PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  TIMEOUT 20)

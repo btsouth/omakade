@@ -45,11 +45,13 @@ void LibraryFilterModel::setSourceModel(QAbstractItemModel* source) {
     connect(source, &QAbstractItemModel::dataChanged, this,
             [this](const QModelIndex&, const QModelIndex&, const QList<int>& roles) {
               const QList<int> metadataRoles{GameRoles::CoverPath, GameRoles::Rating,
-                  GameRoles::RatingCount, GameRoles::Popularity, GameRoles::Genres, GameRoles::Year};
+                  GameRoles::RatingCount, GameRoles::Popularity, GameRoles::Genres, GameRoles::Year,
+                  GameRoles::NeedsIdentification};
               if (!roles.isEmpty() && m_genreFilter.isEmpty() && m_decadeFilter.isEmpty() &&
+                  m_reviewFilter.isEmpty() &&
                   std::all_of(roles.cbegin(), roles.cend(),
                               [&metadataRoles](int role) { return metadataRoles.contains(role); })) {
-                // Without a genre/year filter these updates cannot change portal
+                // Without a genre/year/review filter these updates cannot change portal
                 // membership. Qt updates changed rows and the active sort itself.
                 if (roles.contains(GameRoles::Genres) || roles.contains(GameRoles::Year))
                   emit metadataOptionsChanged();
@@ -60,12 +62,14 @@ void LibraryFilterModel::setSourceModel(QAbstractItemModel* source) {
                   GameRoles::System,    GameRoles::IsPortal,         GameRoles::LinkedSources,
                   GameRoles::Hidden,    GameRoles::Favorite,         GameRoles::Recent,
                   GameRoles::Installed, GameRoles::CompletionStatus, GameRoles::Collections,
-                  GameRoles::Tags,      GameRoles::Genres,           GameRoles::Year};
+                  GameRoles::Tags,      GameRoles::Genres,           GameRoles::Year,
+                  GameRoles::NeedsIdentification};
               if (roles.isEmpty() || roles.contains(GameRoles::System) ||
                   roles.contains(GameRoles::Source) || roles.contains(GameRoles::IsPortal) ||
                   roles.contains(GameRoles::LinkedSources)) {
                 rebuildProxy();
-              } else if (std::any_of(roles.cbegin(), roles.cend(),
+              } else if ((!m_reviewFilter.isEmpty() && roles.contains(GameRoles::CoverPath)) ||
+                         std::any_of(roles.cbegin(), roles.cend(),
                                      [&filters](int role) { return filters.contains(role); })) {
                 // Metadata arrives one game at a time. Invalidating the full mapping here
                 // recreates visible delegates and briefly replaces all covers with placeholders.
@@ -180,7 +184,7 @@ void LibraryFilterModel::setSavedFilterMessage(const QString& value) {
 }
 
 QVariantMap LibraryFilterModel::filterState() const {
-  return {{"version", 2},
+  QVariantMap state{{"version", m_reviewFilter.isEmpty() ? 2 : 3},
           {"search", m_searchText},
           {"mode", int(m_mode)},
           {"sort", int(m_sortMode)},
@@ -194,6 +198,8 @@ QVariantMap LibraryFilterModel::filterState() const {
           {"decade", m_decadeFilter},
           {"platform", m_platformFilter},
           {"console", m_consoleFilter}};
+  if (!m_reviewFilter.isEmpty()) state.insert("review", m_reviewFilter);
+  return state;
 }
 
 bool LibraryFilterModel::validFilterState(const QVariantMap& state) {
@@ -298,6 +304,7 @@ bool LibraryFilterModel::applyFilterState(const QVariantMap& state) {
   m_genreFilter = state.value("genre").toString();
   m_decadeFilter = state.value("decade").toString();
   m_platformFilter = state.value("platform").toString();
+  m_reviewFilter = state.value("review").toString();
   m_consoleFilter = state.value("console").toString();
   setSortRole(sortRoleFor(m_sortMode));
   recountSystems();
@@ -319,6 +326,8 @@ int LibraryFilterModel::revealGame(const QString& source, const QString& runner,
   for (const auto* field :
        {"search", "status", "collection", "tag", "genre", "decade", "platform", "console"})
     state[field] = "";
+  state.remove("review");
+  state["version"] = 2;
   state["source"] = QStringList{};
   state["mode"] = 0;
   state["availability"] = 1;
@@ -584,6 +593,13 @@ void LibraryFilterModel::setDecadeFilter(const QString& value) {
   if (!normalized.isEmpty() && !QRegularExpression("^[12][0-9]{2}0s$").match(normalized).hasMatch())
     return;
   m_decadeFilter = normalized;
+  rebuildProxy();
+  emit organizationFilterChanged();
+}
+void LibraryFilterModel::setReviewFilter(const QString& value) {
+  if (m_reviewFilter == value || !QStringList{"", "identification", "artwork", "either"}.contains(value))
+    return;
+  m_reviewFilter = value;
   rebuildProxy();
   emit organizationFilterChanged();
 }
@@ -1005,6 +1021,13 @@ bool LibraryFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex& sour
 }
 
 bool LibraryFilterModel::matchesGameFilters(const QModelIndex& sourceIndex) const {
+  if (!m_reviewFilter.isEmpty()) {
+    const bool identification = sourceIndex.data(GameRoles::NeedsIdentification).toBool();
+    const bool artwork = sourceIndex.data(GameRoles::CoverPath).toString().isEmpty();
+    if ((m_reviewFilter == "identification" && !identification) ||
+        (m_reviewFilter == "artwork" && !artwork) ||
+        (m_reviewFilter == "either" && !identification && !artwork)) return false;
+  }
   const QString primarySource = sourceIndex.data(GameRoles::Source).toString();
   const QVariant installedValue = sourceIndex.data(GameRoles::Installed);
   const bool installed = !installedValue.isValid() || installedValue.toBool();

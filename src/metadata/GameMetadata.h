@@ -120,6 +120,7 @@ public:
   // labelled Goof Troop "Disney's Goof Troop". Returns an already normalized title with that
   // prefix removed, or unchanged when it has none.
   [[nodiscard]] static QString withoutBrandPrefix(const QString& normalized);
+  Q_INVOKABLE QString searchTitle(const QString& title) const;
   Q_INVOKABLE void search(const QString& title);
   Q_INVOKABLE void chooseMatch(int index);
   Q_INVOKABLE void rejectMatch();

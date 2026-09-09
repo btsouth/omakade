@@ -1762,9 +1762,11 @@ int main(int argc, char* argv[]) {
           });
         });
       }
-      if (renderOverlay == QStringLiteral("metadata-filters")) {
-        QTimer::singleShot(120, quickWindow, [quickWindow, &application] {
-          auto* button = quickWindow->findChild<QQuickItem*>("decadeFilterButton");
+      if (renderOverlay == QStringLiteral("metadata-filters") ||
+          renderOverlay == QStringLiteral("review-filters")) {
+        const bool review = renderOverlay == QStringLiteral("review-filters");
+        QTimer::singleShot(120, quickWindow, [quickWindow, &application, review] {
+          auto* button = quickWindow->findChild<QQuickItem*>(review ? "reviewFilterButton" : "decadeFilterButton");
           auto* library = qmlContext(quickWindow)->contextProperty("Library").value<QObject*>();
           if (!button || !library) {
             application.exit(EXIT_FAILURE);
@@ -1776,24 +1778,26 @@ int main(int argc, char* argv[]) {
           button->forceActiveFocus();
           QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
           QCoreApplication::sendEvent(quickWindow, &enter);
-          QTimer::singleShot(120, quickWindow, [quickWindow, library, button, &application] {
+          QTimer::singleShot(120, quickWindow, [quickWindow, library, button, &application, review] {
             QKeyEvent down(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
             QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
             QCoreApplication::sendEvent(quickWindow, &down);
             QCoreApplication::sendEvent(quickWindow, &enter);
-            if (library->property("decadeFilter").toString().isEmpty() ||
+            if (library->property(review ? "reviewFilter" : "decadeFilter").toString().isEmpty() ||
                 quickWindow->property("filterPickerOpen").toBool()) {
-              qCritical() << "Desktop decade picker failed";
+              qCritical() << "Metadata review/decade picker failed";
               application.exit(EXIT_FAILURE);
               return;
             }
             QMetaObject::invokeMethod(quickWindow, "clearLibraryFilters");
-            if (!library->property("decadeFilter").toString().isEmpty()) {
+            if (!library->property(review ? "reviewFilter" : "decadeFilter").toString().isEmpty()) {
               application.exit(EXIT_FAILURE);
               return;
             }
-            button->forceActiveFocus();
-            QCoreApplication::sendEvent(quickWindow, &enter);
+            // Let the picker finish returning focus to the filters menu before reopening it.
+            QTimer::singleShot(120, quickWindow, [button] {
+              QMetaObject::invokeMethod(button, "clicked");
+            });
           });
         });
       }
