@@ -35,6 +35,19 @@ validation. Exact final counts and installation paths are recorded in the candid
 
 ## Local installation and acceptance
 
+Installed and smoke-tested source candidate `c9ea15ddd21cd4b4b232772ae9f2dc755bf4e7f2`
+at `/home/bts/.local/lib/omakade/c9ea15ddd21c/`. Both command links, the desktop entry,
+and service override point there. The previous `96acfabe6d2a` installation remains available.
+Backup: `/home/bts/.local/state/omakade/local-install-c9ea15ddd21c-20260909-181238/`.
+Saved settings and the four emulator wrappers are unchanged. Recorder PID 136485 remained
+running on its prior, byte-identical binary. Metroid Dread exited during validation before
+the installation; this work did not terminate it. The app was not reopened automatically.
+The next normal start uses this candidate. No commits were pushed.
+
+For binary rollback, restore the saved command links, desktop entry, and service override
+from this backup and reload the user service manager. Keep the live library; restoring the
+SQLite backup would discard newer history. Restart the recorder only between game sessions.
+
 The installation helper verifies the clean candidate commit and staged hashes, backs up the
 library and settings, and retains the previous installation for rollback. It may switch the
 launcher while a game runs, but must preserve the recorder when its binary is byte-identical
