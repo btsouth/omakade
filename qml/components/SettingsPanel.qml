@@ -1439,7 +1439,19 @@ GlassButton {
                     visible: settingsOverlay.section === 4
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Back up Omakade organization and preferences. Emulator save files are not included. Clearing downloaded artwork does not remove game files."
+                    text: "Omakade backup archives contain organization and preferences, not emulator saves. Save protection keeps separate local copies. Clearing downloaded artwork does not remove game files."
+                    color: Theme.mutedText; font.family: Theme.fontFamily
+                }
+                GlassButton {
+                    objectName: "saveProtectionSettingsButton"
+                    compact: true
+                    text: "SAVE PROTECTION: " + (Preferences.protectRetroArchSaves ? "ON" : "OFF")
+                    selected: Preferences.protectRetroArchSaves
+                    onClicked: Preferences.protectRetroArchSaves = !Preferences.protectRetroArchSaves
+                }
+                Text {
+                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                    text: "Keeps previous in-game saves before supported native RetroArch launches (Snes9x, Nestopia, Mupen64Plus-Next). Restore from Manage Game > Save Backups. Custom save layouts may be skipped; save states and cloud sync are not included."
                     color: Theme.mutedText; font.family: Theme.fontFamily
                 }
                 GlassButton { compact: true; text: "CLEAR DOWNLOADED PORTRAITS"; enabled: Metadata && !Metadata.busy; onClicked: Metadata.clearPortraitCache() }

@@ -53,6 +53,17 @@ Item {
     signal favoriteRequested()
     signal pinRequested()
     signal playRequested()
+    readonly property string saveGamePath: selectedInstallation.source === "RetroArch" ? (selectedInstallation.installPath || "") : ""
+    readonly property int saveBackupCount: {
+        if (typeof SaveBackups === "undefined" || !saveGamePath) return 0
+        const revision = SaveBackups.revision
+        return SaveBackups.count(saveGamePath)
+    }
+    function showSaveBackups() {
+        SaveBackups.selectGame(saveGamePath)
+        saveBackupsMenu.pendingVersion = ""
+        saveBackupsMenu.open()
+    }
     signal manageRequested()
     signal hiddenRequested()
     signal connectRequested()
@@ -1594,6 +1605,14 @@ Item {
             onClicked: detailManage.invoke(root.manageRequested)
         }
         MenuAction {
+            Layout.fillWidth: true
+            compact: true
+            objectName: "saveBackupsButton"
+            visible: root.saveBackupCount > 0
+            text: "SAVE BACKUPS"
+            onClicked: detailManage.invoke(root.showSaveBackups)
+        }
+        MenuAction {
             id: hideButton
             Layout.fillWidth: true
             compact: true
@@ -1637,6 +1656,72 @@ Item {
             onClicked: detailManage.invoke(function () {
                 root.game.linked ? root.unlinkRequested() : root.linkRequested()
             })
+        }
+    }
+
+    ActionMenu {
+        id: saveBackupsMenu
+        objectName: "saveBackupsMenu"
+        showCloseButton: false
+        host: root.Window.window
+        anchorItem: detailManageButton
+        title: "SAVE BACKUPS"
+        fixedHeader: true
+        property string pendingVersion: ""
+        onClosed: pendingVersion = ""
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Theme.mutedText
+            font.family: Theme.fontFamily
+            text: "Previous in-game saves captured before launch. Local copies, up to 10 versions per game and 256 MiB total. Save states are not included. Start from an in-game save after restoring."
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: text.length > 0
+            wrapMode: Text.Wrap
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            text: typeof SaveBackups !== "undefined" ? SaveBackups.message : ""
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingVersion !== ""
+            wrapMode: Text.Wrap
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            text: "Replace the current save with this version? Close RetroArch first. Your current save will be backed up before restoring."
+        }
+        MenuAction {
+            id: cancelSaveRestore
+            objectName: "cancelSaveRestore"
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingVersion !== ""
+            text: "CANCEL"
+            onClicked: { saveBackupsMenu.pendingVersion = ""; saveBackupsMenu.doneControl.forceActiveFocus() }
+        }
+        MenuAction {
+            objectName: "confirmSaveRestore"
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingVersion !== ""
+            text: "RESTORE THIS SAVE"
+            onClicked: {
+                SaveBackups.restore(saveBackupsMenu.pendingVersion)
+                saveBackupsMenu.pendingVersion = ""
+                saveBackupsMenu.doneControl.forceActiveFocus()
+            }
+        }
+        Repeater {
+            model: typeof SaveBackups !== "undefined" ? SaveBackups.versions : []
+            MenuAction {
+                required property var modelData
+                required property int index
+                objectName: "saveBackupVersion_" + index
+                Layout.fillWidth: true
+                visible: saveBackupsMenu.pendingVersion === ""
+                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy h:mm:ss AP")
+                onClicked: { saveBackupsMenu.pendingVersion = modelData.id; Qt.callLater(cancelSaveRestore.forceActiveFocus) }
+            }
         }
     }
 

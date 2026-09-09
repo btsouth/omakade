@@ -46,6 +46,7 @@ class AppSettings final : public QObject {
                  setPreferStandaloneEmulators NOTIFY preferStandaloneEmulatorsChanged)
   Q_PROPERTY(bool closeAfterLaunch READ closeAfterLaunch WRITE setCloseAfterLaunch NOTIFY
                  closeAfterLaunchChanged)
+  Q_PROPERTY(bool protectRetroArchSaves READ protectRetroArchSaves WRITE setProtectRetroArchSaves NOTIFY protectRetroArchSavesChanged)
   Q_PROPERTY(bool trackPlaySessions READ trackPlaySessions WRITE setTrackPlaySessions NOTIFY
                  trackPlaySessionsChanged)
   Q_PROPERTY(bool couchModeEnabled READ couchModeEnabled WRITE setCouchModeEnabled NOTIFY
@@ -140,6 +141,8 @@ public:
   // Session recording by omakade-sessiond; the daemon reads the same config key.
   [[nodiscard]] bool trackPlaySessions() const;
   void setTrackPlaySessions(bool value);
+  bool protectRetroArchSaves() const { return m_protectRetroArchSaves; }
+  void setProtectRetroArchSaves(bool value);
   [[nodiscard]] bool couchModeEnabled() const;
   void setCouchModeEnabled(bool value);
   [[nodiscard]] QString couchLibraryView() const;
@@ -173,6 +176,7 @@ signals:
   void sourcesChanged();
   void closeAfterLaunchChanged();
   void trackPlaySessionsChanged();
+  void protectRetroArchSavesChanged();
   void couchModeEnabledChanged();
   void couchLibraryViewChanged();
   void librarySortModeChanged();
@@ -227,6 +231,7 @@ private:
   bool m_battleNetEnabled = true;
   bool m_closeAfterLaunch = false;
   bool m_trackPlaySessions = false;
+  bool m_protectRetroArchSaves = true;
   bool m_couchModeEnabled = false;
   QString m_couchLibraryView = QStringLiteral("detail");
   int m_librarySortMode = 0;

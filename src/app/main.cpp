@@ -37,6 +37,7 @@
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
 #include "tracking/PlaySessionStore.h"
+#include "saves/SaveBackups.h"
 
 #include <QAbstractItemModel>
 #include <QDebug>
@@ -1130,7 +1131,32 @@ int main(int argc, char* argv[]) {
                      &achievements,
                      [&achievements] { achievements.load(achievements.appId()); });
   }
+  const QString saveFixtureGame = artworkFixture.filePath("save-protection/roms/Test Game.sfc");
+  std::unique_ptr<SaveBackups> saveBackupsOwner;
+  if (renderOverlay.startsWith("save-backups")) {
+    const QString folder = artworkFixture.filePath("save-protection");
+    const auto fixtureWrite = [](const QString& path, const QByteArray& data) {
+      QDir().mkpath(QFileInfo(path).absolutePath());
+      QFile file(path);
+      return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+    };
+    const QString config = folder + "/retroarch.cfg";
+    const QString save = folder + "/saves/Snes9x/Test Game.srm";
+    if (!fixtureWrite(saveFixtureGame, "fixture ROM") || !fixtureWrite(save, "older progress") ||
+        !fixtureWrite(config, "savefile_directory = \"~/saves\"\nsavefiles_in_content_dir = \"false\"\nsort_savefiles_enable = \"true\"\nsort_savefiles_by_content_enable = \"false\"\nauto_overrides_enable = \"false\"\n")) return EXIT_FAILURE;
+    saveBackupsOwner = std::make_unique<SaveBackups>(folder, config, folder + "/backups", [] { return false; });
+    if (!saveBackupsOwner->protect(saveFixtureGame, "snes9x_libretro.so") ||
+        !fixtureWrite(save, "newer progress") ||
+        !saveBackupsOwner->protect(saveFixtureGame, "snes9x_libretro.so") ||
+        !fixtureWrite(save, "current progress")) return EXIT_FAILURE;
+  } else saveBackupsOwner = std::make_unique<SaveBackups>();
+  SaveBackups& saveBackups = *saveBackupsOwner;
+  saveBackups.setEnabled(preferences.protectRetroArchSaves());
+  QObject::connect(&preferences, &AppSettings::protectRetroArchSavesChanged, &saveBackups, [&] {
+    saveBackups.setEnabled(preferences.protectRetroArchSaves());
+  });
   GameLauncher launcher;
+  if (!demoMode && !stressMode && !navigationTest && !detailsDirectionTest) launcher.setSaveBackups(&saveBackups);
   launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
   QObject::connect(&preferences, &AppSettings::preferStandaloneEmulatorsChanged, &launcher, [&] {
     launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
@@ -1214,6 +1240,7 @@ int main(int argc, char* argv[]) {
   // not send every card to disk again. The engine takes ownership.
   engine.addImageProvider(QStringLiteral("covers"), new CoverImageProvider());
   engine.rootContext()->setContextProperty("Backups", &backups);
+  engine.rootContext()->setContextProperty("SaveBackups", &saveBackups);
   engine.rootContext()->setContextProperty("GogSettingsFixture", gogSettingsFixture);
   QObject::connect(&engine, &QQmlApplicationEngine::warnings, [](const QList<QQmlError>& warnings) {
     for (const QQmlError& warning : warnings) {
@@ -1445,6 +1472,42 @@ int main(int argc, char* argv[]) {
                 || quickWindow->activeFocusItem() != play || !play->isEnabled()) {
               qCritical() << "Launch failure lost feedback or retry focus";
               application.exit(EXIT_FAILURE); return;
+            }
+          });
+        });
+      }
+      if (renderOverlay.startsWith("save-backups")) {
+        QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
+        QTimer::singleShot(120, quickWindow, [quickWindow, renderOverlay, saveFixtureGame, &application] {
+          auto* details = quickWindow->findChild<QObject*>("gameDetails");
+          if (!details) { application.exit(EXIT_FAILURE); return; }
+          details->setProperty("selectedInstallation", QVariantMap{{"source", "RetroArch"},
+              {"installPath", saveFixtureGame}, {"launchTarget", "snes9x_libretro.so"}, {"appId", "fixture"}});
+          QMetaObject::invokeMethod(details, "showSaveBackups");
+          QTimer::singleShot(120, quickWindow, [quickWindow, renderOverlay, saveFixtureGame, &application] {
+            auto* menu = quickWindow->findChild<QObject*>("saveBackupsMenu");
+            auto* version = findVisualItem(quickWindow->contentItem(), "saveBackupVersion_0");
+            if (!menu || !menu->property("opened").toBool() || !version) { qCritical() << "Save backup list did not open with a selectable version"; application.exit(EXIT_FAILURE); return; }
+            if (renderOverlay == "save-backups-confirm") {
+              QMetaObject::invokeMethod(version, "clicked");
+              QTimer::singleShot(80, quickWindow, [quickWindow, menu, saveFixtureGame, &application] {
+                auto* cancel = quickWindow->findChild<QQuickItem*>("cancelSaveRestore");
+                auto* confirm = quickWindow->findChild<QObject*>("confirmSaveRestore");
+                if (!cancel || !cancel->hasActiveFocus() || !confirm || menu->property("pendingVersion").toString().isEmpty()) {
+                  qCritical() << "Save restore did not focus its safe cancel action";
+                  application.exit(EXIT_FAILURE); return;
+                }
+                QMetaObject::invokeMethod(confirm, "clicked");
+                QFile save(QFileInfo(saveFixtureGame).dir().absolutePath() + "/../saves/Snes9x/Test Game.srm");
+                if (!save.open(QIODevice::ReadOnly) || save.readAll() != "newer progress") {
+                  qCritical() << "Save restore UI did not restore the selected fixture version";
+                  application.exit(EXIT_FAILURE); return;
+                }
+                QTimer::singleShot(80, quickWindow, [quickWindow] {
+                  if (auto* latest = findVisualItem(quickWindow->contentItem(), "saveBackupVersion_0"))
+                    QMetaObject::invokeMethod(latest, "clicked");
+                });
+              });
             }
           });
         });

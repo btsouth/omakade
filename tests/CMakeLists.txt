@@ -862,3 +862,23 @@ add_test(NAME omakade_library_empty_review COMMAND omakade
 set_tests_properties(omakade_library_empty_review PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
+
+qt_add_executable(omakade_save_backups_tests SaveBackupsTests.cpp)
+target_link_libraries(omakade_save_backups_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_save_backups_tests COMMAND omakade_save_backups_tests)
+set_tests_properties(omakade_save_backups_tests PROPERTIES TIMEOUT 30)
+
+foreach(save_overlay IN ITEMS save-backups save-backups-confirm)
+  add_test(NAME omakade_${save_overlay}_desktop COMMAND omakade
+    --render-overlay=${save_overlay} --render-size=640x600
+    --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${save_overlay}-desktop.png)
+  add_test(NAME omakade_${save_overlay}_couch COMMAND omakade --couch
+    --render-overlay=${save_overlay} --render-size=1920x1080
+    --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${save_overlay}-couch.png)
+  set_tests_properties(omakade_${save_overlay}_desktop omakade_${save_overlay}_couch PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 20)
+endforeach()
+
+qt_add_executable(omakade_save_audit EXCLUDE_FROM_ALL ../tools/SaveAudit.cpp)
+target_link_libraries(omakade_save_audit PRIVATE omakade_core Qt6::Core)

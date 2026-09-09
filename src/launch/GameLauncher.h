@@ -8,6 +8,8 @@
 #include <QStringList>
 #include <QTimer>
 
+class SaveBackups;
+
 class GameLauncher final : public QObject {
   Q_OBJECT
   Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
@@ -61,6 +63,7 @@ public:
                           const QString& runner = {}, const QString& launchTarget = {});
   Q_INVOKABLE bool install(const QString& source, const QString& id);
   void setPreferStandaloneEmulators(bool value);
+  void setSaveBackups(SaveBackups* backups) { m_saveBackups = backups; }
 
 signals:
   void lastErrorChanged();
@@ -92,6 +95,7 @@ private:
     qint64 pid = 0;
     qint64 startTime = -1;
   };
+  SaveBackups* m_saveBackups = nullptr;
   QString m_lastError;
   bool m_preferStandaloneEmulators = false;
   QList<TrackedProcess> m_trackedProcesses;

@@ -2,6 +2,9 @@
 
 ## Unreleased (local candidate)
 
+- Protect supported native RetroArch in-game saves before launch with bounded local versions.
+  Add confirmed restore with a copy of the current save, integrity checks, and emulator-running guards.
+
 - Keep archived ROM entries on RetroArch and reject missing archive containers before launch.
 - Clarify empty Favorites, Recent, and Needs Review views; keep source errors relevant to the selected sources.
 

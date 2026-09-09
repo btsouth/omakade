@@ -1,4 +1,5 @@
 #include "launch/GameLauncher.h"
+#include "saves/SaveBackups.h"
 #include "library/ManualGameModel.h"
 
 #include "launch/SteamLauncher.h"
@@ -958,6 +959,11 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
   } else if (QStandardPaths::findExecutable(command.program).isEmpty()) {
     setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
+  }
+  if (!manageOnly && usesRetroArch && !flatpak && m_saveBackups) {
+    const int coreArgument = command.arguments.indexOf("-L");
+    if (coreArgument >= 0 && coreArgument + 1 < command.arguments.size())
+      m_saveBackups->protect(contentPath, command.arguments.at(coreArgument + 1));
   }
   if (!startCommand(command, !manageOnly)) {
     setError(usesRetroArch

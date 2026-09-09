@@ -12,6 +12,10 @@ M6 shipped in 1.6.0; remaining hardware and real-library validation is tracked b
 
 ## Current local work and launch direction
 
+The [save-protection candidate](docs/SAVE-PROTECTION-2026-09-09.md) adds bounded local
+RetroArch SRAM copies and confirmed restore using existing launch choices. Broader automatic
+performance profiles need portable evidence before becoming a shipped catalog.
+
 The [automatic launch audit](docs/AUTOMATIC-LAUNCH-AUDIT-2026-09-09.md) records
 the tested resolver fixes and remaining gameplay acceptance.
 

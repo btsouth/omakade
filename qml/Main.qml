@@ -28,6 +28,12 @@ ApplicationWindow {
     property bool smokeReady: false
     function chooseRomFolder() { romFolderDialog.open() }
     function openGogFolderDialog() { gogFolderDialog.open() }
+    property string pendingSaveWarning: ""
+    Connections {
+        target: SaveBackups
+        function onWarning(message) { root.pendingSaveWarning = message }
+    }
+
     Connections {
         target: Metadata
         function onEntryChanged(key) {
@@ -801,6 +807,7 @@ ApplicationWindow {
     }
 
     function dispatchLaunch(request) {
+        pendingSaveWarning = ""
         const choice = request.installation
         const installing = choice.installed === false
         let okay = false
@@ -813,12 +820,12 @@ ApplicationWindow {
             ? (installing ? "Opening Steam to install " : "Opening ") + request.title
                 + (installing ? "" : " in " + choice.source)
             : (DemoMode ? "Demo games cannot be launched" : Launcher.lastError || "Could not open this game. Try again.")
-        launchFeedback.finish(okay, message)
-        showToast(message)
+        launchFeedback.finish(okay, pendingSaveWarning ? message + ". " + pendingSaveWarning : message)
+        showToast(pendingSaveWarning || message)
         if (okay && !installing) {
             // Filters or selection may have changed during the feedback frame.
             Library.recordLaunchByIdentity(choice.source, choice.runner || "", choice.appId)
-            if (Preferences.closeAfterLaunch) Qt.callLater(Qt.quit)
+            if (Preferences.closeAfterLaunch && !pendingSaveWarning) Qt.callLater(Qt.quit)
         }
     }
 

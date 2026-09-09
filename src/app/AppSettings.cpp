@@ -589,6 +589,13 @@ void AppSettings::setCloseAfterLaunch(bool value) {
   emit closeAfterLaunchChanged();
 }
 
+void AppSettings::setProtectRetroArchSaves(bool value) {
+  if (m_protectRetroArchSaves == value) return;
+  m_protectRetroArchSaves = value;
+  save();
+  emit protectRetroArchSavesChanged();
+}
+
 bool AppSettings::trackPlaySessions() const { return m_trackPlaySessions; }
 
 void AppSettings::setTrackPlaySessions(bool value) {
@@ -747,6 +754,7 @@ void AppSettings::load() {
   m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
   m_protonDbEnabled = readEnabled(QStringLiteral("protondb_enabled"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
+  m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
   for (const auto& name : {QStringLiteral("cover_size"), QStringLiteral("couch_cover_size")}) {
@@ -850,6 +858,7 @@ bool AppSettings::save() {
   contents += QStringLiteral("prefer_standalone_emulators = %1\n")
                   .arg(m_preferStandaloneEmulators ? QStringLiteral("true")
                                                    : QStringLiteral("false"));
+  contents += QStringLiteral("protect_retroarch_saves = %1\n").arg(m_protectRetroArchSaves ? "true" : "false");
   contents += QStringLiteral("rom_folders = \"\"\"\n%1\"\"\"\n").arg(m_romFolders.join('\n'));
   contents += QStringLiteral("console_layouts = \"\"\"\n%1\"\"\"\n").arg(m_consoleLayouts.join('\n'));
   contents += QStringLiteral("expand_consoles = %1\nconsole_expand_limit = %2\n")
