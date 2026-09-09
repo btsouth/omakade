@@ -32,7 +32,13 @@ public:
                                                               const QString& corePath, bool flatpak,
                                                               bool preferStandalone,
                                                               const QString& standaloneExecutable = {},
-                                                              const QString& mappedCorePath = {});
+                                                              const QString& mappedCorePath = {},
+                                                              bool retroArchAvailable = true);
+  // A declared library system wins; a shared extension alone is not a console identity.
+  [[nodiscard]] static QString cartridgeSystem(const QString& contentPath, const QString& system = {});
+  // Resolve without starting a process, for launch and read-only diagnostics.
+  [[nodiscard]] LaunchCommand plannedCartridgeCommand(const QString& contentPath,
+      const QString& corePath, bool flatpak, const QString& system, QString* error) const;
   [[nodiscard]] static LaunchCommand pcsx2Command(const QString& id, bool isElf, bool flatpak);
   [[nodiscard]] static LaunchCommand ryujinxCommand(const QString& id,
                                                     const QString& nativeExecutable,
@@ -50,7 +56,7 @@ public:
                                                 const QString& winePrefix = {});
   Q_INVOKABLE bool launch(const QString& source, const QString& id, bool flatpak = false,
                           const QString& runner = {}, const QString& installPath = {},
-                          const QString& launchTarget = {});
+                          const QString& launchTarget = {}, const QString& system = {});
   Q_INVOKABLE bool manage(const QString& source, const QString& id, bool flatpak = false,
                           const QString& runner = {}, const QString& launchTarget = {});
   Q_INVOKABLE bool install(const QString& source, const QString& id);
@@ -65,7 +71,7 @@ private:
   bool launchHeroic(const QString& id, const QString& runner, bool flatpak, bool manageOnly);
   bool launchFaugus(const QString& id, bool flatpak, bool manageOnly);
   bool launchRetroArch(const QString& contentPath, const QString& corePath, bool flatpak,
-                       bool manageOnly);
+                       bool manageOnly, const QString& system = {});
   bool launchPcsx2(const QString& id, bool isElf, bool flatpak, bool manageOnly);
   bool launchRyujinx(const QString& id, bool flatpak, const QString& flatpakAppId,
                      bool manageOnly);

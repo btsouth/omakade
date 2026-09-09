@@ -802,7 +802,7 @@ ApplicationWindow {
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
-                                  choice.runner || "", choice.installPath || "", choice.launchTarget || "")
+                                  choice.runner || "", choice.installPath || "", choice.launchTarget || "", choice.system || "")
         }
         const message = okay
             ? (installing ? "Opening Steam to install " : "Opening ") + request.title

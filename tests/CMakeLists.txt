@@ -847,3 +847,11 @@ add_test(NAME omakade_review_filters_couch COMMAND omakade --couch
 set_tests_properties(omakade_review_filters_couch PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
+
+qt_add_executable(omakade_automatic_launch_tests AutomaticLaunchTests.cpp)
+target_link_libraries(omakade_automatic_launch_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_automatic_launch_tests COMMAND omakade_automatic_launch_tests)
+set_tests_properties(omakade_automatic_launch_tests PROPERTIES TIMEOUT 30)
+
+add_executable(omakade_launch_audit EXCLUDE_FROM_ALL ../tools/LaunchAudit.cpp)
+target_link_libraries(omakade_launch_audit PRIVATE omakade_core Qt6::Core)

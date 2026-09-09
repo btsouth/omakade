@@ -109,7 +109,8 @@ bool PlayRequest::perform(UnifiedGameModel& games, GameLauncher& launcher, const
   const QString appId = installation.value(QStringLiteral("appId")).toString();
   if (!launcher.launch(source, appId, installation.value(QStringLiteral("flatpak")).toBool(),
                        runner, installation.value(QStringLiteral("installPath")).toString(),
-                       installation.value(QStringLiteral("launchTarget")).toString())) {
+                       installation.value(QStringLiteral("launchTarget")).toString(),
+                       installation.value(QStringLiteral("system")).toString())) {
     return fail(launcher.lastError());
   }
   games.recordLaunch(row, source, runner, appId);

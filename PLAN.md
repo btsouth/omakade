@@ -12,6 +12,9 @@ M6 shipped in 1.6.0; remaining hardware and real-library validation is tracked b
 
 ## Current local work and launch direction
 
+The [automatic launch audit](docs/AUTOMATIC-LAUNCH-AUDIT-2026-09-09.md) records
+the tested resolver fixes and remaining gameplay acceptance.
+
 The latest library audit and optional review filters are documented in
 [library-review-2026-09-09](docs/library-review-2026-09-09/README.md).
 

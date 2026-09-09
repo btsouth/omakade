@@ -175,6 +175,11 @@ QString bottlesBottleName(const QString& prefix) {
   return QFileInfo(prefix).fileName();
 }
 
+bool readableCore(const QString& path) {
+  const QFileInfo file(path);
+  return file.isFile() && file.isReadable();
+}
+
 QString findRetroArchCore(const QStringList& coreNames) {
   const QString home = QDir::homePath();
   const QStringList directories = {
@@ -186,7 +191,7 @@ QString findRetroArchCore(const QStringList& coreNames) {
   for (const QString& coreName : coreNames) {
     for (const QString& directory : directories) {
       const QString path = directory + QLatin1Char('/') + coreName + QStringLiteral(".so");
-      if (QFileInfo::exists(path)) {
+      if (readableCore(path)) {
         return path;
       }
     }
@@ -209,22 +214,22 @@ QString romFileName(const QString& contentPath) {
   return archive >= 0 ? contentPath.mid(archive + 1) : contentPath;
 }
 
-const ConsoleDefinition* consoleForRom(const QString& contentPath) {
-  const QString suffix = QFileInfo(romFileName(contentPath)).suffix();
-  const ConsoleDefinition* byName = ConsoleCatalog::find(suffix);
-  if (byName != nullptr) {
-    return byName;
-  }
-  for (const ConsoleDefinition& console : ConsoleCatalog::all()) {
-    for (const QString& extension : console.extensions) {
-      if (suffix.compare(extension, Qt::CaseInsensitive) == 0) {
-        return &console;
-      }
-    }
-  }
-  return nullptr;
-}
 } // namespace
+
+QString GameLauncher::cartridgeSystem(const QString& contentPath, const QString& system) {
+  if (!system.trimmed().isEmpty()) {
+    const auto* console = ConsoleCatalog::find(system);
+    return console ? console->id : QString{};
+  }
+  const QString suffix = QFileInfo(romFileName(contentPath)).suffix();
+  QString found;
+  for (const auto& console : ConsoleCatalog::all()) {
+    if (!console.extensions.contains(suffix, Qt::CaseInsensitive)) continue;
+    if (!found.isEmpty() && found != console.id) return {};
+    found = console.id;
+  }
+  return found;
+}
 
 GameLauncher::GameLauncher(QObject* parent) : QObject(parent) {
   m_trackTimer.setInterval(1000);
@@ -390,16 +395,18 @@ LaunchCommand GameLauncher::resolvedCartridgeCommand(const QString& contentPath,
                                                      const QString& corePath, bool flatpak,
                                                      bool preferStandalone,
                                                      const QString& standaloneExecutable,
-                                                     const QString& mappedCorePath) {
+                                                     const QString& mappedCorePath,
+                                                     bool retroArchAvailable) {
+  if (contentPath.trimmed().isEmpty() || contentPath.contains(QChar::Null)) return {};
   const bool havePlaylistCore =
       !corePath.trimmed().isEmpty() && corePath != QStringLiteral("DETECT");
   if (havePlaylistCore) {
-    return retroArchCommand(contentPath, corePath, flatpak);
+    return retroArchAvailable ? retroArchCommand(contentPath, corePath, flatpak) : LaunchCommand{};
   }
   if (preferStandalone && !standaloneExecutable.isEmpty()) {
     return LaunchCommand{standaloneExecutable, {contentPath}};
   }
-  if (!mappedCorePath.isEmpty()) {
+  if (retroArchAvailable && !mappedCorePath.isEmpty()) {
     return retroArchCommand(contentPath, mappedCorePath, flatpak);
   }
   if (!standaloneExecutable.isEmpty()) {
@@ -569,7 +576,7 @@ LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& install
 
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
                           const QString& runner, const QString& installPath,
-                          const QString& launchTarget) {
+                          const QString& launchTarget, const QString& system) {
   if (source.compare(QStringLiteral("Manual"), Qt::CaseInsensitive) == 0) {
     QString program, directory, error;
     QStringList arguments;
@@ -617,7 +624,7 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
     return launchFaugus(id, flatpak, false);
   }
   if (source.compare(QStringLiteral("RetroArch"), Qt::CaseInsensitive) == 0) {
-    return launchRetroArch(installPath, launchTarget, flatpak, false);
+    return launchRetroArch(installPath, launchTarget, flatpak, false, system);
   }
   if (source.compare(QStringLiteral("PCSX2"), Qt::CaseInsensitive) == 0) {
     return launchPcsx2(id, launchTarget == QStringLiteral("elf"), flatpak, false);
@@ -869,29 +876,48 @@ bool GameLauncher::launchFaugus(const QString& id, bool flatpak, bool manageOnly
   return true;
 }
 
-bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& corePath,
-                                   bool flatpak, bool manageOnly) {
-  const ConsoleDefinition* console = consoleForRom(contentPath);
-  const QString standalone =
-      console == nullptr ? QString{} : findStandalone(console->standaloneExecutables);
-  const QString mappedCore =
-      console == nullptr ? QString{} : findRetroArchCore(console->retroArchCores);
-  const LaunchCommand command =
-      manageOnly
-          ? (flatpak
-                 ? LaunchCommand{QStringLiteral("flatpak"),
-                                 {QStringLiteral("run"), QStringLiteral("org.libretro.RetroArch")}}
-                 : LaunchCommand{QStringLiteral("retroarch"), {}})
-          : resolvedCartridgeCommand(contentPath, corePath, flatpak, m_preferStandaloneEmulators,
-                                     standalone, mappedCore);
+LaunchCommand GameLauncher::plannedCartridgeCommand(const QString& contentPath,
+    const QString& corePath, bool flatpak, const QString& system, QString* error) const {
+  const auto fail = [error](const QString& message) {
+    if (error) *error = message;
+    return LaunchCommand{};
+  };
+  if (error) error->clear();
+  if (contentPath.trimmed().isEmpty() || contentPath.contains(QChar::Null))
+    return fail(QStringLiteral("This game has no valid ROM path. Rescan its source."));
+  const bool explicitCore = !corePath.trimmed().isEmpty() && corePath != QStringLiteral("DETECT");
+  const ConsoleDefinition* console = ConsoleCatalog::find(cartridgeSystem(contentPath, system));
+  QString runtimeError;
+  if (QStandardPaths::findExecutable(flatpak ? QStringLiteral("flatpak") : QStringLiteral("retroarch")).isEmpty())
+    runtimeError = flatpak ? QStringLiteral("Flatpak is not installed.") : QStringLiteral("RetroArch is not installed.");
+  else if (flatpak)
+    runtimeError = flatpakError(QStringLiteral("org.libretro.RetroArch"), QStringLiteral("RetroArch"));
+  // Do not replace a selected core with another emulator and a different save setup.
+  if (explicitCore && !runtimeError.isEmpty()) return fail(runtimeError);
+  if (explicitCore && !flatpak && !readableCore(corePath))
+    return fail(QStringLiteral("The configured RetroArch core is missing or unreadable: %1. Restore this core to keep the game's setup.").arg(corePath));
+  const QString standalone = console ? findStandalone(console->standaloneExecutables) : QString{};
+  const QString mappedCore = console && runtimeError.isEmpty() ? findRetroArchCore(console->retroArchCores) : QString{};
+  const auto command = resolvedCartridgeCommand(contentPath, corePath, flatpak,
+      m_preferStandaloneEmulators, standalone, mappedCore, runtimeError.isEmpty());
   if (!command.isValid()) {
-    setError(console == nullptr
-                 ? QStringLiteral("Set a core association for this game in RetroArch, then rescan.")
-                 : QStringLiteral("No emulator was found for %1. Install %2 or RetroArch.")
-                       .arg(console->displayName,
-                            console->standaloneExecutables.isEmpty()
-                                ? QStringLiteral("a compatible emulator")
-                                : console->standaloneExecutables.constFirst()));
+    if (!console)
+      return fail(QStringLiteral("Omakade cannot determine this ROM's console. Set the system for its ROM folder in Settings."));
+    return fail(QStringLiteral("No available emulator or RetroArch core was found for %1. Install a compatible emulator or core.").arg(console->displayName));
+  }
+  return command;
+}
+
+bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& corePath,
+                                   bool flatpak, bool manageOnly, const QString& system) {
+  QString error;
+  const LaunchCommand command = manageOnly
+      ? (flatpak ? LaunchCommand{QStringLiteral("flatpak"),
+                                  {QStringLiteral("run"), QStringLiteral("org.libretro.RetroArch")}}
+                 : LaunchCommand{QStringLiteral("retroarch"), {}})
+      : plannedCartridgeCommand(contentPath, corePath, flatpak, system, &error);
+  if (!command.isValid()) {
+    setError(error);
     return false;
   }
   const bool usesRetroArch = command.program == QStringLiteral("retroarch") ||

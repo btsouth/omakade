@@ -2,6 +2,10 @@
 
 ## Unreleased (local candidate)
 
+- Use the library's console identity for automatic ROM launch selection, including shared
+  disc formats. Skip unavailable automatic runtimes and report missing configured cores
+  without replacing a game's chosen setup.
+
 - Add Needs Review library filters for unidentified games and missing artwork, including
   saved filters. Count ambiguous matches in the metadata summary.
 - Start manual game and artwork searches with ROM tags removed while preserving editions

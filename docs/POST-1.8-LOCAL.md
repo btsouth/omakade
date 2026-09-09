@@ -1,5 +1,8 @@
 # Post-1.8 local work
 
+> Latest: [automatic launch audit](AUTOMATIC-LAUNCH-AUDIT-2026-09-09.md) records
+> the installed library-review candidate and separately staged launch fixes.
+
 > Later follow-up: [library review and local candidate](library-review-2026-09-09/README.md)
 > records the refreshed audit, review filters, and automatic-launch product direction.
 

@@ -1,5 +1,9 @@
 # Library review, September 9, 2026
 
+> Installation update: the tested candidate is now installed. See
+> [installation and rollback](../LOCAL-INSTALL-REVIEW-2026-09-09.md). The preparation
+> and validation notes below describe the candidate before installation.
+
 A new read-only SQLite snapshot and image-decoding check confirms the installed matching
 candidate has recovered all 68 previously tested identities and 191 previously missing SNES
 covers. This check includes custom images, source covers, downloaded portraits, and IGDB
