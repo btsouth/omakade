@@ -12,6 +12,7 @@ class AppSettings final : public QObject {
       bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
   Q_PROPERTY(int artworkCacheLimitMb READ artworkCacheLimitMb WRITE setArtworkCacheLimitMb NOTIFY
                  artworkCacheLimitMbChanged)
+  Q_PROPERTY(bool protonDbEnabled READ protonDbEnabled WRITE setProtonDbEnabled NOTIFY protonDbEnabledChanged)
   Q_PROPERTY(QString steamId READ steamId WRITE setSteamId NOTIFY steamIdChanged)
   Q_PROPERTY(
       QString igdbClientId READ igdbClientId WRITE setIgdbClientId NOTIFY igdbClientIdChanged)
@@ -71,6 +72,8 @@ public:
   void setReducedMotion(bool value);
   [[nodiscard]] int artworkCacheLimitMb() const;
   void setArtworkCacheLimitMb(int value);
+  bool protonDbEnabled() const { return m_protonDbEnabled; }
+  void setProtonDbEnabled(bool value);
   [[nodiscard]] QString steamId() const;
   void setSteamId(const QString& value);
   [[nodiscard]] QString igdbClientId() const;
@@ -163,6 +166,7 @@ signals:
   void gogLibraryPathsChanged();
   void reducedMotionChanged();
   void artworkCacheLimitMbChanged();
+  void protonDbEnabledChanged();
   void steamIdChanged();
   void igdbClientIdChanged();
   void retroAchievementsUsernameChanged();
@@ -192,6 +196,7 @@ private:
 
   QString m_path;
   QStringList m_gogLibraryPaths;
+  bool m_protonDbEnabled = false;
   bool m_reducedMotion = false;
   int m_artworkCacheLimitMb = 1024;
   QString m_steamId;

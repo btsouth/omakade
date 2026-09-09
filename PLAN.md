@@ -1,5 +1,9 @@
 # Omakade product and delivery plan
 
+Current post-1.8 work and backlog decisions are tracked in
+[POST-1.8-LOCAL.md](docs/POST-1.8-LOCAL.md). Historical milestones below do not
+mean that an implemented or locally tested feature is awaiting implementation.
+
 Implementation status: M0 through M7 are complete. Steam, GOG, Lutris,
 Heroic, Faugus, RetroArch, PCSX2, Ryujinx, and Battle.net import, launch
 delegation, source filters, organization, settings, release checks, explicit

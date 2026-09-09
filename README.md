@@ -21,7 +21,7 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 
 ## Features
 
-The 1.8.0 candidate includes:
+Omakade 1.8.0 includes:
 
 - Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2,
   Ryujinx, Cemu, shadPS4, and Dolphin discovery, plus direct GOG installation
@@ -96,6 +96,10 @@ sudo pacman -S omarchy/omakade
 ```
 
 After that, Omakade updates with normal Omarchy system updates.
+
+The Omarchy package repository may carry an older version than the latest GitHub
+release. `pacman -S omarchy/omakade` installs that repository version. Use the
+verified release package below when you need the published version shown here.
 
 ### Install or upgrade from the terminal
 

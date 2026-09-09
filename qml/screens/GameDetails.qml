@@ -730,6 +730,24 @@ Item {
                         font.family: Theme.fontFamily
                         font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
                     }
+                    ProtonDbBadge {
+                        id: detailsProtonBadge
+                        Layout.fillWidth: true
+                        gameSource: root.selectedInstallation.source || ""
+                        appId: root.selectedInstallation.appId || ""
+                        font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
+                        fetchEnabled: root.visible && !DemoMode
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: detailsProtonBadge.visible
+                        text: detailsProtonBadge.details
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: (root.couchMode ? 13 : 11) * root.uiScale
+                    }
                     Flow {
                         Layout.fillWidth: true
                         id: externalLinks
@@ -738,6 +756,8 @@ Item {
 
                         GlassButton {
                             visible: root.selectedInstallation.source === "Steam"
+                                     && /^[1-9][0-9]{0,9}$/.test(root.selectedInstallation.appId)
+                                     && Number(root.selectedInstallation.appId) < 2147483648
                             compact: true
                             text: "PROTONDB"
                             onClicked: Qt.openUrlExternally(

@@ -195,6 +195,14 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
   return true;
 }
 
+void AppSettings::setProtonDbEnabled(bool value) {
+  if (m_protonDbEnabled == value) return;
+  const bool previous = m_protonDbEnabled;
+  m_protonDbEnabled = value;
+  if (!save()) { m_protonDbEnabled = previous; return; }
+  emit protonDbEnabledChanged();
+}
+
 bool AppSettings::reducedMotion() const { return m_reducedMotion; }
 
 void AppSettings::setReducedMotion(bool value) {
@@ -737,6 +745,7 @@ void AppSettings::load() {
     m_romFolders = romFoldersMatch.captured(1).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
   }
   m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
+  m_protonDbEnabled = readEnabled(QStringLiteral("protondb_enabled"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
@@ -863,6 +872,7 @@ bool AppSettings::save() {
   contents += QStringLiteral("gog_library_paths = ") +
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))
                                    .toJson(QJsonDocument::Compact)) + QLatin1Char('\n');
+  contents += QStringLiteral("protondb_enabled = %1\n").arg(m_protonDbEnabled ? QStringLiteral("true") : QStringLiteral("false"));
   const QByteArray encoded = contents.toUtf8();
   if (file.write(encoded) != encoded.size() || !file.commit())
     return failed();

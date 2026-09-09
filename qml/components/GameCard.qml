@@ -18,6 +18,8 @@ FocusScope {
     required property color accentEnd
     required property string coverMark
     required property string coverPath
+    property string gameSource: ""
+    property string appId: ""
     property bool current: false
 
     signal activated()
@@ -304,6 +306,15 @@ FocusScope {
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
             }
+        }
+        ProtonDbBadge {
+            objectName: "cardProtonDbBadge"
+            width: parent.width
+            gameSource: root.gameSource
+            appId: root.appId
+            font.pixelSize: 10
+            elide: Text.ElideRight
+            fetchEnabled: root.visible
         }
     }
 

@@ -247,6 +247,8 @@ Item {
                 anchors.rightMargin: 8
                 anchors.topMargin: 7
                 anchors.bottomMargin: 7
+                gameSource: delegateRoot.index >= 0 ? delegateRoot.source : ""
+                appId: delegateRoot.appId
                 title: delegateRoot.title
                 // Inside a console the heading already names the system, so the launcher's
                 // long core name is repetition. Drop it and let the rating and playtime have

@@ -820,3 +820,15 @@ endforeach()
 # Explicitly built offline audit adapter; no provider credentials or library writes.
 add_executable(omakade_metadata_audit EXCLUDE_FROM_ALL ../tools/MetadataAudit.cpp)
 target_link_libraries(omakade_metadata_audit PRIVATE omakade_core Qt6::Core)
+
+qt_add_executable(omakade_protondb_tests ProtonDbTests.cpp)
+target_link_libraries(omakade_protondb_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_protondb_tests COMMAND omakade_protondb_tests)
+set_tests_properties(omakade_protondb_tests PROPERTIES TIMEOUT 30)
+
+qt_add_executable(omakade_protondb_ui_tests ProtonDbUiTests.cpp)
+target_link_libraries(omakade_protondb_ui_tests PRIVATE omakade_core Qt6::Quick Qt6::Test)
+target_compile_definitions(omakade_protondb_ui_tests PRIVATE OMAKADE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME omakade_protondb_ui_tests COMMAND omakade_protondb_ui_tests)
+set_tests_properties(omakade_protondb_ui_tests PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)

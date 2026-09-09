@@ -32,6 +32,7 @@
 #include "library/UnifiedGameModel.h"
 #include "metadata/GameInsightsService.h"
 #include "metadata/GameMetadata.h"
+#include "metadata/ProtonDbService.h"
 #include <QQmlProperty>
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
@@ -1070,6 +1071,13 @@ int main(int argc, char* argv[]) {
   if (navigationTest) {
     achievements.load(QStringLiteral("demo-0"));
   }
+  ProtonDbService protonDb(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                          + QStringLiteral("/protondb/summaries.json"));
+  protonDb.setEnabled(!demoMode && !stressMode && !navigationTest && !detailsDirectionTest
+                      && preferences.protonDbEnabled());
+  QObject::connect(&preferences, &AppSettings::protonDbEnabledChanged, &protonDb,
+                   [&] { protonDb.setEnabled(!demoMode && !stressMode && !navigationTest
+                                            && !detailsDirectionTest && preferences.protonDbEnabled()); });
   std::unique_ptr<SteamAccountService> steamAccount;
   std::unique_ptr<GameInsightsService> gameInsights;
   std::unique_ptr<GameMetadata> gameMetadata;
@@ -1241,6 +1249,7 @@ int main(int argc, char* argv[]) {
                                            retroAchievements.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Insights"), gameInsights.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Metadata"), gameMetadata.get());
+  engine.rootContext()->setContextProperty(QStringLiteral("ProtonDB"), &protonDb);
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"),
                                            (demoMode || stressMode) && !ownedLayoutTest);

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (local candidate)
+
+- Improve ROM identification, artwork recovery and retry behavior, and preserve
+  edits in manual game and artwork searches.
+- Add optional cached ProtonDB community badges for Steam store games in the
+  library and details. Show report counts and cache dates in details. Start the
+  connection disabled and keep launching independent of provider availability.
+- Clarify repository package versions versus direct release downloads.
+
 ## 1.8.0
 
 - Add optional Home, persistent Up Next, and suggestions from the local library.

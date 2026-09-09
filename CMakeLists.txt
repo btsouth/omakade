@@ -175,6 +175,8 @@ add_library(omakade_core STATIC
   src/launch/PlayRequest.h
   src/launch/SteamLauncher.cpp
   src/launch/SteamLauncher.h
+  src/metadata/ProtonDbService.cpp
+  src/metadata/ProtonDbService.h
   src/metadata/GameMetadata.cpp
   src/metadata/GameMetadata.h
   src/metadata/IgdbApi.cpp
@@ -273,6 +275,7 @@ qt_add_qml_module(omakade
   qml/components/CoverSizeControl.qml
     qml/components/CoverArtwork.qml
     qml/components/LaunchFeedback.qml
+    qml/components/ProtonDbBadge.qml
     qml/components/GameCard.qml
     qml/components/CouchLibraryView.qml
     qml/components/CouchKeyboard.qml

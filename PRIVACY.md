@@ -155,3 +155,17 @@ cover from the Libretro thumbnail server (RetroArch systems) or from GameTDB
 id is sent. Downloads are cached under `~/.cache/omakade/covers` and a system
 setting for the artwork cache size limits them. Games without a match are
 remembered for a week so they are not requested on every launch.
+
+## Optional ProtonDB badges
+
+Badges are disabled by default. Enabling them in Settings → Connections sends
+Steam store App IDs for games being browsed to `www.protondb.com` over HTTPS. No
+Steam account ID, game title, installation path, credentials or ROM data is sent.
+Requests use ProtonDB's public report-summary endpoint; no account is required.
+Responses are size-limited and cached under Omakade's cache directory for seven
+days (one day for missing reports). Older ratings remain available offline.
+Disabling badges stops pending requests and hides badges while retaining the
+cache. Cache files and this machine's connection opt-in are not exported in
+personal-library backups. ProtonDB community reports are attributed in the UI;
+ProtonDB publishes its report database under ODbL with DbCL for individual contents:
+https://github.com/bdefore/protondb-data.

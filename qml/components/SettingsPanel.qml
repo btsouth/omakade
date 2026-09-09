@@ -835,6 +835,22 @@ import QtQuick.Layouts
                     color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale
                 }
                 GlassButton {
+                    objectName: "protonDbToggle"
+                    Layout.fillWidth: true
+                    compact: true
+                    text: "PROTONDB BADGES: " + (Preferences.protonDbEnabled ? "ON" : "OFF")
+                    selected: Preferences.protonDbEnabled
+                    onClicked: Preferences.protonDbEnabled = !Preferences.protonDbEnabled
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Optional community compatibility reports for Steam games. Sends visible games' Steam App IDs to ProtonDB and caches results for seven days. No account or key required."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                GlassButton {
                     Layout.fillWidth: true; compact: true
                     text: Metadata && Metadata.busy ? "UPDATING · " + Metadata.pending + " REMAINING" : "UPDATE RATINGS & PORTRAITS"
                     enabled: Metadata && !Metadata.busy
