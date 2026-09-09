@@ -1,5 +1,10 @@
 # Post-1.8 local work
 
+> Installation update: the tested candidate is now installed locally. See
+> [LOCAL-INSTALL-PROTONDB-2026-09-09.md](LOCAL-INSTALL-PROTONDB-2026-09-09.md)
+> for verified runtime paths, rollback and remaining manual acceptance. The
+> preparation notes below describe the earlier pre-installation state.
+
 September 9, 2026. All new work stays local. No push, public review, issue comment,
 tracker mutation, tag or publication is authorized by this handoff.
 
