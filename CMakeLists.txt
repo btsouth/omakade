@@ -365,6 +365,11 @@ install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
 install(FILES README.md PRIVACY.md SUPPORT.md CHANGELOG.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
 )
+install(DIRECTORY skills/omakade-tv-gaming
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/skills
+  FILES_MATCHING PATTERN "*.md" PATTERN "*.py"
+  PATTERN "__pycache__" EXCLUDE
+)
 
 install(FILES docs/RECORDING-COVERAGE.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
