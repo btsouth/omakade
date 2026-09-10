@@ -1,5 +1,7 @@
 # Local RetroArch save protection
 
+Historical first candidate. Current coverage and recovery behavior: [Emulator save protection](SAVE-SETS.md).
+
 This candidate adds versioned local save copies to the existing launch path. It uses the
 current emulator/core selection and adds no setup wizard, dependency, or background service.
 

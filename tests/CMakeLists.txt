@@ -868,7 +868,7 @@ target_link_libraries(omakade_save_backups_tests PRIVATE omakade_core Qt6::Test)
 add_test(NAME omakade_save_backups_tests COMMAND omakade_save_backups_tests)
 set_tests_properties(omakade_save_backups_tests PROPERTIES TIMEOUT 30)
 
-foreach(save_overlay IN ITEMS save-backups save-backups-confirm)
+foreach(save_overlay IN ITEMS save-backups save-backups-confirm save-backups-shared-confirm)
   add_test(NAME omakade_${save_overlay}_desktop COMMAND omakade
     --render-overlay=${save_overlay} --render-size=640x600
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${save_overlay}-desktop.png)
@@ -882,3 +882,11 @@ endforeach()
 
 qt_add_executable(omakade_save_audit EXCLUDE_FROM_ALL ../tools/SaveAudit.cpp)
 target_link_libraries(omakade_save_audit PRIVATE omakade_core Qt6::Core)
+
+qt_add_executable(omakade_save_set_tests SaveSetTests.cpp)
+target_link_libraries(omakade_save_set_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_save_set_tests COMMAND omakade_save_set_tests)
+set_tests_properties(omakade_save_set_tests PROPERTIES TIMEOUT 60)
+
+qt_add_executable(omakade_save_coverage_audit EXCLUDE_FROM_ALL ../tools/SaveCoverageAudit.cpp)
+target_link_libraries(omakade_save_coverage_audit PRIVATE omakade_core)

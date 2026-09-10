@@ -615,6 +615,13 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
                  .arg(source));
     return false;
   }
+  if (m_saveBackups && QStringList{"PCSX2","Ryujinx","shadPS4","Cemu","Dolphin"}.contains(source)) {
+    const QString key=installPath.isEmpty() ? (id.startsWith("path:")?id.mid(5):launchTarget) : installPath;
+    const QString target=(source=="PCSX2" || launchTarget.isEmpty())?key:launchTarget;
+    if (!m_saveBackups->protectLaunch(source,key,{},flatpak,id,runner,target)) {
+      setError(m_saveBackups->message());return false;
+    }
+  }
   if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) == 0) {
     const QUrl url = SteamLauncher::launchUrl(id);
     if (!url.isValid() || url.isEmpty()) {
@@ -960,10 +967,12 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
     setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
   }
-  if (!manageOnly && usesRetroArch && !flatpak && m_saveBackups) {
-    const int coreArgument = command.arguments.indexOf("-L");
-    if (coreArgument >= 0 && coreArgument + 1 < command.arguments.size())
-      m_saveBackups->protect(contentPath, command.arguments.at(coreArgument + 1));
+  if (!manageOnly && m_saveBackups) {
+    const int coreArgument=command.arguments.indexOf("-L");
+    const QString core=coreArgument>=0 && coreArgument+1<command.arguments.size()?command.arguments.at(coreArgument+1):corePath;
+    if (!m_saveBackups->protectLaunch(usesRetroArch?"RetroArch":command.program,contentPath,core,flatpak)) {
+      setError(m_saveBackups->message());return false;
+    }
   }
   if (!startCommand(command, !manageOnly)) {
     setError(usesRetroArch

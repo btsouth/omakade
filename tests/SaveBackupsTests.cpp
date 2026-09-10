@@ -173,7 +173,7 @@ private slots:
     const QString version = f.version();
     f.running = true;
     QVERIFY(!f.backups.restore(version));
-    QVERIFY(f.backups.message().contains("Close RetroArch"));
+    QVERIFY(f.backups.message().contains("Close emulators"));
     put(f.save, "playing");
     QVERIFY(f.backups.protect(f.game, f.core));
     QCOMPARE(f.backups.count(f.game), 1);
@@ -231,7 +231,9 @@ private slots:
     QVERIFY(launcher.launch("RetroArch", "fixture", false, {}, f.game, f.core, "snes"));
     QTRY_COMPARE(get(f.save), QByteArray("next session"));
     QCOMPARE(f.backups.count(f.game), 1);
-    QCOMPARE(get(f.gameRoot() + '/' + f.version() + "/save.srm"), QByteArray("previous save"));
+    const auto version = f.version();
+    QVERIFY(f.backups.restore(version));
+    QCOMPARE(get(f.save), QByteArray("previous save"));
   }
 };
 QTEST_GUILESS_MAIN(SaveBackupsTests)

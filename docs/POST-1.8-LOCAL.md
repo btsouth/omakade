@@ -1,6 +1,6 @@
 # Post-1.8 local work
 
-> Latest feature candidate: [local save protection](SAVE-PROTECTION-2026-09-09.md).
+> Latest feature candidate: [emulator save protection](SAVE-SETS.md).
 
 > Latest continuation: [everyday launch and library polish](EVERYDAY-POLISH-2026-09-09.md).
 

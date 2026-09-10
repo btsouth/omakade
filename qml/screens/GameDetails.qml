@@ -53,14 +53,19 @@ Item {
     signal favoriteRequested()
     signal pinRequested()
     signal playRequested()
-    readonly property string saveGamePath: selectedInstallation.source === "RetroArch" ? (selectedInstallation.installPath || "") : ""
+    readonly property bool saveSourceSupported: ["RetroArch", "PCSX2", "Ryujinx", "shadPS4", "Cemu", "Dolphin"].indexOf(selectedInstallation.source) >= 0
+    readonly property string saveGamePath: saveSourceSupported ? (selectedInstallation.installPath || selectedInstallation.launchTarget || "") : ""
     readonly property int saveBackupCount: {
         if (typeof SaveBackups === "undefined" || !saveGamePath) return 0
         const revision = SaveBackups.revision
         return SaveBackups.count(saveGamePath)
     }
     function showSaveBackups() {
-        SaveBackups.selectGame(saveGamePath)
+        SaveBackups.selectLaunch(selectedInstallation.source, saveGamePath,
+                                 selectedInstallation.source === "RetroArch" ? (selectedInstallation.launchTarget || "") : "",
+                                 selectedInstallation.flatpak || false, selectedInstallation.appId || "",
+                                 selectedInstallation.runner || "",
+                                 selectedInstallation.source === "PCSX2" || selectedInstallation.source === "RetroArch" ? "" : (selectedInstallation.launchTarget || ""))
         saveBackupsMenu.pendingVersion = ""
         saveBackupsMenu.open()
     }
@@ -1608,7 +1613,7 @@ Item {
             Layout.fillWidth: true
             compact: true
             objectName: "saveBackupsButton"
-            visible: root.saveBackupCount > 0
+            visible: root.saveSourceSupported
             text: "SAVE BACKUPS"
             onClicked: detailManage.invoke(root.showSaveBackups)
         }
@@ -1668,13 +1673,14 @@ Item {
         title: "SAVE BACKUPS"
         fixedHeader: true
         property string pendingVersion: ""
+        property bool pendingShared: false
         onClosed: pendingVersion = ""
         Text {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             color: Theme.mutedText
             font.family: Theme.fontFamily
-            text: "Previous in-game saves captured before launch. Local copies, up to 10 versions per game and 256 MiB total. Save states are not included. Start from an in-game save after restoring."
+            text: "Previous in-game saves captured before launch. Local copies, up to 10 versions per save layout and 2 GiB for save sets. Save states are not included. Start from an in-game save after restoring."
         }
         Text {
             Layout.fillWidth: true
@@ -1690,7 +1696,7 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.foreground
             font.family: Theme.fontFamily
-            text: "Replace the current save with this version? Close RetroArch first. Your current save will be backed up before restoring."
+            text: (saveBackupsMenu.pendingShared ? "This backup contains shared storage. Restoring it also replaces saves for other games or profiles in that storage. " : "") + "Replace the current save with this version? Close emulators first. Your current save will be backed up before restoring."
         }
         MenuAction {
             id: cancelSaveRestore
@@ -1711,6 +1717,12 @@ Item {
                 saveBackupsMenu.doneControl.forceActiveFocus()
             }
         }
+        MenuAction {
+            Layout.fillWidth: true
+            visible: typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
+            text: "RETRY SAVE RECOVERY"
+            onClicked: SaveBackups.retryRecovery()
+        }
         Repeater {
             model: typeof SaveBackups !== "undefined" ? SaveBackups.versions : []
             MenuAction {
@@ -1719,8 +1731,8 @@ Item {
                 objectName: "saveBackupVersion_" + index
                 Layout.fillWidth: true
                 visible: saveBackupsMenu.pendingVersion === ""
-                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy h:mm:ss AP")
-                onClicked: { saveBackupsMenu.pendingVersion = modelData.id; Qt.callLater(cancelSaveRestore.forceActiveFocus) }
+                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy h:mm:ss AP") + (modelData.shared === true ? " · SHARED STORAGE" : "")
+                onClicked: { saveBackupsMenu.pendingShared = modelData.shared === true; saveBackupsMenu.pendingVersion = modelData.id; Qt.callLater(cancelSaveRestore.forceActiveFocus) }
             }
         }
     }

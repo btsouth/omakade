@@ -1145,9 +1145,20 @@ int main(int argc, char* argv[]) {
     if (!fixtureWrite(saveFixtureGame, "fixture ROM") || !fixtureWrite(save, "older progress") ||
         !fixtureWrite(config, "savefile_directory = \"~/saves\"\nsavefiles_in_content_dir = \"false\"\nsort_savefiles_enable = \"true\"\nsort_savefiles_by_content_enable = \"false\"\nauto_overrides_enable = \"false\"\n")) return EXIT_FAILURE;
     saveBackupsOwner = std::make_unique<SaveBackups>(folder, config, folder + "/backups", [] { return false; });
-    if (!saveBackupsOwner->protect(saveFixtureGame, "snes9x_libretro.so") ||
+    const bool sharedFixture=renderOverlay.contains("shared");
+    if(sharedFixture) {
+      const QJsonObject rule{{"source","RetroArch"},{"game",saveFixtureGame},
+        {"trees",QJsonArray{folder+"/saves/Snes9x"}},{"shared",true},{"description","Shared memory-card saves"}};
+      if(!fixtureWrite(folder+"/.config/omakade/save-layouts.json",
+          QJsonDocument(QJsonObject{{"format",1},{"layouts",QJsonArray{rule}}}).toJson()))return EXIT_FAILURE;
+    }
+    const auto protectFixture=[&] {
+      return sharedFixture ? saveBackupsOwner->protectLaunch("RetroArch",saveFixtureGame,"snes9x_libretro.so")
+                           : saveBackupsOwner->protect(saveFixtureGame,"snes9x_libretro.so");
+    };
+    if (!protectFixture() ||
         !fixtureWrite(save, "newer progress") ||
-        !saveBackupsOwner->protect(saveFixtureGame, "snes9x_libretro.so") ||
+        !protectFixture() ||
         !fixtureWrite(save, "current progress")) return EXIT_FAILURE;
   } else saveBackupsOwner = std::make_unique<SaveBackups>();
   SaveBackups& saveBackups = *saveBackupsOwner;
@@ -1488,12 +1499,12 @@ int main(int argc, char* argv[]) {
             auto* menu = quickWindow->findChild<QObject*>("saveBackupsMenu");
             auto* version = findVisualItem(quickWindow->contentItem(), "saveBackupVersion_0");
             if (!menu || !menu->property("opened").toBool() || !version) { qCritical() << "Save backup list did not open with a selectable version"; application.exit(EXIT_FAILURE); return; }
-            if (renderOverlay == "save-backups-confirm") {
+            if (renderOverlay.endsWith("-confirm")) {
               QMetaObject::invokeMethod(version, "clicked");
-              QTimer::singleShot(80, quickWindow, [quickWindow, menu, saveFixtureGame, &application] {
+              QTimer::singleShot(80, quickWindow, [quickWindow, menu, saveFixtureGame, renderOverlay, &application] {
                 auto* cancel = quickWindow->findChild<QQuickItem*>("cancelSaveRestore");
                 auto* confirm = quickWindow->findChild<QObject*>("confirmSaveRestore");
-                if (!cancel || !cancel->hasActiveFocus() || !confirm || menu->property("pendingVersion").toString().isEmpty()) {
+                if (!cancel || !cancel->hasActiveFocus() || !confirm || menu->property("pendingVersion").toString().isEmpty() || menu->property("pendingShared").toBool()!=renderOverlay.contains("shared")) {
                   qCritical() << "Save restore did not focus its safe cancel action";
                   application.exit(EXIT_FAILURE); return;
                 }

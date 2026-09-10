@@ -104,6 +104,8 @@ add_library(omakade_core STATIC
   src/backup/BackupRecovery.cpp
   src/backup/BackupRecovery.h
   src/saves/SaveBackups.cpp
+  src/saves/SaveSetStore.cpp
+  src/saves/SaveLayouts.cpp
   src/saves/SaveBackups.h
   src/backup/BackupManager.cpp
   src/backup/BackupManager.h
