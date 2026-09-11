@@ -77,13 +77,12 @@ launch directly; Windows game builds run on Linux through `umu-run` with an
 isolated per-game prefix. Omakade itself does not run on Windows.
 GOG games installed through Heroic continue to launch through Heroic.
 
-ARM64 packages pass automated build and lifecycle checks; testing on an Omarchy
-ARM64 device is still open in [issue #13](https://github.com/btsouth/omakade/issues/13).
-On Apple Silicon with Asahi Linux, Omakade installs and discovers Steam games,
-but the `fex-steam` wrapper that provides `/usr/bin/steam` can fail to start
-games from any `steam://` request, including Steam's own client. That is a
-wrapper limitation, not something Omakade can work around; see issue #13 for
-the details and workarounds reported so far.
+ARM64 packages pass automated build and lifecycle checks. Testing reported in
+[issue #13](https://github.com/btsouth/omakade/issues/13) confirmed installation,
+discovery, and Couch Mode on Apple Silicon with Asahi Linux. The `fex-steam`
+wrapper that provides `/usr/bin/steam` can still fail to start games from any
+`steam://` request, including Steam's own client. That is a wrapper limitation,
+not something Omakade can work around; see issue #13 for details and workarounds.
 
 ## Install on Omarchy or Arch
 

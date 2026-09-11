@@ -3,7 +3,7 @@
     "7z", "app", "bin", "ccd", "chd", "ciso", "cue", "dsk", "dol", "dmg", "elf", "fds",
     "gb", "gba", "gbc", "gcm", "gdi", "img", "iso", "lha", "m3u", "md", "n64", "nds",
     "nes", "nro", "nso", "nsp", "pbp", "rpx", "rvz", "sfc", "smc", "swc", "wad", "wbfs",
-    "wud", "wux", "xci", "z64", "zip"
+    "wua", "wud", "wux", "xci", "z64", "zip"
   ],
   "emulators": [
     { "name": "RetroArch", "binaries": ["retroarch", "RetroArch"], "rescanSource": "RetroArch" },

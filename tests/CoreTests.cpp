@@ -6500,7 +6500,8 @@ void CoreTests::processMatcherExtractsRomPaths() {
                              .binaries = {QStringLiteral("Ryujinx")},
                              .rescanSource = QStringLiteral("Ryujinx")});
   profiles.emulators.append({.name = QStringLiteral("Eden"), .binaries = {QStringLiteral("eden")}});
-  profiles.romExtensions = {QStringLiteral("nsp"), QStringLiteral("sfc")};
+  profiles.emulators.append({.name = QStringLiteral("Cemu"), .binaries = {QStringLiteral("cemu")}});
+  profiles.romExtensions = {QStringLiteral("nsp"), QStringLiteral("sfc"), QStringLiteral("wua")};
 
   const QVector<ProcessSnapshot> processes = {
       {.pid = 10,
@@ -6526,9 +6527,14 @@ void CoreTests::processMatcherExtractsRomPaths() {
       {.pid = 14,
        .procStart = 104,
        .comm = QStringLiteral("Ryujinx"),
-       .arguments = {QStringLiteral("/usr/bin/Ryujinx")}}};
+       .arguments = {QStringLiteral("/usr/bin/Ryujinx")}},
+      {.pid = 15,
+       .procStart = 105,
+       .comm = QStringLiteral("cemu"),
+       .arguments = {QStringLiteral("cemu"), QStringLiteral("-g"),
+                     QStringLiteral("/data/Games/Wii U/Game.wua")}}};
   const QVector<SessionMatch> matches = ProcessMatcher::match(processes, profiles);
-  QCOMPARE(matches.size(), 2);
+  QCOMPARE(matches.size(), 3);
   QCOMPARE(matches.at(0).pid, qint64(10));
   QCOMPARE(matches.at(0).gamePath, QStringLiteral("/data/Games/Switch/Game.nsp"));
   QCOMPARE(matches.at(0).emulator, QStringLiteral("Ryujinx"));
@@ -6537,6 +6543,9 @@ void CoreTests::processMatcherExtractsRomPaths() {
   QCOMPARE(matches.at(1).gamePath, QStringLiteral("/data/Games/Switch/FFT The Ivalice.nsp"));
   QCOMPARE(matches.at(1).emulator, QStringLiteral("Eden"));
   QVERIFY(matches.at(1).rescanSource.isEmpty());
+  QCOMPARE(matches.at(2).pid, qint64(15));
+  QCOMPARE(matches.at(2).gamePath, QStringLiteral("/data/Games/Wii U/Game.wua"));
+  QCOMPARE(matches.at(2).emulator, QStringLiteral("Cemu"));
 }
 
 void CoreTests::sessionRecorderTracksExtendsAndClosesSessions() {
