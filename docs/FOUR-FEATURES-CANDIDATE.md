@@ -81,12 +81,42 @@ current request settle before making or undoing a correction. No source entries 
 The implementation was reviewed against all four planned user journeys. Review fixes covered
 credential cancellation ordering, repaired-path persistence, source-specific emulator routing,
 legacy save-budget migration, archive validation, shared backup accounting, separate undo,
-and controller text-entry/focus contracts.
+native fallback from Flatpak source entries, and controller text-entry/focus contracts.
 
 The capped Release build passed with one build job. Focused routing and UI journeys passed,
 including actual identity correction/undo and controller text-entry cancellation. Staged
 startup, desktop-entry validation, and offline AppStream validation passed. Final full-suite
-results and the installed source identity are recorded below after validation.
+results and installation are recorded below.
+
+Source candidate: `57721a28ceedb67fbba0ec9e3972a8551a7f61bb` on `codex/1.9-testing`.
+The validation/installation documentation commit does not change the compiled sources.
+
+| Binary | SHA-256 |
+| --- | --- |
+| `omakade` | `beb99fa19e9ab3a003e86f82a2e2b5b29c1a4664b43a661f9c6c0e7b4458aa35` |
+| `omakade-sessiond` | `abc00b729d09b5dd728dc638b28f256ef25c07a2024af858dd618691294c2a67` |
+
+## Final results and installation
+
+- All **246 CTest checks passed** in **383.87 seconds** on the final source candidate.
+- No QML TypeError, ReferenceError, binding-loop, or assignment errors were found in
+  the full test log. The final build had no compiler warnings.
+- Staged and installed startup smoke checks, desktop-entry validation, and offline
+  AppStream validation passed. Binary hashes and the running recorder path were verified.
+- Installed app and recorder: `~/.local/lib/omakade/57721a28ceed-1.9-four-features/`.
+  `~/.local/bin` links and the desktop entry now select this candidate.
+- The already-open app session was preserved. Close and reopen Omakade to use this build.
+  The matching recorder service is active from the candidate directory.
+- The candidate directory contains `candidate.json`, validation logs, and a private
+  `rollback/` directory holding the previous launch paths, desktop/service configuration,
+  Omakade settings, and a consistent SQLite backup. The backup integrity check passed.
+- Previous installed build: `3e57cfac49ba-1.9-reviewed`. To restore its app and recorder,
+  close Omakade and emulators, then run
+  `python3 ~/.local/lib/omakade/57721a28ceed-1.9-four-features/rollback/restore-app.py`.
+  This restores launch paths without replacing current library data. The database backup
+  is retained separately for deliberate data recovery.
+- Implementation and automated validation are complete. Maintainer acceptance and live
+  RomM acceptance remain pending. No public release, tag, or main merge was made.
 
 ## Maintainer test checklist
 
