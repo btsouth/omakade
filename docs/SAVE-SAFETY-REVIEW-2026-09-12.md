@@ -58,12 +58,20 @@ RomM pages with invalid counts or no pagination progress. New regression cases a
 with those fixes. A suspected normal session-completion refresh issue was ruled out because
 `lastPlayedByPath` changes when the session ends.
 
-Integrated 1.9 compilation and tests remain pending: Cemu was running, and the development
-handoff prohibits compilation during gameplay. Static diff/format checks passed. The earlier
-228-test result does not validate these newer additions or their integrated build.
-After gameplay, use the resource-capped single-job build described in the 1.9 handoff,
-run the save suites and RomM parser cases, then the full suite and staged startup/package checks.
-Record the exact commit and results before installing or requesting publication approval.
+Integrated 1.9 validation completed on source commit
+`3e57cfac49ba644dc776e8b03109c64ae1d3cd3d` after Cemu closed:
+
+- Release configure/build passed with one job, low priority, CPUQuota=100%, MemoryHigh=3G,
+  MemoryMax=4G, and MemorySwapMax=0. Peak build memory was 1.2 GB, with no swap usage.
+- All 232 isolated CTest tests passed in 367.14 seconds, including the save suites,
+  backup-retention regression, RomM parser cases, and shipped WUA profile regression.
+- Staged installation and startup smoke passed. Desktop entry and offline AppStream
+  validation passed. Static diff checks passed.
+- Evidence and staged files are under `build/review-integrated/`. The installed application
+  remains unchanged. Automated validation does not replace gameplay/controller acceptance.
+
+The maintainer authorized pushing the development branches. These results support branch
+publication for continued development, not a release or a claim of manual acceptance.
 
 Continue RomM with bounded same-origin requests, secure token storage, and retention of the
 last complete catalog on refresh failure. Its parser foundation alone is not a working
