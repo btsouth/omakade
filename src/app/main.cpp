@@ -79,6 +79,16 @@ namespace {
 
 QString verifyEditorTextFields(QQuickWindow* window, QQuickItem* container,
                                ControllerInput& controller) {
+  const auto waitForFocus = [](QQuickItem* item) {
+    QElapsedTimer timer;
+    timer.start();
+    do {
+      QEventLoop events;
+      QTimer::singleShot(10, &events, &QEventLoop::quit);
+      events.exec();
+    } while (!item->hasActiveFocus() && timer.elapsed() < 250);
+    return item->hasActiveFocus();
+  };
   const QSize expectedSize = window->property("testRenderSize").toSize();
   if (expectedSize.isValid() && window->size() != expectedSize)
     return "Editor fixture did not use the requested window size";
@@ -119,8 +129,9 @@ QString verifyEditorTextFields(QQuickWindow* window, QQuickItem* container,
       if (!grid) return "Keyboard grid is missing";
       for (const auto& mode : {"upper", "lower", "symbols"}) {
         keyboard->setProperty("keyboardMode", mode);
-        QMetaObject::invokeMethod(keyboard, "focusKeyboard");
         QCoreApplication::processEvents();
+        QMetaObject::invokeMethod(keyboard, "focusKeyboard");
+        if (!waitForFocus(grid)) return "Keyboard grid failed to take focus";
         const int count = grid->property("count").toInt();
         QSet<int> visited{0};
         QList<int> pending{0};
@@ -146,21 +157,15 @@ QString verifyEditorTextFields(QQuickWindow* window, QQuickItem* container,
       const QString beforeCancel = field->property("text").toString();
       keyboard->setProperty("value", "discard this");
       controller.keyRequested(Qt::Key_Escape, Qt::NoModifier);
-      QEventLoop focusSettled;
-      QTimer::singleShot(20, &focusSettled, &QEventLoop::quit);
-      focusSettled.exec();
       if (window->property("couchTextEntryOpen").toBool() ||
-          field->property("text").toString() != beforeCancel)
+          field->property("text").toString() != beforeCancel || !waitForFocus(field))
         return "Keyboard Cancel changed the field or failed to close";
       controller.keyRequested(Qt::Key_Return, Qt::NoModifier);
       if (!window->property("couchTextEntryOpen").toBool()) return "Keyboard failed to reopen after Cancel";
       keyboard->setProperty("value", "start accepted");
       controller.startRequested();
-      QEventLoop acceptedFocusSettled;
-      QTimer::singleShot(20, &acceptedFocusSettled, &QEventLoop::quit);
-      acceptedFocusSettled.exec();
       if (window->property("couchTextEntryOpen").toBool() ||
-          field->property("text").toString() != "start accepted" || !field->hasActiveFocus())
+          field->property("text").toString() != "start accepted" || !waitForFocus(field))
         return "Start did not accept and refocus " + field->objectName();
     }
     field->setProperty("text", original);
