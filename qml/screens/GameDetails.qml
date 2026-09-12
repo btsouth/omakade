@@ -1672,6 +1672,7 @@ Item {
         anchorItem: detailManageButton
         title: "SAVE BACKUPS"
         fixedHeader: true
+        preferredWidth: 460
         property string pendingVersion: ""
         property bool pendingShared: false
         onClosed: pendingVersion = ""
@@ -1680,7 +1681,9 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.mutedText
             font.family: Theme.fontFamily
-            text: "Previous in-game saves captured before launch. Local copies, up to 10 versions per save layout and 2 GiB for save sets. Save states are not included. Start from an in-game save after restoring."
+            font.pixelSize: 12
+            lineHeight: 1.2
+            text: "Automatic snapshots made before launch. Up to 10 versions are kept. Save states are not included."
         }
         Text {
             Layout.fillWidth: true
@@ -1688,7 +1691,19 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.foreground
             font.family: Theme.fontFamily
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
             text: typeof SaveBackups !== "undefined" ? SaveBackups.message : ""
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingVersion !== "" && saveBackupsMenu.pendingShared
+            wrapMode: Text.Wrap
+            color: Theme.yellow
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            text: "SHARED STORAGE · This may also change saves for other games or profiles."
         }
         Text {
             Layout.fillWidth: true
@@ -1696,7 +1711,9 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.foreground
             font.family: Theme.fontFamily
-            text: (saveBackupsMenu.pendingShared ? "This backup contains shared storage. Restoring it also replaces saves for other games or profiles in that storage. " : "") + "Replace the current save with this version? Close emulators first. Your current save will be backed up before restoring."
+            font.pixelSize: 12
+            lineHeight: 1.2
+            text: "Restore this version? Close the emulator first. Your current saves will be backed up before anything changes."
         }
         MenuAction {
             id: cancelSaveRestore
@@ -1731,7 +1748,7 @@ Item {
                 objectName: "saveBackupVersion_" + index
                 Layout.fillWidth: true
                 visible: saveBackupsMenu.pendingVersion === ""
-                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy h:mm:ss AP") + (modelData.shared === true ? " · SHARED STORAGE" : "")
+                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy  ·  h:mm AP") + (modelData.shared === true ? "  ·  SHARED" : "")
                 onClicked: { saveBackupsMenu.pendingShared = modelData.shared === true; saveBackupsMenu.pendingVersion = modelData.id; Qt.callLater(cancelSaveRestore.forceActiveFocus) }
             }
         }

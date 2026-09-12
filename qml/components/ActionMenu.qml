@@ -8,6 +8,7 @@ Popup {
     required property Item anchorItem
     property bool showCloseButton: true
     property bool fixedHeader: false
+    property real preferredWidth: 320
     property string doneObjectName: "actionMenuDoneButton"
     property Item headerDownTarget: null
     readonly property Item doneControl: headerDone
@@ -16,7 +17,7 @@ Popup {
     default property alias actions: actionColumn.data
 
     parent: Overlay.overlay
-    width: Math.min(320 * (host.couchMode ? Math.max(1, Math.min(2.4, host.height / 900)) : 1), host.width - 48)
+    width: Math.min(preferredWidth * (host.couchMode ? Math.max(1, Math.min(2.4, host.height / 900)) : 1), host.width - 48)
     height: Math.min(implicitHeight, host.height - 48)
     padding: 16
     modal: true
