@@ -1,5 +1,8 @@
 # Post-1.8 local work
 
+> Latest maintenance: [save safety review follow-up](SAVE-SAFETY-REVIEW-2026-09-12.md).
+> Three confirmed save defects are fixed with regression coverage; local acceptance is next.
+
 > Latest feature candidate: [emulator save protection](SAVE-SETS.md).
 
 > Latest continuation: [everyday launch and library polish](EVERYDAY-POLISH-2026-09-09.md).
