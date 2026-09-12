@@ -103,6 +103,8 @@ private slots:
       QCOMPARE(network.requests.size(), 1);
       QCOMPARE(network.requests.first().url().host(), QString("www.protondb.com"));
       QVERIFY(network.requests.first().url().query().isEmpty());
+      QCOMPARE(network.requests.first().rawHeader("User-Agent"),
+               QByteArray("Omakade/development (optional ProtonDB badges)"));
       QCOMPARE(network.requests.first().attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(),
                int(QNetworkRequest::ManualRedirectPolicy));
       service.request("Steam", "620");

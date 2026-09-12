@@ -1,5 +1,6 @@
 #include "metadata/ProtonDbService.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -120,7 +121,12 @@ void ProtonDbService::next() {
   const auto appId = m_queue.dequeue();
   QNetworkRequest request(
       QUrl(QStringLiteral("https://www.protondb.com/api/v1/reports/summaries/%1.json").arg(appId)));
-  request.setRawHeader("User-Agent", "Omakade/1.8 (optional ProtonDB badges)");
+  const QString version = QCoreApplication::applicationVersion().isEmpty()
+                              ? QStringLiteral("development")
+                              : QCoreApplication::applicationVersion();
+  request.setRawHeader(
+      "User-Agent",
+      QStringLiteral("Omakade/%1 (optional ProtonDB badges)").arg(version).toUtf8());
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                        QNetworkRequest::ManualRedirectPolicy);
   request.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);
