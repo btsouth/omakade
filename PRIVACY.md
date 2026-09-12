@@ -195,7 +195,7 @@ remembered for a week so they are not requested on every launch.
 ## Optional ProtonDB badges
 
 Badges are disabled by default. Enabling them in Settings → Connections sends
-Steam store App IDs for games being browsed to `www.protondb.com` over HTTPS. No
+Steam store App IDs when game details are opened to `www.protondb.com` over HTTPS. No
 Steam account ID, game title, installation path, credentials or ROM data is sent.
 Requests use ProtonDB's public report-summary endpoint; no account is required.
 Responses are size-limited and cached under Omakade's cache directory for seven

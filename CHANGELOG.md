@@ -2,6 +2,8 @@
 
 ## 1.9.0
 
+- Keep ProtonDB reports in game details and remove extra library card lines and overlays.
+
 - Prevent cached cover images from entering a loading-status binding loop.
 - Add an optional RomM library source with keyring credentials, local mount mapping,
   offline catalog retention, and library, launch, and save-protection integration.

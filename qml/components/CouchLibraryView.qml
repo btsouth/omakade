@@ -665,12 +665,7 @@ FocusScope {
             elide: Text.ElideRight
         }
 
-        ProtonDbBadge {
-            gameSource: root.currentGame.source || ""
-            appId: root.currentGame.appId || ""
-            font.pixelSize: 15 * root.uiScale
-            fetchEnabled: root.visible && root.detailView
-        }
+
         Row {
             spacing: 10 * root.uiScale
 
@@ -993,26 +988,7 @@ FocusScope {
             required property int hours
             required property color accentStart
             required property color accentEnd
-            Rectangle {
-                z: 3
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 8 * root.uiScale
-                width: gridProtonBadge.implicitWidth + 12 * root.uiScale
-                height: gridProtonBadge.implicitHeight + 8 * root.uiScale
-                visible: gridProtonBadge.visible
-                radius: 4
-                color: Theme.darkerBackground
-                ProtonDbBadge {
-                    id: gridProtonBadge
-                    anchors.centerIn: parent
-                    gameSource: gridCard.index >= 0 ? gridCard.source : ""
-                    appId: gridCard.appId
-                    compact: true
-                    font.pixelSize: 12 * root.uiScale
-                    fetchEnabled: root.visible && !root.detailView
-                }
-            }
+
 
             readonly property bool current: gameGrid.currentIndex === index
 

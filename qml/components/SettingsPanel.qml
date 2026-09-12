@@ -844,13 +844,13 @@ import QtQuick.Layouts
                     objectName: "protonDbToggle"
                     Layout.fillWidth: true
                     compact: true
-                    text: "PROTONDB BADGES: " + (Preferences.protonDbEnabled ? "ON" : "OFF")
+                    text: "PROTONDB REPORTS: " + (Preferences.protonDbEnabled ? "ON" : "OFF")
                     selected: Preferences.protonDbEnabled
                     onClicked: Preferences.protonDbEnabled = !Preferences.protonDbEnabled
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Optional community compatibility reports for Steam games. Sends visible games' Steam App IDs to ProtonDB and caches results for seven days. No account or key required."
+                    text: "Optional community compatibility reports in Steam game details. Sends opened games' Steam App IDs to ProtonDB and caches results for seven days. No account or key required."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 11 * settingsPanel.uiScale
