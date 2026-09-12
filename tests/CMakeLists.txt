@@ -863,6 +863,16 @@ set_tests_properties(omakade_library_empty_review PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
 
+add_test(NAME omakade_session_history_desktop COMMAND omakade
+  --render-overlay=session-history --render-size=640x600
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/session-history-desktop.png)
+add_test(NAME omakade_session_history_couch COMMAND omakade --couch
+  --render-overlay=session-history --render-size=1920x1080
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/session-history-couch.png)
+set_tests_properties(omakade_session_history_desktop omakade_session_history_couch PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  TIMEOUT 20)
+
 qt_add_executable(omakade_save_backups_tests SaveBackupsTests.cpp)
 target_link_libraries(omakade_save_backups_tests PRIVATE omakade_core Qt6::Test)
 add_test(NAME omakade_save_backups_tests COMMAND omakade_save_backups_tests)

@@ -804,6 +804,7 @@ private slots:
   void sessionRecorderSeparatesGamesWithinOneProcess();
   void sessionRecorderSurvivesRestartsWithoutInventingTime();
   void sessionStoreMergesImportedAndTrackedPlaytime();
+  void sessionStoreListsBoundedPerGameHistory();
   void launchFeedbackGuardsRepeatedRequests();
   void consolePortalsGroupRetroArchRomsAndCanFlatten();
   void consolePortalsDoNotRebuildTheLibraryWhenCoversChange();
@@ -6659,6 +6660,47 @@ void CoreTests::sessionStoreMergesImportedAndTrackedPlaytime() {
     QCOMPARE(store.displaySeconds(QStringLiteral("/games/a.nsp"), 7200), qint64(7200));
     QCOMPARE(store.sessionLastPlayed(QStringLiteral("/games/a.nsp")), qint64(0));
   }
+}
+
+void CoreTests::sessionStoreListsBoundedPerGameHistory() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+  const QString connection = QStringLiteral("test-session-history");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 first =
+        SessionDatabase::beginSession(database, "/games/a.nsp", "Ryujinx", 1000, 1, 1);
+    const qint64 second =
+        SessionDatabase::beginSession(database, "/games/a.nsp", "Ryujinx", 2000, 2, 2);
+    const qint64 linked =
+        SessionDatabase::beginSession(database, "/games/b.iso", "PCSX2", 3000, 3, 3);
+    const qint64 unrelated =
+        SessionDatabase::beginSession(database, "/games/c.nes", "RetroArch", 4000, 4, 4);
+    QVERIFY(SessionDatabase::endSession(database, first, 1060, 60));
+    QVERIFY(SessionDatabase::endSession(database, second, 2120, 120));
+    QVERIFY(SessionDatabase::updateProgress(database, linked, 30, 3030));
+    QVERIFY(SessionDatabase::endSession(database, unrelated, 4060, 60));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  PlaySessionStore store(path);
+  const QVariantList history =
+      store.historyForPaths({"/games/a.nsp", "/games/b.iso", "/games/a.nsp"}, 2);
+  QCOMPARE(history.size(), 2);
+  const QVariantMap newest = history.at(0).toMap();
+  QCOMPARE(newest.value("source").toString(), QStringLiteral("PCSX2"));
+  QCOMPARE(newest.value("startedAt").toLongLong(), qint64(3000));
+  QCOMPARE(newest.value("seconds").toLongLong(), qint64(30));
+  QVERIFY(newest.value("active").toBool());
+  const QVariantMap previous = history.at(1).toMap();
+  QCOMPARE(previous.value("startedAt").toLongLong(), qint64(2000));
+  QCOMPARE(previous.value("endedAt").toLongLong(), qint64(2120));
+  QVERIFY(!previous.value("active").toBool());
+  QCOMPARE(store.historyForPaths({"/games/a.nsp"}, 1).size(), 1);
+  QVERIFY(store.historyForPaths({}, 8).isEmpty());
 }
 
 QTEST_MAIN(CoreTests)

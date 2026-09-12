@@ -60,6 +60,30 @@ Item {
         const revision = SaveBackups.revision
         return SaveBackups.count(saveGamePath)
     }
+    readonly property var sessionHistoryPaths: {
+        const paths = []
+        const candidates = [root.selectedInstallation].concat(root.installations || [])
+        for (const installation of candidates) {
+            const path = installation ? (installation.installPath || "") : ""
+            if (path && paths.indexOf(path) < 0) paths.push(path)
+        }
+        return paths
+    }
+    readonly property var recordedSessions: {
+        if (typeof SessionRecorderStatus === "undefined" || !SessionRecorderStatus
+                || !SessionRecorderStatus.storageAvailable || sessionHistoryPaths.length === 0)
+            return []
+        const revision = SessionRecorderStatus.revision
+        return SessionRecorderStatus.historyForPaths(sessionHistoryPaths, 8)
+    }
+    function sessionDurationText(value) {
+        const seconds = Math.max(0, Number(value) || 0)
+        if (seconds < 60) return "Less than 1m"
+        const hours = Math.floor(seconds / 3600)
+        const minutes = Math.floor((seconds % 3600) / 60)
+        if (hours > 0) return hours + "h" + (minutes > 0 ? " " + minutes + "m" : "")
+        return minutes + "m"
+    }
     function showSaveBackups() {
         SaveBackups.selectLaunch(selectedInstallation.source, saveGamePath,
                                  selectedInstallation.source === "RetroArch" ? (selectedInstallation.launchTarget || "") : "",
@@ -463,6 +487,15 @@ Item {
                     font.family: Theme.fontFamily
                     font.pixelSize: (root.couchMode ? 13 : 11) * root.uiScale
                     wrapMode: Text.Wrap
+                }
+                GlassButton {
+                    id: playHistoryButton
+                    objectName: "playHistoryButton"
+                    Layout.alignment: Qt.AlignLeft
+                    visible: root.recordedSessions.length > 0
+                    compact: true
+                    text: "PLAY HISTORY"
+                    onClicked: playHistoryMenu.open()
                 }
                 Text {
                     objectName: "launchInstallationSummary"
@@ -1661,6 +1694,77 @@ Item {
             onClicked: detailManage.invoke(function () {
                 root.game.linked ? root.unlinkRequested() : root.linkRequested()
             })
+        }
+    }
+
+    ActionMenu {
+        id: playHistoryMenu
+        objectName: "playHistoryMenu"
+        showCloseButton: false
+        host: root.Window.window
+        anchorItem: playHistoryButton
+        title: "PLAY HISTORY"
+        fixedHeader: true
+        preferredWidth: 460
+        doneObjectName: "playHistoryDoneButton"
+        initialFocus: doneControl
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Theme.mutedText
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            text: SessionRecorderStatus && SessionRecorderStatus.enabled
+                  ? "Recent sessions recorded locally by Omakade."
+                  : "Recording is off. Existing local history is retained."
+        }
+        Repeater {
+            model: root.recordedSessions
+            Rectangle {
+                required property var modelData
+                required property int index
+                objectName: "playHistoryEntry_" + index
+                Layout.fillWidth: true
+                implicitHeight: 50 * root.uiScale
+                radius: Math.max(4, Theme.cornerRadius)
+                color: root.alpha(Theme.foreground, 0.045)
+                border.color: root.alpha(Theme.foreground, 0.16)
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 9 * root.uiScale
+                    spacing: 3 * root.uiScale
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: Qt.formatDateTime(new Date(modelData.startedAt * 1000),
+                                                    "MMM d, yyyy  ·  h:mm AP")
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11 * root.uiScale
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            text: (modelData.active ? "IN PROGRESS  ·  " : "")
+                                  + root.sessionDurationText(modelData.seconds)
+                            color: modelData.active ? Theme.accent : Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11 * root.uiScale
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: modelData.source || "Omakade"
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10 * root.uiScale
+                        elide: Text.ElideRight
+                    }
+                }
+            }
         }
     }
 

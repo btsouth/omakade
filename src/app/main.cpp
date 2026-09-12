@@ -37,6 +37,7 @@
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
 #include "tracking/PlaySessionStore.h"
+#include "tracking/SessionDatabase.h"
 #include "saves/SaveBackups.h"
 
 #include <QAbstractItemModel>
@@ -841,7 +842,10 @@ int main(int argc, char* argv[]) {
     libraryDatabasePath = QStringLiteral(":memory:");
   }
   QTemporaryDir artworkFixture;
-  if (gogSettingsFixture || linkedPreferenceFixture || backupFixture || artworkEditorTest || savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") || renderOverlay == QStringLiteral("bulk-editor")) {
+  if (gogSettingsFixture || linkedPreferenceFixture || backupFixture || artworkEditorTest ||
+      savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") ||
+      renderOverlay == QStringLiteral("bulk-editor") ||
+      renderOverlay == QStringLiteral("session-history")) {
     if (!artworkFixture.isValid()) return EXIT_FAILURE;
     libraryDatabasePath = artworkFixture.filePath(QStringLiteral("library.sqlite"));
   }
@@ -1284,6 +1288,27 @@ int main(int argc, char* argv[]) {
     preferences.setTrackPlaySessions(renderOverlay.endsWith("on"));
     playSessionStore->setEnabled(preferences.trackPlaySessions());
   }
+  if (renderOverlay == QStringLiteral("session-history")) {
+    const QString connection = QStringLiteral("omakade-session-history-render");
+    QSqlDatabase database;
+    if (!SessionDatabase::open(database, libraryDatabasePath, connection)) return EXIT_FAILURE;
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    const qint64 older = SessionDatabase::beginSession(
+        database, QStringLiteral("/games/demo-0.nes"), QStringLiteral("RetroArch"),
+        now - 7200, 10, 10);
+    const qint64 recent = SessionDatabase::beginSession(
+        database, QStringLiteral("/games/demo-0.nes"), QStringLiteral("RetroArch"),
+        now - 1800, 11, 11);
+    if (older <= 0 || recent <= 0 ||
+        !SessionDatabase::endSession(database, older, now - 5400, 1800) ||
+        !SessionDatabase::endSession(database, recent, now - 600, 1200))
+      return EXIT_FAILURE;
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+    playSessionStore = std::make_unique<PlaySessionStore>(libraryDatabasePath);
+    playSessionStore->setEnabled(preferences.trackPlaySessions());
+  }
   engine.rootContext()->setContextProperty(QStringLiteral("SessionRecorderStatus"), playSessionStore.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Controller"), &controller);
   engine.rootContext()->setContextProperty(QStringLiteral("Achievements"), &achievements);
@@ -1489,6 +1514,42 @@ int main(int argc, char* argv[]) {
               qCritical() << "Launch failure lost feedback or retry focus";
               application.exit(EXIT_FAILURE); return;
             }
+          });
+        });
+      }
+      if (renderOverlay == QStringLiteral("session-history")) {
+        QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
+        QTimer::singleShot(120, quickWindow, [quickWindow, &application] {
+          auto* details = quickWindow->findChild<QObject*>("gameDetails");
+          if (!details) {
+            application.exit(EXIT_FAILURE);
+            return;
+          }
+          details->setProperty(
+              "selectedInstallation",
+              QVariantMap{{"source", "RetroArch"},
+                          {"installPath", "/games/demo-0.nes"},
+                          {"launchTarget", "snes9x_libretro.so"},
+                          {"appId", "demo-0"}});
+          QTimer::singleShot(80, quickWindow, [quickWindow, &application] {
+            auto* button = findVisualItem(quickWindow->contentItem(), "playHistoryButton");
+            if (!button || !button->isVisible()) {
+              qCritical() << "Play history was not available for the selected game";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            QMetaObject::invokeMethod(button, "clicked");
+            QTimer::singleShot(80, quickWindow, [quickWindow, &application] {
+              auto* menu = quickWindow->findChild<QObject*>("playHistoryMenu");
+              auto* done = quickWindow->findChild<QQuickItem*>("playHistoryDoneButton");
+              auto* first = findVisualItem(quickWindow->contentItem(), "playHistoryEntry_0");
+              auto* second = findVisualItem(quickWindow->contentItem(), "playHistoryEntry_1");
+              if (!menu || !menu->property("opened").toBool() || !done ||
+                  !done->hasActiveFocus() || !first || !second) {
+                qCritical() << "Play history did not open with safe focus and recorded sessions";
+                application.exit(EXIT_FAILURE);
+              }
+            });
           });
         });
       }

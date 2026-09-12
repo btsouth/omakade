@@ -3,6 +3,8 @@
 #include <QHash>
 #include <QObject>
 #include <QString>
+#include <QStringList>
+#include <QVariantList>
 
 #include <QSqlDatabase>
 
@@ -19,6 +21,7 @@ class PlaySessionStore final : public QObject {
   Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
   Q_PROPERTY(bool recorderRunning READ recorderRunning NOTIFY recorderStatusChanged)
   Q_PROPERTY(bool storageAvailable READ storageAvailable CONSTANT)
+  Q_PROPERTY(int revision READ revision NOTIFY totalsChanged)
 
 public:
   explicit PlaySessionStore(const QString& databasePath, QObject* parent = nullptr);
@@ -29,7 +32,9 @@ public:
   void setEnabled(bool value);
   bool recorderRunning() const { return m_recorderRunning; }
   bool storageAvailable() const { return m_valid; }
+  int revision() const { return m_revision; }
   Q_INVOKABLE void refreshRecorderStatus();
+  Q_INVOKABLE QVariantList historyForPaths(const QStringList& gamePaths, int limit = 8) const;
   static bool recorderOwnsDatabase(const QString& databasePath);
   // A negative import means this source has no imported playtime counter.
   static QString provenance(const PlaySessionStore* store, const QString& gamePath,
@@ -68,6 +73,7 @@ private:
   bool m_recorderRunning = false;
   bool m_enabled = true;
   bool m_valid = false;
+  int m_revision = 0;
   QHash<QString, qint64> m_trackedSeconds;
   QHash<QString, qint64> m_baselines;
   QHash<QString, qint64> m_lastPlayed;

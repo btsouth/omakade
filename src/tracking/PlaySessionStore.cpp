@@ -6,10 +6,12 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QLockFile>
+#include <QSqlQuery>
 #include <QSysInfo>
 #include <unistd.h>
 #include <QTimer>
 #include <QUuid>
+#include <QVariantMap>
 
 namespace {
 constexpr int kRefreshIntervalMs = 20000;
@@ -53,6 +55,40 @@ void PlaySessionStore::refreshRecorderStatus() {
   if (running == m_recorderRunning) return;
   m_recorderRunning = running;
   emit recorderStatusChanged();
+}
+
+QVariantList PlaySessionStore::historyForPaths(const QStringList& gamePaths, int limit) const {
+  QVariantList history;
+  if (!m_valid) return history;
+
+  QStringList paths;
+  for (const QString& path : gamePaths) {
+    const QString clean = path.trimmed();
+    if (!clean.isEmpty() && clean.size() <= 4096 && !paths.contains(clean)) paths.append(clean);
+    if (paths.size() == 32) break;
+  }
+  if (paths.isEmpty()) return history;
+
+  QStringList placeholders;
+  for (qsizetype index = 0; index < paths.size(); ++index) placeholders.append("?");
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+                    "SELECT source, started_at, ended_at, seconds FROM play_sessions "
+                    "WHERE game_path IN (%1) ORDER BY started_at DESC, id DESC LIMIT ?")
+                    .arg(placeholders.join(',')));
+  for (const QString& path : paths) query.addBindValue(path);
+  query.addBindValue(qBound(1, limit, 20));
+  if (!query.exec()) return history;
+
+  while (query.next()) {
+    const qint64 endedAt = query.value(2).toLongLong();
+    history.append(QVariantMap{{"source", query.value(0).toString()},
+                               {"startedAt", query.value(1).toLongLong()},
+                               {"endedAt", endedAt},
+                               {"seconds", query.value(3).toLongLong()},
+                               {"active", endedAt == 0}});
+  }
+  return history;
 }
 
 QString PlaySessionStore::provenance(const PlaySessionStore* store, const QString& path,
@@ -132,5 +168,6 @@ void PlaySessionStore::refresh() {
   }
   m_trackedSeconds = tracked;
   m_lastPlayed = lastPlayed;
+  ++m_revision;
   emit totalsChanged();
 }
