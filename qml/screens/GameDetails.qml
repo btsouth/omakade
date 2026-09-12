@@ -84,6 +84,12 @@ Item {
         if (hours > 0) return hours + "h" + (minutes > 0 ? " " + minutes + "m" : "")
         return minutes + "m"
     }
+    function storageSizeText(value) {
+        const bytes = Math.max(0, Number(value) || 0)
+        if (bytes < 1024) return bytes + " B"
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0) + " KiB"
+        return (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MiB"
+    }
     function showSaveBackups() {
         SaveBackups.selectLaunch(selectedInstallation.source, saveGamePath,
                                  selectedInstallation.source === "RetroArch" ? (selectedInstallation.launchTarget || "") : "",
@@ -91,6 +97,7 @@ Item {
                                  selectedInstallation.runner || "",
                                  selectedInstallation.source === "PCSX2" || selectedInstallation.source === "RetroArch" ? "" : (selectedInstallation.launchTarget || ""))
         saveBackupsMenu.pendingVersion = ""
+        saveBackupsMenu.pendingDelete = false
         saveBackupsMenu.open()
     }
     signal manageRequested()
@@ -1779,7 +1786,11 @@ Item {
         preferredWidth: 460
         property string pendingVersion: ""
         property bool pendingShared: false
-        onClosed: pendingVersion = ""
+        property bool pendingDelete: false
+        onClosed: {
+            pendingVersion = ""
+            pendingDelete = false
+        }
         Text {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
@@ -1801,6 +1812,16 @@ Item {
         }
         Text {
             Layout.fillWidth: true
+            visible: typeof SaveBackups !== "undefined" && SaveBackups.versions.length > 0
+            wrapMode: Text.Wrap
+            color: Theme.mutedText
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            text: SaveBackups.versions.length + (SaveBackups.versions.length === 1 ? " backup" : " backups")
+                  + "  ·  " + root.storageSizeText(SaveBackups.storageBytes)
+        }
+        Text {
+            Layout.fillWidth: true
             visible: saveBackupsMenu.pendingVersion !== "" && saveBackupsMenu.pendingShared
             wrapMode: Text.Wrap
             color: Theme.yellow
@@ -1817,24 +1838,59 @@ Item {
             font.family: Theme.fontFamily
             font.pixelSize: 12
             lineHeight: 1.2
-            text: "Restore this version? Close the emulator first. Your current saves will be backed up before anything changes."
+            text: saveBackupsMenu.pendingDelete
+                  ? "Delete this backup? This cannot be undone. Your current save will not change."
+                  : "Restore this version? Close the emulator first. Your current saves will be backed up before anything changes."
         }
         MenuAction {
             id: cancelSaveRestore
             objectName: "cancelSaveRestore"
             Layout.fillWidth: true
             visible: saveBackupsMenu.pendingVersion !== ""
-            text: "CANCEL"
-            onClicked: { saveBackupsMenu.pendingVersion = ""; saveBackupsMenu.doneControl.forceActiveFocus() }
+            text: saveBackupsMenu.pendingDelete ? "BACK" : "CANCEL"
+            onClicked: {
+                if (saveBackupsMenu.pendingDelete) {
+                    saveBackupsMenu.pendingDelete = false
+                    Qt.callLater(cancelSaveRestore.forceActiveFocus)
+                } else {
+                    saveBackupsMenu.pendingVersion = ""
+                    saveBackupsMenu.doneControl.forceActiveFocus()
+                }
+            }
+        }
+        MenuAction {
+            objectName: "deleteSaveBackup"
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingVersion !== "" && !saveBackupsMenu.pendingDelete
+            text: "DELETE BACKUP…"
+            onClicked: {
+                saveBackupsMenu.pendingDelete = true
+                Qt.callLater(cancelSaveRestore.forceActiveFocus)
+            }
         }
         MenuAction {
             objectName: "confirmSaveRestore"
             Layout.fillWidth: true
             visible: saveBackupsMenu.pendingVersion !== ""
-            text: "RESTORE THIS SAVE"
+            text: saveBackupsMenu.pendingDelete ? "DELETE BACKUP" : "RESTORE THIS SAVE"
             onClicked: {
-                SaveBackups.restore(saveBackupsMenu.pendingVersion)
+                if (saveBackupsMenu.pendingDelete)
+                    SaveBackups.deleteVersion(saveBackupsMenu.pendingVersion)
+                else
+                    SaveBackups.restore(saveBackupsMenu.pendingVersion)
                 saveBackupsMenu.pendingVersion = ""
+                saveBackupsMenu.pendingDelete = false
+                saveBackupsMenu.doneControl.forceActiveFocus()
+            }
+        }
+        MenuAction {
+            objectName: "createSaveBackup"
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingVersion === ""
+                     && typeof SaveBackups !== "undefined" && SaveBackups.canSnapshot
+            text: "BACK UP NOW"
+            onClicked: {
+                SaveBackups.snapshotSelected()
                 saveBackupsMenu.doneControl.forceActiveFocus()
             }
         }
@@ -1852,8 +1908,15 @@ Item {
                 objectName: "saveBackupVersion_" + index
                 Layout.fillWidth: true
                 visible: saveBackupsMenu.pendingVersion === ""
-                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy  ·  h:mm AP") + (modelData.shared === true ? "  ·  SHARED" : "")
-                onClicked: { saveBackupsMenu.pendingShared = modelData.shared === true; saveBackupsMenu.pendingVersion = modelData.id; Qt.callLater(cancelSaveRestore.forceActiveFocus) }
+                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy  ·  h:mm AP")
+                      + "  ·  " + root.storageSizeText(modelData.bytes)
+                      + (modelData.shared === true ? "  ·  SHARED" : "")
+                onClicked: {
+                    saveBackupsMenu.pendingShared = modelData.shared === true
+                    saveBackupsMenu.pendingDelete = false
+                    saveBackupsMenu.pendingVersion = modelData.id
+                    Qt.callLater(cancelSaveRestore.forceActiveFocus)
+                }
             }
         }
     }

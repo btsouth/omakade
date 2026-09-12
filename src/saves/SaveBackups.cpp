@@ -264,18 +264,21 @@ bool SaveBackups::protectLaunch(const QString& source, const QString& game, cons
 void SaveBackups::selectLaunch(const QString& source, const QString& game, const QString& core,
                                bool flatpak, const QString& id, const QString& runner,
                                const QString& target) {
-  selectGame(game);
+  m_game = game;
+  m_context = {{"source", source},
+               {"game", game},
+               {"core", core},
+               {"flatpak", flatpak},
+               {"id", id},
+               {"runner", runner},
+               {"target", target}};
+  m_versions = list(game);
+  m_message.clear();
   if (source == "RetroArch" && (core.isEmpty() || core == "DETECT")) {
     report("Existing saves are copied before launch using the selected emulator.");
     return;
   }
-  const auto layout = resolve({{"source", source},
-                               {"game", game},
-                               {"core", core},
-                               {"flatpak", flatpak},
-                               {"id", id},
-                               {"runner", runner},
-                               {"target", target}});
+  const auto layout = resolve(m_context);
   report(
       layout.valid()
           ? (layout.description +
@@ -283,8 +286,18 @@ void SaveBackups::selectLaunch(const QString& source, const QString& game, const
           : layout.error);
 }
 int SaveBackups::count(const QString& game) const { return game.isEmpty() ? 0 : list(game).size(); }
+qint64 SaveBackups::storageBytes() const {
+  qint64 total = 0;
+  for (const auto& version : m_versions)
+    total += qMax<qint64>(0, version.toMap()["bytes"].toLongLong());
+  return total;
+}
+bool SaveBackups::canSnapshot() const {
+  return !m_game.isEmpty() && !m_context.isEmpty() && resolve(m_context).valid();
+}
 void SaveBackups::selectGame(const QString& game) {
   m_game = game;
+  m_context = {};
   m_versions = list(game);
   m_message.clear();
   emit changed();
@@ -414,6 +427,61 @@ bool SaveBackups::protect(const QString& game, const QString& core, bool flatpak
     emit changed();
   }
   return okay;
+}
+bool SaveBackups::snapshotSelected() {
+  if (!canSnapshot()) {
+    report("No supported save location is available for this game.");
+    return false;
+  }
+  QString error;
+  if (!m_sets.recover([this](const QJsonObject& c) { return resolve(c); }, &error)) {
+    report(error);
+    return false;
+  }
+  const int previousCount = list(m_game).size();
+  if (!m_sets.snapshot(m_game, m_context, resolve(m_context), &error)) {
+    report(error);
+    return false;
+  }
+  const int nextCount = list(m_game).size();
+  report(nextCount == previousCount ? "No changes since the latest backup."
+                                    : "Save backup created.");
+  return true;
+}
+bool SaveBackups::deleteVersion(const QString& version) {
+  const auto fail = [this](const QString& error) {
+    report(error);
+    return false;
+  };
+  QString error;
+  if (!m_sets.recover([this](const QJsonObject& c) { return resolve(c); }, &error))
+    return fail(error);
+  if (m_game.isEmpty())
+    return fail("Choose a save backup first.");
+  if (version.startsWith("set-")) {
+    if (!m_sets.remove(m_game, version, &error))
+      return fail(error);
+  } else {
+    if (!QRegularExpression("^[0-9]{17}-[a-f0-9]{32}$").match(version).hasMatch())
+      return fail("Choose a save backup first.");
+    if (QFileInfo(m_root).canonicalFilePath() != QFileInfo(m_root).absoluteFilePath())
+      return fail("The save backup folder is unavailable.");
+    QLockFile lock(m_root + "/.lock");
+    lock.setStaleLockTime(0);
+    if (!lock.tryLock(0))
+      return fail("Save backups are busy. Try again.");
+    if (m_running())
+      return fail("Close emulators before deleting a save backup.");
+    const QString directory = gameRoot(m_game) + '/' + version;
+    const auto item = manifest(directory);
+    if (QFileInfo(directory).canonicalFilePath() != QFileInfo(directory).absoluteFilePath() ||
+        item.value("format").toInt() != 1 || item.value("game").toString() != m_game)
+      return fail("That save backup is unavailable or damaged.");
+    if (!QDir(directory).removeRecursively())
+      return fail("Could not delete the save backup.");
+  }
+  report("Backup deleted. Your current save was not changed.");
+  return true;
 }
 bool SaveBackups::restore(const QString& version) {
   const auto fail = [this](const QString& error) {

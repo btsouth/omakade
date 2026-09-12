@@ -23,6 +23,7 @@ public:
   QVariantList versions(const QString& game) const;
   bool snapshot(const QString& game, const QJsonObject& context, const SaveLayout& layout,
                 QString* error, bool allowEmpty = false);
+  bool remove(const QString& game, const QString& version, QString* error);
   bool restore(const QString& game, const QString& version, const Resolver& resolve,
                QString* error);
   bool recover(const Resolver& resolve, QString* error);

@@ -1,5 +1,6 @@
 #pragma once
 #include "saves/SaveSetStore.h"
+#include <QJsonObject>
 #include <QObject>
 #include <QVariantList>
 #include <functional>
@@ -9,6 +10,8 @@ class SaveBackups final : public QObject {
   Q_OBJECT
   Q_PROPERTY(int revision READ revision NOTIFY changed)
   Q_PROPERTY(QVariantList versions READ versions NOTIFY changed)
+  Q_PROPERTY(qint64 storageBytes READ storageBytes NOTIFY changed)
+  Q_PROPERTY(bool canSnapshot READ canSnapshot NOTIFY changed)
   Q_PROPERTY(QString message READ message NOTIFY changed)
   Q_PROPERTY(bool recoveryPending READ recoveryPending NOTIFY changed)
 public:
@@ -18,6 +21,8 @@ public:
   void setEnabled(bool enabled) { m_enabled = enabled; }
   int revision() const { return m_revision; }
   QVariantList versions() const { return m_versions; }
+  qint64 storageBytes() const;
+  bool canSnapshot() const;
   QString message() const { return m_message; }
   bool recoveryPending() const { return m_sets.pending(); }
   Q_INVOKABLE bool retryRecovery();
@@ -32,6 +37,8 @@ public:
                                 const QString& target);
   Q_INVOKABLE int count(const QString& game) const;
   Q_INVOKABLE void selectGame(const QString& game);
+  Q_INVOKABLE bool snapshotSelected();
+  Q_INVOKABLE bool deleteVersion(const QString& version);
   Q_INVOKABLE bool restore(const QString& version);
 signals:
   void changed();
@@ -44,6 +51,7 @@ private:
   bool snapshot(const QString& game, const QString& core, const QString& source, QString* error);
   void report(const QString& message, bool warn = false);
   QString m_home, m_config, m_root, m_game, m_message;
+  QJsonObject m_context;
   std::function<bool()> m_running;
   SaveSetStore m_sets;
   bool m_enabled = true;

@@ -878,7 +878,8 @@ target_link_libraries(omakade_save_backups_tests PRIVATE omakade_core Qt6::Test)
 add_test(NAME omakade_save_backups_tests COMMAND omakade_save_backups_tests)
 set_tests_properties(omakade_save_backups_tests PROPERTIES TIMEOUT 30)
 
-foreach(save_overlay IN ITEMS save-backups save-backups-confirm save-backups-shared-confirm)
+foreach(save_overlay IN ITEMS save-backups save-backups-confirm save-backups-shared-confirm
+                              save-backups-delete)
   add_test(NAME omakade_${save_overlay}_desktop COMMAND omakade
     --render-overlay=${save_overlay} --render-size=640x600
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${save_overlay}-desktop.png)

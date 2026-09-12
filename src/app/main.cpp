@@ -1565,7 +1565,28 @@ int main(int argc, char* argv[]) {
             auto* menu = quickWindow->findChild<QObject*>("saveBackupsMenu");
             auto* version = findVisualItem(quickWindow->contentItem(), "saveBackupVersion_0");
             if (!menu || !menu->property("opened").toBool() || !version) { qCritical() << "Save backup list did not open with a selectable version"; application.exit(EXIT_FAILURE); return; }
-            if (renderOverlay.endsWith("-confirm")) {
+            if (renderOverlay.endsWith("-delete")) {
+              QMetaObject::invokeMethod(version, "clicked");
+              QTimer::singleShot(80, quickWindow, [quickWindow, menu, &application] {
+                auto* cancel = quickWindow->findChild<QQuickItem*>("cancelSaveRestore");
+                auto* remove = quickWindow->findChild<QObject*>("deleteSaveBackup");
+                if (!cancel || !cancel->hasActiveFocus() || !remove ||
+                    menu->property("pendingVersion").toString().isEmpty()) {
+                  qCritical() << "Save deletion did not begin from the safe restore choice";
+                  application.exit(EXIT_FAILURE); return;
+                }
+                QMetaObject::invokeMethod(remove, "clicked");
+                QTimer::singleShot(80, quickWindow, [quickWindow, menu, &application] {
+                  auto* cancel = quickWindow->findChild<QQuickItem*>("cancelSaveRestore");
+                  auto* confirm = quickWindow->findChild<QObject*>("confirmSaveRestore");
+                  if (!cancel || !cancel->hasActiveFocus() || !confirm ||
+                      !menu->property("pendingDelete").toBool()) {
+                    qCritical() << "Save deletion did not require a focused confirmation";
+                    application.exit(EXIT_FAILURE);
+                  }
+                });
+              });
+            } else if (renderOverlay.endsWith("-confirm")) {
               QMetaObject::invokeMethod(version, "clicked");
               QTimer::singleShot(80, quickWindow, [quickWindow, menu, saveFixtureGame, renderOverlay, &application] {
                 auto* cancel = quickWindow->findChild<QQuickItem*>("cancelSaveRestore");

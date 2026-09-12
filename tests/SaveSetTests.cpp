@@ -159,6 +159,20 @@ private slots:
     QVERIFY(f.store.snapshot(f.game, f.context, f.layout, &f.error));
     QCOMPARE(f.version(), id);
   }
+  void deletionIsScopedAndBlockedWhileRunning() {
+    Fixture f;
+    QVERIFY(f.store.snapshot(f.game, f.context, f.layout, &f.error));
+    const auto id = f.version();
+    f.running = true;
+    QVERIFY(!f.store.remove(f.game, id, &f.error));
+    f.running = false;
+    QVERIFY(!f.store.remove(f.game, "../../outside", &f.error));
+    QCOMPARE(f.store.versions(f.game).size(), 1);
+    QVERIFY(f.store.remove(f.game, id, &f.error));
+    QVERIFY(f.store.versions(f.game).isEmpty());
+    QCOMPARE(get(f.home + "/game.srm"), QByteArray("original SRAM"));
+    QVERIFY(!f.store.remove(f.game, id, &f.error));
+  }
   void sharedBanksReuseHistoryAcrossGames() {
     Fixture f;
     f.layout.shared = true;
@@ -175,6 +189,10 @@ private slots:
     QCOMPARE(get(f.home + "/game.srm"), QByteArray("original SRAM"));
     QCOMPARE(f.store.versions(f.game).size(), 2);
     QCOMPARE(f.store.versions(second).size(), 2);
+    QVERIFY(f.store.remove(second, version, &f.error));
+    QCOMPARE(f.store.versions(f.game).size(), 1);
+    QCOMPARE(f.store.versions(second).size(), 1);
+    QCOMPARE(get(f.home + "/game.srm"), QByteArray("original SRAM"));
   }
   void explicitPortableLayouts() {
     Fixture f;

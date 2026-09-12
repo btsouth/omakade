@@ -333,6 +333,46 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
     QDir(root + '/' + all[i].toMap()["id"].toString().mid(4)).removeRecursively();
   return true;
 }
+bool SaveSetStore::remove(const QString& game, const QString& version, QString* error) {
+  if (!version.startsWith("set-") || !validId(version.mid(4))) {
+    *error = "Choose a save backup first.";
+    return false;
+  }
+  QString storageKey;
+  for (const auto& item : versions(game)) {
+    const auto entry = item.toMap();
+    if (entry["id"].toString() == version) {
+      storageKey = entry["storageKey"].toString();
+      break;
+    }
+  }
+  if (storageKey.isEmpty()) {
+    *error = "That save backup is no longer available.";
+    return false;
+  }
+  if (!safePath(m_root)) {
+    *error = "The save backup folder is unavailable.";
+    return false;
+  }
+  QLockFile lock(m_root + "/.lock");
+  lock.setStaleLockTime(0);
+  if (!lock.tryLock(0) || pending() || m_running()) {
+    *error = "Close emulators and finish pending save recovery first.";
+    return false;
+  }
+  const QString directory = gameRoot(m_root, storageKey) + '/' + version.mid(4);
+  const auto saved = json(directory + "/manifest.json");
+  if (!safePath(directory) || saved["format"].toInt() != 2 ||
+      saved["game"].toString() != storageKey) {
+    *error = "That save backup is unavailable or damaged.";
+    return false;
+  }
+  if (!QDir(directory).removeRecursively()) {
+    *error = "Could not delete the save backup.";
+    return false;
+  }
+  return true;
+}
 bool SaveSetStore::recover(const Resolver& resolve, QString* error) {
   if (!pending())
     return true;

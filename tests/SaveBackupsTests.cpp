@@ -116,6 +116,46 @@ private slots:
     QCOMPARE(get(f.save), QByteArray("save 11"));
     QCOMPARE(get(f.gameRoot() + '/' + f.version() + "/save.srm"), get(f.save));
   }
+  void manualSnapshotsReportStorageAndDeleteOnlyTheBackup() {
+    Fixture f;
+    f.backups.selectLaunch("RetroArch", f.game, f.core, false, "fixture", {}, {});
+    QVERIFY(f.backups.canSnapshot());
+    QVERIFY(f.backups.snapshotSelected());
+    QCOMPARE(f.backups.count(f.game), 1);
+    QCOMPARE(f.backups.storageBytes(), qint64(QByteArray("previous save").size()));
+    QVERIFY(f.backups.snapshotSelected());
+    QCOMPARE(f.backups.count(f.game), 1);
+    QVERIFY(f.backups.message().contains("No changes"));
+
+    put(f.save, "new progress");
+    QVERIFY(f.backups.snapshotSelected());
+    QCOMPARE(f.backups.count(f.game), 2);
+    const QString newest = f.backups.versions().first().toMap()["id"].toString();
+    const qint64 expectedBytes =
+        QByteArray("previous save").size() + QByteArray("new progress").size();
+    QCOMPARE(f.backups.storageBytes(), expectedBytes);
+    QVERIFY(!f.backups.deleteVersion("../../outside"));
+    QCOMPARE(f.backups.count(f.game), 2);
+
+    f.running = true;
+    QVERIFY(!f.backups.deleteVersion(newest));
+    QCOMPARE(f.backups.count(f.game), 2);
+    f.running = false;
+    QVERIFY(f.backups.deleteVersion(newest));
+    QCOMPARE(f.backups.count(f.game), 1);
+    QCOMPARE(get(f.save), QByteArray("new progress"));
+    QCOMPARE(f.backups.storageBytes(), qint64(QByteArray("previous save").size()));
+  }
+  void legacyBackupDeletionLeavesTheCurrentSaveUntouched() {
+    Fixture f;
+    QVERIFY(f.backups.protect(f.game, f.core));
+    f.backups.selectGame(f.game);
+    const QString version = f.backups.versions().first().toMap()["id"].toString();
+    QVERIFY(f.backups.deleteVersion(version));
+    QCOMPARE(f.backups.count(f.game), 0);
+    QCOMPARE(get(f.save), QByteArray("previous save"));
+    QVERIFY(!f.backups.deleteVersion(version));
+  }
   void restoreProtectsCurrentSaveAndCanUndo() {
     Fixture f;
     QVERIFY(f.backups.protect(f.game, f.core));
