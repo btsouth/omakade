@@ -8,14 +8,16 @@ Item {
     id: root
     property url source
     readonly property int status: artwork.status
+    readonly property bool ready: artwork.status === Image.Ready
     readonly property real frameAspect: height > 0 ? width / height : 2 / 3
     readonly property real imageAspect: artwork.implicitHeight > 0
                                         ? artwork.implicitWidth / artwork.implicitHeight
                                         : frameAspect
     readonly property real shapeRatio: imageAspect / frameAspect
-    readonly property bool ready: artwork.status === Image.Ready
-    readonly property bool nearFit: ready && shapeRatio >= 0.88 && shapeRatio <= 1.14
-    readonly property bool wideArt: ready && shapeRatio >= 1.8
+    // Fit depends on image geometry, not status: changing fillMode can reload the
+    // image and change status, creating a binding cycle for cached artwork.
+    readonly property bool nearFit: shapeRatio >= 0.88 && shapeRatio <= 1.14
+    readonly property bool wideArt: shapeRatio >= 1.8
 
     // Artwork reaches the cover cache as "f/<file path>" or "q/<bundled path>". Marking which
     // kind it is keeps the identifier a plain path, which survives being carried through a URL

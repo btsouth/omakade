@@ -901,3 +901,9 @@ set_tests_properties(omakade_save_set_tests PROPERTIES TIMEOUT 60)
 
 qt_add_executable(omakade_save_coverage_audit EXCLUDE_FROM_ALL ../tools/SaveCoverageAudit.cpp)
 target_link_libraries(omakade_save_coverage_audit PRIVATE omakade_core)
+
+qt_add_executable(omakade_cover_artwork_tests CoverArtworkTests.cpp)
+target_link_libraries(omakade_cover_artwork_tests PRIVATE omakade_core Qt6::Test Qt6::Quick)
+target_compile_definitions(omakade_cover_artwork_tests PRIVATE OMAKADE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+add_test(NAME omakade_cover_artwork_tests COMMAND omakade_cover_artwork_tests)
+set_tests_properties(omakade_cover_artwork_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
