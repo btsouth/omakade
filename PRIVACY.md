@@ -13,7 +13,9 @@ and Battle.net Agent product databases plus last-played stamps inside Wine,
 Proton, and Bottles prefixes. It also reads configured emulator paths and game metadata from PCSX2,
 Ryujinx, Cemu, shadPS4, and Dolphin. Switch title/icon extraction reads installed
 Ryujinx keys locally; those keys and game files are not uploaded. It never writes
-into source launcher directories.
+into source launcher directories during discovery or backup creation. A
+user-confirmed emulator save restore can replace, create, or remove files only
+within the save locations shown by Omakade.
 
 Omakade retains:
 
@@ -40,6 +42,8 @@ Omakade retains:
 - Configured GOG folders and desktop/Couch Mode preferences in the settings file
 - Private restore jobs and recovery copies in
   `$XDG_DATA_HOME/omakade/restore-recovery/`
+- Versioned emulator save copies, manifests, and interrupted-restore journals in
+  `$XDG_DATA_HOME/omakade/save-backups/`
 
 The Steam ID is an account identifier, not a credential. A Steam Web API key
 is stored only through the desktop Secret Service under
@@ -64,6 +68,21 @@ the database, logs, or process arguments.
 
 Recording is off for new configurations until enabled in Settings. Existing saved
 choices are preserved. Disabling recording retains recorded history locally.
+
+## Emulator save protection
+
+When save protection is enabled, Omakade reads mapped emulator save files immediately
+before launch and stores local versions under
+`$XDG_DATA_HOME/omakade/save-backups/`. These copies are not uploaded or included in
+personal-library exports. Disabling save protection stops new copies but retains
+existing versions for restore.
+
+Restore runs only after user confirmation. It first protects the current save set,
+then may replace, create, or remove files within the displayed save locations so the
+selected version is reproduced exactly. A persistent journal and recovery copies
+protect interrupted restores. Shared-storage restores are identified explicitly
+because they can affect other games or emulator profiles. Emulators should be closed
+before restore or recovery.
 
 ## Backup and restore
 
