@@ -1,5 +1,11 @@
 # Save safety review follow-up
 
+Update: the integrated 1.9 source at `3e57cfa` has since passed all 232 tests, the
+capped Release build, and staged startup/package checks. Results are committed on
+`codex/1.9-testing` at `f4093a6` and pushed with maintainer authorization. The pending
+validation notes below record the earlier checkpoint. Continue development on the
+integrated 1.9 branch; the installed application is unchanged.
+
 The initial review covered the 11 commits after 1.8 through `caca579`, plus the pending WUA
 recorder extension. Three save-protection defects were reproduced with disposable files:
 
