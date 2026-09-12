@@ -4,6 +4,9 @@
 #include "library/GameRoles.h"
 #include "app/AppSettings.h"
 #include <QDir>
+#include <QProcess>
+#include "launch/GameLauncher.h"
+#include <QScopeGuard>
 #include <atomic>
 #include "sources/romm/RommCredentials.h"
 #include <QFile>
@@ -104,6 +107,76 @@ class RommCatalogTests : public QObject {
       f.write("game");
   }
 private slots:
+  void liveServerAcceptance() {
+    const auto tokenFile = qEnvironmentVariable("OMAKADE_LIVE_ROMM_TOKEN_FILE");
+    if (tokenFile.isEmpty()) QSKIP("Opt-in local RomM acceptance server is not configured");
+    const QUrl liveServer("http://127.0.0.1:18765");
+    const QString mount = "/tmp/omakade-romm-live/library";
+    QFile secret(tokenFile);
+    QVERIFY(secret.open(QIODevice::ReadOnly));
+    const auto liveToken = QJsonDocument::fromJson(secret.readAll()).object()["raw_token"].toString();
+    QVERIFY(!liveToken.isEmpty());
+    QTemporaryDir dir;
+    const auto database=dir.filePath("catalog.sqlite");
+    AppSettings settings(dir.filePath("config.toml"));
+    const auto cleanup=qScopeGuard([&] {
+      RommCredentials::store(liveServer, {});
+      if (QDir(mount+"-missing").exists()) QDir().rename(mount+"-missing",mount);
+      QProcess::execute("docker", {"start", "omakade-romm-qa-romm-1"});
+    });
+    QString identity;
+    {
+      RommGameModel model(database,&settings,nullptr);
+      UnifiedGameModel unified(dir.filePath("library.sqlite"));
+      unified.addSourceModel(&model);
+      QVERIFY(model.connectServer(liveServer.toString(),mount,liveToken));
+      QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(),1,20000);
+      QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+      QVERIFY2(model.errorText().isEmpty(),qPrintable(model.errorText()));
+      QVERIFY(model.index(0).data(GameRoles::Installed).toBool());
+      identity=model.index(0).data(GameRoles::AppId).toString();
+      QCOMPARE(model.index(0).data(GameRoles::InstallPath).toString(),mount+"/roms/snes/Omakade QA.sfc");
+      unified.toggleFavorite(0);
+      QVERIFY(QDir().rename(mount,mount+"-missing"));
+      model.refresh();QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+      QCOMPARE(model.rowCount(),1);
+      QVERIFY(!model.index(0).data(GameRoles::Installed).toBool());
+      QVERIFY(QDir().rename(mount+"-missing",mount));
+      model.storeToken("rmm_"+QString(64,'b'));
+      QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+      QVERIFY(model.statusText().contains("Unauthorized"));
+      QCOMPARE(model.rowCount(),1);
+      QVERIFY(unified.index(0).data(GameRoles::Favorite).toBool());
+      model.storeToken(liveToken);
+      QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+      QVERIFY2(model.errorText().isEmpty(),qPrintable(model.errorText()));
+      QCOMPARE(QProcess::execute("docker",{"stop","--time","2","omakade-romm-qa-romm-1"}),0);
+    }
+    {
+      RommGameModel model(database,&settings,nullptr);
+      UnifiedGameModel unified(dir.filePath("library.sqlite"));unified.addSourceModel(&model);
+      QCOMPARE(model.rowCount(),1);
+      QTest::qWait(100);
+      QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+      QVERIFY(!model.errorText().isEmpty());
+      QCOMPARE(model.index(0).data(GameRoles::AppId).toString(),identity);
+      QVERIFY(unified.index(0).data(GameRoles::Favorite).toBool());
+      QCOMPARE(QProcess::execute("docker",{"start","omakade-romm-qa-romm-1"}),0);
+      bool reconnected=false;
+      for(int attempt=0;attempt<30 && !reconnected;++attempt) {
+        QTest::qWait(1000);model.refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+        reconnected=model.errorText().isEmpty();
+      }
+      QVERIFY(reconnected);
+      QCOMPARE(model.rowCount(),1);
+      QCOMPARE(model.index(0).data(GameRoles::AppId).toString(),identity);
+      model.disconnectServer(true);QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(),20000);
+      QCOMPARE(model.rowCount(),0);
+      const auto forgotten=RommCredentials::load(liveServer);
+      QVERIFY(forgotten.success);QVERIFY(forgotten.token.isEmpty());
+    }
+  }
   void modelConnectionOfflineMountAndPreferences() {
     QTemporaryDir dir;
     const QString mount=dir.filePath("mount");QVERIFY(QDir().mkpath(mount));game(mount);

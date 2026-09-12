@@ -15,7 +15,9 @@ settings/database backups are preserved in this candidate's `rollback/` director
 After closing Omakade and emulators, `python3` followed by that directory's
 `restore-app.py` restores the previous app/recorder without replacing library data.
 The candidate directory contains exact SHA-256 values in `candidate.json`.
-Live gameplay, physical controller use, and real-server RomM acceptance remain pending.
+Real-server RomM connection, cache, credentials, permissions, and controlled launch routing
+now pass: see [the live integration check](ROMM-LIVE-ACCEPTANCE-2026-09-12.md).
+Actual gameplay, physical-controller use, and a real RomM recording/save session remain pending.
 
 The following record describes the original integrated baseline and its test checklist.
 
