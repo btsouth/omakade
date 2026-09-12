@@ -1,5 +1,9 @@
 # Post-1.8 local work
 
+> Current session handoff: [1.9-DEVELOPMENT-HANDOFF.md](1.9-DEVELOPMENT-HANDOFF.md).
+> It records the exact source and installed commits, 232-test checkpoint, completed Play History
+> and save-management slices, RomM continuation, tracking, and local resource constraints.
+
 > Integrated 1.9 testing scope: [1.9-TEST-CANDIDATE.md](1.9-TEST-CANDIDATE.md).
 > The dated sections below preserve the earlier incremental candidate history.
 

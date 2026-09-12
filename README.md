@@ -20,7 +20,8 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 > application.
 
 > **1.9 testing candidate:** this branch is not published. The current public
-> release remains 1.8.0 until the exact candidate is tested and approved.
+> release remains 1.8.0 until the exact candidate is tested and approved. See the
+> [current development handoff](docs/1.9-DEVELOPMENT-HANDOFF.md).
 
 ## Features
 
@@ -33,9 +34,11 @@ The Omakade 1.9.0 testing candidate includes:
 - Console cards for cartridge and disc systems, with a per-system choice
   between cards and library tiles, per-game pinning, and ROM folder scanning
   for EmuDeck-style layouts
-- Optional local session recording from supported emulator process arguments
+- Optional local session recording from supported emulator process arguments,
+  with recent per-game Play History across linked installations
 - Versioned save protection for supported emulator save sets, with explicit
-  restore confirmation and interrupted-restore recovery
+  restore confirmation, interrupted-restore recovery, manual snapshots, storage
+  usage, and confirmed backup deletion
 - Optional Home, persistent Up Next, and local discovery suggestions
 - Genre, decade, and platform filters with saved-filter persistence
 - One-click details and delegated launching through the owning platform

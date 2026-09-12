@@ -4,11 +4,14 @@ Omakade copies existing in-game saves before launching an emulator. It uses the 
 emulator selection without a setup questionnaire. Games without saves get their first copy
 on a later launch. Unchanged saves do not create duplicate versions.
 
-Open **Manage Game > Save Backups** to inspect coverage and restore a dated version.
-Restoring first protects the current save set, including files added or deleted since the
-selected snapshot. Shared storage is labeled in the list and confirmation because restoring
-it also replaces progress for other games or profiles in that storage. Cancel receives focus.
-Save states and cloud synchronization are outside this feature.
+Open **Manage Game > Save Backups** to inspect coverage and storage usage, create a verified
+snapshot immediately, restore a dated version, or delete an obsolete backup after a separate
+confirmation. Snapshot and delete actions are blocked while the emulator is running. Deleting
+a backup never changes the live save. Restoring first protects the current save set, including
+files added or deleted since the selected snapshot. Shared storage is labeled in the list and
+confirmation because restoring it also replaces progress for other games or profiles in that
+storage. Cancel or Back receives focus. Save states and cloud synchronization are outside this
+feature.
 
 ## Coverage
 
@@ -97,9 +100,11 @@ layouts, and launch-before-write ordering for every dedicated emulator source. D
 couch fixtures exercise ordinary and shared-storage confirmations with disposable saves.
 
 Private build evidence, live read-only inventory, original hashes, and installation manifests
-are under `build/save-complete-20260909/`. All 228 automated tests and the staged smoke test
-passed. Desktop and AppStream validation passed, and the shared-storage desktop and couch
-confirmations were visually checked. Read-only inventory found 220 unique save files.
+are under `build/save-complete-20260909/`. The later save-management checkpoint passed the
+complete x86 Release suite: 232/232 tests. Both complete save suites and eight desktop/Couch
+list, restore, shared-storage, and deletion fixtures passed. The rendered states were visually
+checked. Earlier staged smoke, desktop, and AppStream validation passed. Read-only inventory
+found 220 unique save files.
 Live backup verification was deferred because Ryujinx was running; the running-game guard
 left its saves alone. Automation never restores real saves. Maintainer gameplay and
 physical-controller acceptance of the exact candidate are still required before publication.

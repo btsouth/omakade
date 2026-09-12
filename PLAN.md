@@ -868,12 +868,14 @@ Gate:
 
 Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 
-### Current roadmap, September 11, 2026
+### Current roadmap, September 12, 2026
 
 Version 1.8.0 is the current public release. The integrated 1.9 testing candidate
-combines maintenance correctness fixes, opt-in ProtonDB badges, and emulator save
-protection. Its exact scope, automated gate, rollback requirements, and manual
-acceptance are in [1.9-TEST-CANDIDATE.md](docs/1.9-TEST-CANDIDATE.md).
+combines maintenance correctness fixes, opt-in ProtonDB badges, emulator save
+protection and management, and per-game Play History. A read-only RomM adapter is
+in development; only its bounded parser, local path confinement, and machine-local
+settings are complete. Its exact state and continuation are in
+[1.9-DEVELOPMENT-HANDOFF.md](docs/1.9-DEVELOPMENT-HANDOFF.md).
 
 The 1.9 gate is an exact-candidate Release build, full automated suite, staged
 installation, package lifecycle validation, and a manual pass through matching,
@@ -884,6 +886,10 @@ Omarchy package repository.
 
 Xenia (#44) and TV/Gamescope helper work (#33) remain separate product decisions
 and are not part of 1.9 acceptance.
+
+RomM remains read-only and local-first: its API may provide metadata for files beneath
+an explicitly mounted local library root. It will not download, stream, delete, or
+modify RomM content. Client credentials belong in libsecret, never the settings file.
 
 ## Explicitly deferred
 
@@ -929,6 +935,8 @@ own format and several keep none at all. A small recorder closes that gap.
   which reads the same config key. When a session for an emulator whose own
   playtime is written on exit ends, the recorder asks the running Omakade
   window to rescan that source so its import stops going stale.
+- Game Details exposes the eight most recent local sessions across linked
+  installations, including source, duration, active state, and recording-off context.
 
 ### Later
 
@@ -937,7 +945,8 @@ own format and several keep none at all. A small recorder closes that gap.
   IPC first, then per-emulator recents and log adapters.
 - Pause the clock while the emulator window is unfocused, matching how
   Ryujinx excludes paused time from its own counter.
-- A settings view for recorded sessions per game.
+- Optional session deletion or broader history-management tools, only with explicit
+  confirmation and without changing imported launcher playtime.
 
 
 ## Decisions to settle before M0 implementation
