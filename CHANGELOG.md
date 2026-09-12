@@ -2,6 +2,10 @@
 
 ## 1.9.0
 
+- Prevent cached cover images from entering a loading-status binding loop.
+- Add tested RomM catalog transport, transactional caching, and server-scoped keyring helpers.
+  Source/settings UI integration remains in development.
+
 - Report manual backup creation correctly when retention removes an older backup.
 - Reject stalled or malformed pagination in the local RomM catalog parser.
 - Refuse incomplete save-folder scans and malformed backup/recovery manifests before restoring.
