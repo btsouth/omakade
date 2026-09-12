@@ -907,3 +907,8 @@ target_link_libraries(omakade_cover_artwork_tests PRIVATE omakade_core Qt6::Test
 target_compile_definitions(omakade_cover_artwork_tests PRIVATE OMAKADE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 add_test(NAME omakade_cover_artwork_tests COMMAND omakade_cover_artwork_tests)
 set_tests_properties(omakade_cover_artwork_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
+
+qt_add_executable(omakade_romm_catalog_tests RommCatalogTests.cpp)
+target_link_libraries(omakade_romm_catalog_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_romm_catalog_tests COMMAND omakade_romm_catalog_tests)
+set_tests_properties(omakade_romm_catalog_tests PROPERTIES TIMEOUT 30)

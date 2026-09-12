@@ -127,8 +127,9 @@ RommScanResult RommScanner::parsePage(const QByteArray& payload,
     const int count = value.toInt(-1);
     return value.isDouble() && count >= minimum && count <= maximum && value.toDouble() == count;
   };
+  const bool knownTotal = response.contains("total") && !response.value("total").isNull();
   if (!validCount("offset", 0, 10000000 - items.size()) || !validCount("limit", 1, 1000) ||
-      !validCount("total", 0, 10000000)) {
+      (knownTotal && !validCount("total", 0, 10000000))) {
     result.complete = false;
     result.warnings.append(QStringLiteral("RomM returned invalid pagination data."));
     return result;
@@ -137,8 +138,7 @@ RommScanResult RommScanner::parsePage(const QByteArray& payload,
   const int limit = response.value(QStringLiteral("limit")).toInt(qMax(1, int(items.size())));
   result.nextOffset = offset + items.size();
   result.total = response.value(QStringLiteral("total")).toInt(result.nextOffset);
-  result.hasMore = result.nextOffset < result.total ||
-                   (!response.contains(QStringLiteral("total")) && items.size() == limit);
+  result.hasMore = result.nextOffset < result.total || (!knownTotal && items.size() == limit);
   if (items.isEmpty() && result.hasMore) {
     result.complete = false;
     result.hasMore = false;
