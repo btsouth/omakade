@@ -2,6 +2,8 @@
 
 ## 1.9.0
 
+- Refuse incomplete save-folder scans and malformed backup/recovery manifests before restoring.
+  Resolve RetroArch's default save directories correctly for native and Flatpak installs.
 - Protect emulator save sets before launch, including clock data, memory cards, and native/Flatpak
   save folders. Add restore/undo, interrupted-restore recovery, shared-storage warnings, and
   portable save layouts. Existing single-file snapshots remain readable.

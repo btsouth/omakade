@@ -41,11 +41,175 @@ struct Fixture {
     put(home + "/savefolder/nested/progress", "original progress");
   }
   QString version() { return store.versions(game).first().toMap()["id"].toString(); }
+  QString manifestPath(const QString& version) const {
+    return root + '/' +
+           QString::fromLatin1(
+               QCryptographicHash::hash(game.toUtf8(), QCryptographicHash::Sha256).toHex()) +
+           '/' + version.mid(4) + "/manifest.json";
+  }
 };
 } // namespace
 class SaveSetTests : public QObject {
   Q_OBJECT
 private slots:
+  void unreadableFoldersRefuseSnapshotAndRestore_data() {
+    QTest::addColumn<QString>("relative");
+    QTest::newRow("save-root") << "savefolder";
+    QTest::newRow("nested-save-folder") << "savefolder/nested";
+  }
+  void unreadableFoldersRefuseSnapshotAndRestore() {
+    QFETCH(QString, relative);
+    Fixture f;
+    QVERIFY(f.store.snapshot(f.game, f.context, f.layout, &f.error));
+    const auto version = f.version();
+    put(f.home + "/game.srm", "new progress");
+    const QString folder = f.home + '/' + relative;
+    const auto permissions = QFileInfo(folder).permissions();
+    const auto restorePermissions =
+        qScopeGuard([&] { QFile::setPermissions(folder, permissions); });
+    QVERIFY(QFile::setPermissions(folder, QFile::WriteOwner | QFile::ExeOwner));
+    if (QFileInfo(folder).isReadable())
+      QSKIP("This user bypasses directory read permissions");
+    QVERIFY(!f.store.snapshot(f.game, f.context, f.layout, &f.error));
+    QVERIFY(f.error.contains("read completely"));
+    QCOMPARE(f.store.versions(f.game).size(), 1);
+    QVERIFY(!f.store.restore(f.game, version, f.resolver, &f.error));
+    QVERIFY(!f.store.pending());
+    QCOMPARE(get(f.home + "/game.srm"), QByteArray("new progress"));
+    QVERIFY(QFile::setPermissions(folder, permissions));
+    QCOMPARE(get(f.home + "/savefolder/nested/progress"), QByteArray("original progress"));
+    QVERIFY(f.store.restore(f.game, version, f.resolver, &f.error));
+    QCOMPARE(get(f.home + "/game.srm"), QByteArray("original SRAM"));
+    QCOMPARE(get(f.home + "/savefolder/nested/progress"), QByteArray("original progress"));
+  }
+  void malformedSnapshotIsNeverRestored_data() {
+    QTest::addColumn<QString>("field");
+    QTest::addColumn<QJsonValue>("value");
+    QTest::newRow("missing-entries") << "entries" << QJsonValue(QJsonValue::Undefined);
+    QTest::newRow("null-entries") << "entries" << QJsonValue();
+    QTest::newRow("object-entries") << "entries" << QJsonValue(QJsonObject{});
+    QTest::newRow("truncated-entries") << "entries" << QJsonValue(QJsonArray{});
+    QTest::newRow("missing-bytes") << "bytes" << QJsonValue(QJsonValue::Undefined);
+    QTest::newRow("string-bytes") << "bytes" << QJsonValue("0");
+    QTest::newRow("fractional-bytes") << "bytes" << QJsonValue(0.5);
+    QTest::newRow("wrong-total") << "bytes" << QJsonValue(0);
+    QTest::newRow("missing-context") << "context" << QJsonValue(QJsonValue::Undefined);
+  }
+  void malformedSnapshotIsNeverRestored() {
+    QFETCH(QString, field);
+    QFETCH(QJsonValue, value);
+    Fixture f;
+    QVERIFY(f.store.snapshot(f.game, f.context, f.layout, &f.error));
+    const auto version = f.version();
+    auto manifest = QJsonDocument::fromJson(get(f.manifestPath(version))).object();
+    manifest.insert(field, value);
+    put(f.manifestPath(version), QJsonDocument(manifest).toJson());
+    put(f.home + "/game.srm", "new progress");
+    QVERIFY(!f.store.restore(f.game, version, f.resolver, &f.error));
+    QVERIFY(!f.error.isEmpty());
+    QVERIFY(!f.store.pending());
+    QCOMPARE(f.store.versions(f.game).size(), 1);
+    QCOMPARE(get(f.home + "/game.srm"), QByteArray("new progress"));
+    QCOMPARE(get(f.home + "/game.rtc"), QByteArray("original RTC"));
+    QCOMPARE(get(f.home + "/savefolder/nested/progress"), QByteArray("original progress"));
+  }
+  void missingSizeOnEmptyMemberIsRejected() {
+    Fixture f;
+    put(f.home + "/empty", {});
+    f.layout.files = {f.home + "/empty"};
+    f.layout.trees.clear();
+    QVERIFY(f.store.snapshot(f.game, f.context, f.layout, &f.error));
+    const auto version = f.version();
+    auto manifest = QJsonDocument::fromJson(get(f.manifestPath(version))).object();
+    auto entries = manifest["entries"].toArray();
+    auto member = entries[0].toObject();
+    member.remove("bytes");
+    entries[0] = member;
+    manifest["entries"] = entries;
+    put(f.manifestPath(version), QJsonDocument(manifest).toJson());
+    put(f.home + "/empty", "current progress");
+    QVERIFY(!f.store.restore(f.game, version, f.resolver, &f.error));
+    QCOMPARE(get(f.home + "/empty"), QByteArray("current progress"));
+  }
+  void malformedRecoveryKeepsCopiesAndCurrentSaves_data() {
+    QTest::addColumn<QString>("field");
+    QTest::addColumn<QJsonValue>("value");
+    QTest::newRow("missing-before") << "before" << QJsonValue(QJsonValue::Undefined);
+    QTest::newRow("null-after") << "after" << QJsonValue();
+    QTest::newRow("missing-committed") << "committed" << QJsonValue(QJsonValue::Undefined);
+    QTest::newRow("string-committed") << "committed" << QJsonValue("true");
+  }
+  void malformedRecoveryKeepsCopiesAndCurrentSaves() {
+    QFETCH(QString, field);
+    QFETCH(QJsonValue, value);
+    Fixture f;
+    QVERIFY(f.store.snapshot(f.game, f.context, f.layout, &f.error));
+    const auto version = f.version();
+    put(f.home + "/game.srm", "new SRAM");
+    put(f.home + "/game.rtc", "new RTC");
+    int checks = 0;
+    bool interrupt = true;
+    SaveSetStore store(f.root, [&] { return interrupt && ++checks >= 6; });
+    QVERIFY(!store.restore(f.game, version, f.resolver, &f.error));
+    QVERIFY(store.pending());
+    const QString path = f.root + "/.restore/manifest.json";
+    const auto original = get(path);
+    auto journal = QJsonDocument::fromJson(original).object();
+    journal.insert(field, value);
+    put(path, QJsonDocument(journal).toJson());
+    const auto sram = get(f.home + "/game.srm"), rtc = get(f.home + "/game.rtc");
+    interrupt = false;
+    QVERIFY(!store.recover(f.resolver, &f.error));
+    QVERIFY(store.pending());
+    QCOMPARE(get(f.home + "/game.srm"), sram);
+    QCOMPARE(get(f.home + "/game.rtc"), rtc);
+    put(path, original);
+    QVERIFY(store.recover(f.resolver, &f.error));
+    QCOMPARE(get(f.home + "/game.srm"), QByteArray("new SRAM"));
+    QCOMPARE(get(f.home + "/game.rtc"), QByteArray("new RTC"));
+  }
+  void retroArchDefaultPaths_data() {
+    QTest::addColumn<bool>("flatpak");
+    QTest::newRow("native") << false;
+    QTest::newRow("flatpak") << true;
+  }
+  void retroArchDefaultPaths() {
+    QFETCH(bool, flatpak);
+    Fixture f;
+    const QString cfg = f.home + (flatpak ? "/.var/app/org.libretro.RetroArch/config" : "/.config");
+    const QString config = cfg + "/retroarch/retroarch.cfg";
+    const QByteArray settings =
+        "savefile_directory = \"default\"\n"
+        "sort_savefiles_enable = \"true\"\nauto_overrides_enable = \"true\"\n"
+        "rgui_config_directory = \"default\"\nsystem_directory = \"default\"\n";
+    put(config, settings);
+    QJsonObject c{{"source", "RetroArch"},
+                  {"game", f.game},
+                  {"core", "gambatte_libretro.so"},
+                  {"flatpak", flatpak}};
+    auto resolve = [&](const QJsonObject& context) {
+      return resolveSaveLayout(context, f.home, config);
+    };
+    const QString save = cfg + "/retroarch/saves/Gambatte/game.srm";
+    put(save, "original save");
+    auto l = resolve(c);
+    QVERIFY(l.valid());
+    QVERIFY(l.files.contains(save));
+    QVERIFY(f.store.snapshot(f.game, c, l, &f.error));
+    const auto version = f.version();
+    put(save, "new save");
+    QVERIFY(f.store.restore(f.game, version, resolve, &f.error));
+    QCOMPARE(get(save), QByteArray("original save"));
+    put(cfg + "/retroarch/config/Gambatte/game.cfg", "savefile_directory = \"~/custom\"\n");
+    QVERIFY(resolve(c).files.contains(f.home + "/custom/Gambatte/game.srm"));
+    put(config, settings + "savefiles_in_content_dir = \"true\"\n");
+    QVERIFY(resolve(c).files.contains(f.home + "/Gambatte/game.srm"));
+    c["core"] = "flycast_libretro.so";
+    l = resolve(c);
+    QVERIFY(l.files.contains(f.home + "/dc/vmu_save_A1.bin"));
+    for (const auto& path : l.files)
+      QVERIFY(!path.startsWith("/default/"));
+  }
   void completeSetRestoreAndUndo() {
     Fixture f;
     QVERIFY2(f.store.snapshot(f.game, f.context, f.layout, &f.error), qPrintable(f.error));

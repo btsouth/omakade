@@ -145,8 +145,10 @@ SaveLayout resolveSaveLayout(const QJsonObject& c, const QString& home, const QS
         game.contains('#') && !QFileInfo::exists(game) ? game.section('#', 0, 0) : game;
     const QString base =
         QFileInfo(content == game ? game : game.section('#', 1)).completeBaseName();
-    const QString overrides =
-        expand(settings.value("rgui_config_directory", cfg + "/retroarch/config"), home);
+    const QString overrideSetting = settings.value("rgui_config_directory");
+    const QString overrides = overrideSetting.isEmpty() || overrideSetting == "default"
+                                  ? cfg + "/retroarch/config"
+                                  : expand(overrideSetting, home);
     if (settings.value("auto_overrides_enable", "true") != "false") {
       for (const auto& n : QStringList{name, QFileInfo(content).dir().dirName(), base}) {
         const QString f = overrides + '/' + name + '/' + n + ".cfg";
@@ -161,11 +163,15 @@ SaveLayout resolveSaveLayout(const QJsonObject& c, const QString& home, const QS
           settings[it.key()] = it.value();
       }
     }
-    QString folder = expand(settings.value("savefile_directory"), home);
+    // Resolve RetroArch's sentinel before expanding ordinary relative paths.
+    // The standard Unix frontend uses its XDG config root, including in Flatpak.
+    const QString saveSetting = settings.value("savefile_directory");
+    QString folder =
+        saveSetting == "default" ? cfg + "/retroarch/saves" : expand(saveSetting, home);
     if (settings.value("savefiles_in_content_dir", "false") == "true")
       folder = QFileInfo(content).absolutePath();
     else {
-      if (folder.isEmpty() || folder == "default")
+      if (folder.isEmpty())
         folder = QFileInfo(content).absolutePath();
     }
     if (settings.value("sort_savefiles_by_content_enable", "false") == "true")
@@ -190,8 +196,9 @@ SaveLayout resolveSaveLayout(const QJsonObject& c, const QString& home, const QS
       l.shared = true;
     }
     if (core == "flycast_libretro") {
-      QString system = expand(settings.value("system_directory"), home);
-      if (system.isEmpty() || system == "default")
+      const QString systemSetting = settings.value("system_directory");
+      QString system = systemSetting == "default" ? QString{} : expand(systemSetting, home);
+      if (system.isEmpty())
         system = QFileInfo(content).absolutePath();
       l.files.clear();
       // Include both per-content and shared VMUs, covering either core option without changing it.

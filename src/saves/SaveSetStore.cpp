@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 #include <QUuid>
 #include <algorithm>
+#include <filesystem>
 
 namespace {
 constexpr qint64 limit = 512LL * 1024 * 1024;
@@ -104,21 +105,37 @@ bool collect(const SaveLayout& l, QMap<QString, QByteArray>* result, QString* er
   }
   QStringList paths = l.files;
   for (const auto& root : l.trees) {
-    if (!safePath(root) || (QFileInfo::exists(root) && !QFileInfo(root).isDir())) {
+    const bool rootExisted = QFileInfo::exists(root);
+    if (!safePath(root) || (rootExisted && !QFileInfo(root).isDir())) {
       *error = "A save folder is redirected or unavailable.";
       return false;
     }
-    QDirIterator it(root, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden,
-                    QDirIterator::Subdirectories);
+    // QDirIterator silently skips directories it cannot read. An incomplete
+    // enumeration would make restore interpret omitted saves as deleted files.
+    std::error_code scanError;
+    std::filesystem::recursive_directory_iterator it(QFile::encodeName(root).constData(),
+                                                     scanError),
+        end;
+    if (!rootExisted && scanError == std::errc::no_such_file_or_directory)
+      continue; // A not-yet-created save bank is a legitimate empty set.
     int visited = 0;
-    while (it.hasNext()) {
-      it.next();
-      if (++visited > fileLimit || it.fileInfo().isSymLink()) {
+    while (!scanError && it != end) {
+      const QFileInfo entry(QFile::decodeName(it->path().c_str()));
+      if (++visited > fileLimit || entry.isSymLink()) {
         *error = "The save folder contains redirected paths or too many files.";
         return false;
       }
-      if (!it.fileInfo().isDir() && allowed(it.filePath(), l))
-        paths << it.filePath();
+      if (!entry.exists()) {
+        *error = "A save folder changed or could not be read completely.";
+        return false;
+      }
+      if (!entry.isDir() && allowed(entry.filePath(), l))
+        paths << entry.filePath();
+      it.increment(scanError);
+    }
+    if (scanError) {
+      *error = "A save folder changed or could not be read completely.";
+      return false;
     }
   }
   paths.removeDuplicates();
@@ -145,8 +162,22 @@ QString gameRoot(const QString& root, const QString& game) {
 bool validId(const QString& id) {
   return QRegularExpression("^[0-9]{17}-[a-f0-9]{32}$").match(id).hasMatch();
 }
-bool unpack(const QString& directory, const QJsonArray& entries, const SaveLayout& layout,
+bool byteCount(const QJsonValue& value) {
+  return value.isDouble() && value.toInteger(-1) >= 0 && value.toInteger(-1) <= limit &&
+         value.toDouble() == double(value.toInteger(-1));
+}
+bool snapshotManifest(const QJsonObject& m) {
+  return m["format"].toDouble() == 2 && m["game"].isString() && m["context"].isObject() &&
+         m["scope"].isObject() && m["shared"].isBool() && m["entries"].isArray() &&
+         byteCount(m["bytes"]);
+}
+bool unpack(const QString& directory, const QJsonValue& entryValue, const SaveLayout& layout,
             QMap<QString, QByteArray>* data, QString* error) {
+  if (!entryValue.isArray()) {
+    *error = "The save backup has a missing or invalid file list.";
+    return false;
+  }
+  const auto entries = entryValue.toArray();
   qint64 bytes = 0;
   if (entries.size() > fileLimit) {
     *error = "Too many saved files.";
@@ -157,14 +188,31 @@ bool unpack(const QString& directory, const QJsonArray& entries, const SaveLayou
     const QString path = item["path"].toString();
     const QString blob = item["blob"].toString();
     QByteArray value;
-    if (!allowed(path, layout) || data->contains(path) ||
-        !QRegularExpression("^[0-9]+$").match(blob).hasMatch() ||
+    if (!entry.isObject() || !byteCount(item["bytes"]) || !allowed(path, layout) ||
+        data->contains(path) || !QRegularExpression("^[0-9]+$").match(blob).hasMatch() ||
         !load(directory + '/' + blob, &value) || digest(value) != item["sha256"].toString() ||
         value.size() != item["bytes"].toInteger() || (bytes += value.size()) > limit) {
       *error = "The save backup is damaged or its paths no longer match.";
       return false;
     }
     data->insert(path, value);
+  }
+  return true;
+}
+bool unpackSnapshot(const QString& directory, const QJsonObject& m, const SaveLayout& layout,
+                    QMap<QString, QByteArray>* data, QString* error) {
+  if (!snapshotManifest(m)) {
+    *error = "The save backup manifest is damaged.";
+    return false;
+  }
+  if (!unpack(directory, m["entries"], layout, data, error))
+    return false;
+  qint64 bytes = 0;
+  for (const auto& value : *data)
+    bytes += value.size();
+  if (bytes != m["bytes"].toInteger()) {
+    *error = "The save backup size does not match its manifest.";
+    return false;
   }
   return true;
 }
@@ -273,7 +321,7 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
     QString ignored;
     if ((layout.shared || m["context"].toObject() == context) &&
         m["scope"].toObject() == scope(layout) &&
-        unpack(dir, m["entries"].toArray(), layout, &previous, &ignored) && previous == data)
+        unpackSnapshot(dir, m, layout, &previous, &ignored) && previous == data)
       return true;
   }
   qint64 size = 0;
@@ -313,7 +361,7 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
                       {"entries", entries}};
   QMap<QString, QByteArray> check, live;
   if (!put(stage.path() + "/manifest.json", QJsonDocument(m).toJson()) ||
-      !unpack(stage.path(), entries, layout, &check, error) || check != data ||
+      !unpackSnapshot(stage.path(), m, layout, &check, error) || check != data ||
       !collect(layout, &live, error) || live != data || m_running()) {
     *error = "The save changed or could not be verified. No backup was committed.";
     return false;
@@ -388,14 +436,19 @@ bool SaveSetStore::recover(const Resolver& resolve, QString* error) {
   }
   const QString dir = m_root + "/.restore";
   const auto m = json(dir + "/manifest.json");
+  if (m["format"].toDouble() != 2 || !m["context"].isObject() || !m["scope"].isObject() ||
+      !m["committed"].isBool() || !m["before"].isArray() || !m["after"].isArray()) {
+    *error = "The save recovery manifest is damaged. Recovery copies were kept.";
+    return false;
+  }
   const auto layout = resolve(m["context"].toObject());
   if (m["format"].toInt() != 2 || !layout.valid() || m["scope"].toObject() != scope(layout)) {
     *error = "Save recovery needs the original emulator save configuration.";
     return false;
   }
   QMap<QString, QByteArray> before, after;
-  if (!unpack(dir + "/before", m["before"].toArray(), layout, &before, error) ||
-      !unpack(dir + "/after", m["after"].toArray(), layout, &after, error))
+  if (!unpack(dir + "/before", m["before"], layout, &before, error) ||
+      !unpack(dir + "/after", m["after"], layout, &after, error))
     return false;
   auto paths = before.keys();
   paths << after.keys();
@@ -454,7 +507,7 @@ bool SaveSetStore::restore(const QString& game, const QString& version, const Re
     return false;
   }
   QMap<QString, QByteArray> after, before;
-  if (!unpack(dir, m["entries"].toArray(), layout, &after, error))
+  if (!unpackSnapshot(dir, m, layout, &after, error))
     return false;
   if (!collect(layout, &before, error) || !snapshot(game, context, layout, error, true))
     return false;
