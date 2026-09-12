@@ -393,6 +393,9 @@ bool scanLooseGog(const QString& root, HeroicScanResult* result, QSet<QString>* 
             QStringLiteral("Could not parse GOG manifest %1").arg(manifest.absoluteFilePath()));
         continue;
       }
+      if (document.object().value(QStringLiteral("playTasks")).toArray().isEmpty()) {
+        continue;
+      }
       if (title.isEmpty() || !readGogLaunchTask(directory, appId).has_value()) {
         result->warnings.append(
             QStringLiteral("Could not use GOG manifest %1").arg(manifest.absoluteFilePath()));

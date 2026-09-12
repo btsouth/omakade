@@ -3037,12 +3037,16 @@ void CoreTests::gogScannerImportsLooseInstallsAndConfinesLaunchTasks() {
   QVERIFY(directory.isValid());
   const QString root = directory.path() + QStringLiteral("/GOG Games");
   const QString game = root + QStringLiteral("/Signal Hill");
+  writeFile(game + QStringLiteral("/goggame-12345.info"),
+            R"({"name":"Signal Hill DLC","playTasks":[]})");
   writeFile(game + QStringLiteral("/goggame-98765.info"),
             R"({"name":"Signal Hill","playTasks":[{"type":"FileTask","isPrimary":true,"path":"bin\\game.exe","workingDir":"bin","arguments":"--safe \"two words\""}]})");
   writeFile(game + QStringLiteral("/bin/game.exe"), "game");
 
   const HeroicScanResult result = HeroicScanner::scan({root});
   QVERIFY(!result.incomplete);
+  QVERIFY(!result.gogIncomplete);
+  QVERIFY(result.warnings.isEmpty());
   QCOMPARE(result.roots, QStringList({root}));
   QCOMPARE(result.games.size(), 1);
   QCOMPARE(result.games.at(0).appId, QStringLiteral("98765"));
