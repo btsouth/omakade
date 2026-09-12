@@ -26,6 +26,16 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.9.0" date="2026-09-11">
+      <description>
+        <p>Emulator save protection, optional ProtonDB badges, and matching and launch reliability improvements.</p>
+        <ul>
+          <li>Protect supported emulator save sets before launch with versioned snapshots and recoverable restores.</li>
+          <li>Show optional cached ProtonDB community tiers for Steam store games.</li>
+          <li>Improve ROM identification, artwork recovery, library review, and console-aware launch selection.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.8.0" date="2026-09-08">
       <description>
         <p>Optional Home and Up Next, regional game details, unified artwork selection, session recording, and expanded personal-data backups.</p>

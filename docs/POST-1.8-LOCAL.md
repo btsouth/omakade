@@ -1,5 +1,8 @@
 # Post-1.8 local work
 
+> Integrated 1.9 testing scope: [1.9-TEST-CANDIDATE.md](1.9-TEST-CANDIDATE.md).
+> The dated sections below preserve the earlier incremental candidate history.
+
 > Latest feature candidate: [emulator save protection](SAVE-SETS.md).
 
 > Latest continuation: [everyday launch and library polish](EVERYDAY-POLISH-2026-09-09.md).

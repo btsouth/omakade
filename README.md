@@ -19,9 +19,12 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 > Omakade is an independent community project. It is not an official Omarchy
 > application.
 
+> **1.9 testing candidate:** this branch is not published. The current public
+> release remains 1.8.0 until the exact candidate is tested and approved.
+
 ## Features
 
-Omakade 1.8.0 includes:
+The Omakade 1.9.0 testing candidate includes:
 
 - Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2,
   Ryujinx, Cemu, shadPS4, and Dolphin discovery, plus direct GOG installation
@@ -31,6 +34,8 @@ Omakade 1.8.0 includes:
   between cards and library tiles, per-game pinning, and ROM folder scanning
   for EmuDeck-style layouts
 - Optional local session recording from supported emulator process arguments
+- Versioned save protection for supported emulator save sets, with explicit
+  restore confirmation and interrupted-restore recovery
 - Optional Home, persistent Up Next, and local discovery suggestions
 - Genre, decade, and platform filters with saved-filter persistence
 - One-click details and delegated launching through the owning platform
@@ -52,7 +57,8 @@ Omakade 1.8.0 includes:
 - Manual games, preferred installations, extra GOG folders, bulk organization,
   saved filters, a random pick, and personal backup and restore
 - Explicit linking for games installed through multiple sources
-- ProtonDB and PCGamingWiki shortcuts with actionable launch errors
+- Optional cached ProtonDB community badges for Steam store games, plus
+  ProtonDB and PCGamingWiki shortcuts with actionable launch errors
 - Keyboard, mouse, and controller navigation
 - Controller-first Couch Mode with Detail and Grid views, on-screen search,
   and controller input that stays with your game after launch
@@ -86,6 +92,9 @@ not something Omakade can work around; see issue #13 for details and workarounds
 
 ## Install on Omarchy or Arch
 
+> The 1.9.0 links below are prospective and will not work until the tested candidate is
+> explicitly approved and published. Use the current public release for normal installation.
+
 ### Install or upgrade from the Omarchy Package Repository
 
 On Omarchy, install Omakade from OPR with:
@@ -110,23 +119,23 @@ verify the package, and install it. If Omakade is already installed, `pacman -U`
 upgrades it in place without removing your settings or library data:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.8.0/omakade-1.8.0-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.8.0/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.9.0/omakade-1.9.0-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.9.0/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.8.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.9.0-1-x86_64.pkg.tar.zst
 ```
 
 ### Install or upgrade from a browser download
 
 1. Open the [latest release](https://github.com/btsouth/omakade/releases/latest).
-2. Under **Assets**, download `omakade-1.8.0-1-x86_64.pkg.tar.zst` (or
-   `omakade-1.8.0-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
+2. Under **Assets**, download `omakade-1.9.0-1-x86_64.pkg.tar.zst` (or
+   `omakade-1.9.0-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
 3. Open a terminal in that folder and run the commands below. On ARM64,
    replace `x86_64` with `aarch64` in the package filename:
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.8.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.9.0-1-x86_64.pkg.tar.zst
 ```
 
 Launch Omakade from the application launcher or run `omakade` in a terminal.

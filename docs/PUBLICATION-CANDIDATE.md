@@ -1,6 +1,8 @@
 # Publication candidate
 
-> September 9 local continuation: see [LOCAL-INSTALL-2026-09-09.md](LOCAL-INSTALL-2026-09-09.md) for the installed matching/artwork candidate and current workspace handoff. The September 8 publication record below is historical and does not authorize publishing this new candidate.
+> Current work is the unpublished [integrated 1.9 testing candidate](1.9-TEST-CANDIDATE.md).
+> The September 8 publication record below is historical and does not authorize publishing
+> or pushing the 1.9 candidate.
 
 The maintainer authorized pushing reviewed work through btsouth on September 8.
 The candidate branch is `codex/feature-quality-local`, draft PR #43. Publication,

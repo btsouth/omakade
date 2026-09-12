@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (local candidate)
+## 1.9.0
 
 - Protect emulator save sets before launch, including clock data, memory cards, and native/Flatpak
   save folders. Add restore/undo, interrupted-restore recovery, shared-storage warnings, and

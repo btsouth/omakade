@@ -868,28 +868,29 @@ Gate:
 
 Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 
-### Current roadmap, September 5, 2026
+### Current roadmap, September 11, 2026
 
-Version 1.6.0 shipped on September 5 at `c91b14e`, including Couch Mode,
-direct GOG support, ARM64 packages, dependency scanning, and release SBOMs.
-The earlier milestone sections describe the development history.
+Version 1.8.0 is the current public release. The integrated 1.9 testing candidate
+combines maintenance correctness fixes, opt-in ProtonDB badges, and emulator save
+protection. Its exact scope, automated gate, rollback requirements, and manual
+acceptance are in [1.9-TEST-CANDIDATE.md](docs/1.9-TEST-CANDIDATE.md).
 
-The active post-1.6 completion scope and acceptance gates are in
-[COMPLETION-PLAN.md](docs/COMPLETION-PLAN.md), with execution evidence in
-[COMPLETION-PROGRESS.md](docs/COMPLETION-PROGRESS.md). Convenience features
-are local candidate work until maintainer testing and publication approval.
-Real launcher reports (#9) and ARM64 hardware evidence (#13) remain open;
-published packages do not establish hardware compatibility.
+The 1.9 gate is an exact-candidate Release build, full automated suite, staged
+installation, package lifecycle validation, and a manual pass through matching,
+launching, ProtonDB, save protection, session recording, and controller use.
+Publication still requires explicit maintainer approval. Real launcher reports
+(#9) remain external coverage, and OPR delivery (#42) is controlled by the
+Omarchy package repository.
 
-The shared QML role-name cleanup from PR #28 is included in the 1.7 candidate.
-It preserves role IDs and names across the existing nine game models.
+Xenia (#44) and TV/Gamescope helper work (#33) remain separate product decisions
+and are not part of 1.9 acceptance.
 
 ## Explicitly deferred
 
 - Installing, updating, repairing, or moving games
 - Storefront browsing and purchasing
 - Proton or Wine configuration
-- Cloud-save management
+- Cloud-save synchronization
 - Friends, chat, and multiplayer invitations
 - Automatic fuzzy merging across stores
 - Emulator installation and ROM scraping
