@@ -2,7 +2,8 @@
 
 ## 1.9.0
 
-- Recognize Cemu WUA game paths in the recorder's shipped profiles.
+- Report manual backup creation correctly when retention removes an older backup.
+- Reject stalled or malformed pagination in the local RomM catalog parser.
 - Refuse incomplete save-folder scans and malformed backup/recovery manifests before restoring.
   Resolve RetroArch's default save directories correctly for native and Flatpak installs.
 - Protect emulator save sets before launch, including clock data, memory cards, and native/Flatpak
