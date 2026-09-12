@@ -7,6 +7,8 @@
 #include <QProcessEnvironment>
 #include <QStringList>
 #include <QTimer>
+#include <QSqlDatabase>
+#include <QVariantMap>
 
 class SaveBackups;
 
@@ -17,6 +19,18 @@ class GameLauncher final : public QObject {
 
 public:
   explicit GameLauncher(QObject* parent = nullptr);
+  ~GameLauncher() override;
+  void setRommLibraryRoot(const QString& root) { m_rommRoot = root; }
+  void setSetupDatabase(const QString& path);
+  Q_INVOKABLE QVariantMap inspect(const QVariantMap& installation) const;
+  Q_INVOKABLE QStringList setupOptions(const QVariantMap& installation) const;
+  Q_INVOKABLE bool saveSetup(const QVariantMap& installation, const QString& mode,
+                             const QString& core, bool flatpak, const QString& path);
+  Q_INVOKABLE bool resetSetup(const QVariantMap& installation);
+  Q_INVOKABLE void copyLaunchDetails(const QVariantMap& installation) const;
+  QHash<QString,QVariantMap> setupOverrides() const { return m_setups; }
+  static bool contentAvailable(const QString& path, bool allowArchiveEntry = true);
+  static QString setupKey(const QVariantMap& installation);
 
   [[nodiscard]] QString lastError() const;
   // True while a game process started by launch() is still alive. Games are started detached,
@@ -67,9 +81,18 @@ public:
 
 signals:
   void lastErrorChanged();
+  void setupChanged();
   void gameRunningChanged();
 
 private:
+  struct EmulatorPlan { LaunchCommand command; QString source, path, core, error; bool flatpak=false; };
+  EmulatorPlan plannedEmulator(const QVariantMap& installation) const;
+  bool launchPlannedEmulator(const QVariantMap& installation);
+  QString storedSetupKey(const QVariantMap& installation) const;
+  QString m_rommRoot;
+  QSqlDatabase m_setupDatabase;
+  QString m_setupConnection;
+  QHash<QString,QVariantMap> m_setups;
   bool launchLutris(const QString& id, bool flatpak, bool manageOnly);
   bool launchHeroic(const QString& id, const QString& runner, bool flatpak, bool manageOnly);
   bool launchFaugus(const QString& id, bool flatpak, bool manageOnly);

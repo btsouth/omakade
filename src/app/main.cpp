@@ -15,6 +15,9 @@
 #include "launch/PlayRequest.h"
 #include "library/BattleNetGameModel.h"
 #include "library/CemuGameModel.h"
+#include "library/RommGameModel.h"
+#include "saves/SaveProtection.h"
+#include "library/LibraryRepair.h"
 #include "library/ConsolePortalModel.h"
 #include "library/DolphinGameModel.h"
 #include "library/FaugusGameModel.h"
@@ -715,6 +718,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<RyujinxGameModel> ryujinxGames;
   std::unique_ptr<Shadps4GameModel> shadps4Games;
   std::unique_ptr<CemuGameModel> cemuGames;
+  std::unique_ptr<RommGameModel> rommGames;
   std::unique_ptr<DolphinGameModel> dolphinGames;
   std::unique_ptr<BattleNetGameModel> battleNetGames;
   std::unique_ptr<PlaySessionStore> playSessionStore;
@@ -817,6 +821,7 @@ int main(int argc, char* argv[]) {
     cemuGames =
         std::make_unique<CemuGameModel>(steamLibrary->databasePath(), playSessionStore.get());
     cemuLibrary = cemuGames.get();
+    rommGames = std::make_unique<RommGameModel>(QFileInfo(libraryDatabasePath).dir().filePath("romm-catalog.sqlite3"), &preferences, playSessionStore.get());
     dolphinGames =
         std::make_unique<DolphinGameModel>(steamLibrary->databasePath(), playSessionStore.get());
     dolphinLibrary = dolphinGames.get();
@@ -828,6 +833,7 @@ int main(int argc, char* argv[]) {
     consolePortals->addRomModel(dolphinGames.get());
     consolePortals->addRomModel(ryujinxGames.get());
     consolePortals->addRomModel(cemuGames.get());
+    consolePortals->addRomModel(rommGames.get());
     consolePortals->addRomModel(pcsx2Games.get());
     consolePortals->addRomModel(shadps4Games.get());
   }
@@ -845,7 +851,7 @@ int main(int argc, char* argv[]) {
   if (gogSettingsFixture || linkedPreferenceFixture || backupFixture || artworkEditorTest ||
       savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") ||
       renderOverlay == QStringLiteral("bulk-editor") ||
-      renderOverlay == QStringLiteral("session-history")) {
+      renderOverlay == QStringLiteral("session-history") || renderOverlay == "library-repair-controls") {
     if (!artworkFixture.isValid()) return EXIT_FAILURE;
     libraryDatabasePath = artworkFixture.filePath(QStringLiteral("library.sqlite"));
   }
@@ -853,6 +859,7 @@ int main(int argc, char* argv[]) {
   UnifiedGameModel unifiedGames(libraryDatabasePath);
   unifiedGames.addSourceModel(games.get());
   unifiedGames.addSourceModel(&manualGames);
+  if (rommGames) unifiedGames.addSourceModel(rommGames.get());
   if (lutrisGames != nullptr) {
     unifiedGames.addSourceModel(lutrisGames.get());
   }
@@ -897,6 +904,7 @@ int main(int argc, char* argv[]) {
     unifiedGames.setSourceEnabled(QStringLiteral("Ryujinx"), preferences.ryujinxEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("shadPS4"), preferences.shadps4Enabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Cemu"), preferences.cemuEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("RomM"), preferences.rommEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), preferences.dolphinEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Battle.net"), preferences.battleNetEnabled());
   };
@@ -907,7 +915,13 @@ int main(int argc, char* argv[]) {
     // No window is running, so launch without showing one. A Sunshine request can arrive before
     // a fresh process has finished rebuilding a missing or stale library cache, so retry after the
     // requested source's asynchronous refresh.
+    SaveBackups headlessBackups;
+    headlessBackups.setEnabled(preferences.protectRetroArchSaves());
     GameLauncher headlessLauncher;
+    headlessLauncher.setSaveBackups(&headlessBackups);
+    headlessLauncher.setSetupDatabase(libraryDatabasePath);
+    headlessLauncher.setRommLibraryRoot(preferences.rommLibraryRoot());
+    unifiedGames.setLaunchSetups(headlessLauncher.setupOverrides());
     headlessLauncher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
     const LaunchKey key = LaunchKey::parse(playKey);
     QString error;
@@ -977,6 +991,9 @@ int main(int argc, char* argv[]) {
                  dolphinLibrary != nullptr &&
                  (preferences.dolphinEnabled() || preferences.dolphinAutoEnabled())) {
         dolphinLibrary->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("RomM"), Qt::CaseInsensitive) == 0 && rommGames && preferences.rommEnabled()) {
+        rommGames->refresh();
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0 &&
                  battleNetLibrary != nullptr && preferences.battleNetEnabled()) {
@@ -1121,7 +1138,7 @@ int main(int argc, char* argv[]) {
     demoMetadataDir = std::make_unique<QTemporaryDir>();
     if (demoMetadataDir->isValid()) {
       gameMetadata = std::make_unique<GameMetadata>(
-          demoMetadataDir->filePath(QStringLiteral("metadata.sqlite3")), nullptr);
+          renderOverlay == "library-repair-controls" ? libraryDatabasePath : demoMetadataDir->filePath(QStringLiteral("metadata.sqlite3")), nullptr);
       gameMetadata->setLibrary(&unifiedGames);
       unifiedGames.setMetadata(gameMetadata.get());
     }
@@ -1176,10 +1193,19 @@ int main(int argc, char* argv[]) {
     saveBackups.setEnabled(preferences.protectRetroArchSaves());
   });
   GameLauncher launcher;
+  launcher.setRommLibraryRoot(preferences.rommLibraryRoot());
+  QObject::connect(&preferences,&AppSettings::rommConfigurationChanged,&launcher,[&] { launcher.setRommLibraryRoot(preferences.rommLibraryRoot()); });
+  launcher.setSetupDatabase(libraryDatabasePath.isEmpty() ? settingsPath+".launch.sqlite3" : libraryDatabasePath);
+  unifiedGames.setLaunchInspector([&launcher](const QVariantMap& game) { return launcher.inspect(game); });
+  unifiedGames.setLaunchSetups(launcher.setupOverrides());
+  QObject::connect(&launcher,&GameLauncher::setupChanged,&unifiedGames,[&] {unifiedGames.setLaunchSetups(launcher.setupOverrides());});
+  SaveProtection saveProtection(&unifiedGames,&launcher,&saveBackups);
+  LibraryRepair libraryRepair(&unifiedGames,gameMetadata.get(),settingsPath + ".review.ini");
   if (!demoMode && !stressMode && !navigationTest && !detailsDirectionTest) launcher.setSaveBackups(&saveBackups);
   launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
   QObject::connect(&preferences, &AppSettings::preferStandaloneEmulatorsChanged, &launcher, [&] {
     launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
+    unifiedGames.setLaunchSetups(launcher.setupOverrides());
   });
   if (retroArchLibrary != nullptr) {
     QObject::connect(&preferences, &AppSettings::romFoldersChanged, retroArchLibrary, [&] {
@@ -1279,9 +1305,12 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("RyujinxLibrary"), ryujinxLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Shadps4Library"), shadps4Library);
   engine.rootContext()->setContextProperty(QStringLiteral("CemuLibrary"), cemuLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("RommLibrary"), rommGames.get());
   engine.rootContext()->setContextProperty(QStringLiteral("DolphinLibrary"), dolphinLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("BattleNetLibrary"), battleNetLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Launcher"), &launcher);
+  engine.rootContext()->setContextProperty(QStringLiteral("SaveProtection"), &saveProtection);
+  engine.rootContext()->setContextProperty(QStringLiteral("LibraryRepair"), &libraryRepair);
   engine.rootContext()->setContextProperty(QStringLiteral("Preferences"), &preferences);
   if (renderOverlay.startsWith("settings-recorder-")) {
     playSessionStore = std::make_unique<PlaySessionStore>(QStringLiteral(":memory:"));
@@ -1492,6 +1521,68 @@ int main(int argc, char* argv[]) {
       }
       if (renderOverlay == QStringLiteral("couch-grid-small")) preferences.setCouchCoverSize(60);
       if (renderOverlay == QStringLiteral("couch-grid-large")) preferences.setCouchCoverSize(160);
+      if (renderOverlay.startsWith("library-repair")) {
+        libraryRepair.refresh();
+        quickWindow->setProperty("repairOpen",true);
+        if(renderOverlay=="library-repair-controls") {
+          const auto key=libraryRepair.current().value("metadataKey").toString();
+          QTimer::singleShot(100,quickWindow,[quickWindow,key,&libraryRepair,metadata=gameMetadata.get(),&application] {
+            QMetaObject::invokeMethod(quickWindow,"openRepairGame",Q_ARG(QVariant,QString("identity")));
+            QTimer::singleShot(100,quickWindow,[quickWindow,key,&libraryRepair,metadata,&application] {
+              auto* panel=quickWindow->findChild<QObject*>("identifyGamePanel");
+              if(!panel || !panel->property("opened").toBool() || !quickWindow->property("repairSession").toBool()) {
+                qCritical()<<"Repair workflow did not open the identity editor";application.exit(EXIT_FAILURE);return;
+              }
+              metadata->rejectMatch();
+              if(!metadata->entry(key).value("rejected").toBool()) {application.exit(EXIT_FAILURE);return;}
+              QMetaObject::invokeMethod(panel,"close");
+              QMetaObject::invokeMethod(quickWindow,"closeDetails");
+              QTimer::singleShot(100,quickWindow,[quickWindow,key,&libraryRepair,metadata,&application] {
+                if(!quickWindow->property("repairOpen").toBool() || libraryRepair.current().value("metadataKey").toString()!=key ||
+                   !libraryRepair.undo("identity") || metadata->entry(key).value("rejected").toBool()) {
+                  qCritical()<<"Repair workflow lost its position or undo";application.exit(EXIT_FAILURE);
+                }
+              });
+            });
+          });
+        }
+      }
+      if (renderOverlay.startsWith("launch-setup")) {
+        QMetaObject::invokeMethod(quickWindow,"openGame",Q_ARG(QVariant,0));
+        QTimer::singleShot(120,quickWindow,[quickWindow,renderOverlay,&application] {
+          auto* details=quickWindow->findChild<QObject*>("gameDetails");
+          auto* setup=quickWindow->findChild<QObject*>("launchSetupPanel");
+          if(!details || !setup) {application.exit(EXIT_FAILURE);return;}
+          details->setProperty("selectedInstallation",QVariantMap{{"source","RetroArch"},{"appId","fixture"},{"system","snes"},{"installPath","/missing/Game.sfc"}});
+          setup->setProperty("expanded",true);
+          auto* toggle=quickWindow->findChild<QQuickItem*>("launchSetupToggle");
+          auto* save=quickWindow->findChild<QQuickItem*>("saveLaunchSetup");
+          if(toggle && save) {
+            QTimer::singleShot(80,quickWindow,[quickWindow,details,save,renderOverlay,&application] {
+              save->forceActiveFocus();
+              QMetaObject::invokeMethod(details,"revealFocusedItem",Q_ARG(QVariant,QVariant::fromValue(save)));
+              if(renderOverlay=="launch-setup-entry") {
+                auto* field=quickWindow->findChild<QQuickItem*>("launchCorePath");
+                if(!field) {application.exit(EXIT_FAILURE);return;}
+                field->forceActiveFocus();
+                QKeyEvent enter(QEvent::KeyPress,Qt::Key_Enter,Qt::NoModifier);
+                QCoreApplication::sendEvent(quickWindow,&enter);
+                QTimer::singleShot(80,quickWindow,[quickWindow,field,&application] {
+                  if(!quickWindow->property("couchTextEntryOpen").toBool()) {
+                    qCritical()<<"Launch setup field did not open controller text entry";application.exit(EXIT_FAILURE);return;
+                  }
+                  QMetaObject::invokeMethod(quickWindow,"closeCouchTextEntry",Q_ARG(QVariant,false));
+                  QTimer::singleShot(60,quickWindow,[quickWindow,field,&application] {
+                    if(quickWindow->property("couchTextEntryOpen").toBool() || !field->hasActiveFocus() || !field->property("text").toString().isEmpty()) {
+                      qCritical()<<"Canceling launch setup text entry lost focus or changed the core";application.exit(EXIT_FAILURE);
+                    }
+                  });
+                });
+              }
+            });
+          }
+        });
+      }
       // `--render-overlay=settings|picker` opens an overlay so visual checks can cover it.
       if (renderOverlay == QStringLiteral("launch-feedback")) {
         QTimer::singleShot(120, quickWindow, [quickWindow, &application] {
@@ -2442,6 +2533,11 @@ int main(int argc, char* argv[]) {
           const QStringList sections{"sources", "library", "connections", "controls", "storage", "appearance", "streaming", "about"};
           const int section = sections.indexOf(renderOverlay.mid(9));
           if (page && section >= 0) page->setProperty("section", section);
+          if (page && (renderOverlay == "settings-romm" || renderOverlay == "settings-save-overview")) {
+            page->setProperty("section",renderOverlay=="settings-romm" ? 2 : 4);
+            auto* panel=quickWindow->findChild<QObject*>(renderOverlay=="settings-romm" ? "rommSettingsPanel" : "saveProtectionPanel");
+            if(panel) panel->setProperty("expanded",true);
+          }
           if (page && renderOverlay.startsWith("settings-recorder-")) page->setProperty("section", 1);
           if (page && renderOverlay == "settings-categories") {
             auto* category = quickWindow->findChild<QQuickItem*>("settingsCategoryButton");

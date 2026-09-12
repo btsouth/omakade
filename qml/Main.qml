@@ -18,6 +18,8 @@ ApplicationWindow {
     property string homeReturnAction: ""
     property bool savedFiltersOpen: false
     property bool artworkEditorOpen: false
+    property bool repairOpen: false
+    property bool repairSession: false
     property bool manualEditorOpen: false
     property bool detailOpen: false
     property var selectedGame: ({})
@@ -135,7 +137,9 @@ ApplicationWindow {
     function reviewFilterLabel(value) {
         return value === "identification" ? "Needs identification"
              : value === "artwork" ? "Missing artwork"
-             : value === "either" ? "Needs identification or artwork" : "Any review status"
+             : value === "either" ? "Needs identification or artwork"
+             : value === "unavailable" ? "Unavailable installation"
+             : value === "duplicates" ? "Duplicate suggestions" : "Any review status"
     }
 
     function filterPickerCurrent() {
@@ -178,6 +182,7 @@ ApplicationWindow {
         if (bulkOrganizationOpen) return bulkOrganizationEditor
         if (savedFiltersOpen) return savedFiltersEditor
         if (artworkEditorOpen) return artworkEditor
+        if (repairOpen) return repairPanel
         if (manualEditorOpen) return manualEditor
         if (filterPickerOpen) {
             return filterPickerOverlay
@@ -374,6 +379,7 @@ ApplicationWindow {
         if (LutrisLibrary && Preferences.lutrisEnabled) LutrisLibrary.refresh()
         if (HeroicLibrary && (Preferences.heroicEnabled || Preferences.gogEnabled)) HeroicLibrary.refresh()
         if (FaugusLibrary && Preferences.faugusEnabled) FaugusLibrary.refresh()
+        if (RommLibrary && Preferences.rommEnabled) RommLibrary.refresh()
         if (RetroArchLibrary && Preferences.retroArchEnabled) RetroArchLibrary.refresh()
         if (Pcsx2Library && Preferences.pcsx2Enabled) Pcsx2Library.refresh()
         if (RyujinxLibrary && Preferences.ryujinxEnabled) RyujinxLibrary.refresh()
@@ -433,6 +439,8 @@ ApplicationWindow {
         if (root.activeActionMenu && container === root.activeActionMenu.contentItem) {
             const scroll = container.navigationScrollView || container
             if (root.isWithin(item, scroll)) root.revealInScrollView(scroll, item)
+        } else if (container === repairPanel) {
+            repairPanel.reveal(item)
         } else if (container === bulkOrganizationEditor) {
             bulkOrganizationEditor.reveal(item)
         } else if (container === homeScreen) {
@@ -621,9 +629,15 @@ ApplicationWindow {
     }
 
     function closeDetails() {
+        if (root.repairSession) {
+            root.repairSession = false
+            LibraryRepair.refresh()
+            root.repairOpen = true
+            Qt.callLater(repairPanel.focusEditor)
+        }
         detailOpen = false
         if (homeLibraryState !== null) { Library.applyFilterState(homeLibraryState); homeLibraryState = null }
-        Qt.callLater(root.focusLibrary)
+        if (!root.repairOpen) Qt.callLater(root.focusLibrary)
     }
 
     function focusLibrary() {
@@ -809,7 +823,7 @@ ApplicationWindow {
     function dispatchLaunch(request) {
         pendingSaveWarning = ""
         const choice = request.installation
-        const installing = choice.installed === false
+        const installing = choice.installed === false && choice.source === "Steam"
         let okay = false
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
@@ -986,6 +1000,30 @@ ApplicationWindow {
         onTextEntryRequested: (target, title) => root.openCouchTextEntry(target, title, false, "")
     }
 
+    function openRepairGame(editKind) {
+        const game = LibraryRepair.current
+        if (!game || !game.appId) return
+        if (editKind && !LibraryRepair.checkpoint(editKind)) return
+        if (editKind === "identity" && !LibraryRepair.checkpoint("artwork")) return
+        const row = Library.revealGame(game.source, game.runner || "", game.appId)
+        if (row < 0) { root.showToast("This installation is no longer available"); return }
+        root.repairOpen = false
+        root.repairSession = true
+        root.openGame(row)
+        if (editKind === "identity") Qt.callLater(function() {
+            if (detailsLoader.item) detailsLoader.item.openIdentification()
+        })
+        else if (editKind === "artwork") root.editArtwork()
+        else Qt.callLater(function() { if (detailsLoader.item) detailsLoader.item.showLaunchSetup() })
+    }
+    LibraryRepairPanel {
+        id: repairPanel
+        anchors.fill: parent
+        z: 84
+        visible: root.repairOpen
+        onDismissed: { root.repairOpen = false; LibraryRepair.pause(); Qt.callLater(root.focusCurrentSurface) }
+        onOpenGame: kind => root.openRepairGame(kind)
+    }
     function editArtwork() {
         rememberEditor("artwork")
         artworkEditor.message = ""
@@ -1153,6 +1191,10 @@ ApplicationWindow {
                 root.dismissLibraryEditor("bulk")
             } else if (root.savedFiltersOpen) {
                 root.dismissLibraryEditor("saved")
+            } else if (root.repairOpen && !root.artworkEditorOpen) {
+                LibraryRepair.pause()
+                root.repairOpen = false
+                Qt.callLater(root.focusCurrentSurface)
             } else if (root.artworkEditorOpen) {
                 root.dismissEditor("artwork")
             } else if (root.manualEditorOpen) {
@@ -1194,7 +1236,7 @@ ApplicationWindow {
         property: "focusNavigation"
         value: !root.couchTextEntryOpen
                && (!root.activeFocusItem || root.activeFocusItem.controllerNavigation !== false)
-               && (root.backupEditorOpen || root.bulkOrganizationOpen || root.savedFiltersOpen || root.artworkEditorOpen || root.manualEditorOpen || root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
+               && (root.repairOpen || root.backupEditorOpen || root.bulkOrganizationOpen || root.savedFiltersOpen || root.artworkEditorOpen || root.manualEditorOpen || root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
                || root.collectionDeleteOpen
                || (!root.couchMode && !libraryView.gridFocused))
     }
@@ -2365,6 +2407,14 @@ ApplicationWindow {
                 }
             }
             GlassButton {
+                objectName: "rommSourceButton"
+                text: "ROMM"; compact: true; visible: Preferences.rommEnabled
+                property string sourceName: "RomM"
+                selected: Library.sourceFilters.indexOf("RomM") >= 0
+                onClicked: { Library.sourceFilters = ["RomM"]; libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1 }
+                onSecondaryClicked: Library.toggleSource("RomM")
+            }
+            GlassButton {
                 id: retroArchSourceButton
                 objectName: "retroArchSourceButton"
                 text: "RETROARCH"
@@ -2629,12 +2679,18 @@ ApplicationWindow {
                 onClicked: root.openFilterPicker("platform", Library.platformNames)
             }
             GlassButton {
+                objectName: "libraryRepairButton"
+                compact: true
+                text: "REPAIR LIBRARY"
+                onClicked: { libraryFilters.close(); LibraryRepair.refresh(); root.repairOpen = true; Qt.callLater(repairPanel.focusEditor) }
+            }
+            GlassButton {
                 objectName: "reviewFilterButton"
                 maximumLabelWidth: Math.max(80, libraryFilters.width - 80)
                 compact: true
                 text: Library.reviewFilter ? root.reviewFilterLabel(Library.reviewFilter).toUpperCase() : "NEEDS REVIEW"
                 selected: Library.reviewFilter !== ""
-                onClicked: root.openFilterPicker("review", ["identification", "artwork", "either"])
+                onClicked: root.openFilterPicker("review", ["identification", "artwork", "either", "unavailable", "duplicates"])
             }
             GlassButton {
                 compact: true

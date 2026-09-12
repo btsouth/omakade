@@ -1,5 +1,12 @@
 # Compatibility report
 
+## Four-feature candidate, September 12, 2026
+
+The [candidate guide](FOUR-FEATURES-CANDIDATE.md) records automated desktop/Couch UI,
+launch routing, save recovery, library repair, and fixture-backed RomM coverage.
+Real RomM server operation, physical-controller feel, and gameplay await maintainer testing.
+The older environment matrix below is historical.
+
 ## Reference Omarchy system
 
 Verified through September 4, 2026:

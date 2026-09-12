@@ -3,6 +3,12 @@
 September 12, 2026. This is the forward execution plan. Older handoffs remain historical
 evidence, not the current definition of what to build next.
 
+## Implementation status
+
+All four workflows are implemented in the integrated testing candidate. See
+[the candidate guide](FOUR-FEATURES-CANDIDATE.md) for current validation, installation,
+recovery, and maintainer acceptance checks. The starting-point notes below are historical.
+
 ## Starting point and completion standard
 
 - Development branch: `codex/1.9-testing`, starting at `cb6a699`.

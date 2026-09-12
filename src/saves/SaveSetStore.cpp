@@ -16,7 +16,6 @@
 
 namespace {
 constexpr qint64 limit = 512LL * 1024 * 1024;
-constexpr qint64 storageLimit = 2LL * 1024 * 1024 * 1024;
 constexpr int fileLimit = 20000;
 QString digest(const QByteArray& data) {
   return QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
@@ -244,6 +243,10 @@ bool apply(const QString& path, const QMap<QString, QByteArray>& data) {
 
 SaveSetStore::SaveSetStore(QString root, std::function<bool()> running)
     : m_root(std::move(root)), m_running(std::move(running)) {}
+void SaveSetStore::setPolicy(int retention, qint64 bytes, const QString& budgetRoot) {
+  m_retention=qBound(2,retention,50);m_storageLimit=qBound<qint64>(256LL*1024*1024,bytes,8LL*1024*1024*1024);
+  m_budgetRoot=budgetRoot;
+}
 bool SaveSetStore::pending() const { return QFileInfo::exists(m_root + "/.restore"); }
 QVariantList SaveSetStore::versions(const QString& game) const {
   QVariantList out;
@@ -271,6 +274,7 @@ QVariantList SaveSetStore::versions(const QString& game) const {
                          {"bytes", m["bytes"].toInteger()},
                          {"shared", m["shared"].toBool()},
                          {"description", m["description"].toString()},
+                         {"verifiedAtCapture", m["verifiedAtCapture"].toBool()},
                          {"storageKey", key}};
     }
   }
@@ -328,14 +332,14 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
   for (const auto& bytes : data)
     size += bytes.size();
   qint64 used = 0;
-  QDirIterator it(m_root, QDir::Files | QDir::Hidden | QDir::NoSymLinks,
+  QDirIterator it(m_budgetRoot.isEmpty()?m_root:m_budgetRoot, QDir::Files | QDir::Hidden | QDir::NoSymLinks,
                   QDirIterator::Subdirectories);
   while (it.hasNext()) {
     it.next();
     used += it.fileInfo().size();
   }
-  if (used + size + 16 * 1024 * 1024 > storageLimit) {
-    *error = "Save backup storage is full (2 GiB). Existing backups were kept.";
+  if (used + size + 16 * 1024 * 1024 > m_storageLimit) {
+    *error = "The backup storage limit was reached. Existing backups were kept.";
     return false;
   }
   const QString root = gameRoot(m_root, storageKey);
@@ -358,7 +362,7 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
                       {"description", layout.description},
                       {"createdAt", now.toString(Qt::ISODateWithMs)},
                       {"bytes", size},
-                      {"entries", entries}};
+                      {"entries", entries}, {"verifiedAtCapture", true}};
   QMap<QString, QByteArray> check, live;
   if (!put(stage.path() + "/manifest.json", QJsonDocument(m).toJson()) ||
       !unpackSnapshot(stage.path(), m, layout, &check, error) || check != data ||
@@ -377,7 +381,7 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
   }
   stage.setAutoRemove(false);
   const auto all = versions(storageKey);
-  for (int i = 10; i < all.size(); ++i)
+  for (int i = qMax(m_retention,int(old.size())); i < all.size(); ++i)
     QDir(root + '/' + all[i].toMap()["id"].toString().mid(4)).removeRecursively();
   return true;
 }

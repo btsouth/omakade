@@ -1,4 +1,10 @@
 #include "sources/romm/RommCatalog.h"
+#include "library/RommGameModel.h"
+#include "library/UnifiedGameModel.h"
+#include "library/GameRoles.h"
+#include "app/AppSettings.h"
+#include <QDir>
+#include <atomic>
 #include "sources/romm/RommCredentials.h"
 #include <QFile>
 #include <QJsonArray>
@@ -98,6 +104,53 @@ class RommCatalogTests : public QObject {
       f.write("game");
   }
 private slots:
+  void modelConnectionOfflineMountAndPreferences() {
+    QTemporaryDir dir;
+    const QString mount=dir.filePath("mount");QVERIFY(QDir().mkpath(mount));game(mount);
+    const QString settingsPath=dir.filePath("config.toml"),database=dir.filePath("catalog.sqlite");
+    AppSettings settings(settingsPath);RommNetwork network;
+    network.responses={{page(1)}};
+    QByteArray saved;
+    auto credentials=[&](const QUrl&,const QByteArray& value,bool store) {
+      if(store)saved=value;
+      return RommCredentialResult{true,saved,{}};
+    };
+    RommGameModel model(database,&settings,nullptr,nullptr,&network,credentials);
+    UnifiedGameModel unified(dir.filePath("library.sqlite"));unified.addSourceModel(&model);
+    QCOMPARE(network.requests.size(),0);
+    QVERIFY(model.connectServer(server.toString(),mount,QString::fromLatin1(token)));
+    QTRY_COMPARE(model.rowCount(),1);QTRY_VERIFY(!model.scanning());
+    QVERIFY(model.index(0).data(GameRoles::Installed).toBool());
+    const auto identity=model.index(0).data(GameRoles::AppId).toString();
+    unified.toggleFavorite(0);QVERIFY(unified.index(0).data(GameRoles::Favorite).toBool());
+    QVERIFY(QDir().rename(mount,mount+"-offline"));
+    model.refresh();QTRY_VERIFY(!model.scanning());
+    QCOMPARE(model.rowCount(),1);QVERIFY(!model.index(0).data(GameRoles::Installed).toBool());
+    QVERIFY(model.statusText().contains("unavailable"));
+    QVERIFY(QDir().rename(mount+"-offline",mount));
+    network.responses={{QByteArray{},401}};model.refresh();QTRY_VERIFY(!model.scanning());
+    QCOMPARE(model.rowCount(),1);QVERIFY(!model.errorText().isEmpty());
+    QCOMPARE(model.index(0).data(GameRoles::AppId).toString(),identity);
+    QVERIFY(unified.index(0).data(GameRoles::Favorite).toBool());
+    model.disconnectServer();QCOMPARE(model.rowCount(),0);
+    settings.setRommEnabled(true);QTRY_VERIFY(!model.scanning());
+    QCOMPARE(model.rowCount(),1);
+    model.disconnectServer(true);QTRY_VERIFY(!model.scanning());QVERIFY(saved.isEmpty());
+    QFile config(settingsPath);QVERIFY(config.open(QIODevice::ReadOnly));QVERIFY(!config.readAll().contains(token));
+    QFile cache(database);QVERIFY(cache.open(QIODevice::ReadOnly));QVERIFY(!cache.readAll().contains(token));
+  }
+  void obsoleteCredentialResultsCannotEnableDisconnectedSource() {
+    QTemporaryDir dir;game(dir.path());AppSettings settings(dir.filePath("settings.toml"));
+    RommNetwork network;std::atomic_bool release=false,started=false;
+    auto credentials=[&](const QUrl&,const QByteArray&,bool) {
+      started=true;while(!release.load())QThread::msleep(1);
+      return RommCredentialResult{true,token,{}};
+    };
+    RommGameModel model(dir.filePath("catalog.sqlite"),&settings,nullptr,nullptr,&network,credentials);
+    QVERIFY(model.connectServer(server.toString(),dir.path(),QString::fromLatin1(token)));
+    QTRY_VERIFY(started.load());model.disconnectServer();release=true;
+    QTest::qWait(30);QCOMPARE(network.requests.size(),0);QCOMPARE(model.rowCount(),0);QVERIFY(!model.scanning());
+  }
   void validatesCredentialsWithoutTouchingKeyring() {
     QVERIFY(RommCatalog::validToken(token));
     QVERIFY(!RommCatalog::validToken(token + "\r\nHeader: bad"));

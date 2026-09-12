@@ -419,7 +419,7 @@ void LibraryFilterModel::setShowHidden(bool value) {
 }
 
 QStringList LibraryFilterModel::emulatorSources() {
-  return {QStringLiteral("RetroArch"), QStringLiteral("Dolphin"), QStringLiteral("Ryujinx"),
+  return {QStringLiteral("RomM"), QStringLiteral("RetroArch"), QStringLiteral("Dolphin"), QStringLiteral("Ryujinx"),
           QStringLiteral("Cemu"), QStringLiteral("PCSX2"), QStringLiteral("shadPS4")};
 }
 
@@ -597,7 +597,7 @@ void LibraryFilterModel::setDecadeFilter(const QString& value) {
   emit organizationFilterChanged();
 }
 void LibraryFilterModel::setReviewFilter(const QString& value) {
-  if (m_reviewFilter == value || !QStringList{"", "identification", "artwork", "either"}.contains(value))
+  if (m_reviewFilter == value || !QStringList{"", "identification", "artwork", "either", "unavailable", "duplicates"}.contains(value))
     return;
   m_reviewFilter = value;
   rebuildProxy();
@@ -1022,11 +1022,16 @@ bool LibraryFilterModel::filterAcceptsRow(int sourceRow, const QModelIndex& sour
 
 bool LibraryFilterModel::matchesGameFilters(const QModelIndex& sourceIndex) const {
   if (!m_reviewFilter.isEmpty()) {
-    const bool identification = sourceIndex.data(GameRoles::NeedsIdentification).toBool();
-    const bool artwork = sourceIndex.data(GameRoles::CoverPath).toString().isEmpty();
-    if ((m_reviewFilter == "identification" && !identification) ||
-        (m_reviewFilter == "artwork" && !artwork) ||
-        (m_reviewFilter == "either" && !identification && !artwork)) return false;
+    const auto* unified = qobject_cast<const UnifiedGameModel*>(sourceModel());
+    auto reasons = unified ? unified->reviewReasons(sourceIndex.row()) : QStringList{};
+    if (!unified) {
+      if (sourceIndex.data(GameRoles::NeedsIdentification).toBool()) reasons << "identification";
+      if (sourceIndex.data(GameRoles::CoverPath).toString().isEmpty()) reasons << "artwork";
+      if (sourceIndex.data(GameRoles::Installed).isValid() && !sourceIndex.data(GameRoles::Installed).toBool() && sourceIndex.data(GameRoles::Source).toString() != "Steam") reasons << "unavailable";
+    }
+    if (m_reviewFilter == "either") {
+      if (!reasons.contains("identification") && !reasons.contains("artwork")) return false;
+    } else if (!reasons.contains(m_reviewFilter)) return false;
   }
   const QString primarySource = sourceIndex.data(GameRoles::Source).toString();
   const QVariant installedValue = sourceIndex.data(GameRoles::Installed);

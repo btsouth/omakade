@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QUrl>
 #include <QVector>
+#include <functional>
 
 class GameMetadata;
 
@@ -19,12 +20,18 @@ public:
   ~UnifiedGameModel() override;
 
   void setMetadata(GameMetadata* metadata);
+  void setLaunchInspector(std::function<QVariantMap(const QVariantMap&)> inspect) { m_launchInspector = std::move(inspect); }
+  void setLaunchSetups(const QHash<QString,QVariantMap>& setups);
   void addSourceModel(QAbstractItemModel* model);
   void setSourceEnabled(const QString& source, bool enabled);
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
   [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
+  QVariantMap reviewGame(int row) const;
+  QStringList reviewReasons(int row) const;
+  bool repairCheckpoint(const QString& key, const QString& kind, bool restore);
+  bool hasRepairCheckpoint(const QString& key, const QString& kind) const;
   Q_INVOKABLE void toggleFavorite(int row);
   Q_INVOKABLE void toggleHidden(int row);
   Q_INVOKABLE bool setCustomCover(int row, const QUrl& sourceUrl);
@@ -85,7 +92,11 @@ private:
     bool pinned = false;
   };
 
+  mutable bool m_reviewIndexDirty = true;
+  mutable QHash<QString,int> m_reviewTitleCounts;
   GameMetadata* m_metadata = nullptr;
+  QHash<QString,QVariantMap> m_launchSetups;
+  std::function<QVariantMap(const QVariantMap&)> m_launchInspector;
   QVector<QAbstractItemModel*> m_models;
   QSet<QString> m_disabledSources;
   QVector<SourceRow> m_rows;

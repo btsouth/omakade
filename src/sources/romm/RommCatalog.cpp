@@ -245,7 +245,7 @@ bool RommCatalog::save() {
 }
 QVector<RommGameRecord> RommCatalog::cached(const QUrl& server, const QString& root) const {
   QVector<RommGameRecord> result;
-  const QString canonicalRoot = QFileInfo(root).canonicalFilePath();
+  const QString canonicalRoot = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
   const auto normalized = serverUrl(server);
   if (!m_valid || normalized.isEmpty() || canonicalRoot.isEmpty())
     return result;
@@ -258,11 +258,10 @@ QVector<RommGameRecord> RommCatalog::cached(const QUrl& server, const QString& r
   while (query.next()) {
     const auto record = QJsonDocument::fromJson(query.value(0).toByteArray()).object();
     const QFileInfo file(record.value("contentPath").toString());
-    if (!file.isFile() || file.isSymLink() ||
-        !file.canonicalFilePath().startsWith(canonicalRoot + '/'))
+    if (!file.isAbsolute() || !QDir::cleanPath(file.absoluteFilePath()).startsWith(canonicalRoot + '/'))
       continue;
     result.append({record.value("appId").toString(), record.value("title").toString(),
-                   record.value("description").toString(), file.canonicalFilePath(),
+                   record.value("description").toString(), file.absoluteFilePath(),
                    record.value("system").toString(), record.value("platform").toString(),
                    record.value("coverReference").toString()});
   }

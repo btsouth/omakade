@@ -38,6 +38,9 @@ public:
   void setVisibleLibrary(QAbstractItemModel* visible);
   void setCacheLimitMb(int megabytes);
   QVariantMap entry(const QString& key) const { return m_entries.value(key); }
+  bool reviewWritable() const { return !busy() && m_pendingWrites.isEmpty(); }
+  void reloadReviewEntry(const QString& key);
+  Q_INVOKABLE void retryReviewGames(const QVariantList& games);
   bool busy() const { return m_busy || !m_queue.isEmpty() || m_secrets.isRunning(); }
   bool hasGridKey() const { return !m_gridKey.isEmpty(); }
   int pending() const { return m_queue.size() + (m_busy ? 1 : 0); }

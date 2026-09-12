@@ -593,6 +593,8 @@ LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& install
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
+  if (QStringList{"RetroArch","PCSX2","Ryujinx","Cemu","Dolphin","shadPS4","RomM"}.contains(source))
+    return launchPlannedEmulator({{"source",source},{"appId",id},{"flatpak",flatpak},{"runner",runner},{"installPath",installPath},{"launchTarget",launchTarget},{"system",system}});
   if (source.compare(QStringLiteral("Manual"), Qt::CaseInsensitive) == 0) {
     QString program, directory, error;
     QStringList arguments;

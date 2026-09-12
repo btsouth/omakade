@@ -3,8 +3,11 @@
 ## 1.9.0
 
 - Prevent cached cover images from entering a loading-status binding loop.
-- Add tested RomM catalog transport, transactional caching, and server-scoped keyring helpers.
-  Source/settings UI integration remains in development.
+- Add an optional RomM library source with keyring credentials, local mount mapping,
+  offline catalog retention, and library, launch, and save-protection integration.
+- Add persistent per-installation launch setup, runtime diagnostics, and path repair.
+- Add a save-protection overview, custom file layouts, retention settings, and reviewed cleanup.
+- Add a persistent library repair queue with selected retries and separate identity/artwork undo.
 
 - Report manual backup creation correctly when retention removes an older backup.
 - Reject stalled or malformed pagination in the local RomM catalog parser.

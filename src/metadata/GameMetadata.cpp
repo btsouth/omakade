@@ -967,7 +967,7 @@ void GameMetadata::enqueue(const QVariantMap& game) {
                                            game.value("source").toString(),
                                            game.value("sourceCoverPath").toString()) &&
                         !QFileInfo::exists(saved.value("portrait").toString()) &&
-                        needsCoverAttempt(saved, now);
+                        (game.value("refreshDetails").toBool() || needsCoverAttempt(saved, now));
   if (!ratings && !portrait)
     return;
   m_queue.enqueue(game);
@@ -1997,4 +1997,34 @@ void GameMetadata::trimPortraitCache() {
     referenced.insert(value.value("fallbackCover").toString());
   }
   CoverCachePolicy::prune(m_cacheRoot, m_cacheRoot, m_cacheLimitBytes, referenced);
+}
+
+void GameMetadata::reloadReviewEntry(const QString& key) {
+  QSqlQuery query(m_database);
+  query.prepare("SELECT payload FROM game_metadata WHERE game_key=?");
+  query.addBindValue(key);
+  if (!query.exec()) return;
+  const auto previous = m_entries.value(key);
+  m_entries[key] = query.next() ? QJsonDocument::fromJson(query.value(0).toByteArray()).toVariant().toMap() : QVariantMap{};
+  emit entryChanged(key, previous);
+  emit changed();
+}
+
+void GameMetadata::retryReviewGames(const QVariantList& games) {
+  if (!reviewWritable() || m_editing) return;
+  if ((!m_insights || !m_insights->configured()) && !hasGridKey()) {
+    finish("Connect IGDB or SteamGridDB in settings first");
+    return;
+  }
+  m_cancelled = false;
+  // This explicit selection must not resume the automatic pass over other games.
+  m_stoppedByHand = true;
+  m_settle.stop();
+  for (const auto& item : games.mid(0, 100)) {
+    auto game = item.toMap();
+    game.insert("refreshDetails", true);
+    enqueue(game);
+  }
+  next();
+  emit changed();
 }

@@ -1,4 +1,5 @@
 #include "metadata/GameMetadata.h"
+#include "launch/GameLauncher.h"
 #include "library/UnifiedGameModel.h"
 
 #include "library/DatabaseTuning.h"
@@ -80,6 +81,10 @@ QString normalizedCollectionName(const QString& input) {
 UnifiedGameModel::UnifiedGameModel(const QString& databasePath, QObject* parent)
     : QAbstractListModel(parent),
       m_connectionName(QStringLiteral("omakade-artwork-%1").arg(QUuid::createUuid().toString())) {
+  connect(this, &QAbstractItemModel::dataChanged, this, [this] { m_reviewIndexDirty = true; });
+  connect(this, &QAbstractItemModel::modelReset, this, [this] { m_reviewIndexDirty = true; });
+  connect(this, &QAbstractItemModel::rowsInserted, this, [this] { m_reviewIndexDirty = true; });
+  connect(this, &QAbstractItemModel::rowsRemoved, this, [this] { m_reviewIndexDirty = true; });
   if (!databasePath.isEmpty()) {
     openArtworkDatabase(databasePath);
   }
@@ -141,6 +146,10 @@ void UnifiedGameModel::addSourceModel(QAbstractItemModel* model) {
           });
 }
 
+void UnifiedGameModel::setLaunchSetups(const QHash<QString,QVariantMap>& setups) {
+  m_launchSetups=setups;
+  if(!m_rows.isEmpty()) emit dataChanged(index(0),index(m_rows.size()-1),{GameRoles::InstallPath,GameRoles::Installed});
+}
 void UnifiedGameModel::setSourceEnabled(const QString& source, bool enabled) {
   const bool changed =
       enabled ? m_disabledSources.remove(source) > 0 : !m_disabledSources.contains(source);
@@ -163,6 +172,10 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
   const SourceRow source = mapRow(index.row());
   if (source.model == nullptr) {
     return {};
+  }
+  if (role == GameRoles::InstallPath) {
+    const auto path=m_launchSetups.value(gameKey(source)).value("path").toString();
+    if(!path.isEmpty()) return path;
   }
   if (role == GameRoles::MetadataKey) return gameKey(source);
   if (role == GameRoles::NeedsIdentification) {
@@ -336,7 +349,8 @@ QVariant UnifiedGameModel::data(const QModelIndex& index, int role) const {
   if (role == GameRoles::Installed) {
     for (const SourceRow& member : members) {
       const QModelIndex game = member.model->index(member.row, 0);
-      const QVariant installed = game.data(role);
+      const auto path=m_launchSetups.value(gameKey(member)).value("path").toString();
+      const QVariant installed = path.isEmpty()?game.data(role):QVariant(GameLauncher::contentAvailable(path));
       if (!installed.isValid() || installed.toBool()) {
         return true;
       }
@@ -380,7 +394,7 @@ void UnifiedGameModel::toggleFavorite(int row) {
   }
   const bool desired = !data(index(row), GameRoles::Favorite).toBool();
   for (const SourceRow& member : groupRows(source)) {
-    if (m_userFlags.value(gameKey(member)).contains("favorite")) {
+    if (member.model->index(member.row,0).data(GameRoles::Source).toString() == "RomM" || m_userFlags.value(gameKey(member)).contains("favorite")) {
       bulkOrganize({gameKey(source)}, {{"favorite", desired}});
       return;
     }
@@ -399,7 +413,7 @@ void UnifiedGameModel::toggleHidden(int row) {
   }
   const bool desired = !data(index(row), GameRoles::Hidden).toBool();
   for (const SourceRow& member : groupRows(source)) {
-    if (m_userFlags.value(gameKey(member)).contains("hidden")) {
+    if (member.model->index(member.row,0).data(GameRoles::Source).toString() == "RomM" || m_userFlags.value(gameKey(member)).contains("hidden")) {
       bulkOrganize({gameKey(source)}, {{"hidden", desired}});
       return;
     }
@@ -522,12 +536,16 @@ QVariantList UnifiedGameModel::installations(int row) const {
     const QString installPath = installation.value(QStringLiteral("installPath")).toString();
     bool available = (!installation.contains(QStringLiteral("installed")) ||
                             installation.value(QStringLiteral("installed")).toBool()) &&
-                           (installPath.isEmpty() || QFileInfo::exists(installPath));
+                           (installPath.isEmpty() || GameLauncher::contentAvailable(installPath));
     if (available && installation.value(QStringLiteral("source")).toString() == QStringLiteral("Manual")) {
       QString executable, directory, error;
       QStringList arguments;
       available = ManualGameModel::validateLaunch(installation.value(QStringLiteral("launchTarget")).toString(),
           installation.value(QStringLiteral("appId")).toString(), &executable, &arguments, &directory, &error);
+    }
+    if (available && m_launchInspector) {
+      const auto plan=m_launchInspector(installation);
+      if(plan.value("supported").toBool()) available=plan.value("available").toBool();
     }
     installation.insert(QStringLiteral("launchAvailable"), available);
     if (isPreferred && available) {
@@ -1072,6 +1090,8 @@ QVariantMap UnifiedGameModel::gameMap(const SourceRow& source) const {
                 m_organizationForGame.value(gameKey(source)).status);
   result.insert(QStringLiteral("tags"), m_organizationForGame.value(gameKey(source)).tags);
   result.insert(QStringLiteral("collections"), m_collectionsForGame.value(gameKey(source)));
+  const auto repaired=m_launchSetups.value(gameKey(source)).value("path").toString();
+  if(!repaired.isEmpty()) { result["installPath"]=repaired;result["installed"]=GameLauncher::contentAvailable(repaired); }
   return result;
 }
 

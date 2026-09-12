@@ -21,7 +21,12 @@ Omakade retains:
 
 - Library, source records, favorites, hidden state, and achievements in
   `$XDG_DATA_HOME/omakade/library.sqlite3`
-- User-created links and preferred installations in the same database
+- User-created links, preferred installations, machine-local launch setups, and
+  separate identity/artwork repair recovery points in the same database
+- Library repair queue position and filters beside the settings file in `config.toml.review.ini`
+- Artwork retained for repair undo under `$XDG_DATA_HOME/omakade/artwork/review-undo/`
+- Optional RomM server URL and local mount path in settings, and its cached catalog
+  in `$XDG_DATA_HOME/omakade/romm-catalog.sqlite3`
 - Manual game titles, executable paths, arguments, working directories, and
   saved filter queries in the same database
 - Completion states, tags, collections, collection memberships, game-identification
@@ -68,6 +73,20 @@ the database, logs, or process arguments.
 
 Recording is off for new configurations until enabled in Settings. Existing saved
 choices are preserved. Disabling recording retains recorded history locally.
+
+## Optional RomM library
+
+RomM is disabled by default. Connecting stores a Client API Token in Secret Service
+under `io.github.tsouth89.Omakade.RomM`, scoped by server. The token is not written
+to config, the database, logs, or process arguments. Enabled refreshes send
+authenticated read-only catalog requests to the configured server. Game files are
+read from the configured local mount; Omakade does not download games or upload saves.
+The RomM token is not sent to artwork providers.
+
+Failed refreshes retain the last successful local catalog. Disconnect disables
+requests while retaining the catalog and token. Forget Token also removes the
+server credential. Machine-local launch setups and credentials are excluded from
+personal-library exports.
 
 ## Emulator save protection
 
@@ -149,12 +168,10 @@ library database for offline use.
 ## Removal
 
 The settings panel can clear downloaded achievement art and remove Steam,
-RetroAchievements, IGDB, or SteamGridDB credentials from Secret Service. Removing Omakade does not remove its XDG
+RetroAchievements, IGDB, SteamGridDB, or RomM credentials from Secret Service. Removing Omakade does not remove its XDG
 data by default, so users can preserve settings across reinstallations.
 Resetting a custom artwork slot removes its unused Omakade copy and restores
 the source-provided artwork. It does not change the original selected image.
-cached SteamGridDB portrait or source-provided artwork. It does not change the
-original selected image.
 
 ## Console keys
 

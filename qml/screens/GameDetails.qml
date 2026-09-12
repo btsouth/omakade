@@ -53,8 +53,15 @@ Item {
     signal favoriteRequested()
     signal pinRequested()
     signal playRequested()
-    readonly property bool saveSourceSupported: ["RetroArch", "PCSX2", "Ryujinx", "shadPS4", "Cemu", "Dolphin"].indexOf(selectedInstallation.source) >= 0
-    readonly property string saveGamePath: saveSourceSupported ? (selectedInstallation.installPath || selectedInstallation.launchTarget || "") : ""
+    Connections { target: typeof Metadata !== "undefined" ? Metadata : null; function onEntryChanged() { root.reviewRevision++ } }
+    property int reviewRevision: 0
+    Connections { target: typeof LibraryRepair !== "undefined" ? LibraryRepair : null; function onChanged() { root.reviewRevision++ } }
+    readonly property var reviewReasons: { const update=reviewRevision; return typeof LibraryRepair !== "undefined" && LibraryRepair ? LibraryRepair.reasonsFor(root.game.metadataKey || "") : [] }
+    property int setupRevision: 0
+    readonly property var launchPlan: { const revision = setupRevision; return typeof Launcher !== "undefined" && Launcher ? Launcher.inspect(selectedInstallation) : ({}) }
+    Connections { target: typeof Launcher !== "undefined" ? Launcher : null; function onSetupChanged() { root.setupRevision++ } }
+    readonly property bool saveSourceSupported: launchPlan.supported === true
+    readonly property string saveGamePath: saveSourceSupported ? (launchPlan.gamePath || selectedInstallation.installPath || selectedInstallation.launchTarget || "") : ""
     readonly property int saveBackupCount: {
         if (typeof SaveBackups === "undefined" || !saveGamePath) return 0
         const revision = SaveBackups.revision
@@ -90,12 +97,16 @@ Item {
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0) + " KiB"
         return (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + " MiB"
     }
+    function openIdentification() { identifyPanel.open() }
+    function showLaunchSetup() {
+        launchSetup.expanded = true
+        Qt.callLater(function() { root.Window.window.restoreFocus(launchSetup.firstControl); root.revealFocusedItem(launchSetup.firstControl) })
+    }
     function showSaveBackups() {
-        SaveBackups.selectLaunch(selectedInstallation.source, saveGamePath,
-                                 selectedInstallation.source === "RetroArch" ? (selectedInstallation.launchTarget || "") : "",
-                                 selectedInstallation.flatpak || false, selectedInstallation.appId || "",
-                                 selectedInstallation.runner || "",
-                                 selectedInstallation.source === "PCSX2" || selectedInstallation.source === "RetroArch" ? "" : (selectedInstallation.launchTarget || ""))
+        const context = launchPlan.saveContext || ({})
+        SaveBackups.selectLaunch(context.source || selectedInstallation.source, saveGamePath,
+                                 context.core || "", context.flatpak || false, context.id || selectedInstallation.appId || "",
+                                 context.runner || "", context.target || "")
         saveBackupsMenu.pendingVersion = ""
         saveBackupsMenu.pendingDelete = false
         saveBackupsMenu.open()
@@ -562,9 +573,9 @@ Item {
                         property Item controllerRightTarget: favoriteButton
                         property Item controllerDownTarget:
                             gameActions.columns === 2 ? addToQueueButton : null
-                        text: root.launchBusy ? "OPENING..." : root.selectedInstallation.installed === false
+                        text: root.launchBusy ? "OPENING..." : root.selectedInstallation.installed === false && root.selectedInstallation.source === "Steam"
                               ? "INSTALL IN STEAM" : "PLAY"
-                        iconText: root.selectedInstallation.installed === false ? "↓" : "▶"
+                        iconText: root.selectedInstallation.installed === false && root.selectedInstallation.source === "Steam" ? "↓" : "▶"
                         primary: true
                         // Keep focus on this button while suppressing repeated launches.
                         Accessible.description: root.launchBusy ? "Launch request in progress" : ""
@@ -1248,6 +1259,14 @@ Item {
                     }
                 }
 
+                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; visible: root.reviewReasons.length > 0; text: "Needs review: " + root.reviewReasons.join(", "); color: Theme.mutedText }
+                LaunchSetupPanel {
+                    id: launchSetup
+                    Layout.fillWidth: true
+                    installation: root.selectedInstallation
+                    onTextEntryRequested: (target,title,password,placeholder) => root.textEntryRequested(target,title,password,placeholder)
+                }
+
                 ColumnLayout {
                     id: achievementListSection
                     objectName: "achievementListSection"
@@ -1652,6 +1671,13 @@ Item {
         MenuAction {
             Layout.fillWidth: true
             compact: true
+            objectName: "launchSetupMenuButton"
+            text: "LAUNCH SETUP"
+            onClicked: detailManage.invoke(root.showLaunchSetup)
+        }
+        MenuAction {
+            Layout.fillWidth: true
+            compact: true
             objectName: "saveBackupsButton"
             visible: root.saveSourceSupported
             text: "SAVE BACKUPS"
@@ -1775,150 +1801,10 @@ Item {
         }
     }
 
-    ActionMenu {
+    SaveBackupMenu {
         id: saveBackupsMenu
-        objectName: "saveBackupsMenu"
-        showCloseButton: false
         host: root.Window.window
         anchorItem: detailManageButton
-        title: "SAVE BACKUPS"
-        fixedHeader: true
-        preferredWidth: 460
-        property string pendingVersion: ""
-        property bool pendingShared: false
-        property bool pendingDelete: false
-        onClosed: {
-            pendingVersion = ""
-            pendingDelete = false
-        }
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            color: Theme.mutedText
-            font.family: Theme.fontFamily
-            font.pixelSize: 12
-            lineHeight: 1.2
-            text: "Automatic snapshots made before launch. Up to 10 versions are kept. Save states are not included."
-        }
-        Text {
-            Layout.fillWidth: true
-            visible: text.length > 0
-            wrapMode: Text.Wrap
-            color: Theme.foreground
-            font.family: Theme.fontFamily
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-            text: typeof SaveBackups !== "undefined" ? SaveBackups.message : ""
-        }
-        Text {
-            Layout.fillWidth: true
-            visible: typeof SaveBackups !== "undefined" && SaveBackups.versions.length > 0
-            wrapMode: Text.Wrap
-            color: Theme.mutedText
-            font.family: Theme.fontFamily
-            font.pixelSize: 12
-            text: SaveBackups.versions.length + (SaveBackups.versions.length === 1 ? " backup" : " backups")
-                  + "  ·  " + root.storageSizeText(SaveBackups.storageBytes)
-        }
-        Text {
-            Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion !== "" && saveBackupsMenu.pendingShared
-            wrapMode: Text.Wrap
-            color: Theme.yellow
-            font.family: Theme.fontFamily
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-            text: "SHARED STORAGE · This may also change saves for other games or profiles."
-        }
-        Text {
-            Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion !== ""
-            wrapMode: Text.Wrap
-            color: Theme.foreground
-            font.family: Theme.fontFamily
-            font.pixelSize: 12
-            lineHeight: 1.2
-            text: saveBackupsMenu.pendingDelete
-                  ? "Delete this backup? This cannot be undone. Your current save will not change."
-                  : "Restore this version? Close the emulator first. Your current saves will be backed up before anything changes."
-        }
-        MenuAction {
-            id: cancelSaveRestore
-            objectName: "cancelSaveRestore"
-            Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion !== ""
-            text: saveBackupsMenu.pendingDelete ? "BACK" : "CANCEL"
-            onClicked: {
-                if (saveBackupsMenu.pendingDelete) {
-                    saveBackupsMenu.pendingDelete = false
-                    Qt.callLater(cancelSaveRestore.forceActiveFocus)
-                } else {
-                    saveBackupsMenu.pendingVersion = ""
-                    saveBackupsMenu.doneControl.forceActiveFocus()
-                }
-            }
-        }
-        MenuAction {
-            objectName: "deleteSaveBackup"
-            Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion !== "" && !saveBackupsMenu.pendingDelete
-            text: "DELETE BACKUP…"
-            onClicked: {
-                saveBackupsMenu.pendingDelete = true
-                Qt.callLater(cancelSaveRestore.forceActiveFocus)
-            }
-        }
-        MenuAction {
-            objectName: "confirmSaveRestore"
-            Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion !== ""
-            text: saveBackupsMenu.pendingDelete ? "DELETE BACKUP" : "RESTORE THIS SAVE"
-            onClicked: {
-                if (saveBackupsMenu.pendingDelete)
-                    SaveBackups.deleteVersion(saveBackupsMenu.pendingVersion)
-                else
-                    SaveBackups.restore(saveBackupsMenu.pendingVersion)
-                saveBackupsMenu.pendingVersion = ""
-                saveBackupsMenu.pendingDelete = false
-                saveBackupsMenu.doneControl.forceActiveFocus()
-            }
-        }
-        MenuAction {
-            objectName: "createSaveBackup"
-            Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion === ""
-                     && typeof SaveBackups !== "undefined" && SaveBackups.canSnapshot
-            text: "BACK UP NOW"
-            onClicked: {
-                SaveBackups.snapshotSelected()
-                saveBackupsMenu.doneControl.forceActiveFocus()
-            }
-        }
-        MenuAction {
-            Layout.fillWidth: true
-            visible: typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
-            text: "RETRY SAVE RECOVERY"
-            onClicked: SaveBackups.retryRecovery()
-        }
-        Repeater {
-            model: typeof SaveBackups !== "undefined" ? SaveBackups.versions : []
-            MenuAction {
-                required property var modelData
-                required property int index
-                objectName: "saveBackupVersion_" + index
-                Layout.fillWidth: true
-                visible: saveBackupsMenu.pendingVersion === ""
-                text: Qt.formatDateTime(new Date(modelData.createdAt), "MMM d, yyyy  ·  h:mm AP")
-                      + "  ·  " + root.storageSizeText(modelData.bytes)
-                      + (modelData.shared === true ? "  ·  SHARED" : "")
-                onClicked: {
-                    saveBackupsMenu.pendingShared = modelData.shared === true
-                    saveBackupsMenu.pendingDelete = false
-                    saveBackupsMenu.pendingVersion = modelData.id
-                    Qt.callLater(cancelSaveRestore.forceActiveFocus)
-                }
-            }
-        }
     }
 
 }

@@ -20,8 +20,6 @@
 
 namespace {
 constexpr qint64 maxSave = 8 * 1024 * 1024;
-constexpr qint64 maxStorage = 256 * 1024 * 1024;
-constexpr int maxVersions = 10;
 QString hash(const QByteArray& data) {
   return QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex());
 }
@@ -127,7 +125,13 @@ SaveBackups::SaveBackups(QObject* parent)
 SaveBackups::SaveBackups(QString home, QString configPath, QString root,
                          std::function<bool()> running, QObject* parent)
     : QObject(parent), m_home(std::move(home)), m_config(std::move(configPath)),
-      m_root(std::move(root)), m_running(std::move(running)), m_sets(m_root + "/sets", m_running) {}
+      m_root(std::move(root)), m_running(std::move(running)), m_sets(m_root + "/sets", m_running) {
+  const auto policy=manifest(m_root+"/policy");
+  m_customPolicy=policy.value("format").toInt()==1;
+  m_retention=qBound(2,policy.value("retention").toInt(10),50);
+  m_storageLimitMiB=qBound(256,policy.value("storageLimitMiB").toInt(2048),8192);
+  m_sets.setPolicy(m_retention,qint64(m_storageLimitMiB)*1024*1024,m_customPolicy ? m_root : QString{});
+}
 QString SaveBackups::gameRoot(const QString& game) const {
   return m_root + '/' + hash(game.toUtf8());
 }
@@ -340,11 +344,10 @@ bool SaveBackups::snapshot(const QString& game, const QString& core, const QStri
   QDirIterator files(m_root, QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
   while (files.hasNext()) {
     files.next();
-    if (files.filePath().startsWith(m_root + "/sets/"))
-      continue;
+    if (!m_customPolicy && files.filePath().startsWith(m_root + "/sets/")) continue;
     used += files.fileInfo().size();
-    if (++entries > 20000 || used + bytes.size() > maxStorage) {
-      *error = "Save backup storage is full (256 MiB). Existing backups were kept.";
+    if (++entries > 20000 || used + bytes.size() > qint64(m_customPolicy ? m_storageLimitMiB : 256)*1024*1024) {
+      *error = "The backup storage limit was reached. Existing backups were kept.";
       return false;
     }
   }
@@ -394,7 +397,7 @@ bool SaveBackups::snapshot(const QString& game, const QString& core, const QStri
                                   return v.toMap()["id"].toString().startsWith("set-");
                                 }),
                  versions.end());
-  for (int i = maxVersions; i < versions.size(); ++i)
+  for (int i = qMax(m_retention,int(existing.size())); i < versions.size(); ++i)
     QDir(root + '/' + versions[i].toMap().value("id").toString()).removeRecursively();
   return true;
 }

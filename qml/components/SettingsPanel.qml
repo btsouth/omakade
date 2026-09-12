@@ -306,7 +306,8 @@ import QtQuick.Layouts
                           status: DolphinLibrary ? DolphinLibrary.statusText : "Unavailable",
                           error: DolphinLibrary ? DolphinLibrary.errorText : "",
                           paths: DolphinLibrary ? DolphinLibrary.detectedPaths : [],
-                          lastScan: DolphinLibrary ? DolphinLibrary.lastScan : 0 }
+                          lastScan: DolphinLibrary ? DolphinLibrary.lastScan : 0 },
+                        { name: "ROMM", enabled: Preferences.rommEnabled, status: RommLibrary ? RommLibrary.statusText : "Unavailable", error: RommLibrary ? RommLibrary.errorText : "", paths: RommLibrary ? RommLibrary.detectedPaths : [], lastScan: 0 }
                     ]
                     ColumnLayout {
                         required property var modelData
@@ -374,6 +375,9 @@ import QtQuick.Layouts
                                         Preferences.cemuEnabled = !Preferences.cemuEnabled
                                         nowEnabled = Preferences.cemuEnabled
                                         if (Preferences.cemuEnabled) CemuLibrary.refresh()
+                                    } else if (modelData.name === "ROMM") {
+                                        Preferences.rommEnabled = !Preferences.rommEnabled
+                                        nowEnabled = Preferences.rommEnabled
                                     } else if (modelData.name === "DOLPHIN") {
                                         Preferences.dolphinEnabled = !Preferences.dolphinEnabled
                                         nowEnabled = Preferences.dolphinEnabled
@@ -412,6 +416,7 @@ import QtQuick.Layouts
                                     else if (modelData.name === "SHADPS4") Shadps4Library.refresh()
                                     else if (modelData.name === "CEMU") CemuLibrary.refresh()
                                     else if (modelData.name === "DOLPHIN") DolphinLibrary.refresh()
+                                    else if (modelData.name === "ROMM") RommLibrary.refresh()
                                     else RetroArchLibrary.refresh()
                                 }
                             }
@@ -834,6 +839,7 @@ import QtQuick.Layouts
                     text: "Optional connections add ratings, portraits, and achievements. Local games work without them."
                     color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale
                 }
+                RommSettings { Layout.fillWidth: true; host: settingsOverlay.host }
                 GlassButton {
                     objectName: "protonDbToggle"
                     Layout.fillWidth: true
@@ -1442,6 +1448,7 @@ GlassButton {
                     text: "Omakade backup archives contain organization and preferences, not emulator saves. Save protection keeps separate local copies. Clearing downloaded artwork does not remove game files."
                     color: Theme.mutedText; font.family: Theme.fontFamily
                 }
+                SaveProtectionPanel { Layout.fillWidth: true; host: settingsOverlay.host }
                 GlassButton {
                     objectName: "saveProtectionSettingsButton"
                     compact: true

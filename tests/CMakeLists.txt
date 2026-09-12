@@ -912,3 +912,28 @@ qt_add_executable(omakade_romm_catalog_tests RommCatalogTests.cpp)
 target_link_libraries(omakade_romm_catalog_tests PRIVATE omakade_core Qt6::Test)
 add_test(NAME omakade_romm_catalog_tests COMMAND omakade_romm_catalog_tests)
 set_tests_properties(omakade_romm_catalog_tests PROPERTIES TIMEOUT 30)
+
+qt_add_executable(omakade_feature_workflow_tests FeatureWorkflowTests.cpp)
+target_link_libraries(omakade_feature_workflow_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_feature_workflow_tests COMMAND omakade_feature_workflow_tests)
+set_tests_properties(omakade_feature_workflow_tests PROPERTIES TIMEOUT 60)
+
+foreach(feature_overlay IN ITEMS library-repair library-repair-controls launch-setup settings-romm settings-save-overview)
+  foreach(feature_size IN ITEMS desktop couch)
+    if(feature_size STREQUAL "couch")
+      set(feature_args --couch --render-size=1920x1080)
+    else()
+      set(feature_args --render-size=640x600)
+    endif()
+    add_test(NAME omakade_${feature_overlay}_${feature_size} COMMAND omakade ${feature_args}
+      --render-overlay=${feature_overlay} --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${feature_overlay}-${feature_size}.png)
+    set_tests_properties(omakade_${feature_overlay}_${feature_size} PROPERTIES
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1" TIMEOUT 20)
+  endforeach()
+endforeach()
+
+add_test(NAME omakade_launch_setup_controller_entry COMMAND omakade --couch
+  --render-overlay=launch-setup-entry --render-size=1920x1080
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/launch-setup-entry.png)
+set_tests_properties(omakade_launch_setup_controller_entry PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1" TIMEOUT 20)

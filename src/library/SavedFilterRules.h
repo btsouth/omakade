@@ -41,7 +41,7 @@ inline bool valid(const QJsonObject& state) {
   }
   if (state.value("version").toInt() == 3 &&
       (!state.value("review").isString() ||
-       !QStringList{"", "identification", "artwork", "either"}.contains(state.value("review").toString())))
+       !QStringList{"", "identification", "artwork", "either", "unavailable", "duplicates"}.contains(state.value("review").toString())))
     return false;
   // Sources are a multi-select list. A bare string is still accepted so a filter saved by an
   // earlier build exports instead of failing the whole archive.

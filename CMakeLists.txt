@@ -103,6 +103,9 @@ add_library(omakade_core STATIC
   src/backup/BackupDatabase.h
   src/backup/BackupRecovery.cpp
   src/backup/BackupRecovery.h
+  src/saves/SaveManagement.cpp
+  src/saves/SaveProtection.cpp
+  src/saves/SaveProtection.h
   src/saves/SaveBackups.cpp
   src/saves/SaveSetStore.cpp
   src/saves/SaveLayouts.cpp
@@ -159,6 +162,8 @@ add_library(omakade_core STATIC
   src/library/RyujinxGameModel.h
   src/library/Shadps4GameModel.cpp
   src/library/Shadps4GameModel.h
+  src/library/RommGameModel.cpp
+  src/library/RommGameModel.h
   src/library/CemuGameModel.cpp
   src/library/CemuGameModel.h
   src/library/ManualGameModel.cpp
@@ -171,6 +176,8 @@ add_library(omakade_core STATIC
   src/library/SteamOwnedGamesApi.cpp
   src/library/SteamOwnedGamesApi.h
   src/library/UnifiedGameModel.cpp
+    src/library/LibraryRepair.cpp
+    src/library/ReviewUndo.cpp
   src/library/UnifiedGameModel.h
   src/sources/romm/RommCredentials.cpp
   src/sources/romm/RommCredentials.h
@@ -178,6 +185,7 @@ add_library(omakade_core STATIC
   src/sources/romm/RommCatalog.h
   src/sources/romm/RommScanner.cpp
   src/sources/romm/RommScanner.h
+  src/launch/GameLaunchSetup.cpp
   src/launch/GameLauncher.cpp
   src/launch/GameLauncher.h
   src/launch/LaunchCommand.h
@@ -284,6 +292,11 @@ qt_add_qml_module(omakade
   qml/components/FieldClearButton.qml
   qml/components/CoverSizeControl.qml
     qml/components/CoverArtwork.qml
+    qml/components/SaveProtectionPanel.qml
+    qml/components/SaveBackupMenu.qml
+    qml/components/LaunchSetupPanel.qml
+    qml/components/LibraryRepairPanel.qml
+    qml/components/RommSettings.qml
     qml/components/LaunchFeedback.qml
     qml/components/ProtonDbBadge.qml
     qml/components/GameCard.qml
