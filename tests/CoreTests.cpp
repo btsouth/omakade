@@ -799,6 +799,7 @@ private slots:
   void malformedCemuDataDoesNotReplaceCachedGames();
   void cemuLauncherBuildsSafeCommands();
   void processMatcherExtractsRomPaths();
+  void shippedProfilesMatchCemuWua();
   void processDiscoveryStaysWithinCurrentUser();
   void sessionRecorderTracksExtendsAndClosesSessions();
   void sessionRecorderSeparatesGamesWithinOneProcess();
@@ -6537,6 +6538,24 @@ void CoreTests::processMatcherExtractsRomPaths() {
   QCOMPARE(matches.at(1).gamePath, QStringLiteral("/data/Games/Switch/FFT The Ivalice.nsp"));
   QCOMPARE(matches.at(1).emulator, QStringLiteral("Eden"));
   QVERIFY(matches.at(1).rescanSource.isEmpty());
+}
+
+void CoreTests::shippedProfilesMatchCemuWua() {
+  QString error;
+  const auto profiles = ProcessMatcher::load(
+      QStringLiteral(OMAKADE_FIXTURE_DIR "/../../resources/sessiond-profiles.json"), &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  for (const QString& extension : {QStringLiteral("wua"), QStringLiteral("WUA")}) {
+    const QString game = "/games/Breath of the Wild." + extension;
+    const QVector<ProcessSnapshot> processes = {
+        {.pid = 10, .procStart = 100, .comm = "Cemu", .arguments = {"/usr/bin/Cemu", "-g", game}},
+        {.pid = 11, .procStart = 101, .comm = "rsync", .arguments = {"rsync", game}}};
+    const auto matches = ProcessMatcher::match(processes, profiles);
+    QCOMPARE(matches.size(), 1);
+    QCOMPARE(matches.first().pid, qint64(10));
+    QCOMPARE(matches.first().gamePath, game);
+    QCOMPARE(matches.first().emulator, QString("Cemu"));
+  }
 }
 
 void CoreTests::sessionRecorderTracksExtendsAndClosesSessions() {

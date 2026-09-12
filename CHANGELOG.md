@@ -2,6 +2,7 @@
 
 ## Unreleased (local candidate)
 
+- Recognize Cemu WUA game paths in the recorder's shipped profiles.
 - Refuse incomplete save-folder scans and malformed backup/recovery manifests before restoring.
   Resolve RetroArch's default save directories correctly for native and Flatpak installs.
 - Protect emulator save sets before launch, including clock data, memory cards, and native/Flatpak
