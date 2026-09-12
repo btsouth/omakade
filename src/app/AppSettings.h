@@ -32,6 +32,10 @@ class AppSettings final : public QObject {
   Q_PROPERTY(bool dolphinEnabled READ dolphinEnabled WRITE setDolphinEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(
       bool battleNetEnabled READ battleNetEnabled WRITE setBattleNetEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool rommEnabled READ rommEnabled WRITE setRommEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(QString rommUrl READ rommUrl WRITE setRommUrl NOTIFY rommConfigurationChanged)
+  Q_PROPERTY(QString rommLibraryRoot READ rommLibraryRoot WRITE setRommLibraryRoot NOTIFY
+                 rommConfigurationChanged)
   Q_PROPERTY(bool consolePortalsEnabled READ consolePortalsEnabled WRITE setConsolePortalsEnabled
                  NOTIFY consolePortalsEnabledChanged)
   Q_PROPERTY(QStringList romFolders READ romFolders WRITE setRomFolders NOTIFY romFoldersChanged)
@@ -136,6 +140,12 @@ public:
   void setPreferStandaloneEmulators(bool value);
   [[nodiscard]] bool battleNetEnabled() const;
   void setBattleNetEnabled(bool value);
+  [[nodiscard]] bool rommEnabled() const { return m_rommEnabled; }
+  void setRommEnabled(bool value);
+  [[nodiscard]] QString rommUrl() const { return m_rommUrl; }
+  void setRommUrl(const QString& value);
+  [[nodiscard]] QString rommLibraryRoot() const { return m_rommLibraryRoot; }
+  void setRommLibraryRoot(const QString& value);
   [[nodiscard]] bool closeAfterLaunch() const;
   void setCloseAfterLaunch(bool value);
   // Session recording by omakade-sessiond; the daemon reads the same config key.
@@ -167,6 +177,7 @@ public:
 signals:
   void saveFailed(const QString& message);
   void gogLibraryPathsChanged();
+  void rommConfigurationChanged();
   void reducedMotionChanged();
   void artworkCacheLimitMbChanged();
   void protonDbEnabledChanged();
@@ -229,6 +240,9 @@ private:
   int m_consoleExpandLimit = 200;
   bool m_preferStandaloneEmulators = false;
   bool m_battleNetEnabled = true;
+  bool m_rommEnabled = false;
+  QString m_rommUrl;
+  QString m_rommLibraryRoot;
   bool m_closeAfterLaunch = false;
   bool m_trackPlaySessions = false;
   bool m_protectRetroArchSaves = true;

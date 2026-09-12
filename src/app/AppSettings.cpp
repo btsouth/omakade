@@ -29,6 +29,22 @@ QString normalizedLibraryPath(QString path) {
   }
   return QDir::cleanPath(path);
 }
+QString normalizedRommUrl(const QString& value) {
+  QUrl url(value.trimmed(), QUrl::StrictMode);
+  const QString scheme = url.scheme().toLower();
+  if (!url.isValid() || (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) ||
+      url.host().isEmpty() || !url.userName().isEmpty() || !url.password().isEmpty() ||
+      !url.query().isEmpty() || !url.fragment().isEmpty()) {
+    return {};
+  }
+  QString path = url.path();
+  while (path.size() > 1 && path.endsWith(QLatin1Char('/')))
+    path.chop(1);
+  if (path == QStringLiteral("/"))
+    path.clear();
+  url.setPath(path);
+  return url.toString(QUrl::FullyEncoded);
+}
 }
 
 QStringList AppSettings::gogLibraryPaths() const { return m_gogLibraryPaths; }
@@ -355,6 +371,45 @@ void AppSettings::setBattleNetEnabled(bool value) {
   m_battleNetEnabled = value;
   save();
   emit sourcesChanged();
+}
+
+void AppSettings::setRommEnabled(bool value) {
+  if (m_rommEnabled == value)
+    return;
+  const bool previous = m_rommEnabled;
+  m_rommEnabled = value;
+  if (!save()) {
+    m_rommEnabled = previous;
+    return;
+  }
+  emit sourcesChanged();
+}
+
+void AppSettings::setRommUrl(const QString& value) {
+  const QString normalized = value.trimmed().isEmpty() ? QString{} : normalizedRommUrl(value);
+  if ((!value.trimmed().isEmpty() && normalized.isEmpty()) || normalized == m_rommUrl)
+    return;
+  const QString previous = m_rommUrl;
+  m_rommUrl = normalized;
+  if (!save()) {
+    m_rommUrl = previous;
+    return;
+  }
+  emit rommConfigurationChanged();
+}
+
+void AppSettings::setRommLibraryRoot(const QString& value) {
+  const QString normalized =
+      value.trimmed().isEmpty() ? QString{} : normalizedLibraryPath(value);
+  if ((!value.trimmed().isEmpty() && normalized.isEmpty()) || normalized == m_rommLibraryRoot)
+    return;
+  const QString previous = m_rommLibraryRoot;
+  m_rommLibraryRoot = normalized;
+  if (!save()) {
+    m_rommLibraryRoot = previous;
+    return;
+  }
+  emit rommConfigurationChanged();
 }
 
 bool AppSettings::ryujinxEnabled() const { return m_ryujinxEnabled; }
@@ -695,6 +750,21 @@ void AppSettings::load() {
   if (retroAchievementsUsernameMatch.hasMatch()) {
     m_retroAchievementsUsername = retroAchievementsUsernameMatch.captured(1);
   }
+  const auto readJsonString = [&contents](const QString& key) {
+    const auto match =
+        QRegularExpression(QStringLiteral("(?m)^%1\\s*=\\s*(\"[^\\r\\n]*\")\\s*$").arg(key))
+            .match(contents);
+    if (!match.hasMatch())
+      return QString{};
+    return QJsonDocument::fromJson(
+               QByteArrayLiteral("[") + match.captured(1).toUtf8() + QByteArrayLiteral("]"))
+        .array()
+        .at(0)
+        .toString();
+  };
+  m_rommUrl = normalizedRommUrl(readJsonString(QStringLiteral("romm_url")));
+  m_rommLibraryRoot =
+      normalizedLibraryPath(readJsonString(QStringLiteral("romm_library_root")));
   const auto readEnabled = [&contents](const QString& key, bool fallback) {
     const QRegularExpression expression(
         QStringLiteral("(?m)^%1\\s*=\\s*(true|false)\\s*$").arg(key));
@@ -752,6 +822,7 @@ void AppSettings::load() {
     m_romFolders = romFoldersMatch.captured(1).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
   }
   m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
+  m_rommEnabled = readEnabled(QStringLiteral("romm_enabled"), false);
   m_protonDbEnabled = readEnabled(QStringLiteral("protondb_enabled"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
@@ -882,6 +953,13 @@ bool AppSettings::save() {
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))
                                    .toJson(QJsonDocument::Compact)) + QLatin1Char('\n');
   contents += QStringLiteral("protondb_enabled = %1\n").arg(m_protonDbEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  const auto jsonString = [](const QString& value) {
+    const QByteArray array = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(array.mid(1, array.size() - 2));
+  };
+  contents += QStringLiteral("romm_enabled = %1\nromm_url = %2\nromm_library_root = %3\n")
+                  .arg(m_rommEnabled ? QStringLiteral("true") : QStringLiteral("false"),
+                       jsonString(m_rommUrl), jsonString(m_rommLibraryRoot));
   const QByteArray encoded = contents.toUtf8();
   if (file.write(encoded) != encoded.size() || !file.commit())
     return failed();

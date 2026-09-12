@@ -66,6 +66,7 @@
 #include "sources/pcsx2/Pcsx2Scanner.h"
 #include "sources/retro/RomFolderScanner.h"
 #include "sources/retroarch/RetroArchScanner.h"
+#include "sources/romm/RommScanner.h"
 #include "sources/ryujinx/RyujinxScanner.h"
 #include "sources/shadps4/Shadps4Scanner.h"
 #include "sources/steam/SteamScanner.h"
@@ -811,6 +812,8 @@ private slots:
   void consolePortalsDoNotMergeDifferentFiles();
   void romFoldersMergeWithPlaylistsByCanonicalPath();
   void romFoldersKeepSeparateCopies();
+  void rommCatalogMapsOnlySupportedConfinedLocalFiles();
+  void malformedRommCatalogIsRejected();
   void cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone();
   void libretroCoverUrlsAndCachePathsAreStable();
   void downloadedCoversSurviveARescan();
@@ -4734,6 +4737,16 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
     settings.setPreferStandaloneEmulators(true);
     settings.setRomFolders({QStringLiteral("/roms/snes|snes")});
     settings.setBattleNetEnabled(false);
+    settings.setRommUrl(QStringLiteral("https://romm.example.test/library/"));
+    settings.setRommLibraryRoot(QStringLiteral("/mnt/romm library"));
+    settings.setRommEnabled(true);
+    settings.setRommUrl(QStringLiteral("https://user:secret@invalid.example.test"));
+    QCOMPARE(settings.rommUrl(), QStringLiteral("https://romm.example.test/library"));
+    settings.setRommLibraryRoot(QStringLiteral("relative/path"));
+    QCOMPARE(settings.rommLibraryRoot(), QStringLiteral("/mnt/romm library"));
+    QVERIFY(!settings.backupSettings().contains(QStringLiteral("romm_url")));
+    QVERIFY(!settings.backupSettings().contains(QStringLiteral("romm_library_root")));
+    QVERIFY(!settings.backupSettings().contains(QStringLiteral("romm_enabled")));
     settings.setCloseAfterLaunch(true);
     settings.setCouchModeEnabled(true);
     settings.setCouchLibraryView(QStringLiteral("grid"));
@@ -4762,6 +4775,9 @@ void CoreTests::settingsPersistReducedMotionAndCacheLimit() {
   QVERIFY(reloaded.preferStandaloneEmulators());
   QCOMPARE(reloaded.romFolders(), QStringList({QStringLiteral("/roms/snes|snes")}));
   QVERIFY(!reloaded.battleNetEnabled());
+  QVERIFY(reloaded.rommEnabled());
+  QCOMPARE(reloaded.rommUrl(), QStringLiteral("https://romm.example.test/library"));
+  QCOMPARE(reloaded.rommLibraryRoot(), QStringLiteral("/mnt/romm library"));
   QVERIFY(reloaded.closeAfterLaunch());
   QVERIFY(reloaded.couchModeEnabled());
   QCOMPARE(reloaded.couchLibraryView(), QStringLiteral("grid"));
@@ -6172,6 +6188,70 @@ void CoreTests::romFoldersKeepSeparateCopies() {
            RomFolderScanner::encode(directory.path() + QStringLiteral("/backup"),
                                     QStringLiteral("snes"))});
   QCOMPARE(model.rowCount(), 2);
+}
+
+void CoreTests::rommCatalogMapsOnlySupportedConfinedLocalFiles() {
+  QTemporaryDir library;
+  QTemporaryDir outside;
+  QVERIFY(library.isValid());
+  QVERIFY(outside.isValid());
+  const QString gba = library.path() + QStringLiteral("/gba/roms/Advance Wars.gba");
+  const QString switchGame = library.path() + QStringLiteral("/switch/roms/Astral/base.nsp");
+  const QString outsideGame = outside.path() + QStringLiteral("/escape.gba");
+  writeFile(gba, "gba");
+  writeFile(switchGame, "nsp");
+  writeFile(outsideGame, "outside");
+  QVERIFY(QDir().mkpath(library.path() + QStringLiteral("/gba/roms")));
+  QVERIFY(QFile::link(outsideGame, library.path() + QStringLiteral("/gba/roms/link.gba")));
+
+  const QJsonArray items{
+      QJsonObject{{"id", 1}, {"platform_slug", "gba"}, {"name", "Advance Wars"},
+                  {"summary", "Turn-based strategy"}, {"fs_path", "gba/roms"},
+                  {"fs_name", "Advance Wars.gba"}, {"path_cover_small", "/assets/cover/1.png"}},
+      QJsonObject{{"id", 2}, {"platform_slug", "switch"}, {"name", "Astral Chain"},
+                  {"fs_path", "switch/roms"}, {"fs_name", "Astral"},
+                  {"files", QJsonArray{
+                      QJsonObject{{"file_name", "update.nsp"},
+                                  {"file_path", "switch/roms/Astral"},
+                                  {"category", "update"}},
+                      QJsonObject{{"file_name", "base.nsp"},
+                                  {"file_path", "switch/roms/Astral"},
+                                  {"category", "game"}}}}},
+      QJsonObject{{"id", 3}, {"platform_slug", "gba"}, {"name", "Traversal"},
+                  {"fs_path", "../outside"}, {"fs_name", "escape.gba"}},
+      QJsonObject{{"id", 4}, {"platform_slug", "new-nintendo-3ds"}, {"name", "Unsupported"},
+                  {"fs_path", "3ds/roms"}, {"fs_name", "game.3ds"}},
+      QJsonObject{{"id", 5}, {"platform_slug", "gba"}, {"name", "Redirected"},
+                  {"fs_path", "gba/roms"}, {"fs_name", "link.gba"}},
+      QJsonObject{{"id", 1}, {"platform_slug", "gba"}, {"name", "Duplicate"},
+                  {"fs_path", "gba/roms"}, {"fs_name", "Advance Wars.gba"}}};
+  const QByteArray payload =
+      QJsonDocument(QJsonObject{{"items", items}, {"offset", 0}, {"limit", 100}, {"total", 8}})
+          .toJson(QJsonDocument::Compact);
+  const RommScanResult result = RommScanner::parsePage(payload, library.path());
+  QVERIFY(result.complete);
+  QCOMPARE(result.games.size(), 2);
+  QCOMPARE(result.games[0].appId, QStringLiteral("1"));
+  QCOMPARE(result.games[0].contentPath, QFileInfo(gba).canonicalFilePath());
+  QCOMPARE(result.games[0].system, QStringLiteral("gba"));
+  QCOMPARE(result.games[0].coverReference, QStringLiteral("/assets/cover/1.png"));
+  QCOMPARE(result.games[1].contentPath, QFileInfo(switchGame).canonicalFilePath());
+  QCOMPARE(result.games[1].system, QStringLiteral("switch"));
+  QCOMPARE(result.nextOffset, 6);
+  QVERIFY(result.hasMore);
+  QCOMPARE(result.warnings.size(), 1);
+}
+
+void CoreTests::malformedRommCatalogIsRejected() {
+  QTemporaryDir library;
+  QVERIFY(library.isValid());
+  for (const QByteArray& payload : {QByteArray{}, QByteArray{"{"}, QByteArray{"[]"},
+                                    QByteArray{R"({"items":"not-an-array"})"}}) {
+    const RommScanResult result = RommScanner::parsePage(payload, library.path());
+    QVERIFY(!result.complete);
+    QVERIFY(result.games.isEmpty());
+    QVERIFY(!result.warnings.isEmpty());
+  }
 }
 
 void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {

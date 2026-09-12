@@ -172,6 +172,8 @@ add_library(omakade_core STATIC
   src/library/SteamOwnedGamesApi.h
   src/library/UnifiedGameModel.cpp
   src/library/UnifiedGameModel.h
+  src/sources/romm/RommScanner.cpp
+  src/sources/romm/RommScanner.h
   src/launch/GameLauncher.cpp
   src/launch/GameLauncher.h
   src/launch/LaunchCommand.h
