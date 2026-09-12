@@ -1,5 +1,24 @@
 # Four-feature testing candidate
 
+## Current update: library cleanup
+
+Candidate `3afe8190c90f` removes ProtonDB caption lines and Couch library overlays.
+Reports, counts, freshness, and the provider link remain in game details.
+All 31 relevant card-layout, controller, launch, save, repair, and RomM checks passed
+in 65.26 seconds. Card screenshots were inspected at three sizes. Staged and installed
+startup passed, and installed binary hashes and recorder path were verified. This is
+a targeted regression pass; the complete 246-check result below belongs to the baseline.
+
+Installed app/recorder: `~/.local/lib/omakade/3afe8190c90f-1.9-library-cleanup/`.
+Close and reopen Omakade to load it. The previous four-feature build and consistent
+settings/database backups are preserved in this candidate's `rollback/` directory.
+After closing Omakade and emulators, `python3` followed by that directory's
+`restore-app.py` restores the previous app/recorder without replacing library data.
+The candidate directory contains exact SHA-256 values in `candidate.json`.
+Live gameplay, physical controller use, and real-server RomM acceptance remain pending.
+
+The following record describes the original integrated baseline and its test checklist.
+
 This document tracks the integrated implementation of
 [NEXT-FOUR-FEATURES.md](NEXT-FOUR-FEATURES.md). It supersedes the older incremental
 handoffs for this candidate. Release publication and maintainer acceptance are separate.
