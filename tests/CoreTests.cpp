@@ -6246,13 +6246,24 @@ void CoreTests::rommCatalogMapsOnlySupportedConfinedLocalFiles() {
 void CoreTests::malformedRommCatalogIsRejected() {
   QTemporaryDir library;
   QVERIFY(library.isValid());
-  for (const QByteArray& payload : {QByteArray{}, QByteArray{"{"}, QByteArray{"[]"},
-                                    QByteArray{R"({"items":"not-an-array"})"}}) {
+  for (const QByteArray& payload :
+       {QByteArray{}, QByteArray{"{"}, QByteArray{"[]"}, QByteArray{R"({"items":"not-an-array"})"},
+        QByteArray{R"({"items":[],"offset":0,"total":5})"},
+        QByteArray{R"({"items":[],"offset":2147483647})"},
+        QByteArray{R"({"items":[],"offset":-1})"}, QByteArray{R"({"items":[],"limit":0})"},
+        QByteArray{R"({"items":[],"total":"5"})"}, QByteArray{R"({"items":[],"total":1.5})"}}) {
     const RommScanResult result = RommScanner::parsePage(payload, library.path());
     QVERIFY(!result.complete);
     QVERIFY(result.games.isEmpty());
     QVERIFY(!result.warnings.isEmpty());
   }
+  const auto empty = RommScanner::parsePage(R"({"items":[],"total":0})", library.path());
+  QVERIFY(empty.complete);
+  QVERIFY(!empty.hasMore);
+  const auto end = RommScanner::parsePage(R"({"items":[],"offset":100})", library.path());
+  QVERIFY(end.complete);
+  QVERIFY(!end.hasMore);
+  QCOMPARE(end.nextOffset, 100);
 }
 
 void CoreTests::cartridgeLaunchResolverPrefersPlaylistCoreThenStandalone() {

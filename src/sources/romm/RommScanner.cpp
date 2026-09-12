@@ -120,12 +120,31 @@ RommScanResult RommScanner::parsePage(const QByteArray& payload,
     return result;
   }
   const QJsonArray items = itemsValue.toArray();
-  const int offset = qMax(0, response.value(QStringLiteral("offset")).toInt());
-  const int limit = qBound(1, response.value(QStringLiteral("limit")).toInt(items.size()), 1000);
-  result.total = qBound(0, response.value(QStringLiteral("total")).toInt(items.size()), 10000000);
+  const auto validCount = [&response](const QString& key, int minimum, int maximum) {
+    if (!response.contains(key))
+      return true;
+    const QJsonValue value = response.value(key);
+    const int count = value.toInt(-1);
+    return value.isDouble() && count >= minimum && count <= maximum && value.toDouble() == count;
+  };
+  if (!validCount("offset", 0, 10000000 - items.size()) || !validCount("limit", 1, 1000) ||
+      !validCount("total", 0, 10000000)) {
+    result.complete = false;
+    result.warnings.append(QStringLiteral("RomM returned invalid pagination data."));
+    return result;
+  }
+  const int offset = response.value(QStringLiteral("offset")).toInt();
+  const int limit = response.value(QStringLiteral("limit")).toInt(qMax(1, int(items.size())));
   result.nextOffset = offset + items.size();
+  result.total = response.value(QStringLiteral("total")).toInt(result.nextOffset);
   result.hasMore = result.nextOffset < result.total ||
                    (!response.contains(QStringLiteral("total")) && items.size() == limit);
+  if (items.isEmpty() && result.hasMore) {
+    result.complete = false;
+    result.hasMore = false;
+    result.warnings.append(QStringLiteral("RomM returned a catalog page without progress."));
+    return result;
+  }
 
   QSet<QString> seen;
   int unavailable = 0;
