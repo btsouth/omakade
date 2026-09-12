@@ -35,11 +35,23 @@ or filesystem provider has been tested in gameplay. Every catalog emulator has a
 Nonstandard layouts can use the local configuration below. Symbolic links and non-file storage
 providers require an explicit real filesystem location; the store never follows them during restore.
 
+RetroArch's `savefile_directory = "default"` uses its standard Linux config root's `saves`
+directory, including the Flatpak config root. Core/content sorting and explicit content-directory
+saves still apply. The `default` system-directory sentinel is cleared before the content-directory
+fallback used for Flycast. Custom builds with different compiled-in defaults need an explicit layout.
+
 ## Restore and recovery
 
 A version contains a manifest, hashes, source context, allowed save locations, and all member
 files. Publication of a snapshot follows a complete readback and source recheck. The old
 single-file snapshot format remains readable.
+
+An unreadable directory or enumeration failure aborts the entire snapshot rather than recording
+an incomplete save set. Restore validates required manifest fields, individual file sizes/hashes,
+and the total byte count. Missing or wrongly typed file lists are errors, not empty saves.
+Recovery likewise requires both file lists and an explicit boolean commit state; damaged journals
+remain available for investigation without overwriting progress. Valid empty snapshots still support
+undoing a restore into a previously empty save bank.
 
 Multi-file restore writes a persistent journal containing both the previous and requested
 sets before changing live files. Each file uses an atomic write. Interrupted restores roll
