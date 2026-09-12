@@ -438,14 +438,15 @@ bool SaveBackups::snapshotSelected() {
     report(error);
     return false;
   }
-  const int previousCount = list(m_game).size();
+  const auto previousVersions = list(m_game);
   if (!m_sets.snapshot(m_game, m_context, resolve(m_context), &error)) {
     report(error);
     return false;
   }
-  const int nextCount = list(m_game).size();
-  report(nextCount == previousCount ? "No changes since the latest backup."
-                                    : "Save backup created.");
+  const auto nextVersions = list(m_game);
+  report(nextVersions.isEmpty()             ? "No existing saves to back up."
+         : nextVersions == previousVersions ? "No changes since the latest backup."
+                                            : "Save backup created.");
   return true;
 }
 bool SaveBackups::deleteVersion(const QString& version) {

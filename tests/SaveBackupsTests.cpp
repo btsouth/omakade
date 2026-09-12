@@ -146,6 +146,27 @@ private slots:
     QCOMPARE(get(f.save), QByteArray("new progress"));
     QCOMPARE(f.backups.storageBytes(), qint64(QByteArray("previous save").size()));
   }
+  void manualSnapshotsReportCreationAtRetentionLimit() {
+    Fixture f;
+    f.backups.selectLaunch("RetroArch", f.game, f.core, false, "fixture", {}, {});
+    for (int i = 0; i < 11; ++i) {
+      put(f.save, "progress " + QByteArray::number(i));
+      QVERIFY(f.backups.snapshotSelected());
+      QCOMPARE(f.backups.message(), QString("Save backup created."));
+      QTest::qSleep(2);
+    }
+    QCOMPARE(f.backups.count(f.game), 10);
+    QVERIFY(f.backups.snapshotSelected());
+    QCOMPARE(f.backups.message(), QString("No changes since the latest backup."));
+  }
+  void manualSnapshotReportsMissingSaves() {
+    Fixture f;
+    QVERIFY(QFile::remove(f.save));
+    f.backups.selectLaunch("RetroArch", f.game, f.core, false, "fixture", {}, {});
+    QVERIFY(f.backups.snapshotSelected());
+    QCOMPARE(f.backups.count(f.game), 0);
+    QCOMPARE(f.backups.message(), QString("No existing saves to back up."));
+  }
   void legacyBackupDeletionLeavesTheCurrentSaveUntouched() {
     Fixture f;
     QVERIFY(f.backups.protect(f.game, f.core));
