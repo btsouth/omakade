@@ -13,7 +13,9 @@
 
 namespace {
 constexpr qsizetype maxPageBytes = 16 * 1024 * 1024;
-constexpr qsizetype maxRefreshBytes = 64 * 1024 * 1024;
+// Each page stays memory-bounded, but a legitimate full catalog can exceed the old
+// 64 MiB total. Keep the refresh cap generous while still rejecting runaway downloads.
+constexpr qsizetype maxRefreshBytes = 128 * 1024 * 1024;
 bool sameOrigin(const QUrl& a, const QUrl& b) {
   return a.scheme() == b.scheme() && a.host() == b.host() &&
          a.port(a.scheme() == "https" ? 443 : 80) == b.port(b.scheme() == "https" ? 443 : 80) &&
@@ -26,6 +28,13 @@ QUrl pageUrl(QUrl server, int offset) {
   query.addQueryItem("offset", QString::number(offset));
   query.addQueryItem("order_by", "id");
   query.addQueryItem("order_dir", "asc");
+  // RomM repeats the full result-set indexes and filter facets on every page by default.
+  // This client never reads them and they dominate large-library responses, so ask for the
+  // plain items envelope. with_files is already false, requested explicitly for stability.
+  query.addQueryItem("with_char_index", "false");
+  query.addQueryItem("with_filter_values", "false");
+  query.addQueryItem("with_rom_id_index", "false");
+  query.addQueryItem("with_files", "false");
   server.setQuery(query);
   return server;
 }

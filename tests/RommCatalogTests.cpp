@@ -101,6 +101,17 @@ class RommCatalogTests : public QObject {
                QJsonObject{{"items", items}, {"offset", offset}, {"limit", 1}, {"total", total}})
         .toJson();
   }
+  static QByteArray fatPage(int id, int offset, int total, int fillerBytes) {
+    const QJsonArray items = QJsonArray{QJsonObject{{"id", id},
+                                                    {"name", "Game"},
+                                                    {"platform_slug", "gba"},
+                                                    {"fs_path", ""},
+                                                    {"fs_name", "game.gba"},
+                                                    {"blob", QString(fillerBytes, 'x')}}};
+    return QJsonDocument(
+               QJsonObject{{"items", items}, {"offset", offset}, {"limit", 1}, {"total", total}})
+        .toJson();
+  }
   static void game(const QString& root) {
     QFile f(root + "/game.gba");
     if (f.open(QIODevice::WriteOnly))
@@ -248,6 +259,11 @@ private slots:
       QCOMPARE(network.requests.size(), 2);
       QCOMPARE(network.requests.first().url().path(), QString("/subpath/api/roms"));
       QCOMPARE(QUrlQuery(network.requests.last().url()).queryItemValue("offset"), QString("1"));
+      const QUrlQuery firstQuery(network.requests.first().url());
+      QCOMPARE(firstQuery.queryItemValue("with_char_index"), QString("false"));
+      QCOMPARE(firstQuery.queryItemValue("with_filter_values"), QString("false"));
+      QCOMPARE(firstQuery.queryItemValue("with_rom_id_index"), QString("false"));
+      QCOMPARE(firstQuery.queryItemValue("with_files"), QString("false"));
       QCOMPARE(network.requests.first().rawHeader("Authorization"), "Bearer " + token);
       QCOMPARE(network.requests.first().attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(),
                int(QNetworkRequest::ManualRedirectPolicy));
@@ -289,6 +305,22 @@ private slots:
       QVERIFY(!done.last().at(0).toBool());
       QCOMPARE(catalog.cached(server, dir.path()).first().appId, QString("1"));
     }
+  }
+  void acceptsLargeCatalogPastLegacyRefreshBudget() {
+    QTemporaryDir dir;
+    game(dir.path());
+    RommNetwork network;
+    RommCatalog catalog(dir.filePath("catalog.sqlite"), nullptr, &network);
+    QSignalSpy done(&catalog, &RommCatalog::finished);
+    constexpr int pages = 5;
+    constexpr int fillerBytes = 14 * 1024 * 1024;
+    for (int index = 0; index < pages; ++index)
+      network.responses.append({fatPage(index + 1, index, pages, fillerBytes)});
+    QVERIFY(catalog.refresh(server, dir.path(), token));
+    QTRY_COMPARE_WITH_TIMEOUT(done.size(), 1, 30000);
+    QVERIFY(done.last().at(0).toBool());
+    QCOMPARE(catalog.cached(server, dir.path()).size(), pages);
+    QCOMPARE(network.requests.size(), pages);
   }
   void sameOriginRedirectAndUnknownTotal() {
     QTemporaryDir dir;
