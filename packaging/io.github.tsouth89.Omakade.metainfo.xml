@@ -26,6 +26,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.9.2" date="2026-09-13">
+      <description>
+        <p>Optional ProtonDB tier badges on library cards.</p>
+      </description>
+    </release>
     <release version="1.9.1" date="2026-09-13">
       <description>
         <p>Fix RomM catalog refresh on large libraries.</p>

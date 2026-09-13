@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.2
+
+- Add an optional ProtonDB tier badge on library cards, off by default. Turn on both
+  community reports and card badges in Settings to see the tier beside playtime and
+  rating. Fixes #39.
+
 ## 1.9.1
 
 This patch fixes RomM catalog refresh for large libraries.
