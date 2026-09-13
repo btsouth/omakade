@@ -2,8 +2,15 @@
 
 ## 1.9.1
 
-- Fix RomM catalog refresh failing on large libraries by requesting slim catalog pages.
-  Fixes #46.
+This patch fixes RomM catalog refresh for large libraries.
+
+- Ask RomM to omit the result-set index and filter data it repeats on every page
+  by default, which is what pushed large catalogs past the response limit.
+- Raise the whole-refresh total while keeping each page bounded in memory, so
+  libraries with tens of thousands of entries finish loading. A failed refresh
+  still keeps the existing offline catalog.
+
+Fixes #46.
 
 ## 1.9.0
 
