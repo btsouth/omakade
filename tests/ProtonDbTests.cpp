@@ -173,13 +173,19 @@ private slots:
     const auto path = dir.filePath("config.toml");
     AppSettings settings(path);
     QVERIFY(!settings.protonDbEnabled());
+    QVERIFY(!settings.protonDbBadges());
     settings.setProtonDbEnabled(true);
+    settings.setProtonDbBadges(true);
     AppSettings restored(path);
     QVERIFY(restored.protonDbEnabled());
+    QVERIFY(restored.protonDbBadges());
     restored.setProtonDbEnabled(false);
+    restored.setProtonDbBadges(false);
     AppSettings off(path);
     QVERIFY(!off.protonDbEnabled());
+    QVERIFY(!off.protonDbBadges());
     QVERIFY(!off.backupSettings().contains("protondb_enabled"));
+    QVERIFY(!off.backupSettings().contains("protondb_badges"));
   }
 };
 QTEST_GUILESS_MAIN(ProtonDbTests)

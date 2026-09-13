@@ -6,6 +6,7 @@ Text {
     property string gameSource: ""
     property string appId: ""
     property bool compact: false
+    property bool show: true
     property bool fetchEnabled: parent ? parent.visible : false
     readonly property var entry: {
         if (typeof ProtonDB === "undefined" || !ProtonDB) return ({})
@@ -15,10 +16,20 @@ Text {
     readonly property string tier: entry.tier || ""
     readonly property string tierLabel: tier === "pending" ? (entry.total > 0 ? "Pending" : "No reports")
         : tier.length > 0 ? tier.charAt(0).toUpperCase() + tier.slice(1) : ""
+    readonly property color tierColor: {
+        switch (tier) {
+        case "platinum": return Theme.cyan
+        case "gold": return Theme.yellow
+        case "silver": return Theme.brightForeground
+        case "bronze": return Theme.accent
+        case "borked": return Theme.red
+        default: return Theme.mutedText
+        }
+    }
     text: (compact ? "" : "ProtonDB · ") + tierLabel + (entry.stale ? " *" : "")
     textFormat: Text.PlainText
-    visible: tier.length > 0
-    color: Theme.mutedText
+    visible: show && tier.length > 0
+    color: compact ? tierColor : Theme.mutedText
     font.family: Theme.fontFamily
     font.pixelSize: compact ? 10 : 12
     Accessible.name: "ProtonDB " + tierLabel

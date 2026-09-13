@@ -21,6 +21,10 @@ FocusScope {
     property string gameSource: ""
     property string appId: ""
     property bool current: false
+    // Opt-in only: the library stays uncluttered unless both reports and card badges
+    // are enabled in settings.
+    readonly property bool protonBadgesShown:
+        Preferences.protonDbEnabled && Preferences.protonDbBadges
 
     signal activated()
     signal favoriteToggled()
@@ -262,10 +266,16 @@ FocusScope {
             spacing: 7
             // The source name gives up whatever room the fixed trailing fields need, so a long
             // name elides instead of pushing the playtime or the rating off the card.
-            readonly property real trailingWidth:
+            readonly property real baseTrailingWidth:
                 subtitleDot.width + subtitleHours.width + spacing * 2
                 + (subtitleRating.visible
                    ? subtitleRatingDot.width + subtitleRating.width + spacing * 2 : 0)
+            // The badge only joins the line when the card is wide enough to fit it
+            // beside the source, playtime, and rating without spilling off the edge.
+            readonly property real trailingWidth:
+                baseTrailingWidth
+                + (protonBadge.visible
+                   ? protonBadgeDot.width + protonBadge.width + spacing * 2 : 0)
 
             Text {
                 width: Math.min(implicitWidth, Math.max(0, parent.width - metaRow.trailingWidth))
@@ -306,6 +316,26 @@ FocusScope {
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
+            }
+            Text {
+                id: protonBadgeDot
+                visible: protonBadge.visible
+                text: "·"
+                color: root.alpha(Theme.foreground, 0.32)
+                font.pixelSize: 10
+            }
+            ProtonDbBadge {
+                id: protonBadge
+                objectName: "cardProtonBadge"
+                compact: true
+                show: root.protonBadgesShown
+                      && (metaRow.width - metaRow.baseTrailingWidth)
+                         >= (protonBadgeDot.width + protonBadge.implicitWidth
+                             + metaRow.spacing * 2)
+                gameSource: root.gameSource
+                appId: root.appId
+                // Only queue reports for cards that are actually on screen.
+                fetchEnabled: root.protonBadgesShown && root.visible
             }
         }
 

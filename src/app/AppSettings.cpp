@@ -219,6 +219,14 @@ void AppSettings::setProtonDbEnabled(bool value) {
   emit protonDbEnabledChanged();
 }
 
+void AppSettings::setProtonDbBadges(bool value) {
+  if (m_protonDbBadges == value) return;
+  const bool previous = m_protonDbBadges;
+  m_protonDbBadges = value;
+  if (!save()) { m_protonDbBadges = previous; return; }
+  emit protonDbBadgesChanged();
+}
+
 bool AppSettings::reducedMotion() const { return m_reducedMotion; }
 
 void AppSettings::setReducedMotion(bool value) {
@@ -824,6 +832,7 @@ void AppSettings::load() {
   m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
   m_rommEnabled = readEnabled(QStringLiteral("romm_enabled"), false);
   m_protonDbEnabled = readEnabled(QStringLiteral("protondb_enabled"), false);
+  m_protonDbBadges = readEnabled(QStringLiteral("protondb_badges"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
@@ -953,6 +962,7 @@ bool AppSettings::save() {
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))
                                    .toJson(QJsonDocument::Compact)) + QLatin1Char('\n');
   contents += QStringLiteral("protondb_enabled = %1\n").arg(m_protonDbEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  contents += QStringLiteral("protondb_badges = %1\n").arg(m_protonDbBadges ? QStringLiteral("true") : QStringLiteral("false"));
   const auto jsonString = [](const QString& value) {
     const QByteArray array = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
     return QString::fromUtf8(array.mid(1, array.size() - 2));

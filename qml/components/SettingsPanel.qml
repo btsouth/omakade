@@ -857,6 +857,24 @@ import QtQuick.Layouts
                     wrapMode: Text.Wrap
                 }
                 GlassButton {
+                    objectName: "protonDbBadgeToggle"
+                    Layout.fillWidth: true
+                    compact: true
+                    visible: Preferences.protonDbEnabled
+                    text: "PROTONDB BADGES ON CARDS: " + (Preferences.protonDbBadges ? "ON" : "OFF")
+                    selected: Preferences.protonDbBadges
+                    onClicked: Preferences.protonDbBadges = !Preferences.protonDbBadges
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: Preferences.protonDbEnabled
+                    text: "Show the ProtonDB tier on library cards. Off by default to keep the grid clean."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                GlassButton {
                     Layout.fillWidth: true; compact: true
                     text: Metadata && Metadata.busy ? "UPDATING · " + Metadata.pending + " REMAINING" : "UPDATE RATINGS & PORTRAITS"
                     enabled: Metadata && !Metadata.busy
