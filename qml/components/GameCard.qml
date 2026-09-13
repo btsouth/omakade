@@ -21,6 +21,9 @@ FocusScope {
     property string gameSource: ""
     property string appId: ""
     property bool current: false
+    // The grid sets this to whether the card intersects the visible viewport, so
+    // cached offscreen delegates do not queue ProtonDB requests.
+    property bool inViewport: true
     // Opt-in only: the library stays uncluttered unless both reports and card badges
     // are enabled in settings.
     readonly property bool protonBadgesShown:
@@ -334,8 +337,8 @@ FocusScope {
                              + metaRow.spacing * 2)
                 gameSource: root.gameSource
                 appId: root.appId
-                // Only queue reports for cards that are actually on screen.
-                fetchEnabled: root.protonBadgesShown && root.visible
+                // Only queue reports for cards that are actually in the viewport.
+                fetchEnabled: root.protonBadgesShown && root.inViewport
             }
         }
 

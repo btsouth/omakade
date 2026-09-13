@@ -266,6 +266,8 @@ Item {
                 coverMark: delegateRoot.coverMark
                 coverPath: delegateRoot.coverPath
                 current: grid.currentIndex === delegateRoot.index
+                inViewport: delegateRoot.y + delegateRoot.height > grid.contentY
+                            && delegateRoot.y < grid.contentY + grid.height
                 focus: current
                 // A recycled delegate keeps its place in the scene but stands for no row, and
                 // carries index -1. Leaving it in the focus chain let a keyboard or controller
