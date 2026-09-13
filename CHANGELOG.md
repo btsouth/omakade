@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.1
+
+- Fix RomM catalog refresh failing on large libraries by requesting slim catalog pages.
+  Fixes #46.
+
 ## 1.9.0
 
 - Connect an optional read-only RomM library with secure credentials, locally mounted

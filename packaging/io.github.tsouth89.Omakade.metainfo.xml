@@ -26,6 +26,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.9.1" date="2026-09-13">
+      <description>
+        <p>Fix RomM catalog refresh on large libraries.</p>
+      </description>
+    </release>
     <release version="1.9.0" date="2026-09-12">
       <description>
         <p>RomM integration, per-game launch setup, save management, and guided library repair.</p>

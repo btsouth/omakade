@@ -21,7 +21,7 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 
 ## Features
 
-Omakade 1.9.0 includes:
+Omakade 1.9.1 includes:
 
 - Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2,
   Ryujinx, Cemu, shadPS4, and Dolphin discovery, plus direct GOG installation
@@ -119,23 +119,23 @@ verify the package, and install it. If Omakade is already installed, `pacman -U`
 upgrades it in place without removing your settings or library data:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.9.0/omakade-1.9.0-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.9.0/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.9.1/omakade-1.9.1-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.9.1/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.9.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.9.1-1-x86_64.pkg.tar.zst
 ```
 
 ### Install or upgrade from a browser download
 
 1. Open the [latest release](https://github.com/btsouth/omakade/releases/latest).
-2. Under **Assets**, download `omakade-1.9.0-1-x86_64.pkg.tar.zst` (or
-   `omakade-1.9.0-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
+2. Under **Assets**, download `omakade-1.9.1-1-x86_64.pkg.tar.zst` (or
+   `omakade-1.9.1-1-aarch64.pkg.tar.zst` for ARM64) and `SHA256SUMS` into the same folder.
 3. Open a terminal in that folder and run the commands below. On ARM64,
    replace `x86_64` with `aarch64` in the package filename:
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.9.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.9.1-1-x86_64.pkg.tar.zst
 ```
 
 Launch Omakade from the application launcher or run `omakade` in a terminal.
