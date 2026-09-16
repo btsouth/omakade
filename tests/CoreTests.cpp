@@ -830,6 +830,7 @@ private slots:
   void xeniaModelIsRepeatableAndPreservesLocalState();
   void xeniaLauncherBuildsSafeCommands();
   void xeniaLauncherRejectsMissingEmulator();
+  void xeniaLaunchForcesX11OnWayland();
   void consolePortalsGroupRetroArchRomsAndCanFlatten();
   void consolePortalsDoNotRebuildTheLibraryWhenCoversChange();
   void consolePortalsDoNotMergeDifferentFiles();
@@ -6191,6 +6192,25 @@ void CoreTests::xeniaLauncherRejectsMissingEmulator() {
   const LaunchCommand command =
       GameLauncher::xeniaCommand(QStringLiteral("/games/Fable II/default.xex"));
   QVERIFY(!command.isValid());
+}
+
+void CoreTests::xeniaLaunchForcesX11OnWayland() {
+  // Xenia on Wayland creates a GTK window but only an XCB Vulkan surface, which hangs grey,
+  // so the launch environment pins X11 for the emulator.
+  const QProcessEnvironment base;
+  const QProcessEnvironment wayland = GameLauncher::xeniaLaunchEnvironment(base, true);
+  QCOMPARE(wayland.value(QStringLiteral("GDK_BACKEND")), QStringLiteral("x11"));
+  QCOMPARE(wayland.value(QStringLiteral("SDL_VIDEODRIVER")), QStringLiteral("x11"));
+  // Other sessions are untouched.
+  const QProcessEnvironment native = GameLauncher::xeniaLaunchEnvironment(base, false);
+  QVERIFY(native.value(QStringLiteral("GDK_BACKEND")).isEmpty());
+  QVERIFY(native.value(QStringLiteral("SDL_VIDEODRIVER")).isEmpty());
+  // An explicit user override is respected.
+  QProcessEnvironment overridden;
+  overridden.insert(QStringLiteral("GDK_BACKEND"), QStringLiteral("wayland"));
+  QCOMPARE(GameLauncher::xeniaLaunchEnvironment(overridden, true)
+               .value(QStringLiteral("GDK_BACKEND")),
+           QStringLiteral("wayland"));
 }
 
 void CoreTests::consolePortalsGroupRetroArchRomsAndCanFlatten() {
