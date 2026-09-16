@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.10.0
 
 - Add Xbox 360 games through Xenia Canary as a new emulator source, with discovery
   from Xenia's recent-games list and storage root, library integration, save
   backup, and launching through the `xenia_canary` binary.
+- Identify Xbox 360 games with IGDB and show them under their own console card,
+  including titles Xenia writes with trademark marks.
+- Pin Xenia to X11 on Wayland, where its window otherwise stayed grey while audio
+  kept playing.
 - Bundle an optional TV gaming agent skill with a Gamescope launcher that checks
   the TV output, workspace, and audio sink before starting a game, and is skipped
   entirely unless you install it.

@@ -26,6 +26,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.10.0" date="2026-09-16">
+      <description>
+        <p>Xbox 360 games through Xenia, and an optional TV gaming agent skill.</p>
+      </description>
+    </release>
     <release version="1.9.2" date="2026-09-13">
       <description>
         <p>Optional ProtonDB tier badges on library cards.</p>
