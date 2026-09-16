@@ -65,6 +65,12 @@ public:
                                                     const QString& flatpakAppId = {});
   [[nodiscard]] static LaunchCommand cemuCommand(const QString& path, bool flatpak);
   [[nodiscard]] static LaunchCommand xeniaCommand(const QString& path);
+  // Xenia's Linux build opens a GTK window on Wayland but only creates an XCB (X11) Vulkan
+  // surface, so the swapchain never presents and the window hangs grey. This returns the
+  // launch environment for a Wayland session, forcing X11 for the emulator. Existing values
+  // in the base environment win, so a user override is respected.
+  [[nodiscard]] static QProcessEnvironment xeniaLaunchEnvironment(const QProcessEnvironment& base,
+                                                                  bool waylandSession);
   [[nodiscard]] static QString xeniaExecutable();
   [[nodiscard]] static LaunchCommand dolphinCommand(const QString& path, const QString& nativeExecutable,
                                                     bool flatpak);

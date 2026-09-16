@@ -1171,12 +1171,32 @@ bool GameLauncher::launchXenia(const QString& path, bool manageOnly) {
     setError(QStringLiteral("This game has an invalid Xenia target."));
     return false;
   }
-  if (!startCommand(command, !manageOnly)) {
+  const bool wayland = !qEnvironmentVariable("WAYLAND_DISPLAY").isEmpty() ||
+                       qEnvironmentVariable("XDG_SESSION_TYPE")
+                               .compare(QStringLiteral("wayland"), Qt::CaseInsensitive) == 0;
+  const QProcessEnvironment environment =
+      xeniaLaunchEnvironment(QProcessEnvironment::systemEnvironment(), wayland);
+  if (!startCommand(command, !manageOnly, {}, environment)) {
     setError(QStringLiteral("Xenia could not be started. Open Xenia and try again."));
     return false;
   }
   setError({});
   return true;
+}
+
+QProcessEnvironment GameLauncher::xeniaLaunchEnvironment(const QProcessEnvironment& base,
+                                                         bool waylandSession) {
+  if (!waylandSession) {
+    return base;
+  }
+  QProcessEnvironment environment = base;
+  if (!environment.contains(QStringLiteral("GDK_BACKEND"))) {
+    environment.insert(QStringLiteral("GDK_BACKEND"), QStringLiteral("x11"));
+  }
+  if (!environment.contains(QStringLiteral("SDL_VIDEODRIVER"))) {
+    environment.insert(QStringLiteral("SDL_VIDEODRIVER"), QStringLiteral("x11"));
+  }
+  return environment;
 }
 
 bool GameLauncher::launchDolphin(const QString& path, bool flatpak, bool manageOnly) {
