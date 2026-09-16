@@ -5,6 +5,9 @@
 - Add Xbox 360 games through Xenia Canary as a new emulator source, with discovery
   from Xenia's recent-games list and storage root, library integration, save
   backup, and launching through the `xenia_canary` binary.
+- Bundle an optional TV gaming agent skill with a Gamescope launcher that checks
+  the TV output, workspace, and audio sink before starting a game, and is skipped
+  entirely unless you install it.
 
 ## 1.9.2
 

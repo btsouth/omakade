@@ -1,3 +1,8 @@
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME omakade_tv_game_launcher
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/TvGameLauncherTests.py
+)
+
 qt_add_executable(omakade_core_tests
   CoreTests.cpp
 )
