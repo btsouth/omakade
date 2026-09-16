@@ -6320,6 +6320,9 @@ void CoreTests::consolePortalsDoNotMergeDifferentFiles() {
   QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("Nintendo Switch")));
   QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("Wii U")));
   QVERIFY(!ConsoleCatalog::isDedicatedSource(QStringLiteral("Nintendo - SNES")));
+  QCOMPARE(ConsoleCatalog::idFor(QStringLiteral("Xbox 360")), QStringLiteral("xbox360"));
+  QCOMPARE(ConsoleCatalog::displayNameFor(QStringLiteral("xbox360")), QStringLiteral("Xbox 360"));
+  QVERIFY(ConsoleCatalog::isDedicatedSource(QStringLiteral("Xbox 360")));
 }
 
 void CoreTests::romFoldersMergeWithPlaylistsByCanonicalPath() {
@@ -7867,6 +7870,9 @@ void CoreTests::metadataMatchingKeepsPlatformsAndEditions() {
   QVERIFY(GameMetadata::searchQuery("Alcahest", "snes").contains("platforms = (19,58)"));
   QCOMPARE(GameMetadata::platformIds("snes"), QList<int>({19, 58}));
   QVERIFY(GameMetadata::platformIds("unknown-console").isEmpty());
+  // Xbox 360 games come from Xenia and match IGDB platform 12.
+  QCOMPARE(GameMetadata::platformIds("xbox360"), QList<int>({12}));
+  QVERIFY(GameMetadata::searchQuery("Dante's Inferno", "xbox360").contains("platforms = (12)"));
   QVERIFY(GameMetadata::searchQuery("Mario", "gamecube").contains("platforms = (21)"));
   const auto matches = GameMetadata::parseMatches(R"json([
     {"id":1,"name":"Metroid Prime","platforms":[21],"total_rating":89.5,"total_rating_count":300},
