@@ -156,6 +156,15 @@ const QVector<ConsoleDefinition>& definitions() {
        .standaloneExecutables = {},
        .retroArchCores = {},
        .dedicatedSource = true},
+      {.id = QStringLiteral("xbox360"),
+       .displayName = QStringLiteral("Xbox 360"),
+       .libretroPlaylist = QStringLiteral("Microsoft - Xbox 360"),
+       .aliases = {QStringLiteral("Xbox 360"), QStringLiteral("X360")},
+       .folderNames = {QStringLiteral("xbox360"), QStringLiteral("xbox 360")},
+       .extensions = {QStringLiteral("iso"), QStringLiteral("xex"), QStringLiteral("zar")},
+       .standaloneExecutables = {},
+       .retroArchCores = {},
+       .dedicatedSource = true},
   };
   return consoles;
 }

@@ -130,6 +130,10 @@ QString cleanTitle(QString title) {
   const auto article = sortedArticle.match(title);
   if (article.hasMatch())
     title = article.captured(2) + QLatin1Char(' ') + article.captured(1) + article.captured(3);
+  // Xenia's recent.toml and some sidecar sources carry trademark marks, as in
+  // "Dante's Inferno™". They are not part of the catalogue name.
+  static const QRegularExpression trademark(QStringLiteral("[™®©]"));
+  title.remove(trademark);
   return title.simplified();
 }
 } // namespace
@@ -304,7 +308,7 @@ QList<int> GameMetadata::platformIds(const QString& system) {
       {"nes", {18, 99}},   {"snes", {19, 58}}, {"gb", {33}},      {"gbc", {22}},
       {"gba", {24}},       {"n64", {4}},       {"genesis", {29}}, {"psx", {7}},
       {"dreamcast", {23}}, {"gamecube", {21}}, {"wii", {5}},      {"ps2", {8}},
-      {"switch", {130}},   {"wiiu", {41}},     {"ps4", {48}}};
+      {"switch", {130}},   {"wiiu", {41}},     {"ps4", {48}},     {"xbox360", {12}}};
   const QString id = ConsoleCatalog::idFor(system);
   if (ids.contains(id))
     return ids.value(id);
