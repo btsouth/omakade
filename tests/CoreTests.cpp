@@ -836,6 +836,8 @@ private slots:
   void deletingHistoryDoesNotSuppressLaterPlaytime();
   void aNewGameInTheSameProcessDoesNotInheritThePendingStop();
   void pendingClosesAreBoundedUnderAStorageFailure();
+  void sessionInsertFailureDoesNotLoseTheSession();
+  void sessionInsertFailureWithABackwardClockStillRecordsPlaytime();
   void titleFlickerDoesNotFragmentASession();
   void titleIndexRebuildsOnlyWhenACacheChanges();
   void shippedProfilesMatchCemuWua();
@@ -7955,6 +7957,113 @@ void CoreTests::pendingClosesAreBoundedUnderAStorageFailure() {
   database.close();
   database = {};
   QSqlDatabase::removeDatabase("test-pending-bound");
+}
+
+void CoreTests::sessionInsertFailureDoesNotLoseTheSession() {
+  // A session whose first insert was refused used to be dropped on the spot: no row, no
+  // queued write, nothing that remembered the game had been played at all. Closes were
+  // queued and retried, inserts were not, so a lasting write failure (a full disk, a
+  // read-only database) cost the entire session while a session that already had a row
+  // survived on whatever was last flushed. The session is now tracked in memory with its
+  // original start and written once storage accepts writes.
+  const QString connection = QStringLiteral("test-insert-failure");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, QStringLiteral(":memory:"), connection));
+    {
+      QSqlQuery trigger(database);
+      QVERIFY(trigger.exec(QStringLiteral(
+          "CREATE TRIGGER deny_insert BEFORE INSERT ON play_sessions BEGIN "
+          "SELECT RAISE(ABORT, 'test storage failure'); END")));
+    }
+    qint64 nowMs = 0;
+    SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+    recorder.setFlushIntervalMs(1);
+    const SessionMatch match{.pid = 20,
+                             .procStart = 200,
+                             .emulator = QStringLiteral("Ryujinx"),
+                             .gamePath = QStringLiteral("/games/insert-failure.nsp")};
+    // The game starts while every insert is refused.
+    recorder.sync({match}, 1000);
+    QVERIFY(recorder.takeStorageFailure());
+    QCOMPARE(recorder.activeCount(), 1);
+    nowMs = 30000;
+    recorder.sync({match}, 1030);
+    QVERIFY(recorder.takeStorageFailure());
+    QCOMPARE(recorder.activeCount(), 1);
+    // The game exits before storage recovers. Its time still has to be recorded.
+    nowMs = 60000;
+    recorder.sync({}, 1060);
+    QVERIFY(recorder.takeStorageFailure());
+    QCOMPARE(recorder.activeCount(), 0);
+    QCOMPARE(recorder.pendingCloseCount(), 1);
+    {
+      QSqlQuery dropTrigger(database);
+      QVERIFY(dropTrigger.exec(QStringLiteral("DROP TRIGGER deny_insert")));
+    }
+    nowMs = 90000;
+    recorder.sync({}, 1090);
+    QVERIFY(!recorder.takeStorageFailure());
+    QCOMPARE(recorder.pendingCloseCount(), 0);
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "SELECT game_path, source, started_at, ended_at, seconds FROM play_sessions")));
+    QVERIFY2(query.next(), "the session that could not be inserted was lost");
+    QCOMPARE(query.value(0).toString(), QStringLiteral("/games/insert-failure.nsp"));
+    QCOMPARE(query.value(1).toString(), QStringLiteral("Ryujinx"));
+    QCOMPARE(query.value(2).toLongLong(), 1000);
+    QCOMPARE(query.value(3).toLongLong(), 1060);
+    QCOMPARE(query.value(4).toLongLong(), 60);
+    QVERIFY2(!query.next(), "the recovered session was written more than once");
+  }
+  QSqlDatabase::removeDatabase(connection);
+}
+
+void CoreTests::sessionInsertFailureWithABackwardClockStillRecordsPlaytime() {
+  // Play time is billed from a monotonic clock, but a session's start and end are wall
+  // clock values, and the wall clock can step backwards (a resume from suspend, an NTP
+  // correction). A recovered session then has an end earlier than its start: refusing it
+  // would drop real play and leave the entry retrying and notifying for the rest of the
+  // daemon's life, so the end is clamped to the start and the play is kept.
+  const QString connection = QStringLiteral("test-insert-failure-backward-clock");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, QStringLiteral(":memory:"), connection));
+    {
+      QSqlQuery trigger(database);
+      QVERIFY(trigger.exec(QStringLiteral(
+          "CREATE TRIGGER deny_insert BEFORE INSERT ON play_sessions BEGIN "
+          "SELECT RAISE(ABORT, 'test storage failure'); END")));
+    }
+    qint64 nowMs = 0;
+    SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+    recorder.setFlushIntervalMs(1);
+    const SessionMatch match{.pid = 30,
+                             .procStart = 300,
+                             .emulator = QStringLiteral("Ryujinx"),
+                             .gamePath = QStringLiteral("/games/backward-clock.nsp")};
+    recorder.sync({match}, 1000);
+    // The game exits after sixty seconds of play, but the wall clock moved back the same
+    // sixty seconds while it ran.
+    nowMs = 60000;
+    recorder.sync({}, 940);
+    QCOMPARE(recorder.activeCount(), 0);
+    QCOMPARE(recorder.pendingCloseCount(), 1);
+    {
+      QSqlQuery dropTrigger(database);
+      QVERIFY(dropTrigger.exec(QStringLiteral("DROP TRIGGER deny_insert")));
+    }
+    nowMs = 90000;
+    recorder.sync({}, 1200);
+    QCOMPARE(recorder.pendingCloseCount(), 0);
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("SELECT started_at, ended_at, seconds FROM play_sessions")));
+    QVERIFY2(query.next(), "play across a backwards clock step was lost");
+    QCOMPARE(query.value(0).toLongLong(), 1000);
+    QCOMPARE(query.value(1).toLongLong(), 1000);
+    QCOMPARE(query.value(2).toLongLong(), 60);
+  }
+  QSqlDatabase::removeDatabase(connection);
 }
 
 void CoreTests::titleFlickerDoesNotFragmentASession() {

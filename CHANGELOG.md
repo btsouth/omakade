@@ -50,6 +50,10 @@ Sessions you can see, stop, and manage.
   default, needs a Discord application id to publish under, and sends only the
   game name and its source. Discord not running, or being closed mid-session,
   changes nothing about recording.
+- A play session that could not be written while storage was unavailable, such as a
+  full disk or a read-only database, is no longer dropped. The session stays tracked
+  while the game runs and is recorded with its original start once the database
+  accepts writes again, or written whole when the game exits first.
 
 ## 1.10.0
 

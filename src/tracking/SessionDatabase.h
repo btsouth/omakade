@@ -41,6 +41,14 @@ bool ensureSchema(QSqlDatabase& database);
 QVector<SessionRow> openSessions(QSqlDatabase& database);
 qint64 beginSession(QSqlDatabase& database, const QString& gamePath, const QString& source,
                     qint64 startedAt, qint64 pid, qint64 procStart);
+// Writes a session that is already over, used when storage refused the insert while the
+// game was running: the row is written afterwards with its original boundaries, so a
+// lasting write failure delays a session instead of losing it. A record with no game path,
+// no start, or a negative total is refused. An end before the start is clamped, because the
+// play total is monotonic and the wall clock is not.
+bool insertClosedSession(QSqlDatabase& database, const QString& gamePath, const QString& source,
+                         qint64 startedAt, qint64 endedAt, qint64 seconds, qint64 pid,
+                         qint64 procStart);
 bool updateProgress(QSqlDatabase& database, qint64 id, qint64 seconds, qint64 heartbeatAt);
 bool endSession(QSqlDatabase& database, qint64 id, qint64 endedAt, qint64 seconds);
 bool endAllSessions(QSqlDatabase& database, qint64 endedAt);

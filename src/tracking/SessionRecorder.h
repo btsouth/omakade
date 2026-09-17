@@ -54,6 +54,8 @@ public:
   [[nodiscard]] QStringList takeRescanRequests();
 
   bool takeStorageFailure() { return std::exchange(m_storageFailure, false); }
+  // Pending writes that storage refused: refused closes, and finished sessions whose
+  // insert was refused while the game was still running.
   [[nodiscard]] int pendingCloseCount() const { return m_pendingCloses.size(); }
 
   [[nodiscard]] int activeCount() const { return static_cast<int>(m_active.size()); }
@@ -72,8 +74,11 @@ public:
 
 private:
   struct ActiveSession {
+    // 0 while storage has refused to create the row. The session is tracked anyway, so
+    // the playtime is billed and the row can be written with its original start later.
     qint64 id = 0;
     qint64 pid = 0;
+    qint64 procStart = -1;
     QString gamePath;
     QString emulator;
     QString rescanSource;
@@ -98,13 +103,29 @@ private:
   closeSession(QHash<QString, ActiveSession>::Iterator session, qint64 nowMs, qint64 nowWall);
   void flush(ActiveSession& session, qint64 nowMs, qint64 nowWall);
   void retryClosed(qint64 nowMs);
+  // Retries the row of a session whose insert storage refused, writing the play that
+  // accumulated in the meantime so a crash before the next interval does not lose it.
+  // Does nothing once the row exists.
+  void retryInsert(ActiveSession& session, qint64 nowMs, qint64 nowWall);
   // Adds a close to the retry queue, holding the queue at its cap so a lasting storage
   // failure cannot grow it without bound.
   void queueClosed(qint64 id, qint64 endedAt, qint64 seconds);
+  // Adds a finished session that never got a row to the same retry queue: storage
+  // recovering after the game exited writes the row with its original boundaries, so a
+  // lasting insert failure costs the session its immediacy rather than its playtime.
+  void queueUninserted(const ActiveSession& session, qint64 endedAt, qint64 seconds);
+  void trimPendingCloses();
   struct PendingClose {
-    qint64 id;
+    // 0 when the session never got a row, in which case the rest of the entry is the
+    // whole record that has to be written once storage recovers.
+    qint64 id = 0;
     qint64 endedAt;
     qint64 seconds;
+    qint64 startedAt = 0;
+    qint64 pid = 0;
+    qint64 procStart = -1;
+    QString gamePath;
+    QString source;
   };
   QVector<PendingClose> m_pendingCloses;
   qint64 m_lastCloseAttemptMs = 0;

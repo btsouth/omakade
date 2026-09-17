@@ -73,6 +73,7 @@ void SessionRecorder::recover(const QVector<ProcessSnapshot>& processes,
       ActiveSession session;
       session.id = row.id;
       session.pid = row.pid;
+      session.procStart = row.procStart;
       session.gamePath = row.gamePath;
       session.emulator = adopted->emulator;
       session.rescanSource = adopted->rescanSource;
@@ -94,9 +95,30 @@ void SessionRecorder::recover(const QVector<ProcessSnapshot>& processes,
 }
 
 void SessionRecorder::flush(ActiveSession& session, qint64 nowMs, qint64 nowWall) {
-  if (!SessionDatabase::updateProgress(m_database, session.id, session.elapsedMs / 1000, nowWall))
+  // A session that has no row yet has nothing to update: its accumulated time is written
+  // by retryInsert the moment storage accepts the insert, or by the queued record if the
+  // game exits first.
+  if (session.id > 0 &&
+      !SessionDatabase::updateProgress(m_database, session.id, session.elapsedMs / 1000,
+                                       nowWall)) {
     m_storageFailure = true;
+  }
   session.lastFlushMs = nowMs;
+}
+
+void SessionRecorder::retryInsert(ActiveSession& session, qint64 nowMs, qint64 nowWall) {
+  if (session.id > 0) {
+    return;
+  }
+  session.id = SessionDatabase::beginSession(m_database, session.gamePath, session.emulator,
+                                             session.startedAt, session.pid, session.procStart);
+  if (session.id <= 0) {
+    m_storageFailure = true;
+    return;
+  }
+  // The row starts at the original start time, so the play that happened while storage was
+  // refusing it is written now rather than waiting for the next interval.
+  flush(session, nowMs, nowWall);
 }
 
 QHash<QString, SessionRecorder::ActiveSession>::Iterator
@@ -106,8 +128,16 @@ SessionRecorder::closeSession(QHash<QString, ActiveSession>::Iterator session, q
   // not play time either.
   const qint64 totalMs =
       session->elapsedMs + (session->paused ? 0 : nowMs - session->markMs);
-  if (!SessionDatabase::endSession(m_database, session->id, nowWall, totalMs / 1000)) {
-    queueClosed(session->id, nowWall, totalMs / 1000);
+  if (session->id > 0) {
+    if (!SessionDatabase::endSession(m_database, session->id, nowWall, totalMs / 1000)) {
+      queueClosed(session->id, nowWall, totalMs / 1000);
+      m_lastCloseAttemptMs = nowMs;
+      m_storageFailure = true;
+    }
+  } else {
+    // The session never got a row at all. Queue the whole record, so storage recovering
+    // after the game has already exited still writes the play that was observed.
+    queueUninserted(*session, nowWall, totalMs / 1000);
     m_lastCloseAttemptMs = nowMs;
     m_storageFailure = true;
   }
@@ -118,14 +148,37 @@ SessionRecorder::closeSession(QHash<QString, ActiveSession>::Iterator session, q
 }
 
 void SessionRecorder::queueClosed(qint64 id, qint64 endedAt, qint64 seconds) {
+  PendingClose pending;
+  pending.id = id;
+  pending.endedAt = endedAt;
+  pending.seconds = seconds;
+  m_pendingCloses.append(pending);
+  trimPendingCloses();
+}
+
+void SessionRecorder::queueUninserted(const ActiveSession& session, qint64 endedAt,
+                                      qint64 seconds) {
+  PendingClose pending;
+  pending.endedAt = endedAt;
+  pending.seconds = seconds;
+  pending.startedAt = session.startedAt;
+  pending.pid = session.pid;
+  pending.procStart = session.procStart;
+  pending.gamePath = session.gamePath;
+  pending.source = session.emulator;
+  m_pendingCloses.append(pending);
+  trimPendingCloses();
+}
+
+void SessionRecorder::trimPendingCloses() {
   // A storage failure that lasts (a full disk, a read-only database) would otherwise
   // queue one entry per session for the life of the daemon, and every poll would retry
-  // all of them. The oldest are dropped once the queue is implausibly long: a session
-  // that could not be closed after this many attempts is not going to be, and its row
-  // still holds whatever was last flushed, so the recorded time is not lost, only the
-  // tail of it.
+  // all of them. The oldest are dropped once the queue is implausibly long. A session
+  // that could not be written after this many attempts is not going to be, and a row
+  // that a refused close left behind still holds whatever was last flushed, so the
+  // recorded time is not lost, only the tail of it. One bound covers both kinds of
+  // pending write.
   constexpr int kMaxPendingCloses = 64;
-  m_pendingCloses.append({id, endedAt, seconds});
   while (m_pendingCloses.size() > kMaxPendingCloses) {
     m_pendingCloses.removeFirst();
   }
@@ -137,7 +190,17 @@ void SessionRecorder::retryClosed(qint64 nowMs) {
   m_lastCloseAttemptMs = nowMs;
   for (qsizetype i = 0; i < m_pendingCloses.size();) {
     const auto pending = m_pendingCloses.at(i);
-    if (SessionDatabase::endSession(m_database, pending.id, pending.endedAt, pending.seconds))
+    // An entry with no row writes the session whole; one with a row only moves the
+    // boundary the open session was already carrying.
+    const bool written =
+        pending.id > 0
+            ? SessionDatabase::endSession(m_database, pending.id, pending.endedAt,
+                                          pending.seconds)
+            : SessionDatabase::insertClosedSession(m_database, pending.gamePath, pending.source,
+                                                   pending.startedAt, pending.endedAt,
+                                                   pending.seconds, pending.pid,
+                                                   pending.procStart);
+    if (written)
       m_pendingCloses.removeAt(i);
     else {
       m_storageFailure = true;
@@ -165,13 +228,19 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
     if (existing == m_active.end()) {
       const qint64 id = SessionDatabase::beginSession(m_database, match.gamePath, match.emulator,
                                                       nowWall, match.pid, match.procStart);
+      // A refused insert used to drop the match on the spot, so a session that could not
+      // even be created went unrecorded while one that got a row and then failed to close
+      // was queued and retried. The game is running either way: the session is tracked with
+      // no row yet, which bills its playtime and lets the row be written with its original
+      // start once storage accepts writes, or queued as a finished session if the game
+      // exits first.
       if (id <= 0) {
         m_storageFailure = true;
-        continue;
       }
       ActiveSession session;
       session.id = id;
       session.pid = match.pid;
+      session.procStart = match.procStart;
       session.gamePath = match.gamePath;
       session.emulator = match.emulator;
       session.rescanSource = match.rescanSource;
@@ -184,6 +253,9 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
       m_active.insert(key, session);
       continue;
     }
+    // A session whose row storage has not accepted is retried before it is billed, so the
+    // row it eventually writes carries the play that has already happened.
+    retryInsert(*existing, nowMs, nowWall);
     // Time is only billed while the game holds the compositor's focus. The mark
     // moves forward either way, so a pause spans exactly the polls where the game
     // was unfocused and is never back-dated when focus returns.
@@ -217,6 +289,7 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
     // verified match would, so no time after the exit is ever billed.
     if (it->titleMatched && ProcFs::processRunning(it->pid) &&
         ++it->missedPolls <= kTitleGracePolls) {
+      retryInsert(*it, nowMs, nowWall);
       if (!it->paused) {
         it->elapsedMs += nowMs - it->markMs;
       }

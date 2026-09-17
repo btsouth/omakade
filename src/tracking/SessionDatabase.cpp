@@ -180,6 +180,35 @@ qint64 beginSession(QSqlDatabase& database, const QString& gamePath, const QStri
   return query.lastInsertId().toLongLong();
 }
 
+bool insertClosedSession(QSqlDatabase& database, const QString& gamePath, const QString& source,
+                         qint64 startedAt, qint64 endedAt, qint64 seconds, qint64 pid,
+                         qint64 procStart) {
+  // A recovered session must never claim to have ended before it began, but it must also
+  // not be dropped: the play total comes from a monotonic clock, so it is real even when
+  // the wall clock stepped backwards (a suspend, an NTP correction), and a refused entry
+  // would sit in the retry queue notifying for the rest of the daemon's life. An end
+  // before the start is clamped; only a record that makes no sense at all is refused.
+  if (gamePath.isEmpty() || startedAt <= 0 || seconds < 0) {
+    return false;
+  }
+  endedAt = qMax(endedAt, startedAt);
+  QSqlQuery query(database);
+  query.prepare(
+      QStringLiteral("INSERT INTO play_sessions(game_path, source, started_at, ended_at, "
+                     "seconds, heartbeat_at, pid, proc_start, session_key) "
+                     "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+  query.addBindValue(gamePath);
+  query.addBindValue(source);
+  query.addBindValue(startedAt);
+  query.addBindValue(endedAt);
+  query.addBindValue(seconds);
+  query.addBindValue(endedAt);
+  query.addBindValue(pid);
+  query.addBindValue(procStart);
+  query.addBindValue(QUuid::createUuid().toString(QUuid::WithoutBraces));
+  return query.exec();
+}
+
 bool updateProgress(QSqlDatabase& database, qint64 id, qint64 seconds, qint64 heartbeatAt) {
   QSqlQuery query(database);
   query.prepare(
