@@ -868,24 +868,32 @@ Gate:
 
 Couch mode (M6) is the headline 1.6 feature, building on this streaming work.
 
-### Current roadmap, September 12, 2026
+### Current roadmap, September 17, 2026
 
-Version 1.8.0 is the current public release. The integrated 1.9 testing candidate
-combines maintenance correctness fixes, opt-in ProtonDB badges, emulator save
-protection and management, and per-game Play History. A read-only RomM adapter is
-in development; only its bounded parser, local path confinement, and machine-local
-settings are complete. Its exact state and continuation are in
-[1.9-DEVELOPMENT-HANDOFF.md](docs/1.9-DEVELOPMENT-HANDOFF.md).
+Version 1.10.0 is the current public release: Xenia (Xbox 360) as a source, the bundled
+TV gaming skill with its optional Gamescope launcher, and the recorder/metadata fixes
+that came out of release testing. Real launcher reports (#9) remain external coverage,
+and OPR delivery (#42) is handled by the Omarchy package repository.
 
-The 1.9 gate is an exact-candidate Release build, full automated suite, staged
-installation, package lifecycle validation, and a manual pass through matching,
-launching, ProtonDB, save protection, session recording, and controller use.
-Publication still requires explicit maintainer approval. Real launcher reports
-(#9) remain external coverage, and OPR delivery (#42) is controlled by the
-Omarchy package repository.
+**M8: Play sessions, front to back (1.11).** A Now Playing view with stop controls for
+running games (#53), accurate playtime (Hyprland window-title matching so file-picker
+loads count, optional pause-on-unfocus, imported/recorded overlap reconciliation), a
+per-game session history with safe deletion, and opt-in Discord Rich Presence driven by
+the recorder. The stats screen and shareable year-in-review card follow after that,
+timed to land before the holiday season.
 
-Xenia (#44) and TV/Gamescope helper work (#33) remain separate product decisions
-and are not part of 1.9 acceptance.
+**M9: Console expansion (from 1.12), in batches of about three sources.** Each source
+follows the established pattern (scanner, model, launcher, recorder profile, tests,
+docs) and adds save coverage where the emulator's layout is well defined. Batch order
+follows popularity and how clean the local contract is; batches are independent.
+
+- Batch A: RPCS3 (PS3), PPSSPP (PSP), melonDS (DS).
+- Batch B: Azahar (3DS), DuckStation (PS1), xemu (original Xbox).
+- Batch C: mGBA (GBA), Flycast (Dreamcast), Vita3K (Vita).
+- Later: MAME (arcade), DOSBox-X or ScummVM (DOS and adventure games), an N64
+  standalone, and Eden as a Switch alternative.
+
+An AUR recipe ships alongside as a distribution side item.
 
 RomM remains read-only and local-first: its API may provide metadata for files beneath
 an explicitly mounted local library root. It will not download, stream, delete, or
