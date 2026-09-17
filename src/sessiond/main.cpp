@@ -98,16 +98,25 @@ int main(int argc, char* argv[]) {
   // and it is empty on any failure, which leaves attribution exactly as it was.
   SessionTitleIndex titleIndex;
   QFileInfo libraryInfo(SessionDatabase::defaultDatabasePath());
+  QFileInfo libraryWalInfo(libraryInfo.filePath() + QStringLiteral("-wal"));
   const bool indexed = titleIndex.refresh(database);
   if (indexed && titleIndex.isEmpty()) {
     qInfo("omakade-sessiond: no game titles available for window-title attribution");
   }
   const auto refreshTitles = [&] {
+    // The library database runs in WAL mode, so a source scan can land entirely in
+    // the -wal companion without moving the main file's timestamp. Watch both, or a
+    // scan that happened after the recorder started would never be noticed.
     QFileInfo info(SessionDatabase::defaultDatabasePath());
-    if (info.exists() && info.lastModified() == libraryInfo.lastModified()) {
+    QFileInfo wal(info.filePath() + QStringLiteral("-wal"));
+    const QDateTime stamp = info.exists() ? info.lastModified() : QDateTime{};
+    const QDateTime walStamp = wal.exists() ? wal.lastModified() : QDateTime{};
+    if (info.exists() && stamp == libraryInfo.lastModified() &&
+        walStamp == libraryWalInfo.lastModified()) {
       return;
     }
     libraryInfo = info;
+    libraryWalInfo = wal;
     titleIndex.refresh(database);
   };
   const auto matchProcesses = [&] {
