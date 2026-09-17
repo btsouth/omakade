@@ -21,6 +21,10 @@ Sessions you can see, stop, and manage.
   emulator window is behind other work, so time spent in a game menu or with the
   window put aside is not counted. It is off by default, and it only works on
   Hyprland, where the compositor reports which window holds focus.
+- The Now Playing panel has Couch Mode treatment: text and the stop control scale
+  for a TV, a single line says how to stop the running game with a controller, and
+  a controller can move down from the toolbar into the panel, between running
+  games, and back up out of it. Desktop keeps the compact panel it had.
 - Game Details opens the full recorded session history for a game, and any listed
   session can be deleted after a confirmation that starts on the safe choice. A
   session the recorder is still tracking is never deleted, and deleting a session

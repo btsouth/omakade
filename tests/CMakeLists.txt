@@ -884,8 +884,18 @@ add_test(NAME omakade_now_playing_desktop COMMAND omakade
 add_test(NAME omakade_now_playing_couch COMMAND omakade --couch
   --render-overlay=now-playing --render-size=1920x1080
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-couch.png)
-set_tests_properties(omakade_now_playing_desktop omakade_now_playing_couch PROPERTIES
+# The panel is where a couch player acts, so it has to hold together at the sizes
+# a TV actually reports, not only at 1080p.
+add_test(NAME omakade_now_playing_couch_720p COMMAND omakade --couch
+  --render-overlay=now-playing --render-size=1280x720
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-couch-720p.png)
+add_test(NAME omakade_now_playing_couch_4k COMMAND omakade --couch
+  --render-overlay=now-playing --render-size=3840x2160
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-couch-4k.png)
+set_tests_properties(omakade_now_playing_desktop omakade_now_playing_couch
+  omakade_now_playing_couch_720p omakade_now_playing_couch_4k PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError"
   TIMEOUT 20)
 
 qt_add_executable(omakade_save_backups_tests SaveBackupsTests.cpp)

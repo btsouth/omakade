@@ -1795,6 +1795,60 @@ int main(int argc, char* argv[]) {
             return;
           }
           poll->stop();
+          // In Couch Mode the controller has to be able to reach the stop control
+          // and the panel has to be scaled for a TV, not drawn at desktop size.
+          if (quickWindow->property("couchMode").toBool()) {
+            auto* window = qobject_cast<QQuickWindow*>(quickWindow);
+            auto* home = quickWindow->findChild<QQuickItem*>(QStringLiteral("homeScreen"));
+            auto* hint = findVisualItem(quickWindow->contentItem(), "nowPlayingHint");
+            if (window == nullptr || home == nullptr || hint == nullptr || !hint->isVisible()) {
+              qCritical() << "Couch Now Playing had no controller hint"
+                          << "home:" << (home != nullptr) << "hint:" << (hint != nullptr);
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            if (hint->property("text").toString().isEmpty()) {
+              qCritical() << "Couch Now Playing hint was empty";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // Couch scale means a genuinely larger target than desktop's, not the
+            // same control with different colours.
+            const qreal couchHeight = stop->height();
+            const qreal couchTitle = stop->property("displayScale").toReal();
+            if (couchHeight <= 0 || couchTitle < 1.25) {
+              qCritical() << "Couch Now Playing stop control was not couch scaled"
+                          << "height:" << couchHeight << "displayScale:" << couchTitle;
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // The controller must be able to move down into the panel and back up
+            // out of it, which is what makes the stop reachable on a pad.
+            auto* library = findVisualItem(quickWindow->contentItem(), "homeLibraryButton");
+            if (library == nullptr) {
+              qCritical() << "Couch Now Playing could not find the Home toolbar";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            library->forceActiveFocus();
+            QMetaObject::invokeMethod(home, "navigate",
+                                      Q_ARG(QVariant, QVariant::fromValue(library)),
+                                      Q_ARG(QVariant, static_cast<int>(Qt::Key_Down)));
+            if (window->activeFocusItem() != stop) {
+              qCritical() << "Controller Down did not reach the Couch Now Playing stop control";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            QMetaObject::invokeMethod(home, "navigate",
+                                      Q_ARG(QVariant, QVariant::fromValue(stop)),
+                                      Q_ARG(QVariant, static_cast<int>(Qt::Key_Up)));
+            if (window->activeFocusItem() != library) {
+              qCritical() << "Controller Up did not leave the Couch Now Playing panel";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            stop->forceActiveFocus();
+          }
           QMetaObject::invokeMethod(stop, "clicked");
           QTimer::singleShot(150, quickWindow, [quickWindow, stopName, &application] {
             auto* stopping = findVisualItem(quickWindow->contentItem(), stopName);

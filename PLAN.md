@@ -968,6 +968,10 @@ own format and several keep none at all. A small recorder closes that gap.
   focus is reported per window; a pid with no window, or a compositor that stops
   reporting focus, is never treated as unfocused, so the switch can only remove
   speculative time and never silently stop counting a game that is on screen.
+- The Now Playing panel is reachable and usable from a controller in Couch Mode:
+  it scales for a TV rather than reusing the desktop size, says in one line how to
+  stop the running game, and the arrow keys move between the toolbar and the panel
+  and between running games. Desktop keeps the compact panel.
 
 ### Later
 

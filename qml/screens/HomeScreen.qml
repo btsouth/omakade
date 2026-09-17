@@ -7,6 +7,41 @@ FocusScope {
     id: root
     property bool couchMode: false
     readonly property real scaleFactor: couchMode ? 1.25 : 1
+    // The Now Playing panel is where a couch player acts on a running game, so it
+    // gets a real couch scale rather than the desktop scale the rest of Home uses:
+    // its text has to be readable from a sofa and its stop control has to be a
+    // controller-sized target.
+    readonly property real panelScale: couchMode
+        ? Math.max(1.25, Math.min(2.4, Math.min(width / 1920, height / 1080) * 1.3))
+        : 1
+    // The stop control of each running game, in panel order, so arrow-key
+    // navigation can move into the panel and back out of it.
+    readonly property var nowPlayingStops: {
+        const stops = []
+        if (typeof SessionRecorderStatus === "undefined" || !SessionRecorderStatus) return stops
+        for (let index = 0; index < SessionRecorderStatus.nowPlaying.length; ++index) {
+            const game = SessionRecorderStatus.nowPlaying[index]
+            if (game.stoppable !== false) stops.push(index)
+        }
+        return stops
+    }
+    function focusNowPlayingStop(index) {
+        if (!nowPlayingStops.length) return false
+        const position = Math.max(0, Math.min(index, nowPlayingStops.length - 1))
+        // Prefer the requested control, then the nearest one after it, then the
+        // nearest before. A control that is mid-stop is disabled and cannot take
+        // focus, and landing on nothing would make controller Down look broken.
+        for (const candidate of [position, position + 1, position - 1]) {
+            if (candidate < 0 || candidate >= nowPlayingStops.length) continue
+            const row = nowPlayingList.itemAt(nowPlayingStops[candidate])
+            if (row && row.stopControl && row.stopControl.visible && row.stopControl.enabled) {
+                row.stopControl.forceActiveFocus(Qt.TabFocusReason)
+                reveal(row.stopControl)
+                return true
+            }
+        }
+        return false
+    }
     property string focusedIdentity: ""
     property string focusedAction: ""
     property bool launchBusy: false
@@ -81,12 +116,38 @@ FocusScope {
         else if (y + item.height > scroll.contentY + scroll.height - 16)
             scroll.contentY = Math.min(Math.max(0, scroll.contentHeight - scroll.height), y + item.height - scroll.height + 16)
     }
+    // The position of a focused stop control within the panel, or -1 when focus is
+    // somewhere else. Arrow handling uses it to move between running games.
+    function nowPlayingPosition(current) {
+        for (let position = 0; position < nowPlayingStops.length; ++position) {
+            const row = nowPlayingList.itemAt(nowPlayingStops[position])
+            if (row && row.stopControl && row.stopControl === current) return position
+        }
+        return -1
+    }
     function navigate(current, key) {
         if (current && key === Qt.Key_Up && root.Window.window.isWithin(current, featureRow)) {
             focusHome()
             return true
         }
+        // The Now Playing panel sits above everything else on Home, so it is the
+        // first stop below the toolbar and the way back up out of the content.
+        const position = root.nowPlayingPosition(current)
+        if (position >= 0 && (key === Qt.Key_Up || key === Qt.Key_Down)) {
+            const next = position + (key === Qt.Key_Down ? 1 : -1)
+            if (next >= 0 && next < root.nowPlayingStops.length) {
+                root.focusNowPlayingStop(next)
+                return true
+            }
+            // Up out of the first running game returns to the toolbar, which is
+            // the only thing above the panel.
+            if (key === Qt.Key_Up) {
+                focusHome()
+                return true
+            }
+        }
         if (current === libraryButton && key === Qt.Key_Down) {
+            if (root.focusNowPlayingStop(0)) return true
             if (Home.recent.length) focusIdentity(focusKey(featured))
             else if (Home.queue.length) focusIdentity(focusKey(Home.queue[0]))
             else if (Home.suggestions.length) focusIdentity(focusKey(Home.suggestions[0]))
@@ -319,33 +380,47 @@ FocusScope {
                     objectName: "homeNowPlayingSection"
                     Layout.fillWidth: true
                     visible: !!SessionRecorderStatus && SessionRecorderStatus.nowPlaying.length > 0
-                    Layout.preferredHeight: nowPlayingColumn.implicitHeight + 28
-                    radius: 10
+                    Layout.preferredHeight: nowPlayingColumn.implicitHeight + (root.couchMode ? 40 : 28)
+                    radius: root.couchMode ? 16 : 10
                     color: Qt.alpha(Theme.accent, 0.10)
-                    border.color: Qt.alpha(Theme.accent, 0.35)
+                    border.color: Qt.alpha(Theme.accent, root.couchMode ? 0.5 : 0.35)
+                    border.width: root.couchMode ? 2 : 1
                     ColumnLayout {
                         id: nowPlayingColumn
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14
-                        spacing: 10
-                        Text { text: "NOW PLAYING"; color: Theme.accent; font.family: Theme.fontFamily; font.pixelSize: 12 * root.scaleFactor }
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: root.couchMode ? 20 : 14
+                        spacing: root.couchMode ? 14 : 10
+                        Text {
+                            text: "NOW PLAYING"
+                            color: Theme.accent
+                            font.family: Theme.fontFamily
+                            font.pixelSize: (root.couchMode ? 16 : 12) * root.panelScale
+                            font.bold: root.couchMode
+                            font.letterSpacing: root.couchMode ? 1.5 : 0
+                        }
                         Repeater {
+                            id: nowPlayingList
                             objectName: "homeNowPlayingList"
                             model: SessionRecorderStatus ? SessionRecorderStatus.nowPlaying : []
                             RowLayout {
+                                id: nowPlayingRow
                                 required property var modelData
                                 required property int index
                                 Layout.fillWidth: true
-                                spacing: 10
+                                spacing: root.couchMode ? 18 : 10
+                                // The row exposes its stop control so navigation can
+                                // reach it without searching the whole scene.
+                                readonly property Item stopControl: nowPlayingStop
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 2
+                                    spacing: root.couchMode ? 4 : 2
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.name || "Running game"
                                         color: Theme.brightForeground
                                         font.family: Theme.fontFamily
                                         font.bold: true
-                                        font.pixelSize: 14 * root.scaleFactor
+                                        font.pixelSize: (root.couchMode ? 24 : 14) * root.panelScale
                                         elide: Text.ElideRight
                                     }
                                     Text {
@@ -356,13 +431,17 @@ FocusScope {
                                               + (modelData.stoppable === false ? " · from window title" : "")
                                         color: Theme.mutedText
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: 11 * root.scaleFactor
+                                        font.pixelSize: (root.couchMode ? 17 : 11) * root.panelScale
                                         elide: Text.ElideRight
                                     }
                                 }
                                 GlassButton {
+                                    id: nowPlayingStop
                                     objectName: "nowPlayingStop_" + modelData.pid
-                                    compact: true
+                                    compact: !root.couchMode
+                                    // A couch player confirms with A, so the control the
+                                    // controller lands on has to be the stop itself.
+                                    displayScale: root.couchMode ? Math.max(1.25, root.panelScale) : 1
                                     // A session recorded from a window title has no verified
                                     // process identity, so it is listed without a stop control
                                     // rather than offering to signal a process we cannot prove.
@@ -370,9 +449,24 @@ FocusScope {
                                     text: modelData.forceReady ? "FORCE STOP" : modelData.stopping ? "STOPPING…" : "STOP"
                                     enabled: !modelData.stopping || modelData.forceReady
                                     Accessible.name: text + " " + (modelData.name || "")
+                                    Accessible.description: modelData.stopping && !modelData.forceReady
+                                                            ? "Waiting for the game to close"
+                                                            : ""
                                     onClicked: root.stopRunningGame(modelData)
                                 }
                             }
+                        }
+                        Text {
+                            objectName: "nowPlayingHint"
+                            Layout.fillWidth: true
+                            visible: root.couchMode && nowPlayingStops.length > 0
+                            text: nowPlayingStops.length > 1
+                                  ? "Choose a game with up and down, then press A to stop it."
+                                  : "Press A to stop this game."
+                            color: Theme.mutedText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: (root.couchMode ? 15 : 11) * root.panelScale
+                            wrapMode: Text.Wrap
                         }
                     }
                 }
