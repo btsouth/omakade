@@ -91,7 +91,7 @@ QVariantList PlaySessionStore::historyForPaths(const QStringList& gamePaths, int
   for (qsizetype index = 0; index < paths.size(); ++index) placeholders.append("?");
   QSqlQuery query(m_database);
   query.prepare(QStringLiteral(
-                    "SELECT source, started_at, ended_at, seconds FROM play_sessions "
+                    "SELECT source, started_at, ended_at, seconds, session_key FROM play_sessions "
                     "WHERE game_path IN (%1) ORDER BY started_at DESC, id DESC LIMIT ?")
                     .arg(placeholders.join(',')));
   for (const QString& path : paths) query.addBindValue(path);
@@ -100,13 +100,51 @@ QVariantList PlaySessionStore::historyForPaths(const QStringList& gamePaths, int
 
   while (query.next()) {
     const qint64 endedAt = query.value(2).toLongLong();
-    history.append(QVariantMap{{"source", query.value(0).toString()},
+    history.append(QVariantMap{{"sessionKey", query.value(4).toString()},
+                               {"source", query.value(0).toString()},
                                {"startedAt", query.value(1).toLongLong()},
                                {"endedAt", endedAt},
                                {"seconds", query.value(3).toLongLong()},
                                {"active", endedAt == 0}});
   }
   return history;
+}
+
+bool PlaySessionStore::deleteSession(const QString& sessionKey, const QStringList& gamePaths) {
+  if (!m_valid || sessionKey.trimmed().isEmpty()) {
+    return false;
+  }
+  // The row must still belong to the game the view is showing. That keeps a
+  // stale menu from removing a session after the recorder moved on.
+  const SessionDatabase::SessionRow row = SessionDatabase::sessionByKey(m_database, sessionKey);
+  if (row.id <= 0 || row.endedAt <= 0 || !gamePaths.contains(row.gamePath)) {
+    return false;
+  }
+  if (!SessionDatabase::deleteSession(m_database, sessionKey)) {
+    return false;
+  }
+  // refresh() recomputes tracked totals; historyChanged tells the view even when
+  // the deleted row held no seconds.
+  refresh();
+  ++m_historyRevision;
+  emit historyChanged();
+  return true;
+}
+
+int PlaySessionStore::deleteHistoryForPaths(const QStringList& gamePaths) {
+  if (!m_valid) {
+    return -1;
+  }
+  const int removed = SessionDatabase::deleteSessionsForPaths(m_database, gamePaths);
+  if (removed < 0) {
+    return -1;
+  }
+  if (removed > 0) {
+    refresh();
+    ++m_historyRevision;
+    emit historyChanged();
+  }
+  return removed;
 }
 
 void PlaySessionStore::refreshNowPlaying() {

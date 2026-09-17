@@ -17,6 +17,8 @@ namespace SessionDatabase {
 // periodically so a crash loses at most one flush interval.
 struct SessionRow {
   qint64 id = 0;
+  // Stable identity that survives backup and restore, unlike the row id.
+  QString sessionKey;
   QString gamePath;
   QString source;
   qint64 startedAt = 0;
@@ -42,6 +44,21 @@ qint64 beginSession(QSqlDatabase& database, const QString& gamePath, const QStri
 bool updateProgress(QSqlDatabase& database, qint64 id, qint64 seconds, qint64 heartbeatAt);
 bool endSession(QSqlDatabase& database, qint64 id, qint64 endedAt, qint64 seconds);
 bool endAllSessions(QSqlDatabase& database, qint64 endedAt);
+
+// Reads one recorded session by its stable key. An unknown key yields a row with
+// id 0 so callers can refuse the request instead of guessing.
+[[nodiscard]] SessionRow sessionByKey(QSqlDatabase& database, const QString& sessionKey);
+
+// Removes one closed session. A session the recorder is still tracking
+// (ended_at = 0) is refused, so history deletion can never orphan a live game.
+// Imported playtime and captured baselines are never touched: deleting recorded
+// time can only lower the displayed total toward what the emulator itself
+// reports, never invent it.
+bool deleteSession(QSqlDatabase& database, const QString& sessionKey);
+
+// Removes the closed sessions of the given game paths. Returns how many rows
+// went, or -1 when the delete failed.
+int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths);
 
 // Closes open sessions whose tracked process is gone, using the last heartbeat as
 // the end time so a dead daemon never invents play time. Returns the survivors.

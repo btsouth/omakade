@@ -22,6 +22,9 @@ class PlaySessionStore final : public QObject {
   Q_PROPERTY(bool recorderRunning READ recorderRunning NOTIFY recorderStatusChanged)
   Q_PROPERTY(bool storageAvailable READ storageAvailable CONSTANT)
   Q_PROPERTY(int revision READ revision NOTIFY totalsChanged)
+  // Bumped by every accepted history deletion, so a view bound to the history
+  // refreshes even when the deleted row held no seconds and the totals did not move.
+  Q_PROPERTY(int historyRevision READ historyRevision NOTIFY historyChanged)
   // Live sessions from the recorder, refreshed continuously so the Now Playing
   // view can show what is running right now and offer to stop it.
   Q_PROPERTY(QVariantList nowPlaying READ nowPlaying NOTIFY nowPlayingChanged)
@@ -36,8 +39,20 @@ public:
   bool recorderRunning() const { return m_recorderRunning; }
   bool storageAvailable() const { return m_valid; }
   int revision() const { return m_revision; }
+  int historyRevision() const { return m_historyRevision; }
   Q_INVOKABLE void refreshRecorderStatus();
   Q_INVOKABLE QVariantList historyForPaths(const QStringList& gamePaths, int limit = 8) const;
+
+  // Safe deletion for the per-game history view. A deletion is only carried out
+  // for one closed session that still belongs to one of the given paths, so a
+  // stale key can never remove another game's session and a session the
+  // recorder is still tracking is never touched. Imported playtime and captured
+  // baselines stay as they are: forgetting recorded time can only lower the
+  // displayed total toward what the emulator itself reports.
+  Q_INVOKABLE bool deleteSession(const QString& sessionKey, const QStringList& gamePaths);
+  // Removes every closed session of these paths. Returns how many rows went, or
+  // -1 when the deletion failed.
+  Q_INVOKABLE int deleteHistoryForPaths(const QStringList& gamePaths);
 
   // Sessions that are running right now, each verified against its recorded
   // process so a closed game never lingers in the list.
@@ -76,6 +91,7 @@ signals:
   void enabledChanged();
   void recorderStatusChanged();
   void totalsChanged();
+  void historyChanged();
   void nowPlayingChanged();
 
 private:
@@ -94,6 +110,7 @@ private:
   bool m_enabled = true;
   bool m_valid = false;
   int m_revision = 0;
+  int m_historyRevision = 0;
   QHash<QString, qint64> m_trackedSeconds;
   QHash<QString, qint64> m_baselines;
   QHash<QString, qint64> m_lastPlayed;

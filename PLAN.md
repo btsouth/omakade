@@ -945,6 +945,10 @@ own format and several keep none at all. A small recorder closes that gap.
   window to rescan that source so its import stops going stale.
 - Game Details exposes the eight most recent local sessions across linked
   installations, including source, duration, active state, and recording-off context.
+  Each listed session can be deleted after a confirmation that starts on the safe
+  choice. A session the recorder is still tracking is refused, and a deletion only
+  removes recorded time: imported emulator playtime and captured baselines are left
+  alone, so the displayed total can fall back but never rises.
 
 ### Later
 
@@ -953,8 +957,6 @@ own format and several keep none at all. A small recorder closes that gap.
   IPC first, then per-emulator recents and log adapters.
 - Pause the clock while the emulator window is unfocused, matching how
   Ryujinx excludes paused time from its own counter.
-- Optional session deletion or broader history-management tools, only with explicit
-  confirmation and without changing imported launcher playtime.
 
 
 ## Decisions to settle before M0 implementation

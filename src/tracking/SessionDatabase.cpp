@@ -108,11 +108,12 @@ QVector<SessionRow> openSessions(QSqlDatabase& database) {
   QSqlQuery query(database);
   if (!query.exec(QStringLiteral(
           "SELECT id, game_path, source, started_at, ended_at, seconds, pid, proc_start, "
-          "heartbeat_at FROM play_sessions WHERE ended_at = 0 ORDER BY id"))) {
+          "heartbeat_at, session_key FROM play_sessions WHERE ended_at = 0 ORDER BY id"))) {
     return rows;
   }
   while (query.next()) {
     rows.append({.id = query.value(0).toLongLong(),
+                 .sessionKey = query.value(9).toString(),
                  .gamePath = query.value(1).toString(),
                  .source = query.value(2).toString(),
                  .startedAt = query.value(3).toLongLong(),
@@ -188,6 +189,77 @@ QVector<SessionRow> reconcileOpenSessions(QSqlDatabase& database,
       survivors.append(row);
   }
   return survivors;
+}
+
+SessionRow sessionByKey(QSqlDatabase& database, const QString& sessionKey) {
+  SessionRow row;
+  if (sessionKey.trimmed().isEmpty()) {
+    return row;
+  }
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral(
+      "SELECT id, game_path, source, started_at, ended_at, seconds, pid, proc_start, "
+      "heartbeat_at FROM play_sessions WHERE session_key = ? LIMIT 1"));
+  query.addBindValue(sessionKey);
+  if (!query.exec() || !query.next()) {
+    return row;
+  }
+  row.id = query.value(0).toLongLong();
+  row.sessionKey = sessionKey;
+  row.gamePath = query.value(1).toString();
+  row.source = query.value(2).toString();
+  row.startedAt = query.value(3).toLongLong();
+  row.endedAt = query.value(4).toLongLong();
+  row.seconds = query.value(5).toLongLong();
+  row.pid = query.value(6).toLongLong();
+  row.procStart = query.value(7).toLongLong();
+  row.heartbeatAt = query.value(8).toLongLong();
+  return row;
+}
+
+bool deleteSession(QSqlDatabase& database, const QString& sessionKey) {
+  if (sessionKey.trimmed().isEmpty()) {
+    return false;
+  }
+  QSqlQuery query(database);
+  // ended_at = 0 is a session the recorder is still tracking; a deletion would
+  // race the recorder's own flush and leave the row half-forgotten.
+  query.prepare(QStringLiteral(
+      "DELETE FROM play_sessions WHERE session_key = ? AND ended_at > 0"));
+  query.addBindValue(sessionKey);
+  return query.exec() && query.numRowsAffected() == 1;
+}
+
+int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths) {
+  QStringList paths;
+  for (const QString& path : gamePaths) {
+    const QString clean = path.trimmed();
+    if (clean.isEmpty() || clean.size() > 4096 || paths.contains(clean)) {
+      continue;
+    }
+    paths.append(clean);
+    if (paths.size() == 32) {
+      break;
+    }
+  }
+  if (paths.isEmpty()) {
+    return 0;
+  }
+  QStringList placeholders;
+  for (qsizetype index = 0; index < paths.size(); ++index) {
+    placeholders.append(QStringLiteral("?"));
+  }
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral("DELETE FROM play_sessions WHERE ended_at > 0 AND game_path IN "
+                               "(%1)")
+                    .arg(placeholders.join(',')));
+  for (const QString& path : paths) {
+    query.addBindValue(path);
+  }
+  if (!query.exec()) {
+    return -1;
+  }
+  return query.numRowsAffected();
 }
 
 QHash<QString, qint64> trackedSecondsByPath(QSqlDatabase& database) {

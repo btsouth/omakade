@@ -826,6 +826,7 @@ private slots:
   void sessionRecorderSurvivesRestartsWithoutInventingTime();
   void sessionStoreMergesImportedAndTrackedPlaytime();
   void sessionStoreListsBoundedPerGameHistory();
+  void sessionHistoryDeletesOnlyClosedSessionsOwnedByTheGame();
   void sessionDisplayTitlesEmulatorPaths();
   void sessionStopperVerifiesProcessIdentity();
   void sessionStoreReportsAndStopsLiveSessions();
@@ -7039,6 +7040,104 @@ void CoreTests::sessionStoreListsBoundedPerGameHistory() {
   QVERIFY(!previous.value("active").toBool());
   QCOMPARE(store.historyForPaths({"/games/a.nsp"}, 1).size(), 1);
   QVERIFY(store.historyForPaths({}, 8).isEmpty());
+}
+
+void CoreTests::sessionHistoryDeletesOnlyClosedSessionsOwnedByTheGame() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+  const QString connection = QStringLiteral("test-session-delete");
+  QString otherGameKey;
+  QString liveGameKey;
+  qint64 liveSessionId = 0;
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 first =
+        SessionDatabase::beginSession(database, "/games/a.nsp", "Ryujinx", 1000, 1, 1);
+    const qint64 second =
+        SessionDatabase::beginSession(database, "/games/a.nsp", "Ryujinx", 2000, 2, 2);
+    const qint64 other =
+        SessionDatabase::beginSession(database, "/games/c.nes", "RetroArch", 3000, 3, 3);
+    liveSessionId =
+        SessionDatabase::beginSession(database, "/games/a.nsp", "Ryujinx", 4000, 4, 4);
+    QVERIFY(first > 0 && second > 0 && other > 0 && liveSessionId > 0);
+    QVERIFY(SessionDatabase::endSession(database, first, 1060, 60));
+    QVERIFY(SessionDatabase::endSession(database, second, 2120, 120));
+    QVERIFY(SessionDatabase::endSession(database, other, 3060, 60));
+    // Imported playtime and its baseline must survive a deletion untouched.
+    SessionDatabase::captureBaseline(database, "/games/a.nsp", 5000, 5000);
+    // An empty key never matches a row.
+    QVERIFY(SessionDatabase::sessionByKey(database, QString{}).id == 0);
+    auto keyFor = [&database](qint64 id) {
+      QSqlQuery query(database);
+      query.prepare(QStringLiteral("SELECT session_key FROM play_sessions WHERE id = ?"));
+      query.addBindValue(id);
+      return query.exec() && query.next() ? query.value(0).toString() : QString{};
+    };
+    otherGameKey = keyFor(other);
+    QVERIFY(!otherGameKey.isEmpty());
+    liveGameKey = keyFor(liveSessionId);
+    QVERIFY(!liveGameKey.isEmpty());
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+
+  PlaySessionStore store(path);
+  const QStringList paths{"/games/a.nsp"};
+  // Imported time and the captured baseline together set the ceiling a deletion
+  // can fall back to; recorded sessions can only add to it.
+  QCOMPARE(store.displaySeconds("/games/a.nsp", 100), qint64(5000));
+  const QVariantList before = store.historyForPaths(paths, 8);
+  QCOMPARE(before.size(), 3);
+  QCOMPARE(before.at(0).toMap().value("sessionKey").toString(), liveGameKey);
+  QVERIFY(before.at(0).toMap().value("active").toBool());
+  QVERIFY(!before.at(1).toMap().value("sessionKey").toString().isEmpty());
+
+  // An empty or unknown key is refused, and so is a key that belongs to a
+  // different game than the one this view is showing.
+  QVERIFY(!store.deleteSession(QString{}, paths));
+  QVERIFY(!store.deleteSession(QStringLiteral("not-a-session-key"), paths));
+  QVERIFY(!store.deleteSession(otherGameKey, paths));
+  QVERIFY(!store.deleteSession(liveGameKey, paths));
+  QCOMPARE(store.historyForPaths(paths, 8).size(), 3);
+  // A session the recorder is still tracking can never be deleted, so its row is
+  // still there and still open.
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const SessionDatabase::SessionRow live = SessionDatabase::sessionByKey(database, liveGameKey);
+    QVERIFY(live.id == liveSessionId);
+    QCOMPARE(live.endedAt, qint64(0));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+
+  // The closed session is removed, and only that one.
+  const QString closedKey = before.at(1).toMap().value("sessionKey").toString();
+  QVERIFY(store.deleteSession(closedKey, paths));
+  QCOMPARE(store.historyForPaths(paths, 8).size(), 2);
+  QCOMPARE(store.historyForPaths({"/games/c.nes"}, 8).size(), 1);
+
+  // Deleting cannot invent playtime. The captured baseline was reduced by the
+  // recorded time present when it was taken, so the total now falls back below
+  // the imported figure rather than staying at it.
+  const qint64 afterDelete = store.displaySeconds("/games/a.nsp", 100);
+  QCOMPARE(afterDelete, qint64(4880));
+  QVERIFY(afterDelete <= 5000);
+
+  // Clearing the history removes the remaining closed session and leaves the
+  // live one alone.
+  QCOMPARE(store.deleteHistoryForPaths(paths), 1);
+  const QVariantList after = store.historyForPaths(paths, 8);
+  QCOMPARE(after.size(), 1);
+  QCOMPARE(after.at(0).toMap().value("sessionKey").toString(), liveGameKey);
+  QVERIFY(after.at(0).toMap().value("active").toBool());
+  QCOMPARE(store.deleteHistoryForPaths(paths), 0);
+  QCOMPARE(store.deleteHistoryForPaths({}), 0);
+  QCOMPARE(store.historyForPaths({"/games/c.nes"}, 8).size(), 1);
 }
 
 QTEST_MAIN(CoreTests)

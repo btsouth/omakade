@@ -1668,19 +1668,27 @@ int main(int argc, char* argv[]) {
       }
       if (renderOverlay == QStringLiteral("session-history")) {
         QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
-        QTimer::singleShot(120, quickWindow, [quickWindow, &application] {
+        // Totals changes make Main.qml refresh the selected game, which replaces the
+        // installation with the model's own choice. The fixture path has to be put back
+        // after every change, or the history view loses the game it is showing.
+        auto useFixtureInstallation = [quickWindow] {
           auto* details = quickWindow->findChild<QObject*>("gameDetails");
-          if (!details) {
-            application.exit(EXIT_FAILURE);
-            return;
-          }
+          if (details == nullptr) return false;
           details->setProperty(
               "selectedInstallation",
               QVariantMap{{"source", "RetroArch"},
                           {"installPath", "/games/demo-0.nes"},
                           {"launchTarget", "snes9x_libretro.so"},
                           {"appId", "demo-0"}});
-          QTimer::singleShot(80, quickWindow, [quickWindow, &application] {
+          return details->property("sessionHistoryPaths").toList().size() == 1;
+        };
+        QTimer::singleShot(120, quickWindow, [quickWindow, &application, useFixtureInstallation] {
+          auto* details = quickWindow->findChild<QObject*>("gameDetails");
+          if (!details || !useFixtureInstallation()) {
+            application.exit(EXIT_FAILURE);
+            return;
+          }
+          QTimer::singleShot(80, quickWindow, [quickWindow, &application, useFixtureInstallation] {
             auto* button = findVisualItem(quickWindow->contentItem(), "playHistoryButton");
             if (!button || !button->isVisible()) {
               qCritical() << "Play history was not available for the selected game";
@@ -1688,7 +1696,7 @@ int main(int argc, char* argv[]) {
               return;
             }
             QMetaObject::invokeMethod(button, "clicked");
-            QTimer::singleShot(80, quickWindow, [quickWindow, &application] {
+            QTimer::singleShot(80, quickWindow, [quickWindow, &application, useFixtureInstallation] {
               auto* menu = quickWindow->findChild<QObject*>("playHistoryMenu");
               auto* done = quickWindow->findChild<QQuickItem*>("playHistoryDoneButton");
               auto* first = findVisualItem(quickWindow->contentItem(), "playHistoryEntry_0");
@@ -1697,7 +1705,51 @@ int main(int argc, char* argv[]) {
                   !done->hasActiveFocus() || !first || !second) {
                 qCritical() << "Play history did not open with safe focus and recorded sessions";
                 application.exit(EXIT_FAILURE);
+                return;
               }
+              // Deleting a session must ask first, with the way out focused, and
+              // only then remove exactly the session that was chosen.
+              QMetaObject::invokeMethod(first, "clicked");
+              QTimer::singleShot(80, quickWindow, [quickWindow, &application, useFixtureInstallation] {
+                auto* menu = quickWindow->findChild<QObject*>("playHistoryMenu");
+                auto* cancel = quickWindow->findChild<QQuickItem*>("cancelHistoryDelete");
+                auto* confirm = quickWindow->findChild<QObject*>("confirmHistoryDelete");
+                auto* entry = findVisualItem(quickWindow->contentItem(), "playHistoryEntry_0");
+                if (!menu || cancel == nullptr || !cancel->isVisible() || !cancel->hasActiveFocus() ||
+                    !confirm || !menu->property("confirming").toBool() || entry == nullptr ||
+                    entry->isVisible()) {
+                  qCritical() << "Deleting a recorded session did not require a focused confirmation";
+                  application.exit(EXIT_FAILURE);
+                  return;
+                }
+                QMetaObject::invokeMethod(confirm, "clicked");
+                QTimer::singleShot(120, quickWindow, [quickWindow, &application, useFixtureInstallation] {
+                  auto* menu = quickWindow->findChild<QObject*>("playHistoryMenu");
+                  if (!useFixtureInstallation() || menu == nullptr ||
+                      menu->property("message").toString() != QStringLiteral("Session removed.")) {
+                    qCritical() << "Deleting a recorded session did not report the removal"
+                                << "message:" << (menu != nullptr
+                                                      ? menu->property("message").toString()
+                                                      : QStringLiteral("<none>"));
+                    application.exit(EXIT_FAILURE);
+                    return;
+                  }
+                  // The session that was chosen is gone and the older one is still
+                  // listed, so a deletion never clears the whole game's history.
+                  auto* stillListed = findVisualItem(quickWindow->contentItem(), "playHistoryEntry_0");
+                  auto* removed = findVisualItem(quickWindow->contentItem(), "playHistoryEntry_1");
+                  if (removed != nullptr || stillListed == nullptr ||
+                      !stillListed->property("text").toString().contains(QStringLiteral("30m"))) {
+                    qCritical() << "Deleting a recorded session did not remove it from the history"
+                                << "entry0:" << (stillListed != nullptr)
+                                << "entry1:" << (removed != nullptr)
+                                << "entry0Text:" << (stillListed != nullptr
+                                                         ? stillListed->property("text").toString()
+                                                         : QStringLiteral("<none>"));
+                    application.exit(EXIT_FAILURE);
+                  }
+                });
+              });
             });
           });
         });

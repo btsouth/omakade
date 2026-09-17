@@ -2,13 +2,18 @@
 
 ## Unreleased
 
-Sessions you can see and stop.
+Sessions you can see, stop, and manage.
 
 - Home now shows a Now Playing panel with every session the recorder is tracking,
   each with the game name, its source, and how long it has been running. The stop
   control asks the game to exit first, then offers a forced stop when a game ignores
   the request. Only a tracked session can be stopped, and only while the recorded
   process identity still matches, so a reused process id is never signalled.
+- Game Details opens the full recorded session history for a game, and any listed
+  session can be deleted after a confirmation that starts on the safe choice. A
+  session the recorder is still tracking is never deleted, and deleting a session
+  only forgets recorded time: imported emulator playtime is left alone, so the
+  displayed total can fall back to it but a deletion never adds time.
 
 ## 1.10.0
 

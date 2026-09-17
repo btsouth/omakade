@@ -81,6 +81,7 @@ Item {
                 || !SessionRecorderStatus.storageAvailable || sessionHistoryPaths.length === 0)
             return []
         const revision = SessionRecorderStatus.revision
+        const history = SessionRecorderStatus.historyRevision
         return SessionRecorderStatus.historyForPaths(sessionHistoryPaths, 8)
     }
     function sessionDurationText(value) {
@@ -1741,63 +1742,132 @@ Item {
         preferredWidth: 460
         doneObjectName: "playHistoryDoneButton"
         initialFocus: doneControl
+        // Empty means the entry list is showing. Otherwise the menu is confirming
+        // one deletion, or every recorded session for this game.
+        property string pendingKey: ""
+        property bool pendingClearAll: false
+        property string message: ""
+        readonly property bool confirming: pendingKey !== "" || pendingClearAll
+        onClosed: {
+            pendingKey = ""
+            pendingClearAll = false
+            message = ""
+        }
+        // Deleting asks first, and the confirmation always starts on the way out,
+        // so a controller or a stray Enter can never remove history by accident.
+        function beginDelete(key) {
+            pendingClearAll = false
+            pendingKey = key
+            message = ""
+            Qt.callLater(cancelHistoryDelete.forceActiveFocus)
+        }
+        function beginClearAll() {
+            pendingKey = ""
+            pendingClearAll = true
+            message = ""
+            Qt.callLater(cancelHistoryDelete.forceActiveFocus)
+        }
+        function cancelDelete() {
+            pendingKey = ""
+            pendingClearAll = false
+            message = ""
+            Qt.callLater(playHistoryMenu.doneControl.forceActiveFocus)
+        }
+        function applyDelete() {
+            const paths = root.sessionHistoryPaths
+            if (pendingClearAll) {
+                const removed = SessionRecorderStatus.deleteHistoryForPaths(paths)
+                message = removed > 0 ? "Removed " + removed + (removed === 1 ? " session." : " sessions.")
+                                      : removed === 0 ? "No recorded sessions were left."
+                                                      : "The recorded history could not be removed."
+            } else {
+                const key = pendingKey
+                message = SessionRecorderStatus.deleteSession(key, paths)
+                          ? "Session removed."
+                          : "This session could not be removed."
+            }
+            pendingKey = ""
+            pendingClearAll = false
+            Qt.callLater(playHistoryMenu.doneControl.forceActiveFocus)
+        }
         Text {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             color: Theme.mutedText
             font.family: Theme.fontFamily
             font.pixelSize: 12
-            text: SessionRecorderStatus && SessionRecorderStatus.enabled
-                  ? "Recent sessions recorded locally by Omakade."
-                  : "Recording is off. Existing local history is retained."
+            visible: !playHistoryMenu.confirming
+            text: (SessionRecorderStatus && SessionRecorderStatus.enabled
+                   ? "Recent sessions recorded locally by Omakade. "
+                   : "Recording is off. Existing local history is retained. ")
+                  + "Deleting a session forgets recorded time only; playtime your emulator "
+                  + "reports is kept."
+        }
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            lineHeight: 1.2
+            visible: playHistoryMenu.confirming
+            text: playHistoryMenu.pendingClearAll
+                  ? "Delete every recorded session for this game? This cannot be undone. "
+                    + "Playtime your emulator reports is not changed."
+                  : "Delete this recorded session? This cannot be undone. Playtime your "
+                    + "emulator reports is not changed."
+        }
+        Text {
+            objectName: "playHistoryMessage"
+            Layout.fillWidth: true
+            visible: text.length > 0
+            wrapMode: Text.Wrap
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+            text: playHistoryMenu.message
+        }
+        MenuAction {
+            id: cancelHistoryDelete
+            objectName: "cancelHistoryDelete"
+            Layout.fillWidth: true
+            visible: playHistoryMenu.confirming
+            text: "KEEP"
+            onClicked: playHistoryMenu.cancelDelete()
+        }
+        MenuAction {
+            objectName: "confirmHistoryDelete"
+            Layout.fillWidth: true
+            visible: playHistoryMenu.confirming
+            text: playHistoryMenu.pendingClearAll ? "DELETE ALL SESSIONS" : "DELETE SESSION"
+            onClicked: playHistoryMenu.applyDelete()
         }
         Repeater {
             model: root.recordedSessions
-            Rectangle {
+            MenuAction {
                 required property var modelData
                 required property int index
                 objectName: "playHistoryEntry_" + index
                 Layout.fillWidth: true
-                implicitHeight: 50 * root.uiScale
-                radius: Math.max(4, Theme.cornerRadius)
-                color: root.alpha(Theme.foreground, 0.045)
-                border.color: root.alpha(Theme.foreground, 0.16)
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 9 * root.uiScale
-                    spacing: 3 * root.uiScale
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: Qt.formatDateTime(new Date(modelData.startedAt * 1000),
-                                                    "MMM d, yyyy  ·  h:mm AP")
-                            color: Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11 * root.uiScale
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            text: (modelData.active ? "IN PROGRESS  ·  " : "")
-                                  + root.sessionDurationText(modelData.seconds)
-                            color: modelData.active ? Theme.accent : Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 11 * root.uiScale
-                            font.weight: Font.DemiBold
-                        }
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: modelData.source || "Omakade"
-                        color: Theme.mutedText
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10 * root.uiScale
-                        elide: Text.ElideRight
-                    }
-                }
+                visible: !playHistoryMenu.confirming
+                // A session the recorder is still tracking cannot be deleted, so it
+                // stays listed without an action and says why.
+                enabled: !modelData.active && modelData.sessionKey !== ""
+                text: Qt.formatDateTime(new Date(modelData.startedAt * 1000),
+                                        "MMM d, yyyy  ·  h:mm AP")
+                      + "  ·  " + root.sessionDurationText(modelData.seconds)
+                      + "  ·  " + (modelData.source || "Omakade")
+                      + (modelData.active ? "  ·  IN PROGRESS" : "")
+                onClicked: if (!modelData.active) playHistoryMenu.beginDelete(modelData.sessionKey)
             }
+        }
+        MenuAction {
+            objectName: "clearHistoryButton"
+            Layout.fillWidth: true
+            visible: !playHistoryMenu.confirming && root.recordedSessions.length > 1
+            text: "DELETE ALL RECORDED SESSIONS…"
+            onClicked: playHistoryMenu.beginClearAll()
         }
     }
 
