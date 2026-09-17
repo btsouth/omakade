@@ -62,6 +62,8 @@ qt_standard_project_setup(REQUIRES 6.8)
 add_library(omakade_tracking STATIC
   src/tracking/AppNotify.cpp
   src/tracking/AppNotify.h
+  src/tracking/HyprlandWindows.cpp
+  src/tracking/HyprlandWindows.h
   src/tracking/PlaySessionStore.cpp
   src/tracking/PlaySessionStore.h
   src/tracking/ProcFs.cpp
@@ -76,6 +78,8 @@ add_library(omakade_tracking STATIC
   src/tracking/SessionRecorder.h
   src/tracking/SessionStopper.cpp
   src/tracking/SessionStopper.h
+  src/tracking/SessionTitleIndex.cpp
+  src/tracking/SessionTitleIndex.h
 )
 
 target_include_directories(omakade_tracking PUBLIC src)

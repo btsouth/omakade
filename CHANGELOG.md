@@ -9,6 +9,12 @@ Sessions you can see, stop, and manage.
   control asks the game to exit first, then offers a forced stop when a game ignores
   the request. Only a tracked session can be stopped, and only while the recorded
   process identity still matches, so a reused process id is never signalled.
+- Games loaded from an emulator's own file picker now count toward playtime on
+  Hyprland. Those loads name no game on the command line, so the recorder matches
+  the emulator's window title against the titles Omakade already knows from its
+  own scan. Only a confident, unambiguous match is used, and a session attributed
+  this way is listed without a stop control because its process identity was never
+  verified. Nothing changes without a compositor or without titles to match.
 - Game Details opens the full recorded session history for a game, and any listed
   session can be deleted after a confirmation that starts on the safe choice. A
   session the recorder is still tracking is never deleted, and deleting a session

@@ -51,6 +51,11 @@ void SessionRecorder::recover(const QVector<ProcessSnapshot>& processes,
   for (const SessionDatabase::SessionRow& row : survivors) {
     const SessionMatch* adopted = nullptr;
     for (const SessionMatch& match : matches) {
+      // A window-title match has no recorded process identity, so it can never
+      // be adopted after a restart and is only ever closed by a later poll.
+      if (match.procStart <= 0) {
+        continue;
+      }
       if (match.pid == row.pid && match.procStart == row.procStart &&
           match.gamePath == row.gamePath) {
         adopted = &match;

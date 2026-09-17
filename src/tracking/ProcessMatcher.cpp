@@ -6,6 +6,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <algorithm>
+
 namespace {
 bool binaryMatches(const QString& candidate, const QStringList& binaries) {
   for (const QString& binary : binaries) {
@@ -82,6 +84,9 @@ QVector<SessionMatch> match(const QVector<ProcessSnapshot>& processes,
                             const ProcessProfileSet& profiles) {
   QVector<SessionMatch> matches;
   for (const ProcessSnapshot& process : processes) {
+    if (process.procStart < 0) {
+      continue;
+    }
     for (const SessionProcessProfile& profile : profiles.emulators) {
       if (!binaryMatches(process.comm, profile.binaries)) {
         continue;
@@ -92,6 +97,51 @@ QVector<SessionMatch> match(const QVector<ProcessSnapshot>& processes,
       }
       matches.append({.pid = process.pid,
                       .procStart = process.procStart,
+                      .emulator = profile.name,
+                      .rescanSource = profile.rescanSource,
+                      .gamePath = gamePath});
+      break;
+    }
+  }
+  return matches;
+}
+
+bool matchCameFromWindowTitle(const SessionMatch& match) {
+  return match.procStart < 0;
+}
+
+QVector<SessionMatch> matchWithWindowTitles(
+    const QVector<ProcessSnapshot>& processes, const ProcessProfileSet& profiles,
+    const std::function<QString(qint64)>& windowTitleForPid, const TitleResolver& resolve) {
+  QVector<SessionMatch> matches = match(processes, profiles);
+  if (!windowTitleForPid || !resolve) {
+    return matches;
+  }
+  for (const ProcessSnapshot& process : processes) {
+    const bool alreadyMatched =
+        std::any_of(matches.cbegin(), matches.cend(), [&process](const SessionMatch& match) {
+          return match.pid == process.pid && match.procStart == process.procStart;
+        });
+    if (alreadyMatched) {
+      continue;
+    }
+    const QString title = windowTitleForPid(process.pid);
+    if (title.isEmpty()) {
+      continue;
+    }
+    for (const SessionProcessProfile& profile : profiles.emulators) {
+      if (!binaryMatches(process.comm, profile.binaries)) {
+        continue;
+      }
+      const QString gamePath = resolve(title, profile.name);
+      if (gamePath.isEmpty()) {
+        continue;
+      }
+      // A title match carries no process identity: the resolved path is the
+      // proof, and procStart stays negative so the recorder can tell the two
+      // kinds of match apart.
+      matches.append({.pid = process.pid,
+                      .procStart = -1,
                       .emulator = profile.name,
                       .rescanSource = profile.rescanSource,
                       .gamePath = gamePath});

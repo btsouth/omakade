@@ -22,6 +22,12 @@ namespace ProcFs {
 
 [[nodiscard]] bool processAlive(qint64 pid, qint64 procStart);
 
+// True when a process with this pid exists, belongs to this user, and is not a
+// zombie. This is deliberately weaker than processAlive: it cannot tell a reused
+// pid apart from the original process, so it must never authorize a signal, only
+// decide whether a session recorded without a process identity is still running.
+[[nodiscard]] bool processRunning(qint64 pid);
+
 // Delivers a signal to a process. Returns false when the process is gone or the
 // signal could not be sent, so callers never report a stop that did not happen.
 [[nodiscard]] bool sendSignal(qint64 pid, int signal);

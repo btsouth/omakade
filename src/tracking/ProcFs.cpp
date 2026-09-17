@@ -82,6 +82,19 @@ bool processAlive(qint64 pid, qint64 procStart) {
   return current == procStart && state != 'Z' && state != 'X';
 }
 
+bool processRunning(qint64 pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  const QString base = QStringLiteral("/proc/%1").arg(pid);
+  if (QFileInfo(base).ownerId() != static_cast<uint>(geteuid())) {
+    return false;
+  }
+  QFile stat(base + QStringLiteral("/stat"));
+  char state = '?';
+  return statStartTime(stat, &state) >= 0 && state != 'Z' && state != 'X';
+}
+
 bool sendSignal(qint64 pid, int signal) {
   if (pid <= 0 || signal <= 0) {
     return false;

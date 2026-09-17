@@ -353,6 +353,7 @@ FocusScope {
                                         text: (modelData.source ? modelData.source + " · " : "")
                                               + root.elapsedText(modelData.elapsedSeconds)
                                               + (modelData.stopping ? " · closing" : "")
+                                              + (modelData.stoppable === false ? " · from window title" : "")
                                         color: Theme.mutedText
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 11 * root.scaleFactor
@@ -362,6 +363,10 @@ FocusScope {
                                 GlassButton {
                                     objectName: "nowPlayingStop_" + modelData.pid
                                     compact: true
+                                    // A session recorded from a window title has no verified
+                                    // process identity, so it is listed without a stop control
+                                    // rather than offering to signal a process we cannot prove.
+                                    visible: modelData.stoppable !== false
                                     text: modelData.forceReady ? "FORCE STOP" : modelData.stopping ? "STOPPING…" : "STOP"
                                     enabled: !modelData.stopping || modelData.forceReady
                                     Accessible.name: text + " " + (modelData.name || "")

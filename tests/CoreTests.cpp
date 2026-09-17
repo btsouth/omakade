@@ -78,10 +78,12 @@
 #include "theme/OmarchyTheme.h"
 #include "tracking/PlaySessionStore.h"
 #include "tracking/ProcFs.h"
+#include "tracking/HyprlandWindows.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionDisplay.h"
 #include "tracking/SessionRecorder.h"
+#include "tracking/SessionTitleIndex.h"
 #include "tracking/SessionStopper.h"
 #include <zip.h>
 
@@ -818,6 +820,7 @@ private slots:
   void malformedCemuDataDoesNotReplaceCachedGames();
   void cemuLauncherBuildsSafeCommands();
   void processMatcherExtractsRomPaths();
+  void windowTitlesAttributeFilePickerLoads();
   void shippedProfilesMatchCemuWua();
   void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
@@ -926,6 +929,7 @@ private slots:
   void igdbCoverFallbackRespectsPriorityAndFailures();
   void startupBenchmarkDoesNotActivateAnotherInstance();
   void probeEmbeddedArtwork();
+  void probeNowPlayingStore();
   void switchTitleReaderReadsSyntheticDump();
   void zarchiveReaderAndTgaDecodeSyntheticArchive();
 };
@@ -6851,6 +6855,165 @@ void CoreTests::processMatcherExtractsRomPaths() {
   QCOMPARE(matches.at(2).emulator, QStringLiteral("Cemu"));
 }
 
+void CoreTests::windowTitlesAttributeFilePickerLoads() {
+  // A game the emulator loaded from its own file picker names nothing on the
+  // command line, so the window title is the only evidence available.
+  ProcessProfileSet profiles;
+  profiles.emulators.append({.name = QStringLiteral("PCSX2"),
+                             .binaries = {QStringLiteral("pcsx2-qt")},
+                             .rescanSource = QStringLiteral("PCSX2")});
+  profiles.emulators.append({.name = QStringLiteral("Ryujinx"),
+                             .binaries = {QStringLiteral("Ryujinx")}});
+  profiles.romExtensions = {QStringLiteral("iso"), QStringLiteral("nsp")};
+
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+  const QString connection = QStringLiteral("test-title-index");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QSqlQuery query(database);
+    // The caches the sources fill in. Only a title and a content path matter here.
+    QVERIFY(query.exec("CREATE TABLE pcsx2_games (game_id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+                       "path TEXT NOT NULL, serial TEXT)"));
+    QVERIFY(query.exec("INSERT INTO pcsx2_games VALUES('a','Dragon Quest VIII',"
+                       "'/games/ps2/Dragon Quest VIII.iso','SLUS-1')"));
+    QVERIFY(query.exec("INSERT INTO pcsx2_games VALUES('b','Shadow of the Colossus',"
+                       "'/games/ps2/Shadow of the Colossus.iso','SLUS-2')"));
+    QVERIFY(query.exec("INSERT INTO pcsx2_games VALUES('c','Okami',"
+                       "'/games/ps2/Okami.iso','SLUS-3')"));
+    QVERIFY(query.exec("CREATE TABLE ryujinx_games (game_id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+                       "path TEXT)"));
+    QVERIFY(query.exec("INSERT INTO ryujinx_games VALUES('d','Mario Kart 8 Deluxe',"
+                       "'/games/switch/Mario Kart 8 Deluxe.nsp')"));
+    // A cache with the wrong shape is skipped, never guessed at.
+    QVERIFY(query.exec("CREATE TABLE cemu_games (game_id TEXT PRIMARY KEY, name TEXT NOT NULL)"));
+    QVERIFY(query.exec("CREATE TABLE cemu_graphic_packs (title TEXT, contents TEXT)"));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+
+  SessionTitleIndex index;
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QVERIFY(index.refresh(database));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  QCOMPARE(index.size(), 4);
+
+  // The decorated title a real emulator reports still names the game.
+  QCOMPARE(index.pathForWindowTitle(QStringLiteral("PCSX2 1.7.5 - Dragon Quest VIII"),
+                                    QStringLiteral("PCSX2")),
+           QStringLiteral("/games/ps2/Dragon Quest VIII.iso"));
+  QCOMPARE(index.pathForWindowTitle(QStringLiteral("Dragon Quest VIII [NTSC]"),
+                                    QStringLiteral("PCSX2")),
+           QStringLiteral("/games/ps2/Dragon Quest VIII.iso"));
+  QCOMPARE(index.pathForWindowTitle(QStringLiteral("Ryujinx 1.1.0  |  Mario Kart 8 Deluxe"),
+                                    QStringLiteral("Ryujinx")),
+           QStringLiteral("/games/switch/Mario Kart 8 Deluxe.nsp"));
+  // An emulator's own window (loading, settings) names no game.
+  QVERIFY(index.pathForWindowTitle(QStringLiteral("PCSX2 1.7.5"), QStringLiteral("PCSX2"))
+              .isEmpty());
+  QVERIFY(index.pathForWindowTitle(QStringLiteral("Ryujinx Settings"), QStringLiteral("Ryujinx"))
+              .isEmpty());
+  // One emulator's cache never answers for another, and a known title does not
+  // answer when the process belongs to an emulator with no such game.
+  QVERIFY(index.pathForWindowTitle(QStringLiteral("PCSX2 1.7.5 - Dragon Quest VIII"),
+                                   QStringLiteral("Ryujinx"))
+              .isEmpty());
+  // A name has to appear whole, so a longer word that merely starts the same is
+  // not a match, even when the name is long enough to be matchable.
+  QVERIFY(index
+              .pathForWindowTitle(QStringLiteral("DragonQuest VIII Adventure"),
+                                  QStringLiteral("PCSX2"))
+              .isEmpty());
+  // Two known games in one title is ambiguous, so it is refused rather than guessed.
+  QVERIFY(index
+              .pathForWindowTitle(
+                  QStringLiteral("Dragon Quest VIII vs Shadow of the Colossus"),
+                  QStringLiteral("PCSX2"))
+              .isEmpty());
+  QVERIFY(index.pathForWindowTitle(QStringLiteral("Dragon Quest VIII"),
+                                   QStringLiteral("PCSX2"))
+              .endsWith(QStringLiteral("Dragon Quest VIII.iso")));
+  // A short name is too weak to match on, whatever the window says.
+  QCOMPARE(SessionTitleIndex::normalize(QStringLiteral("Okami")), QStringLiteral("okami"));
+  QVERIFY(SessionTitleIndex::normalize(QStringLiteral("Okami")).size() <
+          SessionTitleIndex::kMinimumMatchLength);
+  QVERIFY(index
+              .pathForWindowTitle(QStringLiteral("Okami HD Remaster"), QStringLiteral("PCSX2"))
+              .isEmpty());
+  QCOMPARE(SessionTitleIndex::normalize(QStringLiteral("  Dragon Quest VIII [NTSC] (v1.0)  ")),
+           QStringLiteral("dragon quest viii ntsc v1 0"));
+
+  // The matcher attributes a title-only process, and keeps the two kinds of match
+  // distinguishable so a title match is never treated as a verified process.
+  const QVector<ProcessSnapshot> processes = {
+      {.pid = 20,
+       .procStart = 200,
+       .comm = QStringLiteral("pcsx2-qt"),
+       .arguments = {QStringLiteral("/usr/bin/pcsx2-qt")}},
+      {.pid = 21,
+       .procStart = 201,
+       .comm = QStringLiteral("Ryujinx"),
+       .arguments = {QStringLiteral("/usr/bin/Ryujinx"),
+                     QStringLiteral("/games/switch/Another.nsp")}}};
+  // Only the process that names its own game is matched without windows; the
+  // file-picker load is invisible on the command line.
+  QCOMPARE(ProcessMatcher::match(processes, profiles).size(), 1);
+  const QVector<SessionMatch> titled = ProcessMatcher::matchWithWindowTitles(
+      processes, profiles,
+      [](qint64 pid) {
+        return pid == 20 ? QStringLiteral("PCSX2 1.7.5 - Shadow of the Colossus")
+                         : QStringLiteral("Ryujinx 1.1.0");
+      },
+      [&index](const QString& title, const QString& emulator) {
+        return index.pathForWindowTitle(title, emulator);
+      });
+  // Only the process with no path of its own is attributed from a title, and the
+  // one that named its own game is left alone.
+  QCOMPARE(titled.size(), 2);
+  const auto matchForPid = [&titled](qint64 pid) {
+    for (const SessionMatch& match : titled) {
+      if (match.pid == pid) return match;
+    }
+    return SessionMatch{};
+  };
+  const SessionMatch fromTitle = matchForPid(20);
+  QCOMPARE(fromTitle.gamePath, QStringLiteral("/games/ps2/Shadow of the Colossus.iso"));
+  QCOMPARE(fromTitle.emulator, QStringLiteral("PCSX2"));
+  QVERIFY(ProcessMatcher::matchCameFromWindowTitle(fromTitle));
+  QVERIFY(fromTitle.procStart <= 0);
+  const SessionMatch fromPath = matchForPid(21);
+  QCOMPARE(fromPath.gamePath, QStringLiteral("/games/switch/Another.nsp"));
+  QVERIFY(!ProcessMatcher::matchCameFromWindowTitle(fromPath));
+  // Without a resolver, or with windows unavailable, nothing new is attributed.
+  QCOMPARE(ProcessMatcher::matchWithWindowTitles(processes, profiles, {}, {}).size(), 1);
+  QCOMPARE(ProcessMatcher::matchWithWindowTitles(
+               processes, profiles, [](qint64) { return QString{}; },
+               [&index](const QString& title, const QString& emulator) {
+                 return index.pathForWindowTitle(title, emulator);
+               })
+               .size(),
+           1);
+  // The compositor answer is read strictly; a malformed one attributes nothing.
+  const QVector<HyprlandWindows::Window> windows = HyprlandWindows::parse(
+      R"([{"address":"0x1","pid":20,"title":"PCSX2 1.7.5 - Okami"},)"
+      R"({"address":"0x2","pid":99,"title":""},{"pid":0,"title":"no pid"}])");
+  QCOMPARE(windows.size(), 1);
+  QCOMPARE(HyprlandWindows::titleForPid(windows, 20), QStringLiteral("PCSX2 1.7.5 - Okami"));
+  QVERIFY(HyprlandWindows::titleForPid(windows, 21).isEmpty());
+  QString parseError;
+  QVERIFY(HyprlandWindows::parse(QByteArray("not json"), &parseError).isEmpty());
+  QVERIFY(!parseError.isEmpty());
+  QVERIFY(HyprlandWindows::parse(QByteArray("{\"pid\":1}")).isEmpty());
+}
+
 void CoreTests::shippedProfilesMatchCemuWua() {
   QString error;
   const auto profiles = ProcessMatcher::load(
@@ -7286,6 +7449,42 @@ void CoreTests::probeEmbeddedArtwork() {
           .arg(QString::fromUtf8(meta).section("<longname_en", 1, 1).section('>', 1, 1).section('<', 0, 0));
     }
     qWarning().noquote() << QStringLiteral("   %1 ms").arg(timer.elapsed());
+  }
+}
+
+// Diagnostics against a real recorder database on this machine. Skipped unless
+// OMAKADE_PROBE_NOWPLAYING names one. Used by the live window-title acceptance
+// run to prove the app-side store lists a title-attributed session and withholds
+// a stop control it cannot justify.
+void CoreTests::probeNowPlayingStore() {
+  const QString database = qEnvironmentVariable("OMAKADE_PROBE_NOWPLAYING");
+  if (database.isEmpty()) {
+    QSKIP("set OMAKADE_PROBE_NOWPLAYING to a recorder database path");
+  }
+  PlaySessionStore store(database);
+  const QVariantList rows = store.nowPlaying();
+  qWarning().noquote() << QStringLiteral("NOWPLAYING rows=%1").arg(rows.size());
+  for (const QVariant& row : rows) {
+    const QVariantMap entry = row.toMap();
+    qWarning().noquote() << QStringLiteral("NOWPLAYING %1 | source=%2 | procStart=%3 | "
+                                           "stoppable=%4 | name=%5")
+                                .arg(entry.value(QStringLiteral("path")).toString(),
+                                     entry.value(QStringLiteral("source")).toString())
+                                .arg(entry.value(QStringLiteral("procStart")).toLongLong())
+                                .arg(entry.value(QStringLiteral("stoppable")).toBool())
+                                .arg(entry.value(QStringLiteral("name")).toString());
+  }
+  for (const QVariant& row : rows) {
+    const QVariantMap entry = row.toMap();
+    if (entry.value(QStringLiteral("path")).toString() !=
+        QStringLiteral("/games/ps2/Dragon Quest VIII.iso")) {
+      continue;
+    }
+    if (entry.value(QStringLiteral("stoppable")).toBool() ||
+        entry.value(QStringLiteral("procStart")).toLongLong() > 0) {
+      qWarning().noquote() << "NOWPLAYING FAIL: a title-attributed session must not be stoppable";
+      QFAIL("a title-attributed session offered a stop control");
+    }
   }
 }
 

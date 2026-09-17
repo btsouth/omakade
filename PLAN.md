@@ -949,14 +949,22 @@ own format and several keep none at all. A small recorder closes that gap.
   choice. A session the recorder is still tracking is refused, and a deletion only
   removes recorded time: imported emulator playtime and captured baselines are left
   alone, so the displayed total can fall back but never rises.
+- On Hyprland, a game loaded from an emulator's own file picker counts too. The
+  recorder matches the emulator's window title against the titles already recorded
+  in the source caches, so a launch that names no game on its command line is still
+  attributed. Matching is exact first and whole-name-in-title second, and both
+  refuse an ambiguous or too-short name, so a wrong attribution is never invented.
+  A session attributed this way carries no verified process identity: it is listed
+  in Now Playing without a stop control and is never adopted after a recorder
+  restart. Without a compositor, without `hyprctl`, or without titles, the recorder
+  behaves exactly as it did before.
 
 ### Later
 
-- Attribute sessions for games loaded from an emulator's own file picker, where
-  the command line carries no path: window-title matching through the Hyprland
-  IPC first, then per-emulator recents and log adapters.
 - Pause the clock while the emulator window is unfocused, matching how
   Ryujinx excludes paused time from its own counter.
+- Per-emulator recents and log adapters, for a game loaded without a title that
+  names it, and for compositors other than Hyprland.
 
 
 ## Decisions to settle before M0 implementation

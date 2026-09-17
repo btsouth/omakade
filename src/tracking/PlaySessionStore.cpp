@@ -156,7 +156,15 @@ void PlaySessionStore::refreshNowPlaying() {
     for (const SessionDatabase::SessionRow& session : open) {
       // A session counts as running only while its recorded process is. That also
       // keeps the list honest when the recorder itself stopped.
-      if (!ProcFs::processAlive(session.pid, session.procStart)) {
+      //
+      // A window-title session has no procfs start time to verify against, since
+      // a reused pid can never be told apart, so it is only checked for being
+      // alive. Its stop control is withheld for the same reason: an unverified
+      // process must never be signalled.
+      const bool titled = session.procStart <= 0;
+      const bool alive = titled ? ProcFs::processRunning(session.pid)
+                                : ProcFs::processAlive(session.pid, session.procStart);
+      if (!alive) {
         continue;
       }
       const auto pending = m_pendingStops.constFind(session.pid);
@@ -175,6 +183,7 @@ void PlaySessionStore::refreshNowPlaying() {
           {QStringLiteral("startedAt"), session.startedAt},
           {QStringLiteral("elapsedSeconds"), session.seconds + sinceFlush},
           {QStringLiteral("stopping"), stopping},
+          {QStringLiteral("stoppable"), !titled},
           {QStringLiteral("forceReady"),
            stopping && pending->deadline > 0 && now >= pending->deadline},
       });
@@ -201,7 +210,9 @@ void PlaySessionStore::refreshNowPlaying() {
 }
 
 bool PlaySessionStore::trackedSessionOpen(qint64 pid, qint64 procStart) {
-  if (pid <= 0 || procStart < 0) {
+  // A session recorded from a window title has no verified process identity, so
+  // it is never a stop candidate.
+  if (pid <= 0 || procStart <= 0) {
     return false;
   }
   const QVector<SessionDatabase::SessionRow> open = SessionDatabase::openSessions(m_database);

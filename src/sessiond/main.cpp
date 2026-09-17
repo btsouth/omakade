@@ -1,8 +1,10 @@
 #include "tracking/AppNotify.h"
+#include "tracking/HyprlandWindows.h"
 #include "tracking/ProcFs.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionRecorder.h"
+#include "tracking/SessionTitleIndex.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -91,6 +93,36 @@ int main(int argc, char* argv[]) {
 
   ConfigToggle toggle;
   SessionRecorder recorder(database);
+  // Titles for games an emulator loaded from its own file picker. The index is
+  // rebuilt when the library database changes on disk (a scan or a source load),
+  // and it is empty on any failure, which leaves attribution exactly as it was.
+  SessionTitleIndex titleIndex;
+  QFileInfo libraryInfo(SessionDatabase::defaultDatabasePath());
+  const bool indexed = titleIndex.refresh(database);
+  if (indexed && titleIndex.isEmpty()) {
+    qInfo("omakade-sessiond: no game titles available for window-title attribution");
+  }
+  const auto refreshTitles = [&] {
+    QFileInfo info(SessionDatabase::defaultDatabasePath());
+    if (info.exists() && info.lastModified() == libraryInfo.lastModified()) {
+      return;
+    }
+    libraryInfo = info;
+    titleIndex.refresh(database);
+  };
+  const auto matchProcesses = [&] {
+    if (!indexed || !HyprlandWindows::available()) {
+      return ProcessMatcher::match(ProcFs::listProcesses(), profiles);
+    }
+    refreshTitles();
+    const QVector<HyprlandWindows::Window> windows = HyprlandWindows::list();
+    return ProcessMatcher::matchWithWindowTitles(
+        ProcFs::listProcesses(), profiles,
+        [&windows](qint64 pid) { return HyprlandWindows::titleForPid(windows, pid); },
+        [&titleIndex](const QString& title, const QString& emulator) {
+          return titleIndex.pathForWindowTitle(title, emulator);
+        });
+  };
   const qint64 nowWall = QDateTime::currentSecsSinceEpoch();
   if (toggle.load()) recorder.recover(ProcFs::listProcesses(), profiles, nowWall);
   else recorder.endAll(nowWall);
@@ -100,8 +132,7 @@ int main(int argc, char* argv[]) {
     if (!toggle.load()) {
       recorder.endAll(QDateTime::currentSecsSinceEpoch());
     } else {
-      recorder.sync(ProcessMatcher::match(ProcFs::listProcesses(), profiles),
-                    QDateTime::currentSecsSinceEpoch());
+      recorder.sync(matchProcesses(), QDateTime::currentSecsSinceEpoch());
     }
     if (recorder.takeStorageFailure()) {
       qWarning("omakade-sessiond: session storage failed; pending progress may be lost if the "
