@@ -85,6 +85,49 @@ QString SessionTitleIndex::normalize(const QString& value) {
   return normalized;
 }
 
+qint64 SessionTitleIndex::cacheChangeToken(QSqlDatabase& database) {
+  if (!database.isValid() || !database.isOpen()) {
+    return 0;
+  }
+  // A scan can add, remove or rewrite cache rows, and a rescan rewrites them in place
+  // without changing the row count, so neither a timestamp nor a count is enough. The
+  // title and path columns are what the index reads, so their combined content is what
+  // is fingerprinted. A checksum over seven small tables is cheap next to rebuilding the
+  // index, and it is the only thing that cannot miss a rename.
+  QSqlQuery tables(database);
+  if (!tables.exec(QStringLiteral("SELECT name FROM sqlite_master WHERE type='table'"))) {
+    return 0;
+  }
+  QSet<QString> present;
+  while (tables.next()) {
+    present.insert(tables.value(0).toString());
+  }
+  qint64 token = 0;
+  for (const CacheSpec& cache : kCaches) {
+    const QString table = QString::fromLatin1(cache.table);
+    if (!present.contains(table)) {
+      continue;
+    }
+    const QStringList columns = columnsOf(database, table);
+    const QString titleColumn = QString::fromLatin1(cache.titleColumn);
+    const QString pathColumn = QString::fromLatin1(cache.pathColumn);
+    if (!columns.contains(titleColumn) || !columns.contains(pathColumn)) {
+      continue;
+    }
+    QSqlQuery digest(database);
+    if (!digest.exec(QStringLiteral("SELECT COUNT(*), COALESCE(SUM(LENGTH(%1) + LENGTH(%2)), 0), "
+                                    "COALESCE(SUM(rowid * 7 + LENGTH(%1)), 0) FROM %3")
+                         .arg(titleColumn, pathColumn, table))) {
+      continue;
+    }
+    if (digest.next()) {
+      token = token * 1000003 + digest.value(0).toLongLong() * 31 +
+              digest.value(1).toLongLong() * 7 + digest.value(2).toLongLong();
+    }
+  }
+  return token;
+}
+
 bool SessionTitleIndex::refresh(QSqlDatabase& database) {
   if (!database.isValid() || !database.isOpen()) {
     return false;

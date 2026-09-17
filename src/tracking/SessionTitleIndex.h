@@ -36,6 +36,12 @@ public:
   // the database is unusable; a database with no caches is a valid, empty index.
   bool refresh(QSqlDatabase& database);
 
+  // A cheap change detector over the cache tables this index reads, so a caller can
+  // skip a rebuild when nothing it cares about has changed. Watching the database file's
+  // timestamp does not work: the recorder shares that file and its own writes move the
+  // write-ahead log's timestamp, which would rebuild the index on every poll.
+  [[nodiscard]] static qint64 cacheChangeToken(QSqlDatabase& database);
+
   [[nodiscard]] bool isEmpty() const { return m_entries.isEmpty(); }
   [[nodiscard]] int size() const { return m_entries.size(); }
 

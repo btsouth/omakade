@@ -837,6 +837,7 @@ private slots:
   void aNewGameInTheSameProcessDoesNotInheritThePendingStop();
   void pendingClosesAreBoundedUnderAStorageFailure();
   void titleFlickerDoesNotFragmentASession();
+  void titleIndexRebuildsOnlyWhenACacheChanges();
   void shippedProfilesMatchCemuWua();
   void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
@@ -8020,6 +8021,56 @@ void CoreTests::titleFlickerDoesNotFragmentASession() {
   database.close();
   database = {};
   QSqlDatabase::removeDatabase(connection);
+}
+
+void CoreTests::titleIndexRebuildsOnlyWhenACacheChanges() {
+  // The recorder shares the library database and writes to it constantly, and its own
+  // writes move the write-ahead log's timestamp. A file-based guard for the title index
+  // therefore rebuilt the whole index on every poll while a game ran. The change token
+  // has to ignore those writes while still noticing a scan.
+  QSqlDatabase database;
+  QVERIFY(SessionDatabase::open(database, QStringLiteral(":memory:"), "test-title-token"));
+  {
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("CREATE TABLE ryujinx_games(game_id TEXT PRIMARY KEY, "
+                                      "path TEXT, name TEXT)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO ryujinx_games(game_id, path, name) VALUES('a', '/g/a.nsp', 'Game A')")));
+  }
+  const qint64 before = SessionTitleIndex::cacheChangeToken(database);
+  QVERIFY(before != 0);
+  // The recorder's own session writes must not move the token, or every poll rebuilds.
+  {
+    const qint64 id = SessionDatabase::beginSession(database, "/g/a.nsp", "Ryujinx", 100, 5, 5);
+    QVERIFY(id > 0);
+    QVERIFY(SessionDatabase::updateProgress(database, id, 60, 200));
+    QVERIFY(SessionDatabase::endSession(database, id, 300, 60));
+  }
+  QCOMPARE(SessionTitleIndex::cacheChangeToken(database), before);
+  // A scan that adds a game must move it.
+  {
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO ryujinx_games(game_id, path, name) VALUES('b', '/g/b.nsp', 'Game B')")));
+  }
+  const qint64 afterAdd = SessionTitleIndex::cacheChangeToken(database);
+  QVERIFY2(afterAdd != before, "a scan that added a game did not change the token");
+  // A rescan rewrites rows in place without changing how many there are, which is what
+  // the source models do, so a changed title has to move the token too.
+  {
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "UPDATE ryujinx_games SET name = 'Game B (renamed)' WHERE game_id = 'b'")));
+  }
+  QVERIFY2(SessionTitleIndex::cacheChangeToken(database) != afterAdd,
+           "a rescan that renamed a game did not change the token");
+  // Reading the same tables twice in a row is stable, so the guard does not rebuild for
+  // no reason.
+  QCOMPARE(SessionTitleIndex::cacheChangeToken(database),
+           SessionTitleIndex::cacheChangeToken(database));
+  database.close();
+  database = {};
+  QSqlDatabase::removeDatabase("test-title-token");
 }
 
 void CoreTests::shippedProfilesMatchCemuWua() {

@@ -137,26 +137,22 @@ int main(int argc, char* argv[]) {
   // rebuilt when the library database changes on disk (a scan or a source load),
   // and it is empty on any failure, which leaves attribution exactly as it was.
   SessionTitleIndex titleIndex;
-  QFileInfo libraryInfo(SessionDatabase::defaultDatabasePath());
-  QFileInfo libraryWalInfo(libraryInfo.filePath() + QStringLiteral("-wal"));
+  qint64 libraryTitleToken = SessionTitleIndex::cacheChangeToken(database);
   const bool indexed = titleIndex.refresh(database);
   if (indexed && titleIndex.isEmpty()) {
     qInfo("omakade-sessiond: no game titles available for window-title attribution");
   }
   const auto refreshTitles = [&] {
-    // The library database runs in WAL mode, so a source scan can land entirely in
-    // the -wal companion without moving the main file's timestamp. Watch both, or a
-    // scan that happened after the recorder started would never be noticed.
-    QFileInfo info(SessionDatabase::defaultDatabasePath());
-    QFileInfo wal(info.filePath() + QStringLiteral("-wal"));
-    const QDateTime stamp = info.exists() ? info.lastModified() : QDateTime{};
-    const QDateTime walStamp = wal.exists() ? wal.lastModified() : QDateTime{};
-    if (info.exists() && stamp == libraryInfo.lastModified() &&
-        walStamp == libraryWalInfo.lastModified()) {
+    // Rebuild only when something the index reads has changed. Watching the database
+    // file is not usable: the recorder shares that file, and its own session writes move
+    // the write-ahead log's timestamp, so a file-based guard would rebuild the whole
+    // index on every poll while a game runs. The token counts the cache tables instead,
+    // which the recorder never touches.
+    const qint64 token = SessionTitleIndex::cacheChangeToken(database);
+    if (token == libraryTitleToken) {
       return;
     }
-    libraryInfo = info;
-    libraryWalInfo = wal;
+    libraryTitleToken = token;
     titleIndex.refresh(database);
   };
   // One poll's matches, plus the focus check that goes with the same window
