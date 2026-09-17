@@ -3,7 +3,7 @@
     "7z", "app", "bin", "ccd", "chd", "ciso", "cue", "dsk", "dol", "dmg", "elf", "fds",
     "gb", "gba", "gbc", "gcm", "gdi", "img", "iso", "lha", "m3u", "md", "n64", "nds",
     "nes", "nro", "nso", "nsp", "pbp", "rpx", "rvz", "sfc", "smc", "swc", "wad", "wbfs",
-    "wua", "wud", "wux", "xci", "z64", "zip"
+    "wua", "wud", "wux", "xci", "xex", "z64", "zar", "zip"
   ],
   "emulators": [
     { "name": "RetroArch", "binaries": ["retroarch", "RetroArch"], "rescanSource": "RetroArch" },
@@ -17,6 +17,7 @@
     { "name": "mGBA", "binaries": ["mgba", "mGBA", "mgba-qt"] },
     { "name": "PPSSPP", "binaries": ["ppsspp", "PPSSPP"] },
     { "name": "RPCS3", "binaries": ["rpcs3", "RPCS3"] },
-    { "name": "xemu", "binaries": ["xemu"] }
+    { "name": "xemu", "binaries": ["xemu"] },
+    { "name": "Xenia", "binaries": ["xenia_canary", "xenia-canary", "xenia_canary_linux", "xenia_canary_linux.AppImage", "xenia"] }
   ]
 }

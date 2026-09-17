@@ -816,6 +816,7 @@ private slots:
   void cemuLauncherBuildsSafeCommands();
   void processMatcherExtractsRomPaths();
   void shippedProfilesMatchCemuWua();
+  void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
   void sessionRecorderTracksExtendsAndClosesSessions();
   void sessionRecorderSeparatesGamesWithinOneProcess();
@@ -6859,6 +6860,29 @@ void CoreTests::shippedProfilesMatchCemuWua() {
     QCOMPARE(matches.first().gamePath, game);
     QCOMPARE(matches.first().emulator, QString("Cemu"));
   }
+}
+
+void CoreTests::shippedProfilesMatchXenia() {
+  QString error;
+  const auto profiles = ProcessMatcher::load(
+      QStringLiteral(OMAKADE_FIXTURE_DIR "/../../resources/sessiond-profiles.json"), &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  for (const QString& extension : {QStringLiteral("iso"), QStringLiteral("xex"), QStringLiteral("zar")}) {
+    const QString game = QStringLiteral("/games/Dante's Inferno.") + extension;
+    const QVector<ProcessSnapshot> processes = {
+        {.pid = 10, .procStart = 100, .comm = "xenia_canary", .arguments = {"/usr/bin/xenia_canary", game}},
+        {.pid = 11, .procStart = 101, .comm = "rsync", .arguments = {"rsync", game}}};
+    const auto matches = ProcessMatcher::match(processes, profiles);
+    QCOMPARE(matches.size(), 1);
+    QCOMPARE(matches.first().pid, qint64(10));
+    QCOMPARE(matches.first().gamePath, game);
+    QCOMPARE(matches.first().emulator, QString("Xenia"));
+  }
+  const QVector<ProcessSnapshot> hyphenated = {
+      {.pid = 12, .procStart = 102, .comm = "xenia-canary", .arguments = {"/usr/bin/xenia-canary", "/games/Game.iso"}}};
+  const auto hyphenMatches = ProcessMatcher::match(hyphenated, profiles);
+  QCOMPARE(hyphenMatches.size(), 1);
+  QCOMPARE(hyphenMatches.first().emulator, QString("Xenia"));
 }
 
 void CoreTests::sessionRecorderTracksExtendsAndClosesSessions() {
