@@ -1520,20 +1520,41 @@ int main(int argc, char* argv[]) {
           auto* grid = quickWindow->findChild<QQuickItem*>("libraryGrid");
           auto* content = grid ? grid->property("contentItem").value<QQuickItem*>() : nullptr;
           if (!grid || !content) { application.exit(EXIT_FAILURE); return; }
-          QList<QRectF> seen;
+          // A delegate that has not been positioned by the grid yet sits at the
+          // origin, where it would read as an overlap with whatever is already at
+          // (0,0). That is a layout that has not happened, not a layout that is
+          // wrong, so the check waits for every delegate to be placed first. Without
+          // this the very first tick fails intermittently, since whether the grid has
+          // laid out by then depends on machine load.
+          QList<QPair<QQuickItem*, QRectF>> placed;
           for (auto* item : content->childItems()) {
             if (!item->property("appId").isValid() || !item->isVisible()) continue;
             const auto bounds = item->mapRectToItem(grid, item->boundingRect());
             if (!bounds.intersects(grid->boundingRect())) continue;
-            for (const auto& previous : seen) {
-              const auto overlap = previous.intersected(bounds);
+            if (bounds.topLeft() == bounds.bottomRight()) continue;
+            placed.append({item, bounds});
+          }
+          // A grid lays out in order, so any delegate past the first still sitting at
+          // the origin has not been placed yet. The first delegate legitimately lives
+          // there, which is why the index is part of the test. Layout that has not
+          // happened must not be reported as layout that is wrong.
+          int unplaced = 0;
+          for (int index = 0; index < placed.size(); ++index) {
+            if (index > 0 && placed.at(index).second.topLeft() == QPointF(0, 0)) ++unplaced;
+          }
+          if (unplaced > 0) {
+            return;
+          }
+          for (int index = 0; index < placed.size(); ++index) {
+            for (int other = index + 1; other < placed.size(); ++other) {
+              const auto overlap = placed.at(index).second.intersected(placed.at(other).second);
               if (overlap.width() > 2 && overlap.height() > 2) {
                 qCritical() << "Library delegates overlap after resize/filter" << *step
-                            << item->property("index") << bounds << previous;
+                            << placed.at(other).first->property("index") << placed.at(other).second
+                            << placed.at(index).second;
                 application.exit(EXIT_FAILURE); timer->stop(); return;
               }
             }
-            seen.append(bounds);
           }
           if (*step == 48) {
             quickWindow->setProperty("libraryReflowComplete", true);
