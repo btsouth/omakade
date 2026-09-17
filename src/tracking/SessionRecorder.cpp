@@ -10,6 +10,12 @@
 namespace {
 constexpr qint64 kDefaultFlushIntervalMs = 30000;
 
+// How many polls a title-attributed session may go unresolved before it is closed. The
+// poll is 5 seconds, so this tolerates a save dialog, a menu or a slow compositor
+// answer without inventing a boundary, while still ending the session promptly when the
+// game really has gone.
+constexpr int kTitleGracePolls = 3;
+
 QElapsedTimer& defaultClock() {
   static QElapsedTimer clock;
   if (!clock.isValid()) {
@@ -66,6 +72,7 @@ void SessionRecorder::recover(const QVector<ProcessSnapshot>& processes,
     if (adopted != nullptr) {
       ActiveSession session;
       session.id = row.id;
+      session.pid = row.pid;
       session.gamePath = row.gamePath;
       session.emulator = adopted->emulator;
       session.rescanSource = adopted->rescanSource;
@@ -164,12 +171,16 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
       }
       ActiveSession session;
       session.id = id;
+      session.pid = match.pid;
       session.gamePath = match.gamePath;
       session.emulator = match.emulator;
       session.rescanSource = match.rescanSource;
       session.startedAt = nowWall;
       session.markMs = nowMs;
       session.lastFlushMs = nowMs;
+      // A title match carries no verified process identity (procStart <= 0), which is
+      // exactly the case whose title can flicker.
+      session.titleMatched = match.procStart <= 0;
       m_active.insert(key, session);
       continue;
     }
@@ -188,11 +199,35 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
     }
   }
   for (auto it = m_active.begin(); it != m_active.end();) {
-    if (!matched.contains(it.key())) {
-      it = closeSession(it, nowMs, nowWall);
-    } else {
+    if (matched.contains(it.key())) {
+      it->missedPolls = 0;
       ++it;
+      continue;
     }
+    // A title-attributed session whose title did not resolve this poll is tolerated for
+    // a short while before it is closed. The title is the only thing identifying the
+    // game, and it is not stable: an emulator's window can be a save dialog or a menu
+    // for a poll or two, and one missed poll used to end the session and start a new
+    // row, splitting a single play session into fragments and rewriting the emulator's
+    // last-played at every split.
+    //
+    // The grace is bounded by the process, not by the poll count alone: while the
+    // recorded process is still alive the game really is running, so the time is billed
+    // and the session continues. The moment it is gone the session closes, exactly as a
+    // verified match would, so no time after the exit is ever billed.
+    if (it->titleMatched && ProcFs::processRunning(it->pid) &&
+        ++it->missedPolls <= kTitleGracePolls) {
+      if (!it->paused) {
+        it->elapsedMs += nowMs - it->markMs;
+      }
+      it->markMs = nowMs;
+      if (nowMs - it->lastFlushMs >= m_flushIntervalMs) {
+        flush(*it, nowMs, nowWall);
+      }
+      ++it;
+      continue;
+    }
+    it = closeSession(it, nowMs, nowWall);
   }
 }
 

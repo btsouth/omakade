@@ -836,6 +836,7 @@ private slots:
   void deletingHistoryDoesNotSuppressLaterPlaytime();
   void aNewGameInTheSameProcessDoesNotInheritThePendingStop();
   void pendingClosesAreBoundedUnderAStorageFailure();
+  void titleFlickerDoesNotFragmentASession();
   void shippedProfilesMatchCemuWua();
   void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
@@ -7953,6 +7954,72 @@ void CoreTests::pendingClosesAreBoundedUnderAStorageFailure() {
   database.close();
   database = {};
   QSqlDatabase::removeDatabase("test-pending-bound");
+}
+
+void CoreTests::titleFlickerDoesNotFragmentASession() {
+  // A game an emulator loaded from its own file picker is identified only by the
+  // emulator's window title, and that title is not stable: a save dialog, a menu, or a
+  // slow compositor answer can leave it unresolved for a poll. One missed poll used to
+  // end the session and open a new row, so a single play session became a list of
+  // fragments and the emulator's last-played was rewritten at every split.
+  const QString connection = QStringLiteral("test-title-flicker");
+  QSqlDatabase database;
+  QVERIFY(SessionDatabase::open(database, QStringLiteral(":memory:"), connection));
+  // A long-lived process whose title flickers, and which really is alive throughout.
+  QProcess standIn;
+  standIn.start(QStringLiteral("/bin/sh"),
+                {QStringLiteral("-c"), QStringLiteral("sleep 120")});
+  QVERIFY(standIn.waitForStarted(5000));
+  const qint64 pid = standIn.processId();
+  const QString game = QStringLiteral("/roms/flicker.chd");
+
+  SessionMatch resolved;
+  resolved.pid = pid;
+  // procStart <= 0 marks a title match, which is the case under test.
+  resolved.procStart = -1;
+  resolved.gamePath = game;
+  resolved.emulator = QStringLiteral("RetroArch");
+  resolved.rescanSource = QStringLiteral("RetroArch");
+
+  qint64 nowMs = 0;
+  SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+  // Flush on every poll, so what is billed is visible in the row as the test runs.
+  recorder.setFlushIntervalMs(1);
+  // Poll 1 and 2 resolve; poll 3 is the flicker; poll 4 resolves again.
+  for (int poll = 0; poll < 4; ++poll) {
+    nowMs += 5000;
+    const bool resolves = poll != 2;
+    recorder.sync(resolves ? QVector<SessionMatch>{resolved} : QVector<SessionMatch>{},
+                  1000 + poll * 5);
+  }
+  QCOMPARE(recorder.activeCount(), 1);
+  QCOMPARE(recorder.takeRescanRequests().size(), 0);
+  {
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*), COALESCE(SUM(seconds), 0) FROM play_sessions")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toInt(), 1);
+    // Time keeps being billed while the title flickers, because the process is alive.
+    QVERIFY2(query.value(1).toLongLong() >= 9,
+             qPrintable(QStringLiteral("only %1 seconds billed across a title flicker")
+                            .arg(query.value(1).toLongLong())));
+  }
+  // When the process really goes, the session closes straight away and no time after the
+  // exit is billed.
+  standIn.kill();
+  standIn.waitForFinished(3000);
+  nowMs += 5000;
+  recorder.sync({}, 2000);
+  QCOMPARE(recorder.activeCount(), 0);
+  {
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*) FROM play_sessions WHERE ended_at = 0")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toInt(), 0);
+  }
+  database.close();
+  database = {};
+  QSqlDatabase::removeDatabase(connection);
 }
 
 void CoreTests::shippedProfilesMatchCemuWua() {

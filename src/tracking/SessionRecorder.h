@@ -73,6 +73,7 @@ public:
 private:
   struct ActiveSession {
     qint64 id = 0;
+    qint64 pid = 0;
     QString gamePath;
     QString emulator;
     QString rescanSource;
@@ -83,6 +84,13 @@ private:
     // The focus state at the last poll, so the span between that poll and a close
     // is billed for a game that was playing and skipped for one put aside.
     bool paused = false;
+    // A session attributed by window title rather than by a verified process identity.
+    // Its title can fail to resolve for a single poll (a save dialog, an Alt+Tab, a
+    // slow compositor answer), which must not end the session: that would split one
+    // play session into a row per flicker and rewrite the emulator's last-played each
+    // time. Such a session is closed only after the title stays unresolved.
+    bool titleMatched = false;
+    int missedPolls = 0;
   };
 
   QString keyFor(const SessionMatch& match) const;
