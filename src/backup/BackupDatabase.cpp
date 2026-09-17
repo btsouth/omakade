@@ -366,6 +366,15 @@ bool restoreDatabase(QSqlDatabase& database, const QString& artworkDirectory,
         }
         row.insert("pinned", pinned);
       }
+      // An archive written before the recorded-time watermark existed carries none.
+      // Bind the column default so the row lands as unobserved, and the schema
+      // migration regenerates the watermark on the next open exactly as it does for a
+      // database from the previous release. Duplicating that substitution here would
+      // be a second implementation of the same rule to keep in step.
+      if (table == "play_baselines" && !row.contains("imported_seconds")) {
+        row.insert("imported_seconds", -1);
+        row.insert("observed_seconds", -1);
+      }
       query.prepare(sql);
       for (const auto& column : fields) {
         auto field = row.value(column);

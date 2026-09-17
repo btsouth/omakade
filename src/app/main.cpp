@@ -1772,7 +1772,8 @@ int main(int argc, char* argv[]) {
         auto* attempts = new int(0);
         poll->setInterval(100);
         QObject::connect(poll, &QTimer::timeout, quickWindow,
-                         [quickWindow, poll, attempts, nowPlayingFixturePid, &application] {
+                         [quickWindow, poll, attempts, nowPlayingFixturePid, &controller,
+                          &application] {
           const QString stopName =
               QStringLiteral("nowPlayingStop_%1").arg(nowPlayingFixturePid);
           auto* section = findVisualItem(quickWindow->contentItem(), "homeNowPlayingSection");
@@ -1795,6 +1796,41 @@ int main(int argc, char* argv[]) {
             return;
           }
           poll->stop();
+          // On desktop the panel is informational: the couch treatment belongs to Couch
+          // Mode, and the arrow order the keyboard had must not change under it.
+          if (!quickWindow->property("couchMode").toBool()) {
+            auto* window = qobject_cast<QQuickWindow*>(quickWindow);
+            auto* home = quickWindow->findChild<QQuickItem*>(QStringLiteral("homeScreen"));
+            auto* hint = findVisualItem(quickWindow->contentItem(), "nowPlayingHint");
+            if (window == nullptr || home == nullptr) {
+              qCritical() << "Desktop Now Playing could not find the Home screen";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            if (hint != nullptr && hint->isVisible()) {
+              qCritical() << "Desktop Now Playing showed the couch controller hint";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // Down from the toolbar, with a game running, still goes straight to the
+            // games on desktop: the panel is couch navigation, not a new stop.
+            auto* library = findVisualItem(quickWindow->contentItem(), "homeLibraryButton");
+            if (library == nullptr) {
+              qCritical() << "Desktop Now Playing could not find the Home toolbar";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            library->forceActiveFocus();
+            QMetaObject::invokeMethod(home, "navigate",
+                                      Q_ARG(QVariant, QVariant::fromValue(library)),
+                                      Q_ARG(QVariant, static_cast<int>(Qt::Key_Down)));
+            if (window->activeFocusItem() != nullptr &&
+                window->activeFocusItem()->objectName() == stopName) {
+              qCritical() << "Desktop Down moved into the couch panel instead of the games";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+          }
           // In Couch Mode the controller has to be able to reach the stop control
           // and the panel has to be scaled for a TV, not drawn at desktop size.
           if (quickWindow->property("couchMode").toBool()) {
@@ -1822,6 +1858,54 @@ int main(int argc, char* argv[]) {
               application.exit(EXIT_FAILURE);
               return;
             }
+            // The panel's own text has to scale for a TV too. The row is reached from
+            // the stop control inside it, since a Repeater exposes its delegates as
+            // siblings rather than as children of the Repeater.
+            QQuickItem* rowItem = stop->parentItem();
+            // The row's Text items are nested a ColumnLayout deep, so the whole subtree
+            // is walked with the stop control itself excluded.
+            QList<QQuickItem*> texts;
+            const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
+              for (auto* child : item->childItems()) {
+                if (child != stop && child->property("text").isValid() &&
+                    child->property("font").isValid())
+                  texts.append(child);
+                collect(child);
+              }
+            };
+            if (rowItem != nullptr) collect(rowItem);
+            if (rowItem == nullptr) {
+              qCritical() << "Couch Now Playing could not read the running game row";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            if (texts.size() < 2) {
+              qCritical() << "Couch Now Playing row had" << texts.size() << "text items";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // The name and the sub-line are set in points-like pixel sizes on the
+            // Text, so a couch panel is readable from a sofa and a desktop one is not.
+            const int nameSize = texts.at(0)->property("font").value<QFont>().pixelSize();
+            const int sublineSize = texts.at(1)->property("font").value<QFont>().pixelSize();
+            if (nameSize < 20 || sublineSize < 15) {
+              qCritical() << "Couch Now Playing text was not couch scaled"
+                          << "name:" << nameSize << "subline:" << sublineSize;
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // The hint tells the player which button to press, and Couch Mode draws
+            // that button as the pad's own glyph everywhere else in the app. Going
+            // through the same property is what keeps it right on a pad whose button
+            // is not called A.
+            const QString hintText = hint->property("text").toString();
+            const QString glyph = controller.primaryGlyph();
+            if (hintText.isEmpty() || glyph.isEmpty() || !hintText.contains(glyph)) {
+              qCritical() << "Couch Now Playing hint did not use the controller glyph"
+                          << hintText << "glyph:" << glyph;
+              application.exit(EXIT_FAILURE);
+              return;
+            }
             // The controller must be able to move down into the panel and back up
             // out of it, which is what makes the stop reachable on a pad.
             auto* library = findVisualItem(quickWindow->contentItem(), "homeLibraryButton");
@@ -1844,6 +1928,69 @@ int main(int argc, char* argv[]) {
                                       Q_ARG(QVariant, static_cast<int>(Qt::Key_Up)));
             if (window->activeFocusItem() != library) {
               qCritical() << "Controller Up did not leave the Couch Now Playing panel";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // Down from the only running game has nothing below it inside the panel,
+            // so it has to continue into the content rather than stop dead.
+            QMetaObject::invokeMethod(home, "navigate",
+                                      Q_ARG(QVariant, QVariant::fromValue(library)),
+                                      Q_ARG(QVariant, static_cast<int>(Qt::Key_Down)));
+            QMetaObject::invokeMethod(home, "navigate",
+                                      Q_ARG(QVariant, QVariant::fromValue(stop)),
+                                      Q_ARG(QVariant, static_cast<int>(Qt::Key_Down)));
+            if (window->activeFocusItem() == nullptr ||
+                window->activeFocusItem()->objectName() == stopName ||
+                window->activeFocusItem() == library) {
+              qCritical() << "Controller Down out of the Couch Now Playing panel was a dead end"
+                          << "focused:"
+                          << (window->activeFocusItem() ? window->activeFocusItem()->objectName()
+                                                        : QString{"none"});
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // A running session's elapsed time advances every second, which replaces
+            // the panel's model and recreates every delegate. Focus has to survive
+            // that, or a couch player loses their place about once a second.
+            library->forceActiveFocus();
+            QMetaObject::invokeMethod(home, "navigate",
+                                      Q_ARG(QVariant, QVariant::fromValue(library)),
+                                      Q_ARG(QVariant, static_cast<int>(Qt::Key_Down)));
+            if (window->activeFocusItem() != stop) {
+              qCritical() << "Controller Down did not reach the Couch Now Playing stop control";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            if (!stop->property("visible").toBool()) return;
+            // The store replaces the panel's rows whenever a running session's elapsed
+            // time advances, which destroys and recreates these delegates. Replacing
+            // the Repeater's model forces exactly that rebuild, so focus surviving it
+            // is what proves a couch player does not lose their place mid-session.
+            auto* list = findVisualItem(quickWindow->contentItem(), "homeNowPlayingList");
+            if (list == nullptr) {
+              qCritical() << "Couch Now Playing could not find the running game list";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            const QVariant rows = list->property("model");
+            list->setProperty("model", QVariantList{});
+            QCoreApplication::processEvents();
+            list->setProperty("model", rows);
+            // The restore is deferred so the delegates exist first, which is what the
+            // real path does too.
+            QCoreApplication::processEvents();
+            const auto* restored = window->activeFocusItem();
+            if (restored == nullptr || restored->objectName() != stopName) {
+              qCritical() << "Couch Now Playing lost controller focus on a panel refresh"
+                          << "focused:" << (restored != nullptr ? restored->objectName() : QString{"none"});
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // The rebuild destroyed the old delegate, so the rest of the check has to
+            // work from the recreated one, found the same way the app does.
+            stop = findVisualItem(quickWindow->contentItem(), stopName);
+            if (stop == nullptr) {
+              qCritical() << "Couch Now Playing lost its stop control on a panel refresh";
               application.exit(EXIT_FAILURE);
               return;
             }

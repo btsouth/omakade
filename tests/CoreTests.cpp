@@ -7265,11 +7265,129 @@ void CoreTests::sessionPlaytimeReconcilesImportedAndRecorded() {
     store.observeImportedPlaytime(game, 1800);
     QCOMPARE(displayed(store, 1800), qint64(1800));
   }
+  // An observation that lands while a session for the game is still open must not move
+  // the watermark: the emulator writes its counter on exit and the recorder closes the
+  // session seconds later, so in that window the counter already includes a session the
+  // recorded total does not. Pinning it there would credit the session's unflushed
+  // seconds twice. The counter is 2400 against a true cumulative play of 2400.
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 open =
+        SessionDatabase::beginSession(database, game, "Ryujinx", 2000, 9, 9);
+    QVERIFY(open > 0);
+    // 870s flushed so far, with 30s more in flight.
+    QVERIFY(SessionDatabase::updateProgress(database, open, 870, 2000));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  {
+    // An independent connection, so the count is read the way the store reads it.
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QCOMPARE(SessionDatabase::openSessionsForPath(database, game), 1);
+    QCOMPARE(SessionDatabase::openSessionsForPath(database, QStringLiteral("/games/other.nsp")), 0);
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  {
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 2400);
+    // The session is open, so the counter is not pinned and the conservative merge
+    // applies. No play is invented either way.
+    QVERIFY(store.displaySeconds(game, 2400) <= 2400);
+  }
+  {
+    // The recorder closes the session with its full 900 seconds.
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 id = [&] {
+      for (const auto& row : SessionDatabase::openSessions(database))
+        return row.id;
+      return qint64(0);
+    }();
+    QVERIFY(id > 0);
+    QVERIFY(SessionDatabase::endSession(database, id, 2900, 900));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  {
+    // 1500 imported before this session, 900 recorded by it: 2400 is the truth, and the
+    // total must match it rather than exceeding it by the unflushed remainder.
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 2400);
+    QCOMPARE(store.displaySeconds(game, 2400), qint64(2400));
+  }
   // A source with no emulator counter of its own has no import to reconcile: the
   // recorded time is the whole of it.
   QCOMPARE(SessionDatabase::reconcileImportedAndTracked(-1, 0, 420,
                                                         SessionDatabase::ImportWatermark{}),
            qint64(420));
+  // The migration is the highest-risk part of this change: it runs against every
+  // existing installation, and a mistake moves everyone's totals on upgrade. This
+  // builds a pre-upgrade database by hand and asserts the migration reproduces exactly
+  // what each game displayed before.
+  {
+    QTemporaryDir legacy;
+    QVERIFY(legacy.isValid());
+    const QString legacyPath = legacy.filePath(QStringLiteral("library.sqlite3"));
+    const QString legacyConnection = QStringLiteral("test-reconcile-upgrade");
+    struct Legacy {
+      const char* game;
+      qint64 baseline;
+      qint64 tracked;
+      qint64 imported;
+    };
+    const Legacy rows[] = {
+        {"/games/imported-ahead.nsp", 600, 300, 900},
+        {"/games/baseline-ahead.nsp", 600, 300, 1500},
+        {"/games/no-sessions.nsp", 800, 0, 800},
+        {"/games/zero-baseline.nsp", 0, 600, 600},
+        {"/games/stale-import.nsp", 300, 300, 61},
+    };
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, legacyPath, legacyConnection));
+      QSqlQuery query(database);
+      // The pre-upgrade table: no watermark columns at all.
+      QVERIFY(query.exec(QStringLiteral("DROP TABLE play_baselines")));
+      QVERIFY(query.exec(QStringLiteral(
+          "CREATE TABLE play_baselines (game_path TEXT PRIMARY KEY, baseline_seconds INTEGER "
+          "NOT NULL DEFAULT 0, captured_at INTEGER NOT NULL, schema INTEGER NOT NULL DEFAULT 1)")));
+      for (const Legacy& row : rows) {
+        QSqlQuery insert(database);
+        insert.prepare(QStringLiteral(
+            "INSERT INTO play_baselines(game_path, baseline_seconds, captured_at) VALUES(?,?,?)"));
+        insert.addBindValue(QString::fromLatin1(row.game));
+        insert.addBindValue(row.baseline);
+        insert.addBindValue(100);
+        QVERIFY2(insert.exec(), qPrintable(insert.lastError().text()));
+        if (row.tracked > 0) {
+          const qint64 id = SessionDatabase::beginSession(
+              database, QString::fromLatin1(row.game), QStringLiteral("Ryujinx"), 200, 5, 5);
+          QVERIFY(id > 0);
+          QVERIFY(SessionDatabase::endSession(database, id, 200 + row.tracked, row.tracked));
+        }
+      }
+      database.close();
+      database = {};
+      QSqlDatabase::removeDatabase(legacyConnection);
+    }
+    // Opening runs the migration.
+    PlaySessionStore store(legacyPath);
+    for (const Legacy& row : rows) {
+      const qint64 today = qMax<qint64>(row.imported, row.baseline + row.tracked);
+      const qint64 after = store.displaySeconds(QString::fromLatin1(row.game), row.imported);
+      QVERIFY2(after == today,
+               qPrintable(QStringLiteral("upgrade changed %1: was %2 now %3")
+                              .arg(QString::fromLatin1(row.game))
+                              .arg(today)
+                              .arg(after)));
+    }
+  }
   // The two properties that make reconciliation safe, swept across the space the
   // app can actually be in: a total is never lowered below what the sources already
   // display, and it is never raised by more than the recorded time the imported

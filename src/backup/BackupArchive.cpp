@@ -100,7 +100,9 @@ QMap<QString, QStringList> BackupArchive::tableColumns() {
   return {{"play_queue", {"source", "runner", "app_id", "title", "position"}},
           {"play_sessions",
            {"session_key", "game_path", "source", "started_at", "ended_at", "seconds"}},
-          {"play_baselines", {"game_path", "baseline_seconds", "captured_at", "schema"}},
+          {"play_baselines",
+           {"game_path", "baseline_seconds", "captured_at", "schema", "imported_seconds",
+            "observed_seconds"}},
           {"game_metadata", {"game_key", "payload"}},
           {"user_game_flags", {"source", "runner", "app_id", "favorite", "hidden"}},
           {"game_organization",
@@ -204,11 +206,19 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
         return fail(error, "A personal record is not an object.");
       const auto row = value.toObject();
       const bool legacyOrganization = table.key() == "game_organization" && !row.contains("pinned");
-      if (row.size() != columns.value(table.key()).size() - (legacyOrganization ? 1 : 0))
+      // An archive written before the recorded-time watermark existed has no watermark
+      // for a baseline. Its rows are still valid: the watermark is regenerated from
+      // the baseline when the restored database is opened.
+      const bool legacyBaseline = table.key() == "play_baselines" && !row.contains("imported_seconds");
+      const int legacyFields = (legacyOrganization ? 1 : 0) + (legacyBaseline ? 2 : 0);
+      if (row.size() != columns.value(table.key()).size() - legacyFields)
         return fail(error, "A personal record has missing or extra fields.");
       for (const auto& column : columns.value(table.key())) {
         const auto field = row.value(column);
         if (legacyOrganization && column == "pinned")
+          continue;
+        if (legacyBaseline &&
+            (column == "imported_seconds" || column == "observed_seconds"))
           continue;
         if (field.isUndefined())
           return fail(error, "A personal record is missing a required field.");
@@ -221,9 +231,16 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
           if (!integer(field, 1, 1))
             return fail(error, "The play baseline version is unsupported.");
         } else if (QStringList{"started_at", "ended_at", "seconds", "baseline_seconds",
-                               "captured_at"}
+                               "captured_at", "imported_seconds", "observed_seconds"}
                        .contains(column)) {
-          if (!integer(field, column == "ended_at" ? 1 : 0, 9007199254740991.0))
+          // A watermark of -1 means "not observed yet", which is what an archive from
+          // before the watermark existed carries and the migration fills in.
+          const double minimum =
+              (column == "ended_at" || column == "imported_seconds" ||
+               column == "observed_seconds")
+                  ? -1
+                  : 0;
+          if (!integer(field, minimum, 9007199254740991.0))
             return fail(error, "A play history duration or timestamp is invalid.");
           if (column == "seconds" || column == "baseline_seconds") {
             const qint64 duration = field.toInteger();

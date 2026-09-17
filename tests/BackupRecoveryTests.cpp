@@ -2,6 +2,8 @@
 #include "backup/BackupManager.h"
 #include "backup/BackupRecovery.h"
 #include "backup/BackupSnapshot.h"
+#include "tracking/PlaySessionStore.h"
+#include "tracking/SessionDatabase.h"
 #include "library/BattleNetGameModel.h"
 #include "library/FaugusGameModel.h"
 #include "library/GameRoles.h"
@@ -132,7 +134,101 @@ private slots:
   void exportAndInvalidPreview();
   void previewCountsAndMissingPaths();
   void releasedDatabaseMigration();
+  void recordedTimeWatermarkSurvivesBackup();
 };
+
+void BackupRecoveryTests::recordedTimeWatermarkSurvivesBackup() {
+  // The displayed total for a game whose emulator counter is ahead of what Omakade
+  // recorded depends on a per-game watermark. A restore that loses it drops the total
+  // back to the old, smaller figure, so the watermark has to travel in the backup.
+  QTemporaryDir temp;
+  const auto p = paths(temp.path());
+  const QString game = QStringLiteral("/games/watermark.nsp");
+  const qint64 imported = 200;
+  qint64 before = 0;
+  {
+    QSqlDatabase db;
+    QVERIFY(SessionDatabase::open(db, p.database, QStringLiteral("watermark-seed")));
+    const qint64 id = SessionDatabase::beginSession(db, game, QStringLiteral("Ryujinx"), 100, 5, 5);
+    QVERIFY(id > 0);
+    QVERIFY(SessionDatabase::endSession(db, id, 400, 300));
+    // A baseline of 100 with an observation that left the imported figure at 200 and
+    // nothing recorded at that point, which is the state a restore used to flatten.
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "INSERT INTO play_baselines(game_path, baseline_seconds, captured_at, imported_seconds, "
+        "observed_seconds) VALUES(?,?,?,?,?)"));
+    query.addBindValue(game);
+    query.addBindValue(100);
+    query.addBindValue(100);
+    query.addBindValue(imported);
+    query.addBindValue(0);
+    QVERIFY2(query.exec(), qPrintable(query.lastError().text()));
+  }
+  {
+    // The migration regenerates the watermark from the baseline when a database is
+    // opened, so capture has to see the stored one, not a placeholder.
+    PlaySessionStore store(p.database);
+    before = store.displaySeconds(game, imported);
+    QCOMPARE(before, qint64(500));
+  }
+  QString error;
+  BackupPayload snapshot;
+  QVERIFY2(BackupSnapshot::capture(p.database, {}, &snapshot, &error), qPrintable(error));
+  const QJsonObject archived = snapshot.library.value(QStringLiteral("play_baselines"))
+                                   .toArray()
+                                   .first()
+                                   .toObject();
+  // Numbers, not strings: the archive validator requires integers.
+  QVERIFY2(archived.value(QStringLiteral("imported_seconds")).isDouble(),
+           qPrintable(QJsonDocument(archived).toJson(QJsonDocument::Compact)));
+  QCOMPARE(archived.value(QStringLiteral("imported_seconds")).toInteger(), imported);
+  QCOMPARE(archived.value(QStringLiteral("observed_seconds")).toInteger(), qint64(0));
+  QVERIFY(BackupArchive::validate(snapshot, &error));
+
+  const QString archive = temp.filePath(QStringLiteral("watermark.omakade-backup"));
+  QVERIFY2(BackupArchive::write(archive, snapshot, &error), qPrintable(error));
+  {
+    // Wipe the history and restore it, which is what a replacement restore does.
+    QSqlDatabase db;
+    QVERIFY(SessionDatabase::open(db, p.database, QStringLiteral("watermark-wipe")));
+    QSqlQuery query(db);
+    QVERIFY(query.exec(QStringLiteral("DELETE FROM play_baselines")));
+  }
+  BackupPayload restored;
+  QVERIFY2(BackupArchive::read(archive, &restored, &error), qPrintable(error));
+  QVERIFY2(BackupDatabase::restore(p.database, restored, BackupDatabase::Mode::Replace, &error),
+           qPrintable(error));
+  {
+    PlaySessionStore store(p.database);
+    QCOMPARE(store.displaySeconds(game, imported), before);
+  }
+  // An archive written before the watermark existed still restores: it carries no
+  // watermark, and the migration regenerates one from the baseline.
+  BackupPayload legacy = snapshot;
+  QJsonArray legacyRows;
+  for (const auto& row : legacy.library.value(QStringLiteral("play_baselines")).toArray()) {
+    QJsonObject object = row.toObject();
+    object.remove(QStringLiteral("imported_seconds"));
+    object.remove(QStringLiteral("observed_seconds"));
+    legacyRows.append(object);
+  }
+  legacy.library[QStringLiteral("play_baselines")] = legacyRows;
+  QVERIFY2(BackupArchive::validate(legacy, &error), qPrintable(error));
+  const QString legacyArchive = temp.filePath(QStringLiteral("legacy.omakade-backup"));
+  QVERIFY2(BackupArchive::write(legacyArchive, legacy, &error), qPrintable(error));
+  BackupPayload legacyRead;
+  QVERIFY2(BackupArchive::read(legacyArchive, &legacyRead, &error), qPrintable(error));
+  QVERIFY2(BackupDatabase::restore(p.database, legacyRead, BackupDatabase::Mode::Replace, &error),
+           qPrintable(error));
+  {
+    // Without a watermark the total falls back to the conservative merge, which is the
+    // figure that archive was taken with. It must not be lower than that, and it must
+    // not be higher either, because nothing recorded that figure can already include.
+    PlaySessionStore store(p.database);
+    QCOMPARE(store.displaySeconds(game, imported), qint64(400));
+  }
+}
 
 void BackupRecoveryTests::consoleChoicesSurviveBackupAndRecovery() {
   QTemporaryDir temp;

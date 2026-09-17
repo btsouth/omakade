@@ -37,6 +37,11 @@ Sessions you can see, stop, and manage.
   when the imported counter cannot already include it, and a session the emulator
   later writes into its own counter is not counted twice. Existing totals do not
   change until the emulator next writes a counter.
+- The Now Playing panel keeps controller focus while a game runs and while a stop
+  is in progress, so the stop and the force stop after it stay reachable from the
+  pad, and moving past the last running game continues into the page instead of
+  stopping dead. Desktop arrow navigation is unchanged, and the Couch Mode hint
+  names the pad's own button rather than a letter.
 - An optional Discord status publishes the game you are playing as Rich Presence,
   driven by the recorder so it matches the session being tracked. It is off by
   default, needs a Discord application id to publish under, and sends only the

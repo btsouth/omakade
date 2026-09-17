@@ -48,6 +48,10 @@ Older builds reject version 2 rather than partially importing it.
   automatic matches, and downloaded cache paths are regenerated from providers.
 - Recorded play sessions with stable IDs, plus imported-playtime baselines. Active sessions
   export as closed snapshots at the last recorded heartbeat. Process IDs are not restored.
+  A baseline also carries the recorded-time watermark that reconciles the emulator's own
+  counter with what Omakade recorded, so a restored library keeps the totals it was backed
+  up with rather than dropping back to an older figure. It is only meaningful alongside the
+  sessions in the same archive, so the two always travel together.
 - Source preferences, ROM folders, console layouts, cover sizes, playtime tracking, library
   sorting, and other allowlisted library preferences.
 

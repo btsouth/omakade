@@ -72,12 +72,18 @@ reconcileOpenSessions(QSqlDatabase& database,
 [[nodiscard]] QHash<QString, qint64> trackedSecondsByPath(QSqlDatabase& database);
 [[nodiscard]] QHash<QString, qint64> lastPlayedByPath(QSqlDatabase& database);
 
-// Capture once, including zero. Subtract already observed time conservatively:
-// a late first import may already contain those sessions. Existing baselines
-// are never rewritten because historical overlap cannot be inferred reliably.
+// Capture once, including zero. Subtract already observed time conservatively: a late
+// first import may already contain those sessions. Only baseline_seconds is written
+// here and it is never rewritten; the recorded-time watermark on the same row moves as
+// the emulator's counter is observed.
 void captureBaseline(QSqlDatabase& database, const QString& gamePath, qint64 importedSeconds,
                      qint64 capturedAt);
 [[nodiscard]] QHash<QString, qint64> baselinesByPath(QSqlDatabase& database);
+
+// How many sessions for this game are still open. An import observation is only
+// trustworthy when none are, because an open session's unflushed time is not yet in
+// the recorded total the watermark stores.
+[[nodiscard]] int openSessionsForPath(QSqlDatabase& database, const QString& gamePath);
 
 // One game's import watermark: the imported figure last observed and the recorded
 // time that had already been seen at that point. Recorded time beyond it is new

@@ -125,6 +125,19 @@ bool ensureSchema(QSqlDatabase& database) {
       "lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))) WHERE id=NEW.id; END");
 }
 
+int openSessionsForPath(QSqlDatabase& database, const QString& gamePath) {
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral(
+      "SELECT COUNT(*) FROM play_sessions WHERE ended_at = 0 AND game_path = ?"));
+  query.addBindValue(gamePath);
+  if (!query.exec() || !query.next()) {
+    // An unreadable count is not a reason to refuse to record an observation. Reading
+    // zero only means the watermark may advance, which the next scan corrects.
+    return 0;
+  }
+  return query.value(0).toInt();
+}
+
 QVector<SessionRow> openSessions(QSqlDatabase& database) {
   QVector<SessionRow> rows;
   QSqlQuery query(database);
@@ -415,20 +428,30 @@ ImportWatermark observeImport(QSqlDatabase& database, const QString& gamePath,
   }
   const qint64 trackedSeconds = trackedSecondsByPath(database).value(gamePath, 0);
   // A first observation captures the baseline the sources display today, so an
-  // upgrade cannot move a number by itself. A later observation only moves the
-  // watermark: everything the counter has counted is inside the new figure.
+  // upgrade cannot move a number by itself.
   if (watermark.importedSeconds < 0) {
     captureBaseline(database, gamePath, importedSeconds, observedAt);
-  } else {
-    QSqlQuery query(database);
-    query.prepare(QStringLiteral("UPDATE play_baselines SET imported_seconds = ?, "
-                                 "observed_seconds = ? WHERE game_path = ?"));
-    query.addBindValue(importedSeconds);
-    query.addBindValue(trackedSeconds);
-    query.addBindValue(gamePath);
-    if (!query.exec()) {
-      return watermark;
-    }
+    return watermarkForPath(database, gamePath);
+  }
+  // An observation that lands while a session for this game is still open cannot be
+  // trusted. The emulator writes its counter when the game exits, and the recorder
+  // closes the session a few seconds later, so a scan in that window sees a counter
+  // that already includes the session next to a recorded total that does not. Pinning
+  // the watermark there would credit that session's unflushed seconds a second time,
+  // because the later close makes the recorded total exceed the observed one. Nothing
+  // is lost by waiting: the counter does not move again until the next session ends,
+  // and that observation happens with no session open.
+  if (openSessionsForPath(database, gamePath) > 0) {
+    return watermark;
+  }
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral("UPDATE play_baselines SET imported_seconds = ?, "
+                               "observed_seconds = ? WHERE game_path = ?"));
+  query.addBindValue(importedSeconds);
+  query.addBindValue(trackedSeconds);
+  query.addBindValue(gamePath);
+  if (!query.exec()) {
+    return watermark;
   }
   return watermarkForPath(database, gamePath);
 }

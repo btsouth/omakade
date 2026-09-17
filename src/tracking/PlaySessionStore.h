@@ -13,11 +13,13 @@
 class QTimer;
 
 // Aggregates the sessions recorded by omakade-sessiond and merges them with the
-// playtime each source imports from its own emulator. The displayed total is
-// max(imported, baseline + tracked). On first observation the baseline excludes
-// already recorded time, conservatively treating it as included in the import.
-// Existing baselines are preserved. Later gaps in tracking can make the import
-// win until observed time catches up; this is not exact overlap reconciliation.
+// playtime each source imports from its own emulator. Recorded time can never lower
+// a total, and play recorded since the emulator's counter was last observed is added,
+// because that counter cannot already include it. The counter is not observed while a
+// session is open, since its unflushed time is not yet recorded. An import that
+// arrives for the first time is captured as a baseline that conservatively excludes
+// the recorded time already present, and existing baselines are preserved because
+// historical overlap cannot be inferred reliably.
 class PlaySessionStore final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
