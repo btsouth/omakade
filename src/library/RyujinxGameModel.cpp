@@ -217,7 +217,7 @@ void RyujinxGameModel::loadDatabase() {
                              .flatpak = query.value(7).toBool(),
                              .flatpakAppId = query.value(8).toString()};
     if (m_playSessions != nullptr) {
-      m_playSessions->captureBaseline(record.path, record.playtimeSeconds);
+      m_playSessions->observeImportedPlaytime(record.path, record.playtimeSeconds);
     }
     loaded.append({.ryujinx = record,
                    .favorite = query.value(9).toBool(),

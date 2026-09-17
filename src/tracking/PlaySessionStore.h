@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tracking/SessionDatabase.h"
+
 #include <QHash>
 #include <QObject>
 #include <QString>
@@ -68,13 +70,16 @@ public:
   static QString provenance(const PlaySessionStore* store, const QString& gamePath,
                             qint64 importedSeconds);
 
-  // Models report the playtime their emulator imports so the first sighting is
-  // remembered. Later sightings are ignored by design.
-  void captureBaseline(const QString& gamePath, qint64 importedSeconds);
+  // Models report the playtime their emulator imports on every scan. The first
+  // sighting is remembered as the baseline; a later sighting that differs moves the
+  // recorded-time watermark. Re-reporting an unchanged figure does nothing.
+  void observeImportedPlaytime(const QString& gamePath, qint64 importedSeconds);
 
   [[nodiscard]] qint64 displaySeconds(const QString& gamePath, qint64 importedSeconds) const;
   [[nodiscard]] qint64 sessionLastPlayed(const QString& gamePath) const;
 
+  // Merges an imported count with recorded sessions. A negative import means the
+  // source has no counter of its own, so recorded time is the whole total.
   [[nodiscard]] static qint64 merge(qint64 importedSeconds, qint64 baselineSeconds,
                                     qint64 trackedSeconds);
 
@@ -113,6 +118,7 @@ private:
   int m_historyRevision = 0;
   QHash<QString, qint64> m_trackedSeconds;
   QHash<QString, qint64> m_baselines;
+  QHash<QString, SessionDatabase::ImportWatermark> m_watermarks;
   QHash<QString, qint64> m_lastPlayed;
   QVariantList m_nowPlaying;
   QHash<QString, StopAttempt> m_pendingStops;

@@ -43,6 +43,7 @@ PlaySessionStore::PlaySessionStore(const QString& databasePath, QObject* parent)
   m_valid = SessionDatabase::open(m_database, databasePath, m_connectionName);
   refresh();
   m_baselines = SessionDatabase::baselinesByPath(m_database);
+  m_watermarks = SessionDatabase::importWatermarksByPath(m_database);
   m_refreshTimer = new QTimer(this);
   m_refreshTimer->setInterval(kRefreshIntervalMs);
   connect(m_refreshTimer, &QTimer::timeout, this, &PlaySessionStore::refresh);
@@ -288,21 +289,30 @@ void PlaySessionStore::setEnabled(bool value) {
   emit totalsChanged();
 }
 
-void PlaySessionStore::captureBaseline(const QString& gamePath, qint64 importedSeconds) {
-  if (!m_valid || !m_enabled || m_baselines.contains(gamePath)) {
+void PlaySessionStore::observeImportedPlaytime(const QString& gamePath, qint64 importedSeconds) {
+  if (!m_valid || !m_enabled || gamePath.isEmpty()) {
     return;
   }
-  SessionDatabase::captureBaseline(m_database, gamePath, importedSeconds,
-                                   QDateTime::currentSecsSinceEpoch());
-  m_baselines = SessionDatabase::baselinesByPath(m_database);
+  // Every observation goes through observeImport: it captures the first sighting
+  // and advances the watermark when the counter later moves. Re-observing a figure
+  // that has not changed does no database work at all, so a rescan over a whole
+  // library stays cheap.
+  const SessionDatabase::ImportWatermark watermark =
+      SessionDatabase::observeImport(m_database, gamePath, importedSeconds,
+                                     QDateTime::currentSecsSinceEpoch());
+  if (watermark.importedSeconds != m_watermarks.value(gamePath).importedSeconds) {
+    m_watermarks.insert(gamePath, watermark);
+  }
+  m_baselines.insert(gamePath, watermark.baselineSeconds);
 }
 
 qint64 PlaySessionStore::displaySeconds(const QString& gamePath, qint64 importedSeconds) const {
   if (!m_valid || !m_enabled || gamePath.isEmpty()) {
     return importedSeconds;
   }
-  return merge(importedSeconds, m_baselines.value(gamePath, 0),
-               m_trackedSeconds.value(gamePath, 0));
+  return SessionDatabase::reconcileImportedAndTracked(
+      importedSeconds, m_baselines.value(gamePath, 0), m_trackedSeconds.value(gamePath, 0),
+      m_watermarks.value(gamePath));
 }
 
 qint64 PlaySessionStore::sessionLastPlayed(const QString& gamePath) const {
@@ -314,7 +324,12 @@ qint64 PlaySessionStore::sessionLastPlayed(const QString& gamePath) const {
 
 qint64 PlaySessionStore::merge(qint64 importedSeconds, qint64 baselineSeconds,
                                qint64 trackedSeconds) {
-  return qMax(importedSeconds, baselineSeconds + trackedSeconds);
+  // The static helper has no watermark to consult, so it reproduces the rule's
+  // conservative half: recorded time can only add to, never subtract from, the
+  // imported figure. The store's own displaySeconds uses the watermark-aware form.
+  return SessionDatabase::reconcileImportedAndTracked(importedSeconds, baselineSeconds,
+                                                      trackedSeconds,
+                                                      SessionDatabase::ImportWatermark{});
 }
 
 qint64 PlaySessionStore::displayedSeconds(const PlaySessionStore* store, const QString& gamePath,

@@ -28,8 +28,10 @@ the owner of this library's recorder lock and the live process executable. It
 reports a running process, not a guarantee that a particular game is recognized.
 
 Paused emulator time counts while its process remains matched. Imported and
-recorded totals may overlap. Displayed time is the larger of the imported total
-and the captured baseline plus recorded time. Loading games internally without a
+recorded totals are reconciled per game: recorded time never lowers a total, and
+play recorded since the emulator's counter was last seen is added, because that
+counter cannot already include it. A session the emulator later writes into its
+own counter is not counted twice. Loading games internally without a
 recognizable command-line path is covered on Hyprland when the emulator's window
 title names the game and Omakade already knows that title, and stays uncovered
 otherwise. ARM64 hardware acceptance remains separate from cross-architecture

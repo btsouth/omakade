@@ -409,7 +409,7 @@ void RetroArchGameModel::loadDatabase() {
     if (!record.coverPath.isEmpty() && !QFileInfo::exists(record.coverPath))
       record.coverPath.clear();
     if (m_playSessions != nullptr) {
-      m_playSessions->captureBaseline(record.contentPath, record.playtimeSeconds);
+      m_playSessions->observeImportedPlaytime(record.contentPath, record.playtimeSeconds);
     }
     const QPair<int, int> achievements = achievementSummaries.value(record.gameId);
     loaded.append({.retroArch = record,

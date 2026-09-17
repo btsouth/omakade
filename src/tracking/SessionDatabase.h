@@ -79,4 +79,35 @@ void captureBaseline(QSqlDatabase& database, const QString& gamePath, qint64 imp
                      qint64 capturedAt);
 [[nodiscard]] QHash<QString, qint64> baselinesByPath(QSqlDatabase& database);
 
+// One game's import watermark: the imported figure last observed and the recorded
+// time that had already been seen at that point. Recorded time beyond it is new
+// play the imported counter cannot know about yet.
+struct ImportWatermark {
+  qint64 importedSeconds = -1;
+  qint64 observedSeconds = -1;
+  // The figure the sources display today, which is what a first observation
+  // reproduces so an upgrade never moves a number on its own.
+  qint64 baselineSeconds = 0;
+};
+
+[[nodiscard]] QHash<QString, ImportWatermark> importWatermarksByPath(QSqlDatabase& database);
+
+// Reconciles an imported counter with recorded sessions, returning the total to
+// show. A negative import means the source has no counter of its own, so recorded
+// time is the whole of it. baseline + tracked is what the sources display today;
+// the watermark adds only recorded time that a stale imported figure could not
+// already include, so the total can rise when genuinely new play is recorded and
+// never double-counts a session the emulator has since written into its counter.
+[[nodiscard]] qint64 reconcileImportedAndTracked(qint64 importedSeconds, qint64 baselineSeconds,
+                                                 qint64 trackedSeconds,
+                                                 const ImportWatermark& watermark);
+
+// Records the imported figure just observed, together with the recorded time
+// already stored with it. The recorded total is read from the database rather
+// than taken from the caller, because a caller's cached total can lag a session
+// that was just written, and a watermark that understates it makes time the
+// import already includes look new. Returns the watermark to use now.
+[[nodiscard]] ImportWatermark observeImport(QSqlDatabase& database, const QString& gamePath,
+                                            qint64 importedSeconds, qint64 observedAt);
+
 } // namespace SessionDatabase

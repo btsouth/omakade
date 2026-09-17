@@ -823,6 +823,7 @@ private slots:
   void processMatcherExtractsRomPaths();
   void windowTitlesAttributeFilePickerLoads();
   void sessionRecorderPausesWhileUnfocused();
+  void sessionPlaytimeReconcilesImportedAndRecorded();
   void shippedProfilesMatchCemuWua();
   void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
@@ -7155,6 +7156,102 @@ void CoreTests::windowTitlesAttributeFilePickerLoads() {
   }
 }
 
+void CoreTests::sessionPlaytimeReconcilesImportedAndRecorded() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+  const QString connection = QStringLiteral("test-reconcile");
+  const QString game = QStringLiteral("/games/a.nsp");
+  const auto displayed = [&](PlaySessionStore& store, qint64 imported) {
+    return store.displaySeconds(game, imported);
+  };
+  const auto addSession = [&](qint64 startedAt, qint64 seconds) {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 id = SessionDatabase::beginSession(database, game, "Ryujinx", startedAt, 5, 5);
+    QVERIFY(id > 0);
+    if (seconds > 0) QVERIFY(SessionDatabase::endSession(database, id, startedAt + seconds, seconds));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  };
+
+  {
+    // A player had 600s in the emulator before Omakade ever saw it, so the first
+    // observation captures a 600 baseline and the watermark that goes with it.
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 600);
+    QCOMPARE(displayed(store, 600), qint64(600));
+  }
+  {
+    // They then played 900s inside the emulator with recording off, so its counter
+    // now reads 1500. The next library scan observes that new figure. Omakade still
+    // shows 1500, because it never recorded any of it.
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 1500);
+    QCOMPARE(displayed(store, 1500), qint64(1500));
+  }
+  {
+    // Now they play 300s with Omakade recording. The counter has not moved since it
+    // was last observed, so it cannot include this session, and the 300s is added.
+    // This is the case that used to be lost: the stale 1500 won the max and 300
+    // real seconds counted as nothing.
+    addSession(200, 300);
+    PlaySessionStore store(path);
+    QCOMPARE(displayed(store, 1500), qint64(1800));
+  }
+  {
+    // The emulator exits and finally writes its own counter, which now includes
+    // that same 300s. The delta returns to zero and it is not counted twice.
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 1800);
+    QCOMPARE(displayed(store, 1800), qint64(1800));
+  }
+  // A source with no emulator counter of its own has no import to reconcile: the
+  // recorded time is the whole of it.
+  QCOMPARE(SessionDatabase::reconcileImportedAndTracked(-1, 0, 420,
+                                                        SessionDatabase::ImportWatermark{}),
+           qint64(420));
+  // The two properties that make reconciliation safe, swept across the space the
+  // app can actually be in: a total is never lowered below what the sources already
+  // display, and it is never raised by more than the recorded time the imported
+  // counter cannot already include. The second is what stops a counter the
+  // emulator later rewrites from being paid for the same session twice.
+  for (qint64 imported = 0; imported <= 3000; imported += 500) {
+    for (qint64 baseline = 0; baseline <= 3000; baseline += 1000) {
+      for (qint64 tracked = 0; tracked <= 3000; tracked += 1000) {
+        for (qint64 watermarkImported : {-1LL, 1000LL, 1500LL}) {
+          for (qint64 watermarkObserved : {-1LL, 0LL, 300LL}) {
+            const SessionDatabase::ImportWatermark watermark{
+                .importedSeconds = watermarkImported,
+                .observedSeconds = watermarkObserved,
+                .baselineSeconds = baseline};
+            const qint64 got =
+                SessionDatabase::reconcileImportedAndTracked(imported, baseline, tracked, watermark);
+            const qint64 floor = qMax(imported, baseline + tracked);
+            const QString where = QStringLiteral("imported=%1 baseline=%2 tracked=%3 watermark=%4/%5")
+                                      .arg(imported)
+                                      .arg(baseline)
+                                      .arg(tracked)
+                                      .arg(watermarkImported)
+                                      .arg(watermarkObserved);
+            QVERIFY2(got >= floor,
+                     qPrintable(QStringLiteral("lowered the total for %1").arg(where)));
+            // Only a counter that still reads what was last observed can be missing
+            // anything recorded since.
+            const bool current = watermarkImported >= 0 && watermarkObserved >= 0 &&
+                                 imported == watermarkImported;
+            const qint64 credited = current ? qMax<qint64>(0, tracked - watermarkObserved) : 0;
+            QVERIFY2(got <= floor + credited,
+                     qPrintable(QStringLiteral("added more than the counter could be missing for %1")
+                                    .arg(where)));
+          }
+        }
+      }
+    }
+  }
+}
+
 void CoreTests::sessionRecorderPausesWhileUnfocused() {
   const QString connection = QStringLiteral("test-recorder-pause");
   {
@@ -7369,8 +7466,8 @@ void CoreTests::sessionStoreMergesImportedAndTrackedPlaytime() {
   const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
   {
     PlaySessionStore store(path);
-    store.captureBaseline(QStringLiteral("/games/a.nsp"), 3600);
-    store.captureBaseline(QStringLiteral("/games/a.nsp"), 7200);
+    store.observeImportedPlaytime(QStringLiteral("/games/a.nsp"), 3600);
+    store.observeImportedPlaytime(QStringLiteral("/games/a.nsp"), 7200);
     QCOMPARE(PlaySessionStore::merge(7200, 3600, 1800), qint64(7200));
     QCOMPARE(PlaySessionStore::merge(3600, 3600, 1800), qint64(5400));
     QCOMPARE(store.displaySeconds(QStringLiteral("/games/a.nsp"), 7200), qint64(7200));
@@ -9242,17 +9339,17 @@ void CoreTests::sessionBaselineHandlesFirstAndLateObservation() {
   QVERIFY(SessionDatabase::open(db, path, "first-baseline"));
   {
     PlaySessionStore store(path);
-    store.captureBaseline("/games/new.nsp", 0);
+    store.observeImportedPlaytime("/games/new.nsp", 0);
     auto id = SessionDatabase::beginSession(db, "/games/new.nsp", "Ryujinx", 1000, 1, 1);
     SessionDatabase::endSession(db, id, 1600, 600);
-    store.captureBaseline("/games/new.nsp", 600);
+    store.observeImportedPlaytime("/games/new.nsp", 600);
     store.setEnabled(false);
     store.setEnabled(true);
     QCOMPARE(store.displaySeconds("/games/new.nsp", 600), qint64(600));
     // The daemon recorded this game before the UI imported its counter.
     id = SessionDatabase::beginSession(db, "/games/late.nsp", "Ryujinx", 1000, 2, 2);
     SessionDatabase::endSession(db, id, 1600, 600);
-    store.captureBaseline("/games/late.nsp", 4200);
+    store.observeImportedPlaytime("/games/late.nsp", 4200);
     store.setEnabled(false);
     store.setEnabled(true);
     QCOMPARE(store.displaySeconds("/games/late.nsp", 4200), qint64(4200));

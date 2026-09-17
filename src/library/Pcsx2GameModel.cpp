@@ -216,7 +216,7 @@ void Pcsx2GameModel::loadDatabase() {
                            .isElf = query.value(8).toBool(),
                            .flatpak = query.value(9).toBool()};
     if (m_playSessions != nullptr) {
-      m_playSessions->captureBaseline(record.path, record.playtimeSeconds);
+      m_playSessions->observeImportedPlaytime(record.path, record.playtimeSeconds);
     }
     loaded.append({.pcsx2 = record,
                    .favorite = query.value(10).toBool(),

@@ -68,6 +68,28 @@ bool ensureSchema(QSqlDatabase& database) {
                          "INTEGER NOT NULL, schema INTEGER NOT NULL DEFAULT %1)")
               .arg(kCurrentSchema)))
     return false;
+  // The recorded-time watermark. Every row needs one before it can be used: an
+  // existing installation must read exactly as it does today until its emulator
+  // next writes a counter, so the migration sets the watermark to the imported
+  // figure that already produced today's total.
+  if (!query.exec("PRAGMA table_info(play_baselines)"))
+    return false;
+  QStringList baselineColumns;
+  while (query.next())
+    baselineColumns.append(query.value(1).toString());
+  query.finish();
+  if (!baselineColumns.contains(QStringLiteral("imported_seconds")) &&
+      !query.exec("ALTER TABLE play_baselines ADD COLUMN imported_seconds INTEGER NOT NULL DEFAULT -1"))
+    return false;
+  if (!baselineColumns.contains(QStringLiteral("observed_seconds")) &&
+      !query.exec("ALTER TABLE play_baselines ADD COLUMN observed_seconds INTEGER NOT NULL DEFAULT -1"))
+    return false;
+  if (!query.exec(QStringLiteral(
+          "UPDATE play_baselines SET imported_seconds = baseline_seconds, "
+          "observed_seconds = (SELECT COALESCE(SUM(seconds), 0) FROM play_sessions "
+          "WHERE game_path = play_baselines.game_path) "
+          "WHERE imported_seconds < 0")))
+    return false;
   if (!query.exec("PRAGMA table_info(play_sessions)"))
     return false;
   bool hasKey = false;
@@ -295,12 +317,18 @@ void captureBaseline(QSqlDatabase& database, const QString& gamePath, qint64 imp
     return;
   }
   QSqlQuery query(database);
-  query.prepare(QStringLiteral("INSERT OR IGNORE INTO play_baselines(game_path, baseline_seconds, "
-                               "captured_at) SELECT ?, MAX(0, ? - COALESCE(SUM(seconds), 0)), ? "
-                               "FROM play_sessions WHERE game_path = ?"));
+  // The watermark is stored with the baseline: the imported figure just seen, and
+  // the recorded time already visible with it. Both come from the same statement so
+  // they can never disagree about what was observed.
+  query.prepare(QStringLiteral(
+      "INSERT OR IGNORE INTO play_baselines(game_path, baseline_seconds, captured_at, "
+      "imported_seconds, observed_seconds) "
+      "SELECT ?, MAX(0, ? - COALESCE(SUM(seconds), 0)), ?, ?, COALESCE(SUM(seconds), 0) "
+      "FROM play_sessions WHERE game_path = ?"));
   query.addBindValue(gamePath);
   query.addBindValue(importedSeconds);
   query.addBindValue(capturedAt);
+  query.addBindValue(importedSeconds);
   query.addBindValue(gamePath);
   query.exec();
 }
@@ -315,6 +343,94 @@ QHash<QString, qint64> baselinesByPath(QSqlDatabase& database) {
     baselines.insert(query.value(0).toString(), query.value(1).toLongLong());
   }
   return baselines;
+}
+
+QHash<QString, ImportWatermark> importWatermarksByPath(QSqlDatabase& database) {
+  QHash<QString, ImportWatermark> watermarks;
+  QSqlQuery query(database);
+  if (!query.exec(QStringLiteral("SELECT game_path, baseline_seconds, imported_seconds, "
+                                 "observed_seconds FROM play_baselines"))) {
+    return watermarks;
+  }
+  while (query.next()) {
+    ImportWatermark watermark;
+    watermark.baselineSeconds = query.value(1).toLongLong();
+    watermark.importedSeconds = query.value(2).toLongLong();
+    watermark.observedSeconds = query.value(3).toLongLong();
+    watermarks.insert(query.value(0).toString(), watermark);
+  }
+  return watermarks;
+}
+
+ImportWatermark watermarkForPath(QSqlDatabase& database, const QString& gamePath) {
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral("SELECT baseline_seconds, imported_seconds, observed_seconds "
+                               "FROM play_baselines WHERE game_path = ?"));
+  query.addBindValue(gamePath);
+  ImportWatermark watermark;
+  if (!query.exec() || !query.next()) {
+    return watermark;
+  }
+  watermark.baselineSeconds = query.value(0).toLongLong();
+  watermark.importedSeconds = query.value(1).toLongLong();
+  watermark.observedSeconds = query.value(2).toLongLong();
+  return watermark;
+}
+
+qint64 reconcileImportedAndTracked(qint64 importedSeconds, qint64 baselineSeconds,
+                                   qint64 trackedSeconds, const ImportWatermark& watermark) {
+  // No imported counter: recorded time is the whole of it.
+  if (importedSeconds < 0) {
+    return trackedSeconds;
+  }
+  // What the sources display today, which the result must never fall below.
+  const qint64 displayed = baselineSeconds + trackedSeconds;
+  if (watermark.importedSeconds < 0 || watermark.observedSeconds < 0 ||
+      importedSeconds != watermark.importedSeconds) {
+    // Either nothing has been observed yet, or the counter reads something other
+    // than what was last observed. An unobserved figure may already include
+    // sessions Omakade recorded, so crediting them again would invent playtime.
+    // Fall back to the conservative merge until the counter is next observed.
+    return qMax(importedSeconds, displayed);
+  }
+  // The counter still reads exactly what was last observed, so it cannot include
+  // anything recorded since. Play recorded after that observation is genuinely
+  // missing from it and is added. Once the emulator writes its own counter on exit
+  // the figure changes, the next scan observes it, and the delta returns to zero,
+  // so the same session is never counted twice.
+  const qint64 sinceImport = qMax<qint64>(0, trackedSeconds - watermark.observedSeconds);
+  return qMax(displayed, importedSeconds + sinceImport);
+}
+
+ImportWatermark observeImport(QSqlDatabase& database, const QString& gamePath,
+                              qint64 importedSeconds, qint64 observedAt) {
+  if (importedSeconds < 0 || gamePath.isEmpty()) {
+    return ImportWatermark{};
+  }
+  ImportWatermark watermark = watermarkForPath(database, gamePath);
+  if (watermark.importedSeconds == importedSeconds) {
+    // The counter has not moved, which is the case on almost every scan. Nothing
+    // to record, and no need to read anything else.
+    return watermark;
+  }
+  const qint64 trackedSeconds = trackedSecondsByPath(database).value(gamePath, 0);
+  // A first observation captures the baseline the sources display today, so an
+  // upgrade cannot move a number by itself. A later observation only moves the
+  // watermark: everything the counter has counted is inside the new figure.
+  if (watermark.importedSeconds < 0) {
+    captureBaseline(database, gamePath, importedSeconds, observedAt);
+  } else {
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("UPDATE play_baselines SET imported_seconds = ?, "
+                                 "observed_seconds = ? WHERE game_path = ?"));
+    query.addBindValue(importedSeconds);
+    query.addBindValue(trackedSeconds);
+    query.addBindValue(gamePath);
+    if (!query.exec()) {
+      return watermark;
+    }
+  }
+  return watermarkForPath(database, gamePath);
 }
 
 } // namespace SessionDatabase

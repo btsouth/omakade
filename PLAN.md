@@ -933,12 +933,15 @@ own format and several keep none at all. A small recorder closes that gap.
   heartbeat. A recorder restart reconciles dead processes at their last
   heartbeat so a crash never invents play time, and elapsed time comes from the
   monotonic clock so suspended time is not billed.
-- Sources merge their imported playtime with recorded sessions as
-  max(imported, baseline + sessions). New baselines include zero and subtract
-  already recorded sessions conservatively, since a late import may include them.
-  Existing baselines are preserved. Gaps in recording can leave the imported
-  total ahead until observed time catches up; exact overlap reconciliation is
-  still future work.
+- Sources merge their imported playtime with recorded sessions. Recorded time can
+  never lower a total, and recorded time the imported counter cannot yet know
+  about is now added rather than hidden: a game played while the recorder was off
+  leaves the emulator's counter ahead, and sessions recorded after that used to
+  disappear behind it. A watermark per game records the imported figure last seen
+  and the recorded time already visible with it, so only genuinely new recorded
+  time is added and a session the emulator later writes into its own counter is
+  never counted twice. Existing installations keep their exact totals until their
+  emulator next writes a counter.
 - A Settings toggle (on by default) controls both the display and the recorder,
   which reads the same config key. When a session for an emulator whose own
   playtime is written on exit ends, the recorder asks the running Omakade

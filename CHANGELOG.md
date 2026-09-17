@@ -30,6 +30,13 @@ Sessions you can see, stop, and manage.
   session the recorder is still tracking is never deleted, and deleting a session
   only forgets recorded time: imported emulator playtime is left alone, so the
   displayed total can fall back to it but a deletion never adds time.
+- Playtime from an emulator's own counter and playtime Omakade recorded are now
+  reconciled properly. Previously a game played while the recorder was off left
+  the emulator's counter ahead, and sessions recorded afterwards vanished behind
+  that figure: 300s of real play could count as nothing. Recorded time is added
+  when the imported counter cannot already include it, and a session the emulator
+  later writes into its own counter is not counted twice. Existing totals do not
+  change until the emulator next writes a counter.
 
 ## 1.10.0
 
