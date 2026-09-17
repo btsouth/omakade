@@ -10,6 +10,7 @@ game change works. Recording does not inject code, control emulators, or detect 
 | Ryujinx and Eden | Direct ROM arguments, paths with spaces, missing-path rejection | Exact candidate launch, return, and short-session accounting |
 | Other shipped profiles | Shared matcher and profile parsing | Real launch arguments for RetroArch, PCSX2, Dolphin, Cemu, shadPS4 and other listed binaries |
 | Window-title attribution | Cache reading, exact and whole-name matching, ambiguity and short-name refusal, decorated titles, malformed compositor answers, and a live Hyprland run that recorded and closed a session for a process naming no game path | The same run against a real emulator and a real ROM on each supported compositor |
+| Pause on unfocus | Focus parsing, the never-treat-unknown-as-unfocused rule, billing and pausing across polls with a controlled clock, and a live Hyprland run where an unfocused game billed 0s against a control's 40s | The same run with a game that loses and regains focus mid-session |
 | Session accounting | Monotonic duration, game changes in supplied snapshots, restart recovery, baseline overlap, write failure | Compare displayed time with a real short session |
 | Recorder ownership | Private daemon start, duplicate rejection, termination and restart | Installed service behavior on supported hosts |
 | Imported totals | Source parser and baseline fixtures | Updated emulator formats and unusual library layouts |

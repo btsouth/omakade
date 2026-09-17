@@ -34,6 +34,7 @@ QVector<Window> parse(const QByteArray& json, QString* error) {
     window.title = client.value(QLatin1String("title")).toString();
     window.address = client.value(QLatin1String("address")).toString();
     window.pid = client.value(QLatin1String("pid")).toVariant().toLongLong();
+    window.focusHistoryId = client.value(QLatin1String("focusHistoryID")).toInt(-1);
     if (window.title.isEmpty() || window.pid <= 0) {
       continue;
     }
@@ -76,6 +77,26 @@ QString titleForPid(const QVector<Window>& windows, qint64 pid) {
     }
   }
   return {};
+}
+
+bool isUnfocused(const QVector<Window>& windows, qint64 pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  bool ownsWindow = false;
+  for (const Window& window : windows) {
+    if (window.pid != pid) {
+      continue;
+    }
+    ownsWindow = true;
+    // focusHistoryID 0 is the compositor's focused window. Anything else, an
+    // unknown id included, is not read as "unfocused": a compositor that stops
+    // reporting focus must not start pausing every game.
+    if (window.focusHistoryId <= 0) {
+      return false;
+    }
+  }
+  return ownsWindow;
 }
 
 } // namespace HyprlandWindows

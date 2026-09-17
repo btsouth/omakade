@@ -94,7 +94,10 @@ void SessionRecorder::flush(ActiveSession& session, qint64 nowMs, qint64 nowWall
 QHash<QString, SessionRecorder::ActiveSession>::Iterator
 SessionRecorder::closeSession(QHash<QString, ActiveSession>::Iterator session, qint64 nowMs,
                               qint64 nowWall) {
-  const qint64 totalMs = session->elapsedMs + (nowMs - session->markMs);
+  // A paused session stopped billing at the last poll, so the span since then is
+  // not play time either.
+  const qint64 totalMs =
+      session->elapsedMs + (session->paused ? 0 : nowMs - session->markMs);
   if (!SessionDatabase::endSession(m_database, session->id, nowWall, totalMs / 1000)) {
     m_pendingCloses.append({session->id, nowWall, totalMs / 1000});
     m_lastCloseAttemptMs = nowMs;
@@ -121,9 +124,11 @@ void SessionRecorder::retryClosed(qint64 nowMs) {
   }
 }
 
-void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall) {
+void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
+                           const std::function<bool(qint64)>& unfocused) {
   const qint64 nowMs = m_elapsedMs();
   retryClosed(nowMs);
+  const bool pause = m_pauseUnfocused && static_cast<bool>(unfocused);
   QSet<QString> matched;
   matched.reserve(matches.size());
   for (const SessionMatch& match : matches) {
@@ -152,8 +157,16 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall)
       m_active.insert(key, session);
       continue;
     }
-    existing->elapsedMs += nowMs - existing->markMs;
+    // Time is only billed while the game holds the compositor's focus. The mark
+    // moves forward either way, so a pause spans exactly the polls where the game
+    // was unfocused and is never back-dated when focus returns.
+    existing->paused = pause && unfocused(match.pid);
+    if (!existing->paused) {
+      existing->elapsedMs += nowMs - existing->markMs;
+    }
     existing->markMs = nowMs;
+    // The heartbeat keeps moving so a crash during a long pause ends the row at the
+    // last poll instead of at a boundary reached after the game was put aside.
     if (nowMs - existing->lastFlushMs >= m_flushIntervalMs) {
       flush(*existing, nowMs, nowWall);
     }

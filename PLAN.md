@@ -958,13 +958,17 @@ own format and several keep none at all. A small recorder closes that gap.
   in Now Playing without a stop control and is never adopted after a recorder
   restart. Without a compositor, without `hyprctl`, or without titles, the recorder
   behaves exactly as it did before.
+- Optional pause-on-unfocus, off by default, stops billing time while the emulator
+  window is not the compositor's focused one. It only works on Hyprland, where
+  focus is reported per window; a pid with no window, or a compositor that stops
+  reporting focus, is never treated as unfocused, so the switch can only remove
+  speculative time and never silently stop counting a game that is on screen.
 
 ### Later
 
-- Pause the clock while the emulator window is unfocused, matching how
-  Ryujinx excludes paused time from its own counter.
+- Pause on other compositors, which needs a different source of focus state.
 - Per-emulator recents and log adapters, for a game loaded without a title that
-  names it, and for compositors other than Hyprland.
+  names it.
 
 
 ## Decisions to settle before M0 implementation

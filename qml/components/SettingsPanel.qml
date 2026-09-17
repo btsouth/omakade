@@ -808,6 +808,14 @@ import QtQuick.Layouts
                         selected: Preferences.trackPlaySessions
                         onClicked: Preferences.trackPlaySessions = !Preferences.trackPlaySessions
                     }
+                    GlassButton {
+                        objectName: "pauseUnfocusedToggle"
+                        compact: true
+                        visible: Preferences.trackPlaySessions
+                        text: "PAUSE WHEN UNFOCUSED: " + (Preferences.pauseUnfocusedSessions ? "ON" : "OFF")
+                        selected: Preferences.pauseUnfocusedSessions
+                        onClicked: Preferences.pauseUnfocusedSessions = !Preferences.pauseUnfocusedSessions
+                    }
                 }
                 Text {
                     objectName: "recorderStatusText"
@@ -824,7 +832,7 @@ import QtQuick.Layouts
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Recording runs separately from Omakade and continues when this window closes. Paused emulator time counts. Imported and recorded totals can overlap; they are not simply added together. Switching recording off keeps your history and displays imported time."
+                    text: "Recording runs separately from Omakade and continues when this window closes. Imported and recorded totals can overlap; they are not simply added together. Switching recording off keeps your history and displays imported time. Pause when unfocused stops billing time while the emulator window is behind other work; it is off by default, since a game left running on purpose still counts as play."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 11 * settingsPanel.uiScale

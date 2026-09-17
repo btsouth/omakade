@@ -106,6 +106,7 @@ QJsonObject AppSettings::backupSettings() const {
           {"expand_consoles", m_expandConsoles},
           {"prefer_standalone_emulators", m_preferStandaloneEmulators},
           {"track_play_sessions", m_trackPlaySessions},
+          {"pause_unfocused_sessions", m_pauseUnfocusedSessions},
           {"cover_size", m_coverSize},
           {"couch_cover_size", m_couchCoverSize},
           {"console_expand_limit", m_consoleExpandLimit},
@@ -142,6 +143,7 @@ void AppSettings::assignBackupSettings(const QJsonObject& settings) {
   m_expandConsoles = settings.value("expand_consoles").toBool();
   m_preferStandaloneEmulators = settings.value("prefer_standalone_emulators").toBool();
   m_trackPlaySessions = settings.value("track_play_sessions").toBool();
+  m_pauseUnfocusedSessions = settings.value("pause_unfocused_sessions").toBool();
   m_coverSize = settings.value("cover_size").toInt();
   m_couchCoverSize = settings.value("couch_cover_size").toInt();
   m_consoleExpandLimit = settings.value("console_expand_limit").toInt();
@@ -190,7 +192,8 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
        QStringList{"shadps4_enabled", "cemu_enabled", "dolphin_enabled", "shadps4_auto",
                    "cemu_auto", "dolphin_auto", "console_portals_enabled", "expand_consoles",
                    "prefer_standalone_emulators", "track_play_sessions", "cover_size",
-                   "couch_cover_size", "console_expand_limit", "rom_folders", "console_layouts"})
+                   "couch_cover_size", "console_expand_limit", "rom_folders", "console_layouts",
+                   "pause_unfocused_sessions"})
     if (!settings.contains(key))
       merged.insert(key, before.value(key));
   for (auto value = settings.begin(); value != settings.end(); ++value) merged.insert(value.key(), value.value());
@@ -203,6 +206,7 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
   emit expandConsolesChanged();
   emit preferStandaloneEmulatorsChanged();
   emit trackPlaySessionsChanged();
+  emit pauseUnfocusedSessionsChanged();
   emit coverSizeChanged();
   emit couchCoverSizeChanged();
   emit consoleExpandLimitChanged();
@@ -687,6 +691,17 @@ void AppSettings::setTrackPlaySessions(bool value) {
   emit trackPlaySessionsChanged();
 }
 
+bool AppSettings::pauseUnfocusedSessions() const { return m_pauseUnfocusedSessions; }
+
+void AppSettings::setPauseUnfocusedSessions(bool value) {
+  if (m_pauseUnfocusedSessions == value) {
+    return;
+  }
+  m_pauseUnfocusedSessions = value;
+  save();
+  emit pauseUnfocusedSessionsChanged();
+}
+
 bool AppSettings::couchModeEnabled() const { return m_couchModeEnabled; }
 
 void AppSettings::setCouchModeEnabled(bool value) {
@@ -855,6 +870,7 @@ void AppSettings::load() {
   m_protonDbEnabled = readEnabled(QStringLiteral("protondb_enabled"), false);
   m_protonDbBadges = readEnabled(QStringLiteral("protondb_badges"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
+  m_pauseUnfocusedSessions = readEnabled(QStringLiteral("pause_unfocused_sessions"), false);
   m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
@@ -971,6 +987,7 @@ bool AppSettings::save() {
                   .arg(m_consoleExpandLimit);
   contents += QStringLiteral("close_after_launch = %1\n"
                              "track_play_sessions = %7\n"
+                             "pause_unfocused_sessions = %8\n"
                              "couch_mode_enabled = %2\n"
                              "couch_library_view = \"%3\"\n"
                              "library_sort_mode = \"%6\"\n"
@@ -981,7 +998,9 @@ bool AppSettings::save() {
                   .arg(m_sunshineOmakadeApp ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_sunshineGameApps ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(kSortModeNames.value(m_librarySortMode))
-                  .arg(m_trackPlaySessions ? QStringLiteral("true") : QStringLiteral("false"));
+                  .arg(m_trackPlaySessions ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(m_pauseUnfocusedSessions ? QStringLiteral("true")
+                                                : QStringLiteral("false"));
   contents += QStringLiteral("cover_size = %1\ncouch_cover_size = %2\n").arg(m_coverSize).arg(m_couchCoverSize);
   contents += QStringLiteral("gog_library_paths = ") +
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))

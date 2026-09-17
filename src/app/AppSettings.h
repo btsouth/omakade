@@ -55,6 +55,8 @@ class AppSettings final : public QObject {
   Q_PROPERTY(bool protectRetroArchSaves READ protectRetroArchSaves WRITE setProtectRetroArchSaves NOTIFY protectRetroArchSavesChanged)
   Q_PROPERTY(bool trackPlaySessions READ trackPlaySessions WRITE setTrackPlaySessions NOTIFY
                  trackPlaySessionsChanged)
+  Q_PROPERTY(bool pauseUnfocusedSessions READ pauseUnfocusedSessions WRITE
+                 setPauseUnfocusedSessions NOTIFY pauseUnfocusedSessionsChanged)
   Q_PROPERTY(bool couchModeEnabled READ couchModeEnabled WRITE setCouchModeEnabled NOTIFY
                  couchModeEnabledChanged)
   Q_PROPERTY(QString couchLibraryView READ couchLibraryView WRITE setCouchLibraryView NOTIFY
@@ -159,6 +161,11 @@ public:
   // Session recording by omakade-sessiond; the daemon reads the same config key.
   [[nodiscard]] bool trackPlaySessions() const;
   void setTrackPlaySessions(bool value);
+  // Stop billing time while the emulator window sits unfocused. Off by default:
+  // a game left open in the background is a deliberate way to play on some setups,
+  // and couch play can lose focus to a launcher overlay without the game stopping.
+  [[nodiscard]] bool pauseUnfocusedSessions() const;
+  void setPauseUnfocusedSessions(bool value);
   bool protectRetroArchSaves() const { return m_protectRetroArchSaves; }
   void setProtectRetroArchSaves(bool value);
   [[nodiscard]] bool couchModeEnabled() const;
@@ -196,6 +203,7 @@ signals:
   void sourcesChanged();
   void closeAfterLaunchChanged();
   void trackPlaySessionsChanged();
+  void pauseUnfocusedSessionsChanged();
   void protectRetroArchSavesChanged();
   void couchModeEnabledChanged();
   void couchLibraryViewChanged();
@@ -257,6 +265,7 @@ private:
   QString m_rommLibraryRoot;
   bool m_closeAfterLaunch = false;
   bool m_trackPlaySessions = false;
+  bool m_pauseUnfocusedSessions = false;
   bool m_protectRetroArchSaves = true;
   bool m_couchModeEnabled = false;
   QString m_couchLibraryView = QStringLiteral("detail");

@@ -733,6 +733,7 @@ private slots:
   void backupSnapshotConsolidatesLegacyPersonalState();
   void backupDatabaseMergeReplaceAndRollback();
   void backupSettingsApplyAtomicallyAndKeepAccounts();
+  void pauseUnfocusedSettingRoundTripsAndDefaultsOff();
   void backupPreservesIdentificationChoices();
   void backupIncludesCurrentPreferences();
   void themeLoadsSemanticColors();
@@ -821,6 +822,7 @@ private slots:
   void cemuLauncherBuildsSafeCommands();
   void processMatcherExtractsRomPaths();
   void windowTitlesAttributeFilePickerLoads();
+  void sessionRecorderPausesWhileUnfocused();
   void shippedProfilesMatchCemuWua();
   void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
@@ -2029,6 +2031,39 @@ void CoreTests::artworkSlotsMigratePersistAndResetIndependently() {
   QVERIFY(library.resetCustomCover(0));
   // A migrated external path is not owned by Omakade and must never be deleted.
   QVERIFY(QFileInfo::exists(legacy));
+}
+
+void CoreTests::pauseUnfocusedSettingRoundTripsAndDefaultsOff() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("config.toml");
+  {
+    AppSettings settings(path);
+    // Off unless asked for: a game left running on purpose must keep counting.
+    QVERIFY(!settings.pauseUnfocusedSessions());
+    QVERIFY(!settings.backupSettings().contains("pause_unfocused_sessions") ||
+            !settings.backupSettings().value("pause_unfocused_sessions").toBool());
+    settings.setPauseUnfocusedSessions(true);
+    QVERIFY(settings.pauseUnfocusedSessions());
+  }
+  // The key the daemon reads must be the one the app writes.
+  QFile file(path);
+  QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+  const QString contents = QString::fromUtf8(file.readAll());
+  QVERIFY2(contents.contains("pause_unfocused_sessions = true"), qPrintable(contents));
+  file.close();
+  {
+    AppSettings reopened(path);
+    QVERIFY(reopened.pauseUnfocusedSessions());
+  }
+  // An explicit false is honored, not confused with an absent key.
+  {
+    AppSettings settings(path);
+    settings.setPauseUnfocusedSessions(false);
+  }
+  {
+    AppSettings reopened(path);
+    QVERIFY(!reopened.pauseUnfocusedSessions());
+  }
 }
 
 void CoreTests::backupSettingsApplyAtomicallyAndKeepAccounts() {
@@ -7042,6 +7077,109 @@ void CoreTests::windowTitlesAttributeFilePickerLoads() {
   QVERIFY(HyprlandWindows::parse(QByteArray("not json"), &parseError).isEmpty());
   QVERIFY(!parseError.isEmpty());
   QVERIFY(HyprlandWindows::parse(QByteArray("{\"pid\":1}")).isEmpty());
+  // Focus state comes from the compositor, so pause-on-unfocus can tell a game
+  // that is on screen from one sitting behind other work.
+  const QVector<HyprlandWindows::Window> focused = HyprlandWindows::parse(
+      R"([{"address":"0x1","pid":30,"title":"PCSX2 1.7.5 - Okami","focusHistoryID":0},)"
+      R"({"address":"0x2","pid":31,"title":"Other","focusHistoryID":1}])");
+  QCOMPARE(focused.size(), 2);
+  QVERIFY(!HyprlandWindows::isUnfocused(focused, 30));
+  QVERIFY(HyprlandWindows::isUnfocused(focused, 31));
+  // A pid that owns no window is not unfocused: it has simply not opened one yet,
+  // and pausing it would stop billing a run that is still starting up.
+  QVERIFY(!HyprlandWindows::isUnfocused(focused, 32));
+  QVERIFY(!HyprlandWindows::isUnfocused({}, 30));
+  QVERIFY(!HyprlandWindows::isUnfocused(focused, 0));
+  // A compositor that stops reporting focus history pauses nothing, because an
+  // unknown id is not read as "unfocused".
+  const QVector<HyprlandWindows::Window> unknown =
+      HyprlandWindows::parse(R"([{"pid":30,"title":"PCSX2 1.7.5 - Okami"}])");
+  QCOMPARE(unknown.size(), 1);
+  QVERIFY(!HyprlandWindows::isUnfocused(unknown, 30));
+  // Any one focused window for the pid means the game is on screen.
+  const QVector<HyprlandWindows::Window> mixed = HyprlandWindows::parse(
+      R"([{"pid":30,"title":"a","focusHistoryID":2},{"pid":30,"title":"b","focusHistoryID":0}])");
+  QVERIFY(!HyprlandWindows::isUnfocused(mixed, 30));
+}
+
+void CoreTests::sessionRecorderPausesWhileUnfocused() {
+  const QString connection = QStringLiteral("test-recorder-pause");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, QStringLiteral(":memory:"), connection));
+
+    qint64 nowMs = 0;
+    SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+    recorder.setFlushIntervalMs(1);
+    const SessionMatch match{.pid = 77,
+                             .procStart = 700,
+                             .emulator = QStringLiteral("Ryujinx"),
+                             .rescanSource = {},
+                             .gamePath = QStringLiteral("/games/a.nsp")};
+    bool unfocused = false;
+    const auto focusCheck = [&unfocused](qint64) { return unfocused; };
+    const auto seconds = [&database] {
+      QSqlQuery query(database);
+      if (!query.exec(QStringLiteral("SELECT seconds FROM play_sessions")) || !query.next())
+        return qint64(-1);
+      return query.value(0).toLongLong();
+    };
+
+    // Ten minutes focused: all of it counts.
+    recorder.sync({match}, 1000);
+    nowMs = 30000;
+    recorder.sync({match}, 1030, focusCheck);
+    QCOMPARE(seconds(), qint64(30));
+
+    // Twenty minutes in the background: none of it counts.
+    recorder.setPauseUnfocused(true);
+    unfocused = true;
+    nowMs = 60000;
+    recorder.sync({match}, 1060, focusCheck);
+    nowMs = 90000;
+    recorder.sync({match}, 1090, focusCheck);
+    nowMs = 120000;
+    recorder.sync({match}, 1120, focusCheck);
+    QCOMPARE(seconds(), qint64(30));
+
+    // Focus returns: billing resumes from here, and the paused span is not
+    // back-dated onto the total.
+    unfocused = false;
+    nowMs = 150000;
+    recorder.sync({match}, 1150, focusCheck);
+    nowMs = 180000;
+    recorder.sync({match}, 1180, focusCheck);
+    QCOMPARE(seconds(), qint64(90));
+
+    // The switch is what makes the predicate matter: with pause-on-unfocus off,
+    // an unfocused window is billed exactly as before.
+    unfocused = true;
+    recorder.setPauseUnfocused(false);
+    nowMs = 210000;
+    recorder.sync({match}, 1210, focusCheck);
+    QCOMPARE(seconds(), qint64(120));
+    recorder.setPauseUnfocused(true);
+    nowMs = 240000;
+    recorder.sync({match}, 1240, focusCheck);
+    QCOMPARE(seconds(), qint64(120));
+    // Without a compositor there is no predicate, so nothing pauses.
+    nowMs = 270000;
+    recorder.sync({match}, 1270);
+    QCOMPARE(seconds(), qint64(150));
+
+    // Closing records the total that was actually billed, including the last span
+    // because the final poll saw the game playing.
+    nowMs = 300000;
+    recorder.endAll(1330);
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("SELECT ended_at, seconds FROM play_sessions")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toLongLong(), qint64(1330));
+    QCOMPARE(query.value(1).toLongLong(), qint64(180));
+    database.close();
+    database = {};
+  }
+  QSqlDatabase::removeDatabase(connection);
 }
 
 void CoreTests::shippedProfilesMatchCemuWua() {

@@ -127,6 +127,7 @@ QStringList BackupArchive::settingNames() {
           "expand_consoles",
           "prefer_standalone_emulators",
           "track_play_sessions",
+          "pause_unfocused_sessions",
           "cover_size",
           "couch_cover_size",
           "console_expand_limit",

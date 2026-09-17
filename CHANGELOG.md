@@ -12,9 +12,15 @@ Sessions you can see, stop, and manage.
 - Games loaded from an emulator's own file picker now count toward playtime on
   Hyprland. Those loads name no game on the command line, so the recorder matches
   the emulator's window title against the titles Omakade already knows from its
-  own scan. Only a confident, unambiguous match is used, and a session attributed
-  this way is listed without a stop control because its process identity was never
-  verified. Nothing changes without a compositor or without titles to match.
+  own scan. Only a confident, unambiguous match is used, including when two games
+  share one title or one game is known under two content paths, and a session
+  attributed this way is listed without a stop control because its process
+  identity was never verified. Nothing changes without a compositor or without
+  titles to match.
+- An optional Pause when unfocused switch stops billing playtime while the
+  emulator window is behind other work, so time spent in a game menu or with the
+  window put aside is not counted. It is off by default, and it only works on
+  Hyprland, where the compositor reports which window holds focus.
 - Game Details opens the full recorded session history for a game, and any listed
   session can be deleted after a confirmation that starts on the safe choice. A
   session the recorder is still tracking is never deleted, and deleting a session

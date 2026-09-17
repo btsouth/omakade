@@ -39,16 +39,25 @@ public:
       return false;
     }
     m_checked = info.lastModified();
+    const QString contents = QString::fromUtf8(file.readAll());
     const QRegularExpression pattern(
         QStringLiteral("(?m)^track_play_sessions\\s*=\\s*(true|false)\\s*$"));
-    const QRegularExpressionMatch match = pattern.match(QString::fromUtf8(file.readAll()));
+    const QRegularExpressionMatch match = pattern.match(contents);
     m_enabled = !match.hasMatch() || match.captured(1) == QStringLiteral("true");
+    // Pause-on-unfocus is opt-in, so an absent key means off.
+    const QRegularExpression pausePattern(
+        QStringLiteral("(?m)^pause_unfocused_sessions\\s*=\\s*(true|false)\\s*$"));
+    const QRegularExpressionMatch pauseMatch = pausePattern.match(contents);
+    m_pauseUnfocused = pauseMatch.hasMatch() && pauseMatch.captured(1) == QStringLiteral("true");
     return m_enabled;
   }
+
+  [[nodiscard]] bool pauseUnfocused() const { return m_pauseUnfocused; }
 
 private:
   QDateTime m_checked;
   bool m_enabled = true;
+  bool m_pauseUnfocused = false;
 };
 
 QString profilesPath() {
@@ -119,18 +128,32 @@ int main(int argc, char* argv[]) {
     libraryWalInfo = wal;
     titleIndex.refresh(database);
   };
-  const auto matchProcesses = [&] {
+  // One poll's matches, plus the focus check that goes with the same window
+  // snapshot so matches and focus can never disagree.
+  struct Poll {
+    QVector<SessionMatch> matches;
+    std::function<bool(qint64)> unfocused;
+  };
+  const auto pollOnce = [&] {
+    Poll result;
     if (!indexed || !HyprlandWindows::available()) {
-      return ProcessMatcher::match(ProcFs::listProcesses(), profiles);
+      result.matches = ProcessMatcher::match(ProcFs::listProcesses(), profiles);
+      return result;
     }
     refreshTitles();
     const QVector<HyprlandWindows::Window> windows = HyprlandWindows::list();
-    return ProcessMatcher::matchWithWindowTitles(
+    result.matches = ProcessMatcher::matchWithWindowTitles(
         ProcFs::listProcesses(), profiles,
         [&windows](qint64 pid) { return HyprlandWindows::titleForPid(windows, pid); },
         [&titleIndex](const QString& title, const QString& emulator) {
           return titleIndex.pathForWindowTitle(title, emulator);
         });
+    // The snapshot is copied into the predicate, so the answer describes the poll
+    // that produced these matches rather than a later moment.
+    result.unfocused = [windows](qint64 pid) {
+      return HyprlandWindows::isUnfocused(windows, pid);
+    };
+    return result;
   };
   const qint64 nowWall = QDateTime::currentSecsSinceEpoch();
   if (toggle.load()) recorder.recover(ProcFs::listProcesses(), profiles, nowWall);
@@ -141,7 +164,11 @@ int main(int argc, char* argv[]) {
     if (!toggle.load()) {
       recorder.endAll(QDateTime::currentSecsSinceEpoch());
     } else {
-      recorder.sync(matchProcesses(), QDateTime::currentSecsSinceEpoch());
+      recorder.setPauseUnfocused(toggle.pauseUnfocused());
+      const Poll result = pollOnce();
+      recorder.sync(result.matches, QDateTime::currentSecsSinceEpoch(),
+                    toggle.pauseUnfocused() ? result.unfocused
+                                            : std::function<bool(qint64)>{});
     }
     if (recorder.takeStorageFailure()) {
       qWarning("omakade-sessiond: session storage failed; pending progress may be lost if the "

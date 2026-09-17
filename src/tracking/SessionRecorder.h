@@ -32,7 +32,19 @@ public:
 
   // One poll: opens sessions for new matches, extends live ones, and closes
   // sessions whose process disappeared.
-  void sync(const QVector<SessionMatch>& matches, qint64 nowWall);
+  //
+  // When pauseUnfocused is on and `unfocused` is supplied, a session whose window
+  // is not the compositor's focused one stops accumulating time. The mark still
+  // moves forward, so the unfocused span is never billed retroactively when the
+  // game comes back, and the periodic flush keeps the heartbeat current so a crash
+  // during a pause still ends the row where it was last known to be playing.
+  void sync(const QVector<SessionMatch>& matches, qint64 nowWall,
+            const std::function<bool(qint64 pid)>& unfocused = {});
+
+  // Bills play time only while the game keeps the compositor's focus. Off by
+  // default; without a compositor the predicate is never supplied and nothing
+  // changes.
+  void setPauseUnfocused(bool value) { m_pauseUnfocused = value; }
 
   // Closes everything, used when tracking is switched off.
   void endAll(qint64 nowWall);
@@ -55,6 +67,9 @@ private:
     qint64 elapsedMs = 0;
     qint64 markMs = 0;
     qint64 lastFlushMs = 0;
+    // The focus state at the last poll, so the span between that poll and a close
+    // is billed for a game that was playing and skipped for one put aside.
+    bool paused = false;
   };
 
   QString keyFor(const SessionMatch& match) const;
@@ -70,6 +85,7 @@ private:
   QVector<PendingClose> m_pendingCloses;
   qint64 m_lastCloseAttemptMs = 0;
   bool m_storageFailure = false;
+  bool m_pauseUnfocused = false;
 
   QSqlDatabase m_database;
   std::function<qint64()> m_elapsedMs;
