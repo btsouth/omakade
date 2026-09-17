@@ -940,8 +940,9 @@ own format and several keep none at all. A small recorder closes that gap.
   disappear behind it. A watermark per game records the imported figure last seen
   and the recorded time already visible with it, so only genuinely new recorded
   time is added and a session the emulator later writes into its own counter is
-  never counted twice. An emulator's counter is not observed while a session for
-  that game is still open, because the counter is written on exit and the recorder
+  never counted twice. Deleting a game's history lowers the watermark by the time
+  removed, so a cleared game keeps showing the play that happens afterwards. An
+  emulator's counter is not observed while a session for that game is still open, because the counter is written on exit and the recorder
   closes the session a few seconds later: observing in that window would credit the
   session's own not-yet-flushed time twice. Existing installations keep their exact
   totals until their emulator next writes a counter.

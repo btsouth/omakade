@@ -252,9 +252,27 @@ SessionRow sessionByKey(QSqlDatabase& database, const QString& sessionKey) {
   return row;
 }
 
+// Deletes one session and lowers the game's recorded-time watermark by the time that
+// was removed. The watermark is an absolute total, so a deletion that left it alone
+// would sit above the recorded total forever, and the credit max(0, tracked -
+// watermark) would then show none of the play that happened after the deletion. Only
+// the watermark is adjusted: the baseline is a historical figure and must not move.
 bool deleteSession(QSqlDatabase& database, const QString& sessionKey) {
   if (sessionKey.trimmed().isEmpty()) {
     return false;
+  }
+  QString gamePath;
+  qint64 removedSeconds = 0;
+  {
+    QSqlQuery read(database);
+    read.prepare(QStringLiteral("SELECT game_path, seconds FROM play_sessions "
+                                "WHERE session_key = ? AND ended_at > 0"));
+    read.addBindValue(sessionKey);
+    if (!read.exec() || !read.next()) {
+      return false;
+    }
+    gamePath = read.value(0).toString();
+    removedSeconds = read.value(1).toLongLong();
   }
   QSqlQuery query(database);
   // ended_at = 0 is a session the recorder is still tracking; a deletion would
@@ -262,7 +280,11 @@ bool deleteSession(QSqlDatabase& database, const QString& sessionKey) {
   query.prepare(QStringLiteral(
       "DELETE FROM play_sessions WHERE session_key = ? AND ended_at > 0"));
   query.addBindValue(sessionKey);
-  return query.exec() && query.numRowsAffected() == 1;
+  if (!query.exec() || query.numRowsAffected() != 1) {
+    return false;
+  }
+  lowerObservedWatermark(database, gamePath, removedSeconds);
+  return true;
 }
 
 int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths, int pathLimit) {
@@ -284,6 +306,28 @@ int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths,
   for (qsizetype index = 0; index < paths.size(); ++index) {
     placeholders.append(QStringLiteral("?"));
   }
+  // The recorded-time watermark is an absolute total, so deleting sessions without
+  // lowering it would leave the watermark above the recorded total forever. The credit
+  // is max(0, tracked - watermark), so the game would then show none of the play that
+  // happened after the deletion, permanently. Read the time being removed first and
+  // take it off the watermark, which is what keeps a deletion from suppressing future
+  // playtime.
+  QHash<QString, qint64> removed;
+  {
+    QSqlQuery read(database);
+    read.prepare(QStringLiteral("SELECT game_path, COALESCE(SUM(seconds), 0) FROM play_sessions "
+                                "WHERE ended_at > 0 AND game_path IN (%1) GROUP BY game_path")
+                     .arg(placeholders.join(',')));
+    for (const QString& path : paths) {
+      read.addBindValue(path);
+    }
+    if (!read.exec()) {
+      return -1;
+    }
+    while (read.next()) {
+      removed.insert(read.value(0).toString(), read.value(1).toLongLong());
+    }
+  }
   QSqlQuery query(database);
   query.prepare(QStringLiteral("DELETE FROM play_sessions WHERE ended_at > 0 AND game_path IN "
                                "(%1)")
@@ -294,7 +338,28 @@ int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths,
   if (!query.exec()) {
     return -1;
   }
-  return query.numRowsAffected();
+  const int deleted = query.numRowsAffected();
+  for (auto entry = removed.cbegin(); entry != removed.cend(); ++entry) {
+    lowerObservedWatermark(database, entry.key(), entry.value());
+  }
+  return deleted;
+}
+
+// Takes recorded time off a game's watermark after that much history was deleted.
+// Only the watermark moves: the baseline is a historical figure. A watermark of -1
+// means unobserved and must stay that way, and the result never goes below zero,
+// because a negative watermark would claim time was seen that never was.
+void lowerObservedWatermark(QSqlDatabase& database, const QString& gamePath, qint64 seconds) {
+  if (gamePath.isEmpty() || seconds <= 0) {
+    return;
+  }
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral("UPDATE play_baselines SET observed_seconds = MAX(0, "
+                               "observed_seconds - ?) WHERE game_path = ? AND "
+                               "observed_seconds >= 0"));
+  query.addBindValue(seconds);
+  query.addBindValue(gamePath);
+  query.exec();
 }
 
 QHash<QString, qint64> trackedSecondsByPath(QSqlDatabase& database) {

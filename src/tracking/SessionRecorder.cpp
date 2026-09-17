@@ -79,7 +79,7 @@ void SessionRecorder::recover(const QVector<ProcessSnapshot>& processes,
     // and stop where the last heartbeat proved it was still playing.
     if (!SessionDatabase::endSession(m_database, row.id, qMax(row.startedAt, row.heartbeatAt),
                                      row.seconds)) {
-      m_pendingCloses.append({row.id, qMax(row.startedAt, row.heartbeatAt), row.seconds});
+      queueClosed(row.id, qMax(row.startedAt, row.heartbeatAt), row.seconds);
       m_lastCloseAttemptMs = nowMs;
       m_storageFailure = true;
     }
@@ -100,7 +100,7 @@ SessionRecorder::closeSession(QHash<QString, ActiveSession>::Iterator session, q
   const qint64 totalMs =
       session->elapsedMs + (session->paused ? 0 : nowMs - session->markMs);
   if (!SessionDatabase::endSession(m_database, session->id, nowWall, totalMs / 1000)) {
-    m_pendingCloses.append({session->id, nowWall, totalMs / 1000});
+    queueClosed(session->id, nowWall, totalMs / 1000);
     m_lastCloseAttemptMs = nowMs;
     m_storageFailure = true;
   }
@@ -108,6 +108,20 @@ SessionRecorder::closeSession(QHash<QString, ActiveSession>::Iterator session, q
     m_rescanRequests.append(session->rescanSource);
   }
   return m_active.erase(session);
+}
+
+void SessionRecorder::queueClosed(qint64 id, qint64 endedAt, qint64 seconds) {
+  // A storage failure that lasts (a full disk, a read-only database) would otherwise
+  // queue one entry per session for the life of the daemon, and every poll would retry
+  // all of them. The oldest are dropped once the queue is implausibly long: a session
+  // that could not be closed after this many attempts is not going to be, and its row
+  // still holds whatever was last flushed, so the recorded time is not lost, only the
+  // tail of it.
+  constexpr int kMaxPendingCloses = 64;
+  m_pendingCloses.append({id, endedAt, seconds});
+  while (m_pendingCloses.size() > kMaxPendingCloses) {
+    m_pendingCloses.removeFirst();
+  }
 }
 
 void SessionRecorder::retryClosed(qint64 nowMs) {

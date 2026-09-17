@@ -833,6 +833,9 @@ private slots:
   void discordPresenceTalksToADiscordSocket();
   void sessionRecorderPausesWhileUnfocused();
   void sessionPlaytimeReconcilesImportedAndRecorded();
+  void deletingHistoryDoesNotSuppressLaterPlaytime();
+  void aNewGameInTheSameProcessDoesNotInheritThePendingStop();
+  void pendingClosesAreBoundedUnderAStorageFailure();
   void shippedProfilesMatchCemuWua();
   void shippedProfilesMatchXenia();
   void processDiscoveryStaysWithinCurrentUser();
@@ -7712,6 +7715,244 @@ void CoreTests::sessionRecorderPausesWhileUnfocused() {
     database = {};
   }
   QSqlDatabase::removeDatabase(connection);
+}
+
+void CoreTests::deletingHistoryDoesNotSuppressLaterPlaytime() {
+  // The recorded-time watermark is an absolute total, so a deletion that left it alone
+  // would sit above the recorded total and the credit max(0, tracked - watermark) would
+  // then show none of the play that happened afterwards. That would make a game's
+  // playtime permanently and invisibly wrong the first time anyone cleared its history,
+  // so both the single-session and clear-all paths are pinned here.
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+  const QString connection = QStringLiteral("test-delete-watermark");
+  const QString game = QStringLiteral("/games/cleared.nsp");
+  const auto addSession = [&](qint64 startedAt, qint64 seconds) {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 id = SessionDatabase::beginSession(database, game, "Ryujinx", startedAt, 5, 5);
+    QVERIFY(id > 0);
+    QVERIFY(SessionDatabase::endSession(database, id, startedAt + seconds, seconds));
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  };
+  {
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 3600);
+    QCOMPARE(store.displaySeconds(game, 3600), qint64(3600));
+  }
+  addSession(1000, 600);
+  {
+    // The emulator wrote its counter on exit: 3600 + 600.
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 4200);
+    QCOMPARE(store.displaySeconds(game, 4200), qint64(4200));
+  }
+  // Delete that one session, the way the Play History view does.
+  {
+    PlaySessionStore store(path);
+    QString key;
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, path, connection));
+      QSqlQuery query(database);
+      QVERIFY(query.exec(QStringLiteral("SELECT session_key FROM play_sessions")));
+      QVERIFY(query.next());
+      key = query.value(0).toString();
+      database.close();
+      database = {};
+      QSqlDatabase::removeDatabase(connection);
+    }
+    QVERIFY(store.deleteSession(key, {game}));
+    QVERIFY(store.historyForPaths({game}, 8).isEmpty());
+    // The total falls back to the imported figure, which is all that is left.
+    QCOMPARE(store.displaySeconds(game, 4200), qint64(4200));
+  }
+  // 900 seconds of new play. The emulator counter has not moved yet, so this play is
+  // only visible through the watermark credit, which is exactly what the deletion used
+  // to break: the truth is 4200 + 900.
+  addSession(5000, 900);
+  {
+    PlaySessionStore store(path);
+    QCOMPARE(store.displaySeconds(game, 4200), qint64(5100));
+  }
+  {
+    // Once the emulator writes its own counter the same figure must hold, and it must
+    // never exceed the truth.
+    PlaySessionStore store(path);
+    store.observeImportedPlaytime(game, 5100);
+    QCOMPARE(store.displaySeconds(game, 5100), qint64(5100));
+  }
+  // The clear-all path behaves the same way. Two sessions were recorded since the last
+  // delete (the 900 s and this 300 s one).
+  addSession(9000, 300);
+  {
+    PlaySessionStore store(path);
+    QCOMPARE(store.deleteHistoryForPaths({game}), 2);
+    QCOMPARE(store.historyForPaths({game}, 8).size(), 0);
+  }
+  addSession(20000, 600);
+  {
+    PlaySessionStore store(path);
+    QCOMPARE(store.displaySeconds(game, 5100), qint64(5700));
+  }
+  // Deleting everything, repeatedly, must never push the watermark negative: a negative
+  // figure would claim time was observed that never was.
+  {
+    PlaySessionStore store(path);
+    store.deleteHistoryForPaths({game});
+    store.deleteHistoryForPaths({game});
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral("SELECT observed_seconds FROM play_baselines")));
+    QVERIFY(query.next());
+    QVERIFY(query.value(0).toLongLong() >= 0);
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  // A game whose counter never moves and whose history is cleared still shows the play
+  // recorded after the clear, rather than the stale imported figure for ever.
+  addSession(30000, 120);
+  {
+    PlaySessionStore store(path);
+    QCOMPARE(store.displaySeconds(game, 5100), qint64(5220));
+  }
+}
+
+void CoreTests::aNewGameInTheSameProcessDoesNotInheritThePendingStop() {
+  // An emulator can load a different game inside the same process from its own file
+  // picker, which the recorder supports by closing the old session and opening a new
+  // one on the same pid and procfs start time. A pending stop keyed on the process
+  // alone would hand the new game the previous game's stop state, offering the player a
+  // force stop nobody asked for. The stand-in ignores SIGTERM so it is still running
+  // when the second game appears, which is the case the defect needs.
+  QTemporaryDir temp;
+  const auto path = temp.filePath(QStringLiteral("library.sqlite3"));
+  const QString connection = QStringLiteral("test-stop-identity");
+  const QString first = QStringLiteral("/games/first.nsp");
+  const QString second = QStringLiteral("/games/second.nsp");
+  QProcess standIn;
+  // A real process with a real identity that survives SIGTERM, which is what the defect
+  // needs: the session must still be alive when the second game appears. Its binary
+  // name is irrelevant here, because the session row is recorded directly and the
+  // identity check only compares the pid and the procfs start time.
+  standIn.start(QStringLiteral("/bin/sh"),
+                {QStringLiteral("-c"), QStringLiteral("trap '' TERM; sleep 120")});
+  QVERIFY(standIn.waitForStarted(5000));
+  const qint64 pid = standIn.processId();
+  qint64 procStart = -1;
+  for (const auto& process : ProcFs::listProcesses()) {
+    if (process.pid == pid) procStart = process.procStart;
+  }
+  QVERIFY(procStart > 0);
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 id = SessionDatabase::beginSession(database, first, "Ryujinx", 1000, pid, procStart);
+    QVERIFY(id > 0);
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  PlaySessionStore store(path);
+  // A real stop of a real process: this is what puts a pending stop in the bookkeeping.
+  QVERIFY2(store.stopSession(pid, procStart), "the recorded process could not be stopped");
+  // The stop is now pending for the first game.
+  store.refreshNowPlaying();
+  bool sawFirstStopping = false;
+  for (const QVariant& row : store.nowPlaying()) {
+    const QVariantMap map = row.toMap();
+    if (map.value(QStringLiteral("path")).toString() == first) {
+      sawFirstStopping = map.value(QStringLiteral("stopping")).toBool();
+    }
+  }
+  QVERIFY2(sawFirstStopping, "the first game was not reported as stopping after the stop");
+  // The same process now loads a second game, exactly as the recorder does.
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const QVector<SessionDatabase::SessionRow> open = SessionDatabase::openSessions(database);
+    QCOMPARE(open.size(), 1);
+    QCOMPARE(open.first().pid, pid);
+    QCOMPARE(open.first().procStart, procStart);
+    QVERIFY(SessionDatabase::endSession(database, open.first().id, 2000, 60));
+    const qint64 id = SessionDatabase::beginSession(database, second, "Ryujinx", 2000, pid, procStart);
+    QVERIFY(id > 0);
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+  store.refreshNowPlaying();
+  bool sawSecond = false;
+  bool sawFirstAgain = false;
+  for (const QVariant& row : store.nowPlaying()) {
+    const QVariantMap map = row.toMap();
+    const QString rowPath = map.value(QStringLiteral("path")).toString();
+    if (rowPath == second) {
+      sawSecond = true;
+      QVERIFY2(!map.value(QStringLiteral("stopping")).toBool(),
+               "a new game in the same process inherited the previous game's stop");
+      QVERIFY2(!map.value(QStringLiteral("forceReady")).toBool(),
+               "a new game in the same process was offered a force stop nobody requested");
+    }
+    if (rowPath == first) {
+      sawFirstAgain = true;
+    }
+  }
+  QVERIFY2(sawSecond, "the second game was not listed at all");
+  QVERIFY(!sawFirstAgain);
+  standIn.kill();
+  standIn.waitForFinished(3000);
+}
+
+void CoreTests::pendingClosesAreBoundedUnderAStorageFailure() {
+  // A storage failure that never clears must not queue one entry per session for the
+  // life of the daemon, with every poll retrying all of them. The queue is bounded; the
+  // rows themselves keep whatever was last flushed.
+  QSqlDatabase database;
+  QVERIFY(SessionDatabase::open(database, QStringLiteral(":memory:"), "test-pending-bound"));
+  // Refuse every close so nothing can be removed from the queue.
+  {
+    QSqlQuery trigger(database);
+    QVERIFY(trigger.exec(QStringLiteral(
+        "CREATE TRIGGER deny_close BEFORE UPDATE ON play_sessions BEGIN SELECT RAISE(ABORT, 'no'); "
+        "END")));
+  }
+  qint64 nowMs = 0;
+  SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+  recorder.setFlushIntervalMs(1);
+  const int sessions = 200;
+  for (int index = 0; index < sessions; ++index) {
+    SessionMatch match;
+    match.pid = 5000 + index;
+    match.procStart = 9000 + index;
+    match.gamePath = QStringLiteral("/games/bounded-%1.nsp").arg(index);
+    match.emulator = QStringLiteral("Ryujinx");
+    nowMs = index * 10000;
+    recorder.sync({match}, 1000 + index);
+    // The game exits: the close is attempted, denied, and queued.
+    nowMs += 5000;
+    recorder.sync({}, 2000 + index);
+  }
+  qInfo() << "queued closes after" << sessions << "sessions:" << recorder.pendingCloseCount();
+  QVERIFY2(recorder.pendingCloseCount() <= 64,
+           qPrintable(QStringLiteral("pending closes grew to %1").arg(recorder.pendingCloseCount())));
+  QVERIFY(recorder.takeStorageFailure());
+  // A queue that clears once storage recovers still works.
+  {
+    QSqlQuery dropTrigger(database);
+    QVERIFY(dropTrigger.exec(QStringLiteral("DROP TRIGGER deny_close")));
+  }
+  nowMs += 100000;
+  recorder.sync({}, 99999);
+  QCOMPARE(recorder.pendingCloseCount(), 0);
+  database.close();
+  database = {};
+  QSqlDatabase::removeDatabase("test-pending-bound");
 }
 
 void CoreTests::shippedProfilesMatchCemuWua() {

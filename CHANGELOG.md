@@ -29,7 +29,10 @@ Sessions you can see, stop, and manage.
   session can be deleted after a confirmation that starts on the safe choice. A
   session the recorder is still tracking is never deleted, and deleting a session
   only forgets recorded time: imported emulator playtime is left alone, so the
-  displayed total can fall back to it but a deletion never adds time.
+  displayed total can fall back to it but a deletion never adds time. Deleting
+  history also no longer hides playtime recorded afterwards, which it previously
+  did: the total would stay stuck at the imported figure for as long as the
+  deleted time, so a cleared game stopped showing new play.
 - Playtime from an emulator's own counter and playtime Omakade recorded are now
   reconciled properly. Previously a game played while the recorder was off left
   the emulator's counter ahead, and sessions recorded afterwards vanished behind

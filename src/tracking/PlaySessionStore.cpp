@@ -28,11 +28,20 @@ constexpr int kNowPlayingActiveIntervalMs = 1000;
 // How long a game gets to act on a graceful stop before the view offers force.
 constexpr qint64 kStopGraceSeconds = 8;
 
-// A running session is identified by its pid together with the procfs start time
-// it was recorded with, never by the pid alone. A relaunch can reuse a pid, and
-// the two sessions must not be confused for one another.
+// A running session is identified by its pid together with the procfs start time it
+// was recorded with, never by the pid alone. A relaunch can reuse a pid, and the two
+// sessions must not be confused for one another.
 QString identityFor(qint64 pid, qint64 procStart) {
   return QStringLiteral("%1:%2").arg(pid).arg(procStart);
+}
+
+// The key a pending stop is remembered under. A game's identity has to include the
+// game itself: an emulator can load a different game inside the same process (from its
+// own file picker) and does so on the same pid and procfs start time, so keying on the
+// process alone would hand the new game the previous game's stop state and offer it a
+// force stop nobody asked for.
+QString stopKeyFor(qint64 pid, qint64 procStart, const QString& gamePath) {
+  return QStringLiteral("%1|%2").arg(identityFor(pid, procStart), gamePath);
 }
 } // namespace
 
@@ -181,7 +190,8 @@ void PlaySessionStore::refreshNowPlaying() {
       // A stop belongs to the recorded process identity, not to the pid alone: a
       // relaunch can reuse a pid, and the new session must never inherit the old
       // session's stop state or be force-killed for a signal it never received.
-      const auto pending = m_pendingStops.constFind(identityFor(session.pid, session.procStart));
+      const auto pending =
+          m_pendingStops.constFind(stopKeyFor(session.pid, session.procStart, session.gamePath));
       const bool stopping = pending != m_pendingStops.cend();
       // Prefer the recorder's own clock, the accumulated seconds plus whatever has
       // elapsed since the last flush, so the view agrees with what gets recorded.
@@ -205,7 +215,7 @@ void PlaySessionStore::refreshNowPlaying() {
     for (auto attempt = m_pendingStops.begin(); attempt != m_pendingStops.end();) {
       const bool stillOpen = std::any_of(
           open.cbegin(), open.cend(), [&attempt](const SessionDatabase::SessionRow& session) {
-            return identityFor(session.pid, session.procStart) == attempt.key();
+            return stopKeyFor(session.pid, session.procStart, session.gamePath) == attempt.key();
           });
       attempt = stillOpen ? std::next(attempt) : m_pendingStops.erase(attempt);
     }
@@ -235,6 +245,18 @@ bool PlaySessionStore::trackedSessionOpen(qint64 pid, qint64 procStart) {
   });
 }
 
+QString PlaySessionStore::gamePathFor(qint64 pid, qint64 procStart) {
+  if (pid <= 0 || procStart <= 0) {
+    return {};
+  }
+  for (const SessionDatabase::SessionRow& session : SessionDatabase::openSessions(m_database)) {
+    if (session.pid == pid && session.procStart == procStart) {
+      return session.gamePath;
+    }
+  }
+  return {};
+}
+
 bool PlaySessionStore::stopSession(qint64 pid, qint64 procStart) {
   // Only a game the recorder is tracking right now can be stopped from here.
   if (!m_valid || !trackedSessionOpen(pid, procStart)) {
@@ -244,10 +266,10 @@ bool PlaySessionStore::stopSession(qint64 pid, qint64 procStart) {
       SessionStopper::terminate(pid, procStart, ProcFs::processAlive, ProcFs::sendSignal);
   if (result == SessionStopper::Result::Signalled) {
     m_pendingStops.insert(
-        identityFor(pid, procStart),
+        stopKeyFor(pid, procStart, gamePathFor(pid, procStart)),
         StopAttempt{procStart, QDateTime::currentSecsSinceEpoch() + kStopGraceSeconds});
   } else {
-    m_pendingStops.remove(identityFor(pid, procStart));
+    m_pendingStops.remove(stopKeyFor(pid, procStart, gamePathFor(pid, procStart)));
   }
   refreshNowPlaying();
   return result == SessionStopper::Result::Signalled;
@@ -260,7 +282,7 @@ bool PlaySessionStore::forceStopSession(qint64 pid, qint64 procStart) {
   const SessionStopper::Result result =
       SessionStopper::forceKill(pid, procStart, ProcFs::processAlive, ProcFs::sendSignal);
   if (result != SessionStopper::Result::Signalled) {
-    m_pendingStops.remove(identityFor(pid, procStart));
+    m_pendingStops.remove(stopKeyFor(pid, procStart, gamePathFor(pid, procStart)));
   }
   refreshNowPlaying();
   return result == SessionStopper::Result::Signalled;

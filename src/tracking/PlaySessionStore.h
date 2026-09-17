@@ -109,6 +109,10 @@ private:
 
   void refresh();
   [[nodiscard]] bool trackedSessionOpen(qint64 pid, qint64 procStart);
+  // The game path recorded for that open session, or empty when there is none. A
+  // pending stop is keyed on the game as well as the process, because an emulator can
+  // load a different game inside the same process.
+  [[nodiscard]] QString gamePathFor(qint64 pid, qint64 procStart);
 
   QSqlDatabase m_database;
   QString m_connectionName;

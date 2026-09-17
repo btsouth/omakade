@@ -90,6 +90,9 @@ private:
   closeSession(QHash<QString, ActiveSession>::Iterator session, qint64 nowMs, qint64 nowWall);
   void flush(ActiveSession& session, qint64 nowMs, qint64 nowWall);
   void retryClosed(qint64 nowMs);
+  // Adds a close to the retry queue, holding the queue at its cap so a lasting storage
+  // failure cannot grow it without bound.
+  void queueClosed(qint64 id, qint64 endedAt, qint64 seconds);
   struct PendingClose {
     qint64 id;
     qint64 endedAt;

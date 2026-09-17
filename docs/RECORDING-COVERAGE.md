@@ -32,7 +32,9 @@ Paused emulator time counts while its process remains matched. Imported and
 recorded totals are reconciled per game: recorded time never lowers a total, and
 play recorded since the emulator's counter was last seen is added, because that
 counter cannot already include it. A session the emulator later writes into its
-own counter is not counted twice. A counter is not observed while a session for that
+own counter is not counted twice. Deleting a game's history takes the removed time off
+the watermark, so a cleared game still shows later play rather than staying stuck at its
+imported figure. A counter is not observed while a session for that
 game is still open, since the emulator writes its counter on exit and the recorder
 closes the session a few seconds later: observing in that window would credit the
 session's not-yet-flushed time twice. Discord Rich Presence is off by default, publishes
