@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <csignal>
 #include <unistd.h>
 
 namespace {
@@ -79,6 +80,13 @@ bool processAlive(qint64 pid, qint64 procStart) {
   char state = '?';
   const qint64 current = statStartTime(stat, &state);
   return current == procStart && state != 'Z' && state != 'X';
+}
+
+bool sendSignal(qint64 pid, int signal) {
+  if (pid <= 0 || signal <= 0) {
+    return false;
+  }
+  return ::kill(static_cast<pid_t>(pid), signal) == 0;
 }
 
 } // namespace ProcFs

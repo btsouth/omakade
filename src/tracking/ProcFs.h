@@ -22,4 +22,8 @@ namespace ProcFs {
 
 [[nodiscard]] bool processAlive(qint64 pid, qint64 procStart);
 
+// Delivers a signal to a process. Returns false when the process is gone or the
+// signal could not be sent, so callers never report a stop that did not happen.
+[[nodiscard]] bool sendSignal(qint64 pid, int signal);
+
 } // namespace ProcFs

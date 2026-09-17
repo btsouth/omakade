@@ -41,6 +41,7 @@
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
 #include "tracking/PlaySessionStore.h"
+#include "tracking/ProcFs.h"
 #include "tracking/SessionDatabase.h"
 #include "saves/SaveBackups.h"
 
@@ -63,6 +64,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -597,6 +599,9 @@ int main(int argc, char* argv[]) {
   const QString renderSize = optionValue(application.arguments(), QStringLiteral("--render-size"));
   const QString renderOverlay =
       optionValue(application.arguments(), QStringLiteral("--render-overlay"));
+  // The Now Playing render fixture keeps the pid of its stand-in game so the check can
+  // find that exact row's stop control.
+  qint64 nowPlayingFixturePid = 0;
   // `--play Source:runner:id` launches one library game, through the running window when
   // there is one, and `--quit` closes the running window. Sunshine app entries use both.
   const QString playKey = optionValue(application.arguments(), QStringLiteral("--play"));
@@ -858,7 +863,8 @@ int main(int argc, char* argv[]) {
   if (gogSettingsFixture || linkedPreferenceFixture || backupFixture || artworkEditorTest ||
       savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") ||
       renderOverlay == QStringLiteral("bulk-editor") ||
-      renderOverlay == QStringLiteral("session-history") || renderOverlay == "library-repair-controls") {
+      renderOverlay == QStringLiteral("session-history") ||
+      renderOverlay == QStringLiteral("now-playing") || renderOverlay == "library-repair-controls") {
     if (!artworkFixture.isValid()) return EXIT_FAILURE;
     libraryDatabasePath = artworkFixture.filePath(QStringLiteral("library.sqlite"));
   }
@@ -1358,6 +1364,38 @@ int main(int argc, char* argv[]) {
     playSessionStore = std::make_unique<PlaySessionStore>(libraryDatabasePath);
     playSessionStore->setEnabled(preferences.trackPlaySessions());
   }
+  if (renderOverlay == QStringLiteral("now-playing")) {
+    // A live session for the Now Playing render, backed by a real process so the
+    // view exercises the same liveness check it uses in normal runs. The stand-in
+    // ignores SIGTERM, exactly like an emulator that only closes when it is forced.
+    const QString connection = QStringLiteral("omakade-now-playing-render");
+    QSqlDatabase database;
+    if (!SessionDatabase::open(database, libraryDatabasePath, connection)) return EXIT_FAILURE;
+    auto* fixtureGame = new QProcess(&application);
+    fixtureGame->start(QStringLiteral("/bin/sh"),
+                       {QStringLiteral("-c"), QStringLiteral("trap '' TERM; sleep 300")});
+    if (!fixtureGame->waitForStarted(5000)) return EXIT_FAILURE;
+    qint64 procStart = -1;
+    for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
+      if (snapshot.pid == fixtureGame->processId()) {
+        procStart = snapshot.procStart;
+        break;
+      }
+    }
+    const bool recorded =
+        procStart >= 0 &&
+        SessionDatabase::beginSession(
+            database, QStringLiteral("/data/Emulation/Games/Xbox/Dante's Inferno (USA)/default.xex"),
+            QStringLiteral("Xenia"), QDateTime::currentSecsSinceEpoch() - 754,
+            fixtureGame->processId(), procStart) > 0;
+    nowPlayingFixturePid = fixtureGame->processId();
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+    if (!recorded) return EXIT_FAILURE;
+    playSessionStore = std::make_unique<PlaySessionStore>(libraryDatabasePath);
+    playSessionStore->setEnabled(preferences.trackPlaySessions());
+  }
   engine.rootContext()->setContextProperty(QStringLiteral("SessionRecorderStatus"), playSessionStore.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Controller"), &controller);
   engine.rootContext()->setContextProperty(QStringLiteral("Achievements"), &achievements);
@@ -1663,6 +1701,49 @@ int main(int argc, char* argv[]) {
             });
           });
         });
+      }
+      if (renderOverlay == QStringLiteral("now-playing")) {
+        // Home has to be the open view: the panel lives on the Home screen.
+        quickWindow->setProperty("homeOpen", true);
+        auto* poll = new QTimer(quickWindow);
+        auto* attempts = new int(0);
+        poll->setInterval(100);
+        QObject::connect(poll, &QTimer::timeout, quickWindow,
+                         [quickWindow, poll, attempts, nowPlayingFixturePid, &application] {
+          const QString stopName =
+              QStringLiteral("nowPlayingStop_%1").arg(nowPlayingFixturePid);
+          auto* section = findVisualItem(quickWindow->contentItem(), "homeNowPlayingSection");
+          auto* stop = findVisualItem(quickWindow->contentItem(), stopName);
+          if (section == nullptr || !section->isVisible() || stop == nullptr || !stop->isVisible() ||
+              !stop->isEnabled()) {
+            if (++*attempts < 8) return;
+            poll->stop();
+            qCritical() << "Now Playing did not show a live session with a usable stop control"
+                        << "section:" << (section != nullptr) << "visible:"
+                        << (section != nullptr && section->isVisible()) << "stop:" << (stop != nullptr);
+            application.exit(EXIT_FAILURE);
+            return;
+          }
+          if (stop->property("text").toString() != QStringLiteral("STOP")) {
+            poll->stop();
+            qCritical() << "Now Playing stop control had an unexpected label"
+                        << stop->property("text").toString();
+            application.exit(EXIT_FAILURE);
+            return;
+          }
+          poll->stop();
+          QMetaObject::invokeMethod(stop, "clicked");
+          QTimer::singleShot(150, quickWindow, [quickWindow, stopName, &application] {
+            auto* stopping = findVisualItem(quickWindow->contentItem(), stopName);
+            if (stopping == nullptr ||
+                !stopping->property("text").toString().startsWith(QStringLiteral("STOPPING")) ||
+                stopping->isEnabled()) {
+              qCritical() << "Now Playing did not report the stop request";
+              application.exit(EXIT_FAILURE);
+            }
+          });
+        });
+        poll->start();
       }
       if (renderOverlay.startsWith("save-backups")) {
         QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));

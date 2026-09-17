@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Sessions you can see and stop.
+
+- Home now shows a Now Playing panel with every session the recorder is tracking,
+  each with the game name, its source, and how long it has been running. The stop
+  control asks the game to exit first, then offers a forced stop when a game ignores
+  the request. Only a tracked session can be stopped, and only while the recorded
+  process identity still matches, so a reused process id is never signalled.
+
 ## 1.10.0
 
 Xenia (Xbox 360) support and a TV setup for the couch.

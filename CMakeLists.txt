@@ -70,8 +70,12 @@ add_library(omakade_tracking STATIC
   src/tracking/ProcessMatcher.h
   src/tracking/SessionDatabase.cpp
   src/tracking/SessionDatabase.h
+  src/tracking/SessionDisplay.cpp
+  src/tracking/SessionDisplay.h
   src/tracking/SessionRecorder.cpp
   src/tracking/SessionRecorder.h
+  src/tracking/SessionStopper.cpp
+  src/tracking/SessionStopper.h
 )
 
 target_include_directories(omakade_tracking PUBLIC src)

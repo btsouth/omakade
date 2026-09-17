@@ -105,6 +105,20 @@ FocusScope {
         return parts.filter(value => !!value).join(" · ")
     }
 
+    function elapsedText(seconds) {
+        const total = Math.max(0, Math.floor(seconds || 0))
+        if (total < 60) return "<1m"
+        const minutes = Math.floor(total / 60)
+        if (minutes < 60) return minutes + "m"
+        const hours = Math.floor(minutes / 60)
+        return (minutes % 60) ? hours + "h " + (minutes % 60) + "m" : hours + "h"
+    }
+    function stopRunningGame(game) {
+        if (!SessionRecorderStatus) return
+        if (game.forceReady) SessionRecorderStatus.forceStopSession(game.pid, game.procStart)
+        else SessionRecorderStatus.stopSession(game.pid, game.procStart)
+    }
+
     component SectionTitle: RowLayout {
         property string title
         property string caption: ""
@@ -301,6 +315,62 @@ FocusScope {
                 spacing: 18
                 Text { text: Home.gameCount + " games ready to explore"; color: Theme.mutedText; font.family: Theme.fontFamily }
                 Text { Layout.fillWidth: true; visible: Home.error !== "" || root.notice !== ""; text: Home.error || root.notice; color: Theme.brightForeground; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
+                Rectangle {
+                    objectName: "homeNowPlayingSection"
+                    Layout.fillWidth: true
+                    visible: !!SessionRecorderStatus && SessionRecorderStatus.nowPlaying.length > 0
+                    Layout.preferredHeight: nowPlayingColumn.implicitHeight + 28
+                    radius: 10
+                    color: Qt.alpha(Theme.accent, 0.10)
+                    border.color: Qt.alpha(Theme.accent, 0.35)
+                    ColumnLayout {
+                        id: nowPlayingColumn
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14
+                        spacing: 10
+                        Text { text: "NOW PLAYING"; color: Theme.accent; font.family: Theme.fontFamily; font.pixelSize: 12 * root.scaleFactor }
+                        Repeater {
+                            objectName: "homeNowPlayingList"
+                            model: SessionRecorderStatus ? SessionRecorderStatus.nowPlaying : []
+                            RowLayout {
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                spacing: 10
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData.name || "Running game"
+                                        color: Theme.brightForeground
+                                        font.family: Theme.fontFamily
+                                        font.bold: true
+                                        font.pixelSize: 14 * root.scaleFactor
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: (modelData.source ? modelData.source + " · " : "")
+                                              + root.elapsedText(modelData.elapsedSeconds)
+                                              + (modelData.stopping ? " · closing" : "")
+                                        color: Theme.mutedText
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11 * root.scaleFactor
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                GlassButton {
+                                    objectName: "nowPlayingStop_" + modelData.pid
+                                    compact: true
+                                    text: modelData.forceReady ? "FORCE STOP" : modelData.stopping ? "STOPPING…" : "STOP"
+                                    enabled: !modelData.stopping || modelData.forceReady
+                                    Accessible.name: text + " " + (modelData.name || "")
+                                    onClicked: root.stopRunningGame(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
                 Rectangle {
                     objectName: "homeFeaturedSection"
                     Layout.fillWidth: true

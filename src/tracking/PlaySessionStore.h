@@ -22,6 +22,9 @@ class PlaySessionStore final : public QObject {
   Q_PROPERTY(bool recorderRunning READ recorderRunning NOTIFY recorderStatusChanged)
   Q_PROPERTY(bool storageAvailable READ storageAvailable CONSTANT)
   Q_PROPERTY(int revision READ revision NOTIFY totalsChanged)
+  // Live sessions from the recorder, refreshed continuously so the Now Playing
+  // view can show what is running right now and offer to stop it.
+  Q_PROPERTY(QVariantList nowPlaying READ nowPlaying NOTIFY nowPlayingChanged)
 
 public:
   explicit PlaySessionStore(const QString& databasePath, QObject* parent = nullptr);
@@ -35,6 +38,16 @@ public:
   int revision() const { return m_revision; }
   Q_INVOKABLE void refreshRecorderStatus();
   Q_INVOKABLE QVariantList historyForPaths(const QStringList& gamePaths, int limit = 8) const;
+
+  // Sessions that are running right now, each verified against its recorded
+  // process so a closed game never lingers in the list.
+  [[nodiscard]] QVariantList nowPlaying() const { return m_nowPlaying; }
+  Q_INVOKABLE void refreshNowPlaying();
+  // Asks the recorded process to exit, then reports it as stopping until the
+  // session closes. forceStopSession is the escalation for a game that ignores
+  // the polite request. Both verify the recorded process identity first.
+  Q_INVOKABLE bool stopSession(qint64 pid, qint64 procStart);
+  Q_INVOKABLE bool forceStopSession(qint64 pid, qint64 procStart);
   static bool recorderOwnsDatabase(const QString& databasePath);
   // A negative import means this source has no imported playtime counter.
   static QString provenance(const PlaySessionStore* store, const QString& gamePath,
@@ -63,9 +76,16 @@ signals:
   void enabledChanged();
   void recorderStatusChanged();
   void totalsChanged();
+  void nowPlayingChanged();
 
 private:
+  struct StopAttempt {
+    qint64 procStart = -1;
+    qint64 deadline = 0;
+  };
+
   void refresh();
+  [[nodiscard]] bool trackedSessionOpen(qint64 pid, qint64 procStart);
 
   QSqlDatabase m_database;
   QString m_connectionName;
@@ -77,5 +97,8 @@ private:
   QHash<QString, qint64> m_trackedSeconds;
   QHash<QString, qint64> m_baselines;
   QHash<QString, qint64> m_lastPlayed;
+  QVariantList m_nowPlaying;
+  QHash<qint64, StopAttempt> m_pendingStops;
   QTimer* m_refreshTimer = nullptr;
+  QTimer* m_nowPlayingTimer = nullptr;
 };

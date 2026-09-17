@@ -1,6 +1,9 @@
 #include "tracking/PlaySessionStore.h"
 
+#include "tracking/ProcFs.h"
 #include "tracking/SessionDatabase.h"
+#include "tracking/SessionDisplay.h"
+#include "tracking/SessionStopper.h"
 #include "library/GameRoles.h"
 
 #include <QDateTime>
@@ -13,8 +16,17 @@
 #include <QUuid>
 #include <QVariantMap>
 
+#include <algorithm>
+#include <iterator>
+
 namespace {
 constexpr int kRefreshIntervalMs = 20000;
+// The Now Playing list polls faster than the playtime totals: it is a tiny query
+// and the view has to notice a game starting or exiting while it is on screen.
+constexpr int kNowPlayingIdleIntervalMs = 3000;
+constexpr int kNowPlayingActiveIntervalMs = 1000;
+// How long a game gets to act on a graceful stop before the view offers force.
+constexpr qint64 kStopGraceSeconds = 8;
 } // namespace
 
 PlaySessionStore::PlaySessionStore(const QString& databasePath, QObject* parent)
@@ -28,10 +40,16 @@ PlaySessionStore::PlaySessionStore(const QString& databasePath, QObject* parent)
   m_refreshTimer->setInterval(kRefreshIntervalMs);
   connect(m_refreshTimer, &QTimer::timeout, this, &PlaySessionStore::refresh);
   m_refreshTimer->start();
+  m_nowPlayingTimer = new QTimer(this);
+  m_nowPlayingTimer->setInterval(kNowPlayingIdleIntervalMs);
+  connect(m_nowPlayingTimer, &QTimer::timeout, this, &PlaySessionStore::refreshNowPlaying);
+  m_nowPlayingTimer->start();
+  refreshNowPlaying();
 }
 
 PlaySessionStore::~PlaySessionStore() {
   m_refreshTimer->stop();
+  m_nowPlayingTimer->stop();
   m_database.close();
   m_database = {};
   QSqlDatabase::removeDatabase(m_connectionName);
@@ -89,6 +107,99 @@ QVariantList PlaySessionStore::historyForPaths(const QStringList& gamePaths, int
                                {"active", endedAt == 0}});
   }
   return history;
+}
+
+void PlaySessionStore::refreshNowPlaying() {
+  QVariantList rows;
+  QVector<SessionDatabase::SessionRow> open;
+  if (m_valid) {
+    open = SessionDatabase::openSessions(m_database);
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    for (const SessionDatabase::SessionRow& session : open) {
+      // A session counts as running only while its recorded process is. That also
+      // keeps the list honest when the recorder itself stopped.
+      if (!ProcFs::processAlive(session.pid, session.procStart)) {
+        continue;
+      }
+      const auto pending = m_pendingStops.constFind(session.pid);
+      const bool stopping = pending != m_pendingStops.cend();
+      // Prefer the recorder's own clock, the accumulated seconds plus whatever has
+      // elapsed since the last flush, so the view agrees with what gets recorded.
+      const qint64 sinceFlush =
+          session.heartbeatAt > 0 ? qMax<qint64>(0, now - session.heartbeatAt)
+                                  : qMax<qint64>(0, now - session.startedAt);
+      rows.append(QVariantMap{
+          {QStringLiteral("path"), session.gamePath},
+          {QStringLiteral("name"), SessionDisplay::titleForGamePath(session.gamePath)},
+          {QStringLiteral("source"), session.source},
+          {QStringLiteral("pid"), session.pid},
+          {QStringLiteral("procStart"), session.procStart},
+          {QStringLiteral("startedAt"), session.startedAt},
+          {QStringLiteral("elapsedSeconds"), session.seconds + sinceFlush},
+          {QStringLiteral("stopping"), stopping},
+          {QStringLiteral("forceReady"),
+           stopping && pending->deadline > 0 && now >= pending->deadline},
+      });
+    }
+    for (auto attempt = m_pendingStops.begin(); attempt != m_pendingStops.end();) {
+      const bool stillOpen = std::any_of(
+          open.cbegin(), open.cend(), [&attempt](const SessionDatabase::SessionRow& session) {
+            return session.pid == attempt.key() && session.procStart == attempt.value().procStart;
+          });
+      attempt = stillOpen ? std::next(attempt) : m_pendingStops.erase(attempt);
+    }
+  } else {
+    m_pendingStops.clear();
+  }
+  if (m_nowPlayingTimer != nullptr) {
+    m_nowPlayingTimer->setInterval(rows.isEmpty() ? kNowPlayingIdleIntervalMs
+                                                  : kNowPlayingActiveIntervalMs);
+  }
+  if (rows == m_nowPlaying) {
+    return;
+  }
+  m_nowPlaying = rows;
+  emit nowPlayingChanged();
+}
+
+bool PlaySessionStore::trackedSessionOpen(qint64 pid, qint64 procStart) {
+  if (pid <= 0 || procStart < 0) {
+    return false;
+  }
+  const QVector<SessionDatabase::SessionRow> open = SessionDatabase::openSessions(m_database);
+  return std::any_of(open.cbegin(), open.cend(), [pid, procStart](const SessionDatabase::SessionRow& session) {
+    return session.pid == pid && session.procStart == procStart;
+  });
+}
+
+bool PlaySessionStore::stopSession(qint64 pid, qint64 procStart) {
+  // Only a game the recorder is tracking right now can be stopped from here.
+  if (!m_valid || !trackedSessionOpen(pid, procStart)) {
+    return false;
+  }
+  const SessionStopper::Result result =
+      SessionStopper::terminate(pid, procStart, ProcFs::processAlive, ProcFs::sendSignal);
+  if (result == SessionStopper::Result::Signalled) {
+    m_pendingStops.insert(
+        pid, StopAttempt{procStart, QDateTime::currentSecsSinceEpoch() + kStopGraceSeconds});
+  } else {
+    m_pendingStops.remove(pid);
+  }
+  refreshNowPlaying();
+  return result == SessionStopper::Result::Signalled;
+}
+
+bool PlaySessionStore::forceStopSession(qint64 pid, qint64 procStart) {
+  if (!m_valid || !trackedSessionOpen(pid, procStart)) {
+    return false;
+  }
+  const SessionStopper::Result result =
+      SessionStopper::forceKill(pid, procStart, ProcFs::processAlive, ProcFs::sendSignal);
+  if (result != SessionStopper::Result::Signalled) {
+    m_pendingStops.remove(pid);
+  }
+  refreshNowPlaying();
+  return result == SessionStopper::Result::Signalled;
 }
 
 QString PlaySessionStore::provenance(const PlaySessionStore* store, const QString& path,

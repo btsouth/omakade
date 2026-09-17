@@ -15,6 +15,7 @@
 #include <QQmlContext>
 #include <QQmlPropertyMap>
 #include <QStandardItemModel>
+#include <csignal>
 #include <openssl/evp.h>
 #include <unistd.h>
 
@@ -79,7 +80,9 @@
 #include "tracking/ProcFs.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
+#include "tracking/SessionDisplay.h"
 #include "tracking/SessionRecorder.h"
+#include "tracking/SessionStopper.h"
 #include <zip.h>
 
 #include <QDateTime>
@@ -823,6 +826,9 @@ private slots:
   void sessionRecorderSurvivesRestartsWithoutInventingTime();
   void sessionStoreMergesImportedAndTrackedPlaytime();
   void sessionStoreListsBoundedPerGameHistory();
+  void sessionDisplayTitlesEmulatorPaths();
+  void sessionStopperVerifiesProcessIdentity();
+  void sessionStoreReportsAndStopsLiveSessions();
   void launchFeedbackGuardsRepeatedRequests();
   void xeniaScannerImportsRecentTitlesAndDumps();
   void xeniaScannerNormalizesWinePaths();
@@ -10033,4 +10039,114 @@ void CoreTests::homeQueueCapacityAndRecovery() {
   QCOMPARE(home.queue().size(), 99);
   QVERIFY(home.enqueue("Demo", "", "demo-100"));
   QCOMPARE(home.queue().size(), 100);
+}
+
+void CoreTests::sessionDisplayTitlesEmulatorPaths() {
+  QCOMPARE(SessionDisplay::titleForGamePath(
+               QStringLiteral("/data/Emulation/Games/Xbox/Dante's Inferno (USA)/default.xex")),
+           QStringLiteral("Dante's Inferno (USA)"));
+  QCOMPARE(SessionDisplay::titleForGamePath(QStringLiteral("/roms/super_mario_world.sfc")),
+           QStringLiteral("super mario world"));
+  QCOMPARE(SessionDisplay::titleForGamePath(QStringLiteral("/roms/psp/Persona 3 Portable.iso")),
+           QStringLiteral("Persona 3 Portable"));
+  QCOMPARE(SessionDisplay::titleForGamePath(QStringLiteral("/roms/ps3/Game Name/eboot.bin")),
+           QStringLiteral("Game Name"));
+  QCOMPARE(SessionDisplay::titleForGamePath(QString()), QStringLiteral("Unknown game"));
+  QCOMPARE(SessionDisplay::titleForGamePath(QStringLiteral("   ")), QStringLiteral("Unknown game"));
+  QCOMPARE(SessionDisplay::titleForGamePath(QStringLiteral("/")), QStringLiteral("Unknown game"));
+}
+
+void CoreTests::sessionStopperVerifiesProcessIdentity() {
+  int sent = 0;
+  const auto send = [&sent](qint64, int value) {
+    sent = value;
+    return true;
+  };
+  // The recorded identity: pid 100 started at procfs tick 10.
+  const auto alive = [](qint64 pid, qint64 procStart) {
+    return pid == 100 && procStart == 10;
+  };
+
+  QVERIFY(SessionStopper::terminate(0, 10, alive, send) == SessionStopper::Result::Refused);
+  QVERIFY(SessionStopper::terminate(1, 10, alive, send) == SessionStopper::Result::Refused);
+  QVERIFY(SessionStopper::terminate(100, -1, alive, send) == SessionStopper::Result::Refused);
+  // A reused pid is never signalled: the start time has to match the recorded one.
+  QVERIFY(SessionStopper::terminate(100, 99, alive, send) == SessionStopper::Result::NotRunning);
+  QCOMPARE(sent, 0);
+  QVERIFY(SessionStopper::terminate(100, 10, alive, send) == SessionStopper::Result::Signalled);
+  QCOMPARE(sent, SIGTERM);
+  QVERIFY(SessionStopper::forceKill(100, 10, alive, send) == SessionStopper::Result::Signalled);
+  QCOMPARE(sent, SIGKILL);
+  const auto refusing = [](qint64, int) { return false; };
+  QVERIFY(SessionStopper::terminate(100, 10, alive, refusing) == SessionStopper::Result::NotRunning);
+  QVERIFY(!SessionStopper::describe(SessionStopper::Result::Refused).isEmpty());
+}
+
+void CoreTests::sessionStoreReportsAndStopsLiveSessions() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+
+  // A stand-in for a game that only closes when it is forced: it ignores the
+  // polite stop, so the escalation the Now Playing view offers is exercised for
+  // real against a live process.
+  QProcess game;
+  game.start(QStringLiteral("/bin/sh"),
+             {QStringLiteral("-c"), QStringLiteral("trap '' TERM; sleep 20")});
+  QVERIFY(game.waitForStarted(5000));
+  const qint64 pid = game.processId();
+  QVERIFY(pid > 1);
+  qint64 procStart = -1;
+  for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
+    if (snapshot.pid == pid) {
+      procStart = snapshot.procStart;
+      break;
+    }
+  }
+  QVERIFY(procStart >= 0);
+
+  const QString gamePath =
+      QStringLiteral("/data/Emulation/Games/Xbox/Dante's Inferno (USA)/default.xex");
+  {
+    const QString connection = QStringLiteral("test-now-playing");
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    QVERIFY(SessionDatabase::beginSession(database, gamePath, QStringLiteral("Xenia"), now - 120,
+                                          pid, procStart) > 0);
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+  }
+
+  PlaySessionStore store(path);
+  store.refreshNowPlaying();
+  QCOMPARE(store.nowPlaying().size(), 1);
+  const QVariantMap row = store.nowPlaying().first().toMap();
+  QCOMPARE(row.value(QStringLiteral("name")).toString(), QStringLiteral("Dante's Inferno (USA)"));
+  QCOMPARE(row.value(QStringLiteral("source")).toString(), QStringLiteral("Xenia"));
+  QCOMPARE(row.value(QStringLiteral("pid")).toLongLong(), pid);
+  QVERIFY(row.value(QStringLiteral("elapsedSeconds")).toLongLong() >= 120);
+  QVERIFY(!row.value(QStringLiteral("stopping")).toBool());
+  QVERIFY(!row.value(QStringLiteral("forceReady")).toBool());
+
+  // Only a session the recorder is tracking can be stopped, and only while the
+  // recorded process identity still matches.
+  QVERIFY(!store.stopSession(pid, procStart + 1));
+  QVERIFY(!store.stopSession(pid + 100000, procStart));
+
+  QVERIFY(store.stopSession(pid, procStart));
+  QCOMPARE(store.nowPlaying().first().toMap().value(QStringLiteral("stopping")).toBool(), true);
+  QVERIFY(game.state() != QProcess::NotRunning);
+  // The grace period passes with the game still alive, so the view can offer the
+  // forced stop instead of pretending the game exited.
+  QTest::qWait(9000);
+  store.refreshNowPlaying();
+  QCOMPARE(store.nowPlaying().first().toMap().value(QStringLiteral("forceReady")).toBool(), true);
+  QVERIFY(game.state() != QProcess::NotRunning);
+
+  QVERIFY(store.forceStopSession(pid, procStart));
+  QVERIFY(game.waitForFinished(5000));
+  store.refreshNowPlaying();
+  QVERIFY(store.nowPlaying().isEmpty());
 }
