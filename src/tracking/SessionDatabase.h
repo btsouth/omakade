@@ -57,8 +57,11 @@ bool endAllSessions(QSqlDatabase& database, qint64 endedAt);
 bool deleteSession(QSqlDatabase& database, const QString& sessionKey);
 
 // Removes the closed sessions of the given game paths. Returns how many rows
-// went, or -1 when the delete failed.
-int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths);
+// went, or -1 when the delete failed. pathLimit caps how many paths are honoured;
+// -1 means every path the caller passed, which is what a deliberate clear of one
+// game's history needs.
+int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths,
+                           int pathLimit = 32);
 
 // Closes open sessions whose tracked process is gone, using the last heartbeat as
 // the end time so a dead daemon never invents play time. Returns the survivors.

@@ -115,7 +115,7 @@ private:
   QHash<QString, qint64> m_baselines;
   QHash<QString, qint64> m_lastPlayed;
   QVariantList m_nowPlaying;
-  QHash<qint64, StopAttempt> m_pendingStops;
+  QHash<QString, StopAttempt> m_pendingStops;
   QTimer* m_refreshTimer = nullptr;
   QTimer* m_nowPlayingTimer = nullptr;
 };

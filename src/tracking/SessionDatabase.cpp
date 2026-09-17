@@ -230,7 +230,7 @@ bool deleteSession(QSqlDatabase& database, const QString& sessionKey) {
   return query.exec() && query.numRowsAffected() == 1;
 }
 
-int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths) {
+int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths, int pathLimit) {
   QStringList paths;
   for (const QString& path : gamePaths) {
     const QString clean = path.trimmed();
@@ -238,7 +238,7 @@ int deleteSessionsForPaths(QSqlDatabase& database, const QStringList& gamePaths)
       continue;
     }
     paths.append(clean);
-    if (paths.size() == 32) {
+    if (pathLimit > 0 && paths.size() == pathLimit) {
       break;
     }
   }

@@ -27,6 +27,29 @@ constexpr CacheSpec kCaches[] = {
     {"xenia_games", "name", "path", "Xenia"},
 };
 
+// Emulator profile names whose titles live in another source's cache. A profile
+// can name binaries Omakade has no source for: the yuzu-derived Switch emulators
+// share Ryujinx's content, so Ryujinx's cache is the one that knows their games.
+// Without this the emulator filter never matches and a file-picker load from one
+// of them is silently attributed to nothing.
+struct CacheAlias {
+  const char* profile;
+  const char* cacheSource;
+};
+
+constexpr CacheAlias kAliases[] = {
+    {"Eden", "Ryujinx"},
+};
+
+QString cacheSourceFor(const QString& profile) {
+  for (const CacheAlias& alias : kAliases) {
+    if (profile == QLatin1String(alias.profile)) {
+      return QString::fromLatin1(alias.cacheSource);
+    }
+  }
+  return profile;
+}
+
 QStringList columnsOf(QSqlDatabase& database, const QString& table) {
   QStringList columns;
   QSqlQuery query(database);
@@ -116,7 +139,7 @@ QString SessionTitleIndex::pathForWindowTitle(const QString& windowTitle,
     return {};
   }
   const auto consider = [&emulator](const Entry& entry) {
-    return emulator.isEmpty() || entry.emulator == emulator;
+    return emulator.isEmpty() || entry.emulator == cacheSourceFor(emulator);
   };
   // An exact title is just the strongest form of a whole-name match, so it goes
   // through the same counting instead of short-circuiting. Returning the first

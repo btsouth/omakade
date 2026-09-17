@@ -954,10 +954,15 @@ own format and several keep none at all. A small recorder closes that gap.
   in the source caches, so a launch that names no game on its command line is still
   attributed. Matching is exact first and whole-name-in-title second, and both
   refuse an ambiguous or too-short name, so a wrong attribution is never invented.
-  A session attributed this way carries no verified process identity: it is listed
+  Emulator profiles whose games live in another source's cache are told so, which
+  is how the yuzu-derived Switch emulators attribute through Ryujinx's cache. A
+  session attributed this way carries no verified process identity: it is listed
   in Now Playing without a stop control and is never adopted after a recorder
   restart. Without a compositor, without `hyprctl`, or without titles, the recorder
   behaves exactly as it did before.
+- Clearing a game's recorded history clears all of it, however many install paths
+  the game has, and a stop belongs to the recorded process identity rather than to
+  a pid that a relaunch can reuse.
 - Optional pause-on-unfocus, off by default, stops billing time while the emulator
   window is not the compositor's focused one. It only works on Hyprland, where
   focus is reported per window; a pid with no window, or a compositor that stops

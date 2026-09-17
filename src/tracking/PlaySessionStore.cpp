@@ -27,6 +27,13 @@ constexpr int kNowPlayingIdleIntervalMs = 3000;
 constexpr int kNowPlayingActiveIntervalMs = 1000;
 // How long a game gets to act on a graceful stop before the view offers force.
 constexpr qint64 kStopGraceSeconds = 8;
+
+// A running session is identified by its pid together with the procfs start time
+// it was recorded with, never by the pid alone. A relaunch can reuse a pid, and
+// the two sessions must not be confused for one another.
+QString identityFor(qint64 pid, qint64 procStart) {
+  return QStringLiteral("%1:%2").arg(pid).arg(procStart);
+}
 } // namespace
 
 PlaySessionStore::PlaySessionStore(const QString& databasePath, QObject* parent)
@@ -135,7 +142,10 @@ int PlaySessionStore::deleteHistoryForPaths(const QStringList& gamePaths) {
   if (!m_valid) {
     return -1;
   }
-  const int removed = SessionDatabase::deleteSessionsForPaths(m_database, gamePaths);
+  // Every path the caller asked for is cleared, without the read path's cap: the
+  // view offers to remove a game's whole history, and quietly leaving rows behind
+  // because the game has many install paths would be a lie about what it did.
+  const int removed = SessionDatabase::deleteSessionsForPaths(m_database, gamePaths, -1);
   if (removed < 0) {
     return -1;
   }
@@ -167,7 +177,10 @@ void PlaySessionStore::refreshNowPlaying() {
       if (!alive) {
         continue;
       }
-      const auto pending = m_pendingStops.constFind(session.pid);
+      // A stop belongs to the recorded process identity, not to the pid alone: a
+      // relaunch can reuse a pid, and the new session must never inherit the old
+      // session's stop state or be force-killed for a signal it never received.
+      const auto pending = m_pendingStops.constFind(identityFor(session.pid, session.procStart));
       const bool stopping = pending != m_pendingStops.cend();
       // Prefer the recorder's own clock, the accumulated seconds plus whatever has
       // elapsed since the last flush, so the view agrees with what gets recorded.
@@ -191,7 +204,7 @@ void PlaySessionStore::refreshNowPlaying() {
     for (auto attempt = m_pendingStops.begin(); attempt != m_pendingStops.end();) {
       const bool stillOpen = std::any_of(
           open.cbegin(), open.cend(), [&attempt](const SessionDatabase::SessionRow& session) {
-            return session.pid == attempt.key() && session.procStart == attempt.value().procStart;
+            return identityFor(session.pid, session.procStart) == attempt.key();
           });
       attempt = stillOpen ? std::next(attempt) : m_pendingStops.erase(attempt);
     }
@@ -230,9 +243,10 @@ bool PlaySessionStore::stopSession(qint64 pid, qint64 procStart) {
       SessionStopper::terminate(pid, procStart, ProcFs::processAlive, ProcFs::sendSignal);
   if (result == SessionStopper::Result::Signalled) {
     m_pendingStops.insert(
-        pid, StopAttempt{procStart, QDateTime::currentSecsSinceEpoch() + kStopGraceSeconds});
+        identityFor(pid, procStart),
+        StopAttempt{procStart, QDateTime::currentSecsSinceEpoch() + kStopGraceSeconds});
   } else {
-    m_pendingStops.remove(pid);
+    m_pendingStops.remove(identityFor(pid, procStart));
   }
   refreshNowPlaying();
   return result == SessionStopper::Result::Signalled;
@@ -245,7 +259,7 @@ bool PlaySessionStore::forceStopSession(qint64 pid, qint64 procStart) {
   const SessionStopper::Result result =
       SessionStopper::forceKill(pid, procStart, ProcFs::processAlive, ProcFs::sendSignal);
   if (result != SessionStopper::Result::Signalled) {
-    m_pendingStops.remove(pid);
+    m_pendingStops.remove(identityFor(pid, procStart));
   }
   refreshNowPlaying();
   return result == SessionStopper::Result::Signalled;

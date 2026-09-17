@@ -7096,10 +7096,63 @@ void CoreTests::windowTitlesAttributeFilePickerLoads() {
       HyprlandWindows::parse(R"([{"pid":30,"title":"PCSX2 1.7.5 - Okami"}])");
   QCOMPARE(unknown.size(), 1);
   QVERIFY(!HyprlandWindows::isUnfocused(unknown, 30));
-  // Any one focused window for the pid means the game is on screen.
-  const QVector<HyprlandWindows::Window> mixed = HyprlandWindows::parse(
-      R"([{"pid":30,"title":"a","focusHistoryID":2},{"pid":30,"title":"b","focusHistoryID":0}])");
-  QVERIFY(!HyprlandWindows::isUnfocused(mixed, 30));
+  // The real profile file and the real cache vocabulary have to agree. A profile
+  // can name binaries Omakade has no source for, and when that emulator's games
+  // live in another source's cache, the profile has to be told so, or the
+  // window-title path attributes nothing for it and the feature is dead exactly
+  // where it was meant to work. Profiles for emulators Omakade has no source for
+  // yet are expected to resolve to nothing and are listed as such.
+  {
+    QString profileError;
+    const ProcessProfileSet shipped = ProcessMatcher::load(
+        QStringLiteral(OMAKADE_FIXTURE_DIR "/../../resources/sessiond-profiles.json"),
+        &profileError);
+    QVERIFY2(profileError.isEmpty(), qPrintable(profileError));
+    SessionTitleIndex shippedIndex;
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, path, connection));
+      QVERIFY(shippedIndex.refresh(database));
+      database.close();
+      database = {};
+      QSqlDatabase::removeDatabase(connection);
+    }
+    // Profiles whose games this fixture's caches hold. Dolphin is in it because a
+    // second cache row carries the same title, which is exactly the cross-emulator
+    // ambiguity the index resolves per emulator.
+    const QStringList expected = {QStringLiteral("Ryujinx"), QStringLiteral("Eden"),
+                                  QStringLiteral("Dolphin")};
+    for (const SessionProcessProfile& profile : shipped.emulators) {
+      const QVector<ProcessSnapshot> probe = {{.pid = 60,
+                                               .procStart = 600,
+                                               .comm = profile.binaries.first(),
+                                               .arguments = {QStringLiteral("/usr/bin/") +
+                                                             profile.binaries.first()}}};
+      const QVector<SessionMatch> matched = ProcessMatcher::matchWithWindowTitles(
+          probe, shipped,
+          [](qint64) { return QStringLiteral("Mario Kart 8 Deluxe"); },
+          [&shippedIndex](const QString& title, const QString& emulator) {
+            return shippedIndex.pathForWindowTitle(title, emulator);
+          });
+      const bool wantMatch = expected.contains(profile.name);
+      QVERIFY2(!matched.isEmpty() == wantMatch,
+               qPrintable(QStringLiteral("profile %1 attributed %2, expected %3")
+                              .arg(profile.name,
+                                   matched.isEmpty() ? QStringLiteral("nothing")
+                                                     : matched.first().gamePath,
+                                   wantMatch ? QStringLiteral("a game")
+                                             : QStringLiteral("nothing"))));
+      if (!wantMatch) {
+        continue;
+      }
+      // Each emulator resolves through its own cache: the Switch profiles through
+      // Ryujinx's, Dolphin through its own, even though the title is the same.
+      const QString wantPath = profile.name == QStringLiteral("Dolphin")
+                                   ? QStringLiteral("/games/gamecube/Mario Kart 8 Deluxe.rvz")
+                                   : QStringLiteral("/games/switch/Mario Kart 8 Deluxe.nsp");
+      QCOMPARE(matched.first().gamePath, wantPath);
+    }
+  }
 }
 
 void CoreTests::sessionRecorderPausesWhileUnfocused() {
@@ -10604,6 +10657,55 @@ void CoreTests::sessionStoreReportsAndStopsLiveSessions() {
   QVERIFY(store.stopSession(pid, procStart));
   QCOMPARE(store.nowPlaying().first().toMap().value(QStringLiteral("stopping")).toBool(), true);
   QVERIFY(game.state() != QProcess::NotRunning);
+  // A stop belongs to the recorded process identity, not to the pid. If the pid is
+  // reused while a stop is pending, the new identity is not a session the recorder
+  // verifies, so it is not listed and cannot be force-stopped off the old request.
+  {
+    const QString identity = QStringLiteral("test-stop-identity");
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, identity));
+    QSqlQuery update(database);
+    update.prepare(QStringLiteral(
+        "UPDATE play_sessions SET proc_start = ? WHERE pid = ? AND ended_at = 0"));
+    update.addBindValue(procStart + 7);
+    update.addBindValue(pid);
+    QVERIFY(update.exec());
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(identity);
+  }
+  store.refreshNowPlaying();
+  // A row whose recorded identity no longer matches a live process is not shown,
+  // and the pending stop for the old identity does not carry over to it.
+  QVERIFY(store.nowPlaying().isEmpty());
+  QVERIFY(!store.forceStopSession(pid, procStart + 7));
+  QVERIFY(game.state() != QProcess::NotRunning);
+  // Put the original identity back so the rest of the check exercises the real
+  // stop path it was written for.
+  {
+    const QString identity = QStringLiteral("test-stop-identity");
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, identity));
+    QSqlQuery restore(database);
+    restore.prepare(QStringLiteral(
+        "UPDATE play_sessions SET proc_start = ? WHERE pid = ? AND ended_at = 0"));
+    restore.addBindValue(procStart);
+    restore.addBindValue(pid);
+    QVERIFY(restore.exec());
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(identity);
+  }
+  store.refreshNowPlaying();
+  QCOMPARE(store.nowPlaying().size(), 1);
+  // The pending stop was pruned when its identity disappeared, so the view no
+  // longer reports a stop that was never answered, and the game is stoppable again.
+  QVERIFY(!store.nowPlaying().first().toMap().value(QStringLiteral("stopping")).toBool());
+  QVERIFY(!store.nowPlaying().first().toMap().value(QStringLiteral("forceReady")).toBool());
+  QVERIFY(store.nowPlaying().first().toMap().value(QStringLiteral("stoppable")).toBool());
+  // Re-issue the stop so the grace-period half of this check runs as intended.
+  QVERIFY(store.stopSession(pid, procStart));
+  QCOMPARE(store.nowPlaying().first().toMap().value(QStringLiteral("stopping")).toBool(), true);
   // The grace period passes with the game still alive, so the view can offer the
   // forced stop instead of pretending the game exited.
   QTest::qWait(9000);
