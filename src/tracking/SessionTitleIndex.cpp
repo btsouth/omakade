@@ -67,7 +67,6 @@ bool SessionTitleIndex::refresh(QSqlDatabase& database) {
     return false;
   }
   QVector<Entry> entries;
-  QHash<QString, Entry> byTitle;
   QSqlQuery exists(database);
   if (!exists.exec(QStringLiteral(
           "SELECT name FROM sqlite_master WHERE type='table'"))) {
@@ -104,16 +103,9 @@ bool SessionTitleIndex::refresh(QSqlDatabase& database) {
                         .gamePath = path,
                         .emulator = QString::fromLatin1(cache.source)};
       entries.append(entry);
-      const QString key = normalize(title);
-      // Keep the first sighting. Cache order is stable, so a repeat across
-      // caches does not make the answer depend on insertion order.
-      if (!key.isEmpty() && !byTitle.contains(key)) {
-        byTitle.insert(key, entry);
-      }
     }
   }
   m_entries = entries;
-  m_byExactTitle = byTitle;
   return true;
 }
 
@@ -126,10 +118,11 @@ QString SessionTitleIndex::pathForWindowTitle(const QString& windowTitle,
   const auto consider = [&emulator](const Entry& entry) {
     return emulator.isEmpty() || entry.emulator == emulator;
   };
-  const auto exact = m_byExactTitle.constFind(normalizedTitle);
-  if (exact != m_byExactTitle.cend() && consider(exact.value())) {
-    return exact.value().gamePath;
-  }
+  // An exact title is just the strongest form of a whole-name match, so it goes
+  // through the same counting instead of short-circuiting. Returning the first
+  // exact sighting would attribute the window to whichever cache row happened to
+  // come first when two different games share a title, or when one game appears
+  // in two caches under different content paths.
   QString found;
   int matches = 0;
   for (const Entry& entry : m_entries) {

@@ -6887,6 +6887,16 @@ void CoreTests::windowTitlesAttributeFilePickerLoads() {
                        "path TEXT)"));
     QVERIFY(query.exec("INSERT INTO ryujinx_games VALUES('d','Mario Kart 8 Deluxe',"
                        "'/games/switch/Mario Kart 8 Deluxe.nsp')"));
+    // Two different games sharing one title, and one game reachable under two
+    // content paths. Both are ambiguous and must never be guessed at.
+    QVERIFY(query.exec("INSERT INTO pcsx2_games VALUES('e','Silent Hill 2',"
+                       "'/games/ps2/Silent Hill 2 (USA).iso','SLUS-4')"));
+    QVERIFY(query.exec("INSERT INTO pcsx2_games VALUES('f','Silent Hill 2',"
+                       "'/games/ps2/Silent Hill 2 (Europe).iso','SLES-1')"));
+    QVERIFY(query.exec("CREATE TABLE dolphin_games (game_id TEXT PRIMARY KEY, "
+                       "name TEXT NOT NULL, path TEXT)"));
+    QVERIFY(query.exec("INSERT INTO dolphin_games VALUES('g','Mario Kart 8 Deluxe',"
+                       "'/games/gamecube/Mario Kart 8 Deluxe.rvz')"));
     // A cache with the wrong shape is skipped, never guessed at.
     QVERIFY(query.exec("CREATE TABLE cemu_games (game_id TEXT PRIMARY KEY, name TEXT NOT NULL)"));
     QVERIFY(query.exec("CREATE TABLE cemu_graphic_packs (title TEXT, contents TEXT)"));
@@ -6904,7 +6914,27 @@ void CoreTests::windowTitlesAttributeFilePickerLoads() {
     database = {};
     QSqlDatabase::removeDatabase(connection);
   }
-  QCOMPARE(index.size(), 4);
+  QCOMPARE(index.size(), 7);
+
+  // A title two different games share, or one a game carries under two content
+  // paths, is ambiguous: attributing either would silently bill the wrong game.
+  QVERIFY(index.pathForWindowTitle(QStringLiteral("Silent Hill 2"), QStringLiteral("PCSX2"))
+              .isEmpty());
+  QVERIFY(index
+              .pathForWindowTitle(QStringLiteral("PCSX2 1.7.5 - Silent Hill 2"),
+                                  QStringLiteral("PCSX2"))
+              .isEmpty());
+  // The same title across two emulators is ambiguous when no emulator is given,
+  // and resolved once the caller says which emulator the process is.
+  QVERIFY(index
+              .pathForWindowTitle(QStringLiteral("Mario Kart 8 Deluxe"), QString{})
+              .isEmpty());
+  QCOMPARE(index.pathForWindowTitle(QStringLiteral("Mario Kart 8 Deluxe"),
+                                    QStringLiteral("Ryujinx")),
+           QStringLiteral("/games/switch/Mario Kart 8 Deluxe.nsp"));
+  QCOMPARE(index.pathForWindowTitle(QStringLiteral("Mario Kart 8 Deluxe"),
+                                    QStringLiteral("Dolphin")),
+           QStringLiteral("/games/gamecube/Mario Kart 8 Deluxe.rvz"));
 
   // The decorated title a real emulator reports still names the game.
   QCOMPARE(index.pathForWindowTitle(QStringLiteral("PCSX2 1.7.5 - Dragon Quest VIII"),

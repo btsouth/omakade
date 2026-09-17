@@ -1708,7 +1708,18 @@ int main(int argc, char* argv[]) {
                 return;
               }
               // Deleting a session must ask first, with the way out focused, and
-              // only then remove exactly the session that was chosen.
+              // only then remove exactly the session that was chosen. The entries
+              // are newest first, and their own text is what the later checks key
+              // off, so a deletion that removed the wrong row fails here rather
+              // than passing on a count alone.
+              if (!first->property("text").toString().contains(QStringLiteral("20m")) ||
+                  !second->property("text").toString().contains(QStringLiteral("30m"))) {
+                qCritical() << "Play history entries were not the expected fixture sessions"
+                            << first->property("text").toString()
+                            << second->property("text").toString();
+                application.exit(EXIT_FAILURE);
+                return;
+              }
               QMetaObject::invokeMethod(first, "clicked");
               QTimer::singleShot(80, quickWindow, [quickWindow, &application, useFixtureInstallation] {
                 auto* menu = quickWindow->findChild<QObject*>("playHistoryMenu");

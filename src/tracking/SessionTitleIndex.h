@@ -54,6 +54,4 @@ public:
 
 private:
   QVector<Entry> m_entries;
-  // Normalized title to entry, so an exact match never depends on candidate order.
-  QHash<QString, Entry> m_byExactTitle;
 };
