@@ -816,6 +816,14 @@ import QtQuick.Layouts
                         selected: Preferences.pauseUnfocusedSessions
                         onClicked: Preferences.pauseUnfocusedSessions = !Preferences.pauseUnfocusedSessions
                     }
+                    GlassButton {
+                        objectName: "discordPresenceToggle"
+                        compact: true
+                        visible: Preferences.trackPlaySessions
+                        text: "DISCORD STATUS: " + (Preferences.discordPresence ? "ON" : "OFF")
+                        selected: Preferences.discordPresence
+                        onClicked: Preferences.discordPresence = !Preferences.discordPresence
+                    }
                 }
                 Text {
                     objectName: "recorderStatusText"
@@ -832,7 +840,7 @@ import QtQuick.Layouts
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Recording runs separately from Omakade and continues when this window closes. Imported and recorded totals can overlap; they are not simply added together. Switching recording off keeps your history and displays imported time. Pause when unfocused stops billing time while the emulator window is behind other work; it is off by default, since a game left running on purpose still counts as play."
+                    text: "Recording runs separately from Omakade and continues when this window closes. Imported and recorded totals are reconciled: recorded time is added when the emulator's own counter cannot already include it, and a session that counter later counts is not counted twice. Switching recording off keeps your history and displays imported time. Pause when unfocused stops billing time while the emulator window is behind other work; it is off by default, since a game left running on purpose still counts as play. Discord status publishes the game you are playing as Rich Presence; it is off by default and sends only the game name and its source."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 11 * settingsPanel.uiScale

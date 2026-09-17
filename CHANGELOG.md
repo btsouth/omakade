@@ -37,6 +37,11 @@ Sessions you can see, stop, and manage.
   when the imported counter cannot already include it, and a session the emulator
   later writes into its own counter is not counted twice. Existing totals do not
   change until the emulator next writes a counter.
+- An optional Discord status publishes the game you are playing as Rich Presence,
+  driven by the recorder so it matches the session being tracked. It is off by
+  default, needs a Discord application id to publish under, and sends only the
+  game name and its source. Discord not running, or being closed mid-session,
+  changes nothing about recording.
 
 ## 1.10.0
 

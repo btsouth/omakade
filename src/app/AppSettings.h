@@ -17,6 +17,8 @@ class AppSettings final : public QObject {
   Q_PROPERTY(QString steamId READ steamId WRITE setSteamId NOTIFY steamIdChanged)
   Q_PROPERTY(
       QString igdbClientId READ igdbClientId WRITE setIgdbClientId NOTIFY igdbClientIdChanged)
+  Q_PROPERTY(QString discordClientId READ discordClientId WRITE setDiscordClientId NOTIFY
+                 discordClientIdChanged)
   Q_PROPERTY(QString retroAchievementsUsername READ retroAchievementsUsername WRITE
                  setRetroAchievementsUsername NOTIFY retroAchievementsUsernameChanged)
   Q_PROPERTY(bool steamEnabled READ steamEnabled WRITE setSteamEnabled NOTIFY sourcesChanged)
@@ -57,6 +59,8 @@ class AppSettings final : public QObject {
                  trackPlaySessionsChanged)
   Q_PROPERTY(bool pauseUnfocusedSessions READ pauseUnfocusedSessions WRITE
                  setPauseUnfocusedSessions NOTIFY pauseUnfocusedSessionsChanged)
+  Q_PROPERTY(bool discordPresence READ discordPresence WRITE setDiscordPresence NOTIFY
+                 discordPresenceChanged)
   Q_PROPERTY(bool couchModeEnabled READ couchModeEnabled WRITE setCouchModeEnabled NOTIFY
                  couchModeEnabledChanged)
   Q_PROPERTY(QString couchLibraryView READ couchLibraryView WRITE setCouchLibraryView NOTIFY
@@ -88,6 +92,11 @@ public:
   [[nodiscard]] QString steamId() const;
   void setSteamId(const QString& value);
   [[nodiscard]] QString igdbClientId() const;
+  // The Discord application the Rich Presence is published under. Discord shows the
+  // application's own name, so this only selects which one it is, and it is not a
+  // secret. Kept so a hand-written id survives a settings save.
+  [[nodiscard]] QString discordClientId() const;
+  void setDiscordClientId(const QString& value);
   void setIgdbClientId(const QString& value);
   [[nodiscard]] QString retroAchievementsUsername() const;
   void setRetroAchievementsUsername(const QString& value);
@@ -166,6 +175,11 @@ public:
   // and couch play can lose focus to a launcher overlay without the game stopping.
   [[nodiscard]] bool pauseUnfocusedSessions() const;
   void setPauseUnfocusedSessions(bool value);
+  // Publish the running game to Discord as Rich Presence. Off by default, and it
+  // needs a Discord application id to publish under: without one the recorder does
+  // nothing. Only the game name and its source are ever published.
+  [[nodiscard]] bool discordPresence() const;
+  void setDiscordPresence(bool value);
   bool protectRetroArchSaves() const { return m_protectRetroArchSaves; }
   void setProtectRetroArchSaves(bool value);
   [[nodiscard]] bool couchModeEnabled() const;
@@ -199,11 +213,13 @@ signals:
   void protonDbBadgesChanged();
   void steamIdChanged();
   void igdbClientIdChanged();
+  void discordClientIdChanged();
   void retroAchievementsUsernameChanged();
   void sourcesChanged();
   void closeAfterLaunchChanged();
   void trackPlaySessionsChanged();
   void pauseUnfocusedSessionsChanged();
+  void discordPresenceChanged();
   void protectRetroArchSavesChanged();
   void couchModeEnabledChanged();
   void couchLibraryViewChanged();
@@ -234,6 +250,7 @@ private:
   int m_artworkCacheLimitMb = 1024;
   QString m_steamId;
   QString m_igdbClientId;
+  QString m_discordClientId;
   QString m_retroAchievementsUsername;
   bool m_steamEnabled = true;
   bool m_lutrisEnabled = true;
@@ -266,6 +283,7 @@ private:
   bool m_closeAfterLaunch = false;
   bool m_trackPlaySessions = false;
   bool m_pauseUnfocusedSessions = false;
+  bool m_discordPresence = false;
   bool m_protectRetroArchSaves = true;
   bool m_couchModeEnabled = false;
   QString m_couchLibraryView = QStringLiteral("detail");

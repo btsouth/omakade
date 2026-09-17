@@ -128,6 +128,7 @@ QStringList BackupArchive::settingNames() {
           "prefer_standalone_emulators",
           "track_play_sessions",
           "pause_unfocused_sessions",
+          "discord_presence",
           "cover_size",
           "couch_cover_size",
           "console_expand_limit",

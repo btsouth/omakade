@@ -942,6 +942,13 @@ own format and several keep none at all. A small recorder closes that gap.
   time is added and a session the emulator later writes into its own counter is
   never counted twice. Existing installations keep their exact totals until their
   emulator next writes a counter.
+- Discord Rich Presence is opt-in and driven by the recorder, so the presence
+  matches the session actually being tracked rather than a separate guess. The
+  recorder speaks Discord's own local socket protocol: it handshakes as an
+  application, then sends SET_ACTIVITY frames, reusing one connection and sending
+  nothing while the running game is unchanged. An unconfigured or disabled install
+  is inert, and no failure reaches the user, because Discord not running must never
+  disturb recording. Only the game name and its source are published.
 - A Settings toggle (on by default) controls both the display and the recorder,
   which reads the same config key. When a session for an emulator whose own
   playtime is written on exit ends, the recorder asks the running Omakade

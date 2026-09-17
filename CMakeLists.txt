@@ -62,6 +62,8 @@ qt_standard_project_setup(REQUIRES 6.8)
 add_library(omakade_tracking STATIC
   src/tracking/AppNotify.cpp
   src/tracking/AppNotify.h
+  src/tracking/DiscordPresence.cpp
+  src/tracking/DiscordPresence.h
   src/tracking/HyprlandWindows.cpp
   src/tracking/HyprlandWindows.h
   src/tracking/PlaySessionStore.cpp

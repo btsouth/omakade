@@ -107,6 +107,7 @@ QJsonObject AppSettings::backupSettings() const {
           {"prefer_standalone_emulators", m_preferStandaloneEmulators},
           {"track_play_sessions", m_trackPlaySessions},
           {"pause_unfocused_sessions", m_pauseUnfocusedSessions},
+          {"discord_presence", m_discordPresence},
           {"cover_size", m_coverSize},
           {"couch_cover_size", m_couchCoverSize},
           {"console_expand_limit", m_consoleExpandLimit},
@@ -144,6 +145,7 @@ void AppSettings::assignBackupSettings(const QJsonObject& settings) {
   m_preferStandaloneEmulators = settings.value("prefer_standalone_emulators").toBool();
   m_trackPlaySessions = settings.value("track_play_sessions").toBool();
   m_pauseUnfocusedSessions = settings.value("pause_unfocused_sessions").toBool();
+  m_discordPresence = settings.value("discord_presence").toBool();
   m_coverSize = settings.value("cover_size").toInt();
   m_couchCoverSize = settings.value("couch_cover_size").toInt();
   m_consoleExpandLimit = settings.value("console_expand_limit").toInt();
@@ -193,7 +195,7 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
                    "cemu_auto", "dolphin_auto", "console_portals_enabled", "expand_consoles",
                    "prefer_standalone_emulators", "track_play_sessions", "cover_size",
                    "couch_cover_size", "console_expand_limit", "rom_folders", "console_layouts",
-                   "pause_unfocused_sessions"})
+                   "pause_unfocused_sessions", "discord_presence"})
     if (!settings.contains(key))
       merged.insert(key, before.value(key));
   for (auto value = settings.begin(); value != settings.end(); ++value) merged.insert(value.key(), value.value());
@@ -207,6 +209,7 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
   emit preferStandaloneEmulatorsChanged();
   emit trackPlaySessionsChanged();
   emit pauseUnfocusedSessionsChanged();
+  emit discordPresenceChanged();
   emit coverSizeChanged();
   emit couchCoverSizeChanged();
   emit consoleExpandLimitChanged();
@@ -702,6 +705,29 @@ void AppSettings::setPauseUnfocusedSessions(bool value) {
   emit pauseUnfocusedSessionsChanged();
 }
 
+bool AppSettings::discordPresence() const { return m_discordPresence; }
+
+void AppSettings::setDiscordPresence(bool value) {
+  if (m_discordPresence == value) {
+    return;
+  }
+  m_discordPresence = value;
+  save();
+  emit discordPresenceChanged();
+}
+
+QString AppSettings::discordClientId() const { return m_discordClientId; }
+
+void AppSettings::setDiscordClientId(const QString& value) {
+  const QString normalized = value.trimmed();
+  if (m_discordClientId == normalized) {
+    return;
+  }
+  m_discordClientId = normalized;
+  save();
+  emit discordClientIdChanged();
+}
+
 bool AppSettings::couchModeEnabled() const { return m_couchModeEnabled; }
 
 void AppSettings::setCouchModeEnabled(bool value) {
@@ -783,6 +809,13 @@ void AppSettings::load() {
   if (igdbClientIdMatch.hasMatch()) {
     m_igdbClientId = igdbClientIdMatch.captured(1);
   }
+  // Digits only: a Discord application id is a snowflake, and validating it here
+  // keeps a malformed value from reaching the socket.
+  const QRegularExpression discordClientId(
+      QStringLiteral("(?m)^discord_client_id\\s*=\\s*\"([0-9]{5,32})\"\\s*$"));
+  const QRegularExpressionMatch discordClientIdMatch = discordClientId.match(contents);
+  m_discordClientId =
+      discordClientIdMatch.hasMatch() ? discordClientIdMatch.captured(1) : QString{};
   const QRegularExpression retroAchievementsUsername(
       QStringLiteral("(?m)^retroachievements_username\\s*=\\s*\"([A-Za-z0-9_-]{2,20})\"\\s*$"));
   const QRegularExpressionMatch retroAchievementsUsernameMatch =
@@ -871,6 +904,7 @@ void AppSettings::load() {
   m_protonDbBadges = readEnabled(QStringLiteral("protondb_badges"), false);
   m_closeAfterLaunch = readEnabled(QStringLiteral("close_after_launch"), false);
   m_pauseUnfocusedSessions = readEnabled(QStringLiteral("pause_unfocused_sessions"), false);
+  m_discordPresence = readEnabled(QStringLiteral("discord_presence"), false);
   m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
@@ -988,6 +1022,7 @@ bool AppSettings::save() {
   contents += QStringLiteral("close_after_launch = %1\n"
                              "track_play_sessions = %7\n"
                              "pause_unfocused_sessions = %8\n"
+                             "discord_presence = %9\n"
                              "couch_mode_enabled = %2\n"
                              "couch_library_view = \"%3\"\n"
                              "library_sort_mode = \"%6\"\n"
@@ -1000,11 +1035,15 @@ bool AppSettings::save() {
                   .arg(kSortModeNames.value(m_librarySortMode))
                   .arg(m_trackPlaySessions ? QStringLiteral("true") : QStringLiteral("false"))
                   .arg(m_pauseUnfocusedSessions ? QStringLiteral("true")
-                                                : QStringLiteral("false"));
+                                                : QStringLiteral("false"))
+                  .arg(m_discordPresence ? QStringLiteral("true") : QStringLiteral("false"));
   contents += QStringLiteral("cover_size = %1\ncouch_cover_size = %2\n").arg(m_coverSize).arg(m_couchCoverSize);
   contents += QStringLiteral("gog_library_paths = ") +
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))
                                    .toJson(QJsonDocument::Compact)) + QLatin1Char('\n');
+  // Written separately from the block above, whose positional arguments are already
+  // at their limit, and it must round-trip so a hand-written id is not lost on save.
+  contents += QStringLiteral("discord_client_id = \"%1\"\n").arg(m_discordClientId);
   contents += QStringLiteral("protondb_enabled = %1\n").arg(m_protonDbEnabled ? QStringLiteral("true") : QStringLiteral("false"));
   contents += QStringLiteral("protondb_badges = %1\n").arg(m_protonDbBadges ? QStringLiteral("true") : QStringLiteral("false"));
   const auto jsonString = [](const QString& value) {

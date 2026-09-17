@@ -17,6 +17,8 @@
 #include <QStandardItemModel>
 #include <csignal>
 #include <openssl/evp.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include "achievements/SteamAchievementApi.h"
@@ -81,6 +83,7 @@
 #include "tracking/HyprlandWindows.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
+#include "tracking/DiscordPresence.h"
 #include "tracking/SessionDisplay.h"
 #include "tracking/SessionRecorder.h"
 #include "tracking/SessionTitleIndex.h"
@@ -119,6 +122,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <thread>
+
+#include <QMutex>
 
 namespace {
 // A launcher-style source that, like Lutris or Heroic, has no Installed role at all.
@@ -734,6 +740,7 @@ private slots:
   void backupDatabaseMergeReplaceAndRollback();
   void backupSettingsApplyAtomicallyAndKeepAccounts();
   void pauseUnfocusedSettingRoundTripsAndDefaultsOff();
+  void discordPresenceSettingRoundTripsAndDefaultsOff();
   void backupPreservesIdentificationChoices();
   void backupIncludesCurrentPreferences();
   void themeLoadsSemanticColors();
@@ -822,6 +829,8 @@ private slots:
   void cemuLauncherBuildsSafeCommands();
   void processMatcherExtractsRomPaths();
   void windowTitlesAttributeFilePickerLoads();
+  void discordPresenceFramesAndActivity();
+  void discordPresenceTalksToADiscordSocket();
   void sessionRecorderPausesWhileUnfocused();
   void sessionPlaytimeReconcilesImportedAndRecorded();
   void shippedProfilesMatchCemuWua();
@@ -2064,6 +2073,55 @@ void CoreTests::pauseUnfocusedSettingRoundTripsAndDefaultsOff() {
   {
     AppSettings reopened(path);
     QVERIFY(!reopened.pauseUnfocusedSessions());
+  }
+}
+
+void CoreTests::discordPresenceSettingRoundTripsAndDefaultsOff() {
+  QTemporaryDir temp;
+  const QString path = temp.filePath("config.toml");
+  {
+    AppSettings settings(path);
+    // Off unless asked for: nobody's Discord status changes without opting in.
+    QVERIFY(!settings.discordPresence());
+    QVERIFY(!settings.backupSettings().contains("discord_presence") ||
+            !settings.backupSettings().value("discord_presence").toBool());
+    QVERIFY(settings.discordClientId().isEmpty());
+    settings.setDiscordPresence(true);
+    settings.setDiscordClientId("123456789012345678");
+    QVERIFY(settings.discordPresence());
+  }
+  // Both keys the daemon reads must be the ones the app writes.
+  QFile file(path);
+  QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+  const QString contents = QString::fromUtf8(file.readAll());
+  QVERIFY2(contents.contains("discord_presence = true"), qPrintable(contents));
+  QVERIFY2(contents.contains("discord_client_id = \"123456789012345678\""), qPrintable(contents));
+  file.close();
+  {
+    AppSettings reopened(path);
+    QVERIFY(reopened.discordPresence());
+    QCOMPARE(reopened.discordClientId(), QStringLiteral("123456789012345678"));
+    // A settings save rebuilds the whole file, so an id the user wrote by hand must
+    // survive one. Saving an unrelated setting is the case that would lose it.
+    reopened.setReducedMotion(!reopened.reducedMotion());
+  }
+  {
+    AppSettings reopened(path);
+    QCOMPARE(reopened.discordClientId(), QStringLiteral("123456789012345678"));
+    QVERIFY(reopened.discordPresence());
+  }
+  // A malformed id is dropped rather than handed to the socket, and an explicit
+  // false is honored rather than confused with an absent key.
+  {
+    QFile handwritten(path);
+    QVERIFY(handwritten.open(QIODevice::WriteOnly | QIODevice::Text));
+    handwritten.write("discord_presence = false\ndiscord_client_id = \"not-a-snowflake\"\n");
+    handwritten.close();
+  }
+  {
+    AppSettings reopened(path);
+    QVERIFY(reopened.discordClientId().isEmpty());
+    QVERIFY(!reopened.discordPresence());
   }
 }
 
@@ -7250,6 +7308,212 @@ void CoreTests::sessionPlaytimeReconcilesImportedAndRecorded() {
       }
     }
   }
+}
+
+void CoreTests::discordPresenceFramesAndActivity() {
+  // Discord's framing is a little-endian opcode, a little-endian length, then the
+  // JSON payload. Getting this wrong is silent: Discord simply never answers.
+  const QByteArray handshake = DiscordPresence::frame(0, QByteArrayLiteral("{\"v\":1}"));
+  QCOMPARE(handshake.size(), 15);
+  QCOMPARE(handshake.left(4), QByteArray::fromHex("00000000"));
+  QCOMPARE(handshake.mid(4, 4), QByteArray::fromHex("07000000"));
+  QCOMPARE(handshake.mid(8), QByteArrayLiteral("{\"v\":1}"));
+
+  const QJsonObject hello =
+      QJsonDocument::fromJson(DiscordPresence::handshakePayload(QStringLiteral("123456789")))
+          .object();
+  QCOMPARE(hello.value(QStringLiteral("v")).toInt(), 1);
+  QCOMPARE(hello.value(QStringLiteral("client_id")).toString(), QStringLiteral("123456789"));
+
+  // A SET_ACTIVITY command always carries a nonce, which is how Discord's reply is
+  // matched to this request.
+  const QJsonObject activity = DiscordPresence::sessionActivity(
+      QStringLiteral("Metroid Dread"), QStringLiteral("Ryujinx"), 1700000000, 1);
+  const QJsonObject command = QJsonDocument::fromJson(DiscordPresence::activityPayload(
+                                                          activity, QStringLiteral("abc"), 4242))
+                                  .object();
+  QCOMPARE(command.value(QStringLiteral("cmd")).toString(), QStringLiteral("SET_ACTIVITY"));
+  QCOMPARE(command.value(QStringLiteral("nonce")).toString(), QStringLiteral("abc"));
+  const QJsonObject args = command.value(QStringLiteral("args")).toObject();
+  QCOMPARE(args.value(QStringLiteral("pid")).toInteger(), qint64(4242));
+  const QJsonObject sent = args.value(QStringLiteral("activity")).toObject();
+  QCOMPARE(sent.value(QStringLiteral("details")).toString(), QStringLiteral("Metroid Dread"));
+  QCOMPARE(sent.value(QStringLiteral("state")).toString(), QStringLiteral("Ryujinx"));
+  QCOMPARE(sent.value(QStringLiteral("timestamps"))
+               .toObject()
+               .value(QStringLiteral("start"))
+               .toInteger(),
+           qint64(1700000000));
+
+  // Clearing the presence sends an explicit null activity rather than an empty one,
+  // which is what Discord reads as "stop showing the last game".
+  const QJsonObject clear = QJsonDocument::fromJson(
+                                DiscordPresence::activityPayload({}, QStringLiteral("abc"), 4242))
+                                .object();
+  QVERIFY(clear.value(QStringLiteral("args"))
+              .toObject()
+              .value(QStringLiteral("activity"))
+              .isNull());
+
+  // A game with no name has nothing to publish, and a second running game is only
+  // reported as a count so the first game stays the headline.
+  QVERIFY(DiscordPresence::sessionActivity(QString{}, QStringLiteral("Ryujinx"), 0, 1).isEmpty());
+  const QJsonObject two = DiscordPresence::sessionActivity(
+      QStringLiteral("Metroid Dread"), QStringLiteral("Ryujinx"), 0, 2);
+  QCOMPARE(two.value(QStringLiteral("state")).toString(),
+           QStringLiteral("2 games via Ryujinx"));
+  // No start time means no elapsed timer rather than a timer starting at zero.
+  QVERIFY(!two.contains(QStringLiteral("timestamps")));
+  // Nothing the player did not ask to publish: no paths, no user details.
+  QCOMPARE(two.size(), 2);
+  QVERIFY(!two.value(QStringLiteral("details")).toString().contains(QLatin1Char('/')));
+
+  // The socket name is searched with Discord's own suffix range, including inside a
+  // sandboxed client's own runtime directory.
+  const QStringList sockets =
+      DiscordPresence::socketCandidates(QStringLiteral("/run/user/1000"));
+  QVERIFY(sockets.contains(QStringLiteral("/run/user/1000/discord-ipc-0")));
+  QVERIFY(sockets.contains(QStringLiteral("/run/user/1000/discord-ipc-5")));
+  QVERIFY(DiscordPresence::socketCandidates(QString{}).isEmpty());
+}
+
+void CoreTests::discordPresenceTalksToADiscordSocket() {
+  // A real round trip against a stand-in Discord, so the framing, the handshake and
+  // the command reply are all exercised over a real socket rather than against a
+  // stub of our own functions.
+  //
+  // The stand-in is a blocking AF_UNIX server on its own thread. QLocalServer would
+  // need a Qt event dispatcher in that thread, and the client's calls block waiting
+  // for a reply, so on one thread it would block the server that has to answer it.
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString socketPath = directory.filePath(QStringLiteral("discord-ipc-0"));
+
+  QMutex mutex;
+  QByteArray received;
+  std::atomic<bool> listening{false};
+  std::thread serverThread([&] {
+    const QByteArray path = socketPath.toUtf8();
+    ::unlink(path.constData());
+    const int handle = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    if (handle < 0) {
+      return;
+    }
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    ::memcpy(address.sun_path, path.constData(), size_t(path.size()));
+    if (::bind(handle, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        ::listen(handle, 4) != 0) {
+      ::close(handle);
+      return;
+    }
+    listening = true;
+    const int connection = ::accept(handle, nullptr, nullptr);
+    if (connection < 0) {
+      ::close(handle);
+      return;
+    }
+    // Answer every complete frame: the handshake with READY, each command by echoing
+    // its nonce back, which is what Discord does. The null activity is the last thing
+    // the test sends, so answering it ends the loop and the read that would otherwise
+    // block forever.
+    QByteArray pending;
+    char buffer[4096];
+    bool finished = false;
+    while (!finished) {
+      const ssize_t count = ::read(connection, buffer, sizeof(buffer));
+      if (count <= 0) {
+        break;
+      }
+      pending.append(buffer, static_cast<int>(count));
+      bool answered;
+      do {
+        answered = false;
+        if (pending.size() < 8) {
+          break;
+        }
+        const quint32 length =
+            qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(pending.constData() + 4));
+        if (pending.size() < static_cast<int>(length) + 8) {
+          break;
+        }
+        const QJsonObject object =
+            QJsonDocument::fromJson(pending.mid(8, static_cast<int>(length))).object();
+        pending.remove(0, static_cast<int>(length) + 8);
+        {
+          QMutexLocker locker(&mutex);
+          received.append(QJsonDocument(object).toJson(QJsonDocument::Compact));
+        }
+        const QString command = object.value(QStringLiteral("cmd")).toString();
+        const QJsonObject sent =
+            object.value(QStringLiteral("args")).toObject().value(QStringLiteral("activity")).toObject();
+        const QByteArray body =
+            command.isEmpty()
+                ? QByteArrayLiteral("{\"cmd\":\"DISPATCH\",\"evt\":\"READY\",\"data\":{}}")
+                : QJsonDocument(QJsonObject{
+                                    {QStringLiteral("cmd"), command},
+                                    {QStringLiteral("nonce"),
+                                     object.value(QStringLiteral("nonce")).toString()},
+                                })
+                      .toJson(QJsonDocument::Compact);
+        const QByteArray frame = DiscordPresence::frame(1, body);
+        if (::write(connection, frame.constData(), size_t(frame.size())) <= 0) {
+          finished = true;
+          break;
+        }
+        if (!command.isEmpty() && sent.isEmpty()) {
+          // The clear command, which the test sends last.
+          finished = true;
+          break;
+        }
+        answered = true;
+      } while (answered);
+    }
+    ::close(connection);
+    ::close(handle);
+  });
+
+  for (int waited = 0; !listening && waited < 300; ++waited) {
+    QThread::msleep(10);
+  }
+  QVERIFY(listening);
+
+  DiscordPresence::Client client(QStringLiteral("123456789012345678"),
+                                 {QStringLiteral("does-not-exist"), socketPath});
+  const QJsonObject activity = DiscordPresence::sessionActivity(
+      QStringLiteral("Metroid Dread"), QStringLiteral("Ryujinx"), 1700000000, 1);
+
+  QVERIFY(client.setActivity(activity));
+  {
+    QMutexLocker locker(&mutex);
+    // The handshake named the application, and the command carried the activity.
+    QVERIFY(received.contains(QByteArrayLiteral("\"client_id\":\"123456789012345678\"")));
+    QVERIFY(received.contains(QByteArrayLiteral("SET_ACTIVITY")));
+    QVERIFY(received.contains(QByteArrayLiteral("\"details\":\"Metroid Dread\"")));
+  }
+  // The second call reuses the connection rather than handshaking again.
+  QVERIFY(client.setActivity(activity));
+  {
+    QMutexLocker locker(&mutex);
+    QCOMPARE(received.count(QByteArrayLiteral("client_id")), 1);
+  }
+  // Clearing the presence sends an explicit null activity.
+  QVERIFY(client.setActivity({}));
+  {
+    QMutexLocker locker(&mutex);
+    QVERIFY(received.contains(QByteArrayLiteral("\"activity\":null")));
+  }
+  serverThread.join();
+
+  // A client with no application id never touches the socket at all.
+  DiscordPresence::Client unconfigured(QString{}, {socketPath});
+  QVERIFY(!unconfigured.configured());
+  QVERIFY(!unconfigured.setActivity(activity));
+  // A configured client with no Discord to talk to fails quietly rather than
+  // throwing or blocking the recorder.
+  DiscordPresence::Client abandoned(QStringLiteral("1"),
+                                    {directory.filePath(QStringLiteral("gone"))});
+  QVERIFY(!abandoned.setActivity(activity));
 }
 
 void CoreTests::sessionRecorderPausesWhileUnfocused() {

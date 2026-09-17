@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 #include <QSet>
 
+#include <algorithm>
 #include <utility>
 
 namespace {
@@ -152,6 +153,7 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
       session.gamePath = match.gamePath;
       session.emulator = match.emulator;
       session.rescanSource = match.rescanSource;
+      session.startedAt = nowWall;
       session.markMs = nowMs;
       session.lastFlushMs = nowMs;
       m_active.insert(key, session);
@@ -193,3 +195,22 @@ void SessionRecorder::endAll(qint64 nowWall) {
 }
 
 QStringList SessionRecorder::takeRescanRequests() { return std::move(m_rescanRequests); }
+
+QVector<SessionRecorder::ActiveInfo> SessionRecorder::activeSessions() const {
+  QVector<ActiveInfo> sessions;
+  sessions.reserve(m_active.size());
+  for (auto session = m_active.cbegin(); session != m_active.cend(); ++session) {
+    sessions.append(ActiveInfo{.gamePath = session->gamePath,
+                               .emulator = session->emulator,
+                               .startedAt = session->startedAt,
+                               .elapsedMs = session->elapsedMs,
+                               .paused = session->paused});
+  }
+  // A long-running game is the one a player is watching, so it leads the list and
+  // keeps the presence stable when a second game starts.
+  std::sort(sessions.begin(), sessions.end(),
+            [](const ActiveInfo& left, const ActiveInfo& right) {
+              return left.startedAt < right.startedAt;
+            });
+  return sessions;
+}

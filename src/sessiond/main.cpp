@@ -1,8 +1,10 @@
 #include "tracking/AppNotify.h"
+#include "tracking/DiscordPresence.h"
 #include "tracking/HyprlandWindows.h"
 #include "tracking/ProcFs.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
+#include "tracking/SessionDisplay.h"
 #include "tracking/SessionRecorder.h"
 #include "tracking/SessionTitleIndex.h"
 
@@ -12,10 +14,12 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonObject>
 #include <QLockFile>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
+#include <memory>
 
 namespace {
 constexpr int kPollIntervalMs = 5000;
@@ -26,6 +30,13 @@ constexpr int kPollIntervalMs = 5000;
 class ConfigToggle {
 public:
   bool load() {
+    // The application id can come from the environment alone, so it is read before
+    // the config file is considered: a development build with no config at all can
+    // still publish under its own Discord application.
+    const QString fromEnvironment = qEnvironmentVariable("OMAKADE_DISCORD_CLIENT_ID").trimmed();
+    if (!fromEnvironment.isEmpty()) {
+      m_discordClientId = fromEnvironment;
+    }
     const QString path = SessionDatabase::defaultConfigPath();
     QFileInfo info(path);
     if (!info.exists()) {
@@ -49,15 +60,35 @@ public:
         QStringLiteral("(?m)^pause_unfocused_sessions\\s*=\\s*(true|false)\\s*$"));
     const QRegularExpressionMatch pauseMatch = pausePattern.match(contents);
     m_pauseUnfocused = pauseMatch.hasMatch() && pauseMatch.captured(1) == QStringLiteral("true");
+    // Discord Rich Presence is opt-in too, and only meaningful with an application
+    // id to publish under.
+    const QRegularExpression presencePattern(
+        QStringLiteral("(?m)^discord_presence\\s*=\\s*(true|false)\\s*$"));
+    const QRegularExpressionMatch presenceMatch = presencePattern.match(contents);
+    m_discordPresence =
+        presenceMatch.hasMatch() && presenceMatch.captured(1) == QStringLiteral("true");
+    // The Discord application id the presence is published under. Discord shows the
+    // application's own name, so this only selects which one it is. The environment
+    // variable read at the top of this method wins over the config file.
+    if (fromEnvironment.isEmpty()) {
+      const QRegularExpression idPattern(
+          QStringLiteral("(?m)^discord_client_id\\s*=\\s*\"([0-9]{5,32})\"\\s*$"));
+      const QRegularExpressionMatch idMatch = idPattern.match(contents);
+      m_discordClientId = idMatch.hasMatch() ? idMatch.captured(1) : QString{};
+    }
     return m_enabled;
   }
 
   [[nodiscard]] bool pauseUnfocused() const { return m_pauseUnfocused; }
+  [[nodiscard]] bool discordPresence() const { return m_discordPresence; }
+  [[nodiscard]] QString discordClientId() const { return m_discordClientId; }
 
 private:
   QDateTime m_checked;
   bool m_enabled = true;
   bool m_pauseUnfocused = false;
+  bool m_discordPresence = false;
+  QString m_discordClientId;
 };
 
 QString profilesPath() {
@@ -159,6 +190,57 @@ int main(int argc, char* argv[]) {
   if (toggle.load()) recorder.recover(ProcFs::listProcesses(), profiles, nowWall);
   else recorder.endAll(nowWall);
 
+  // Discord Rich Presence, when it is switched on and an application id is
+  // configured. The client is rebuilt when the application id changes, because the
+  // daemon starts before any config exists and the id can appear later. It is inert
+  // with no id, so nothing is attempted until one is set.
+  std::unique_ptr<DiscordPresence::Client> presence;
+  QString presenceClientId;
+  // The last activity published, so a poll that changes nothing sends nothing and
+  // the socket is left alone while a game runs.
+  QJsonObject publishedPresence;
+  bool presencePublished = false;
+  const auto publishPresence = [&] {
+    const QString clientId = toggle.discordClientId();
+    if (presence == nullptr || clientId != presenceClientId) {
+      // A different application, or the first one seen, plus anything already
+      // published belongs to the old client and has to be re-sent.
+      presenceClientId = clientId;
+      presence = std::make_unique<DiscordPresence::Client>(
+          clientId, DiscordPresence::socketCandidates(
+                        QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)));
+      presencePublished = false;
+      publishedPresence = {};
+    }
+    // Switching the toggle off, switching recording off or losing sight of every
+    // game clears the presence rather than leaving a stale game showing.
+    const QVector<SessionRecorder::ActiveInfo> active =
+        toggle.discordPresence() ? recorder.activeSessions()
+                                 : QVector<SessionRecorder::ActiveInfo>{};
+    QJsonObject activity;
+    if (!active.isEmpty()) {
+      activity = DiscordPresence::sessionActivity(
+          SessionDisplay::titleForGamePath(active.first().gamePath), active.first().emulator,
+          active.first().startedAt, static_cast<int>(active.size()));
+    }
+    if (presencePublished && activity == publishedPresence) {
+      return;
+    }
+    // A clear is only sent when something was published in the first place, so an
+    // idle recorder never touches the socket.
+    if (activity.isEmpty() && !presencePublished) {
+      return;
+    }
+    if (presence->setActivity(activity)) {
+      publishedPresence = activity;
+      presencePublished = true;
+    } else {
+      // Discord is not running. Forget what was published so the next poll tries
+      // again rather than believing a presence is showing when it is not.
+      presencePublished = false;
+    }
+  };
+
   QTimer poll;
   QObject::connect(&poll, &QTimer::timeout, [&] {
     if (!toggle.load()) {
@@ -170,6 +252,7 @@ int main(int argc, char* argv[]) {
                     toggle.pauseUnfocused() ? result.unfocused
                                             : std::function<bool(qint64)>{});
     }
+    publishPresence();
     if (recorder.takeStorageFailure()) {
       qWarning("omakade-sessiond: session storage failed; pending progress may be lost if the "
                "recorder exits");

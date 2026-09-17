@@ -58,12 +58,25 @@ public:
 
   [[nodiscard]] int activeCount() const { return static_cast<int>(m_active.size()); }
 
+  // The sessions being tracked right now, in the order they started. Discord
+  // presence and anything else that needs to describe the running game reads this
+  // rather than the database, so it always agrees with what is being recorded.
+  struct ActiveInfo {
+    QString gamePath;
+    QString emulator;
+    qint64 startedAt = 0;
+    qint64 elapsedMs = 0;
+    bool paused = false;
+  };
+  [[nodiscard]] QVector<ActiveInfo> activeSessions() const;
+
 private:
   struct ActiveSession {
     qint64 id = 0;
     QString gamePath;
     QString emulator;
     QString rescanSource;
+    qint64 startedAt = 0;
     qint64 elapsedMs = 0;
     qint64 markMs = 0;
     qint64 lastFlushMs = 0;
