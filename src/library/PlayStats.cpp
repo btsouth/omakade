@@ -433,11 +433,14 @@ void PlayStats::recompute() {
   // A run counts as current while it is still alive: it has to reach today or yesterday,
   // because today may simply not have been played yet.
   const int currentRun = (!days.isEmpty() && days.last().daysTo(today) <= 1) ? trailingRun : 0;
+  // Days off are counted only across the window recording actually covers. Counting January to
+  // September as days off before the recorder existed reports a number that is true of the
+  // calendar and false about the person, which is exactly the kind of figure this screen must
+  // not show.
+  const QDate recordingStart =
+      m_recordingStartsAt > 0 ? QDateTime::fromSecsSinceEpoch(m_recordingStartsAt).date() : today;
   const QDate windowStart =
-      byYear ? QDate(m_year, 1, 1)
-             : (m_recordingStartsAt > 0
-                    ? QDateTime::fromSecsSinceEpoch(m_recordingStartsAt).date()
-                    : today);
+      qMax(byYear ? QDate(m_year, 1, 1) : recordingStart, recordingStart);
   const QDate windowEnd = qMin(byYear ? QDate(m_year, 12, 31) : today, today);
   const int windowDays = qMax(0, windowStart.daysTo(windowEnd) + 1);
   m_streaks = QVariantMap{

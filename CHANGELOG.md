@@ -54,11 +54,12 @@ Sessions you can see, stop, and manage.
   full disk or a read-only database, is no longer dropped. The session stays tracked
   while the game runs and is recorded with its original start once the database
   accepts writes again, or written whole when the game exits first.
-- A new Stats view shows what you have played and when. It reports recorded play beside
-  the totals your launchers and emulators report, never adds the two together, and names
-  the window the recorded figures really cover, so a first partial month is not presented
-  as a whole year. Time is broken down by system and by launcher or emulator, which
-  covers emulated consoles as well as Steam and the other stores.
+- A new Stats view shows what you have played and when: the time Omakade recorded beside
+  the totals your launchers and emulators report, the most played game, where the time went
+  by system and by launcher or emulator, the hours and weekdays you actually play, how long
+  your sessions run, and your longest streak. Recorded figures name the window they cover,
+  so a first partial month is not presented as a whole year, and launcher totals are never
+  added to recorded play.
 
 ## 1.10.0
 

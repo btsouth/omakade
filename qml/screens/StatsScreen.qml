@@ -20,8 +20,25 @@ FocusScope {
     readonly property var headline: Stats.headline
     readonly property var bySource: Stats.bySource
     readonly property var bySystem: Stats.bySystem
+    readonly property var byHour: Stats.byHour
+    readonly property var byWeekday: Stats.byWeekday
+    readonly property var sessionShape: Stats.sessionShape
+    readonly property var streaks: Stats.streaks
     readonly property var libraryStats: Stats.library
     readonly property bool hasRecordedPlay: Number(headline.recordedSeconds || 0) > 0
+    // The tallest hour is the scale for the strip, so the busiest time of day always fills it.
+    readonly property real peakHourSeconds: {
+        let peak = 0
+        for (const entry of root.byHour)
+            peak = Math.max(peak, Number(entry.seconds) || 0)
+        return peak
+    }
+    readonly property real peakWeekdaySeconds: {
+        let peak = 0
+        for (const entry of root.byWeekday)
+            peak = Math.max(peak, Number(entry.seconds) || 0)
+        return peak
+    }
 
     function alpha(color, value) {
         return Qt.rgba(color.r, color.g, color.b, value)
@@ -55,6 +72,54 @@ FocusScope {
     }
     function close() {
         root.libraryRequested()
+    }
+    function barRatio(seconds, peak) {
+        return peak > 0 ? Math.max(0, Math.min(1, (Number(seconds) || 0) / peak)) : 0
+    }
+    // The hour and the weekday the most recorded time landed in, named rather than drawn, so the
+    // strip has a sentence next to it.
+    function busiestHourText() {
+        let best = -1
+        let bestSeconds = 0
+        for (const entry of root.byHour) {
+            const seconds = Number(entry.seconds) || 0
+            if (seconds > bestSeconds) {
+                bestSeconds = seconds
+                best = Number(entry.hour)
+            }
+        }
+        if (best < 0) return ""
+        return (best < 10 ? "0" : "") + best + ":00"
+    }
+    function busiestWeekdayText() {
+        const names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        let best = -1
+        let bestSeconds = 0
+        for (const entry of root.byWeekday) {
+            const seconds = Number(entry.seconds) || 0
+            if (seconds > bestSeconds) {
+                bestSeconds = seconds
+                best = Number(entry.weekday)
+            }
+        }
+        return best < 0 || bestSeconds <= 0 ? "" : names[best]
+    }
+    function weekdayShortName(day) {
+        return ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][Number(day) || 0]
+    }
+    // Night means after 23:00 and before 05:00, which is the window a person recognises as late
+    // rather than a cut chosen to make a number look interesting.
+    function lateNightSeconds() {
+        let total = 0
+        for (const entry of root.byHour) {
+            const hour = Number(entry.hour) || 0
+            if (hour >= 23 || hour <= 4) total += Number(entry.seconds) || 0
+        }
+        return total
+    }
+    function bucketShare(count) {
+        const total = Number(root.sessionShape.count) || 0
+        return total > 0 ? (Number(count) || 0) / total : 0
     }
 
     Keys.onEscapePressed: function(event) {
@@ -290,6 +355,169 @@ FocusScope {
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
                             font.pixelSize: 12 * root.scaleFactor
+                        }
+                    }
+                }
+
+                // The shape of the play itself: only recorded sessions can answer this, so the
+                // sections are absent rather than zeroed until something has been recorded.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8 * root.scaleFactor
+                    visible: root.hasRecordedPlay
+                    SectionTitle { text: "WHEN YOU PLAY" }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 3 * root.scaleFactor
+                        Repeater {
+                            model: root.byHour
+                            ColumnLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 2 * root.scaleFactor
+                                Item {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 46 * root.scaleFactor
+                                    Rectangle {
+                                        anchors.bottom: parent.bottom
+                                        width: parent.width
+                                        height: Math.max(1, parent.height
+                                                         * root.barRatio(modelData.seconds,
+                                                                         root.peakHourSeconds))
+                                        radius: 1.5 * root.scaleFactor
+                                        color: (Number(modelData.seconds) || 0) >= root.peakHourSeconds
+                                               && root.peakHourSeconds > 0
+                                               ? Theme.accent
+                                               : root.alpha(Theme.foreground, 0.30)
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: (Number(modelData.hour) % 6) === 0 ? String(modelData.hour) : ""
+                                    color: Theme.mutedText
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 8 * root.scaleFactor
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        objectName: "statsWhenYouPlay"
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11 * root.scaleFactor
+                        text: {
+                            const sentences = []
+                            if (root.busiestHourText().length > 0)
+                                sentences.push("You play most around " + root.busiestHourText())
+                            if (root.busiestWeekdayText().length > 0)
+                                sentences.push(root.busiestWeekdayText() + " is your busiest day")
+                            const night = root.lateNightSeconds()
+                            if (night > 0)
+                                sentences.push(root.percentText(night / Math.max(1, Number(headline.recordedSeconds)))
+                                               + " of it happens after 23:00")
+                            return sentences.length > 0 ? sentences.join(". ") + "." : ""
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6 * root.scaleFactor
+                        Repeater {
+                            model: root.byWeekday
+                            ColumnLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 2 * root.scaleFactor
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 30 * root.scaleFactor
+                                    color: root.alpha(Theme.foreground, 0.07)
+                                    Rectangle {
+                                        anchors.bottom: parent.bottom
+                                        width: parent.width
+                                        height: Math.max(1, parent.height
+                                                         * root.barRatio(modelData.seconds,
+                                                                         root.peakWeekdaySeconds))
+                                        radius: 1.5 * root.scaleFactor
+                                        color: root.alpha(Theme.accent, 0.85)
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: root.weekdayShortName(modelData.weekday)
+                                    color: Theme.mutedText
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 8 * root.scaleFactor
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8 * root.scaleFactor
+                    visible: root.hasRecordedPlay
+                    SectionTitle { text: "SESSION SHAPE" }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: root.width >= 720 * root.scaleFactor ? 3 : 1
+                        columnSpacing: 18 * root.scaleFactor
+                        rowSpacing: 10 * root.scaleFactor
+                        Stat {
+                            label: "Average session"
+                            value: root.durationText(root.sessionShape.averageSeconds)
+                        }
+                        Stat {
+                            label: "Longest session"
+                            value: root.durationText(root.sessionShape.longestSeconds)
+                            detail: root.sessionShape.longestTitle || ""
+                        }
+                        Stat {
+                            label: "Over two hours"
+                            value: String(root.sessionShape.overTwoHours || 0)
+                        }
+                    }
+                    Repeater {
+                        model: root.sessionShape.buckets
+                        ShareRow {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.label
+                            share: root.bucketShare(modelData.count)
+                            detail: root.countText(modelData.count, "session")
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8 * root.scaleFactor
+                    visible: root.hasRecordedPlay
+                    SectionTitle { text: "STREAKS" }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: root.width >= 720 * root.scaleFactor ? 3 : 1
+                        columnSpacing: 18 * root.scaleFactor
+                        rowSpacing: 10 * root.scaleFactor
+                        Stat {
+                            objectName: "statsLongestRun"
+                            label: "Longest run"
+                            value: root.countText(root.streaks.longestRun, "day")
+                            detail: "In a row"
+                        }
+                        Stat {
+                            label: "Current run"
+                            value: root.countText(root.streaks.currentRun, "day")
+                        }
+                        Stat {
+                            label: "Days off"
+                            value: String(root.streaks.daysOff || 0)
+                            detail: "Days you did not play"
                         }
                     }
                 }

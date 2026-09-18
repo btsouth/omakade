@@ -194,3 +194,18 @@ A fifth destination also broke `omakade_controller_navigation_narrow`, which ren
 destinations matter more there than repeating a name the window title already shows. That is
 under the window's own 820 pixel minimum, so it only ever appears in the harsher layout test,
 and it is visible in the 600 pixel render as a clean row with every border intact.
+
+- 2026-09-17: **slice 3 done.** Hours of day and weekday strips with a sentence naming the
+  busiest hour, the busiest day and the late-night share; session shape (average, longest with
+  the game that holds it, count over two hours, and the length distribution); and streaks.
+
+Reading the render caught a defect the unit tests had blessed, which is the argument for
+looking at the picture: **days off was counted from 1 January** in a year period, so a window
+that began on 5 September reported 255 days off, 246 of them before the recorder existed. It
+now counts only from the day recording starts, and a test pins the corrected window by failing
+without it.
+
+The check also renders at 1100 by 1700 as well as 900 by 900 now: the first screenshot showed
+only the top half, and the sections below the fold were going unverified. That is how a
+"missing" launcher row turned out to be an artifact of the crop rather than a defect, and it is
+worth knowing which of the two you are looking at before reporting either.

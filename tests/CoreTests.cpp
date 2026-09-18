@@ -8278,8 +8278,16 @@ void CoreTests::statsReportRecordedPlayBesideLibraryTotals() {
   // The library's own totals sit beside the recorded ones and are never mixed into them.
   QCOMPARE(headline.value(QStringLiteral("librarySeconds")).toLongLong(), qint64(43200));
   QCOMPARE(headline.value(QStringLiteral("libraryGames")).toInt(), 2);
-  QCOMPARE(headline.value(QStringLiteral("allTimeRecordedSeconds")).toLongLong(), qint64(3300));
+  QCOMPARE(stats.headline().value(QStringLiteral("allTimeRecordedSeconds")).toLongLong(), qint64(3300));
   QCOMPARE(stats.periodLabel(), QString::number(year));
+
+  // Days off count only from the day recording started, not from 1 January: the days before the
+  // recorder existed are not days the player chose to skip, and reporting them would make a
+  // three-week window look like a year of neglect.
+  {
+    const int windowDays = qMax(0, day.daysTo(QDate::currentDate()) + 1);
+    QCOMPARE(stats.streaks().value(QStringLiteral("daysOff")).toInt(), qMax(0, windowDays - 2));
+  }
 
   // Every breakdown is a part of the recorded whole.
   QCOMPARE(stats.bySource().size(), 2);
