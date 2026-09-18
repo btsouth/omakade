@@ -23,6 +23,7 @@
 #include "library/FaugusGameModel.h"
 #include "library/HeroicGameModel.h"
 #include "library/HomeModel.h"
+#include "library/PlayStats.h"
 #include "library/LibraryFilterModel.h"
 #include "library/LutrisGameModel.h"
 #include "library/ManualGameModel.h"
@@ -864,6 +865,7 @@ int main(int argc, char* argv[]) {
       savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") ||
       renderOverlay == QStringLiteral("bulk-editor") ||
       renderOverlay == QStringLiteral("session-history") ||
+      renderOverlay == QStringLiteral("stats") ||
       renderOverlay == QStringLiteral("now-playing") || renderOverlay == "library-repair-controls") {
     if (!artworkFixture.isValid()) return EXIT_FAILURE;
     libraryDatabasePath = artworkFixture.filePath(QStringLiteral("library.sqlite"));
@@ -1290,8 +1292,13 @@ int main(int argc, char* argv[]) {
   }
   BackupManager backups(managerPaths, &preferences, steamLibrary != nullptr || backupFixture);
   HomeModel home(&unifiedGames, libraryDatabasePath);
+  // The figures the Stats screen shows. It reads the same model the library does, so its
+  // playtime can never disagree with what a game's card says, and it computes nothing until
+  // the screen is open.
+  PlayStats stats(&unifiedGames, libraryDatabasePath);
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
+  engine.rootContext()->setContextProperty("Stats", &stats);
   const bool scrollTrace = qEnvironmentVariableIsSet("OMAKADE_SCROLL_TRACE");
   engine.rootContext()->setContextProperty("ScrollTraceEnabled", scrollTrace);
   if (scrollTrace) {
@@ -1358,6 +1365,45 @@ int main(int argc, char* argv[]) {
         !SessionDatabase::endSession(database, older, now - 5400, 1800) ||
         !SessionDatabase::endSession(database, recent, now - 600, 1200))
       return EXIT_FAILURE;
+    database.close();
+    database = {};
+    QSqlDatabase::removeDatabase(connection);
+    playSessionStore = std::make_unique<PlaySessionStore>(libraryDatabasePath);
+    playSessionStore->setEnabled(preferences.trackPlaySessions());
+  }
+  if (renderOverlay == QStringLiteral("stats")) {
+    // A spread of recorded sessions so every section of the stats screen has something real to
+    // draw in a render check: more than one game and source, days apart, different hours, one
+    // long session and one short one, and a return after a gap.
+    const QString connection = QStringLiteral("omakade-stats-render");
+    QSqlDatabase database;
+    if (!SessionDatabase::open(database, libraryDatabasePath, connection)) return EXIT_FAILURE;
+    struct StatsFixture {
+      const char* path;
+      const char* source;
+      int daysAgo;
+      int hour;
+      qint64 seconds;
+    };
+    const StatsFixture fixtures[] = {
+        {"/games/demo-0.nes", "RetroArch", 0, 21, 5400},
+        {"/games/demo-1.sfc", "RetroArch", 0, 22, 1800},
+        {"/games/demo-0.nes", "RetroArch", 1, 20, 2700},
+        {"/games/demo-2.iso", "PCSX2", 2, 19, 7200},
+        {"/games/demo-0.nes", "RetroArch", 3, 23, 900},
+        {"/games/demo-2.iso", "PCSX2", 12, 18, 3600},
+    };
+    for (const StatsFixture& fixture : fixtures) {
+      const qint64 start =
+          QDateTime(QDate::currentDate().addDays(-fixture.daysAgo), QTime(fixture.hour, 0))
+              .toSecsSinceEpoch();
+      const qint64 id = SessionDatabase::beginSession(
+          database, QString::fromLatin1(fixture.path), QString::fromLatin1(fixture.source), start,
+          10, 10);
+      if (id <= 0 ||
+          !SessionDatabase::endSession(database, id, start + fixture.seconds, fixture.seconds))
+        return EXIT_FAILURE;
+    }
     database.close();
     database = {};
     QSqlDatabase::removeDatabase(connection);
@@ -1785,6 +1831,9 @@ int main(int argc, char* argv[]) {
             });
           });
         });
+      }
+      if (renderOverlay == QStringLiteral("stats")) {
+        quickWindow->setProperty("statsOpen", true);
       }
       if (renderOverlay == QStringLiteral("now-playing")) {
         // Home has to be the open view: the panel lives on the Home screen.

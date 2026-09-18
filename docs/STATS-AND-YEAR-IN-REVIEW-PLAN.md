@@ -173,3 +173,24 @@ Two things the tests settled against the design's assumptions, both worth keepin
 One defect was found and fixed while writing it: the backlog walk read a hash entry through an
 iterator that the same statement's `insert` could invalidate by rehashing, which segfaulted the
 first test run. The iterator is now read before the insert.
+
+- 2026-09-17: **slice 2 done.** `qml/screens/StatsScreen.qml`, a STATS entry in the navigation
+  row, the `Stats` context property, and a headless render test (`omakade_stats_screen`) that
+  seeds a fixture of recorded sessions and fails on any QML error. The screen shows the period
+  chips, the window note, the headline figures, the most played game, the system and launcher
+  breakdowns and the library counts. Time patterns, outcomes and streaks are slices 3 and 4;
+  the couch treatment is slice 6, so the screen hides itself in Couch Mode for now and entering
+  Couch Mode closes it.
+
+The render test earned its place on the first run: it passed while the screen said "nothing has
+been recorded yet", because the overlay was missing from the list of overlays that get a
+writable fixture database, so the fixture and the screen each opened their own empty in-memory
+database. A test that passes is not the same as a screen that draws the data; the screenshot is
+what caught it. Worth remembering for every remaining slice.
+
+A fifth destination also broke `omakade_controller_navigation_narrow`, which renders at 600 by
+800 and fails if any toolbar control leaves the window: the row no longer fit. The fix is in
+`Main.qml`, not in the test: below 700 pixels the brand drops to its icon, because five
+destinations matter more there than repeating a name the window title already shows. That is
+under the window's own 820 pixel minimum, so it only ever appears in the harsher layout test,
+and it is visible in the 600 pixel render as a clean row with every border intact.

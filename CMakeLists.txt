@@ -332,6 +332,7 @@ qt_add_qml_module(omakade
     qml/screens/BulkOrganizationEditor.qml
     qml/screens/ManualGameEditor.qml
     qml/screens/HomeScreen.qml
+    qml/screens/StatsScreen.qml
     qml/screens/GameDetails.qml
 )
 

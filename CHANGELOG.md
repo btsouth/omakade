@@ -54,6 +54,11 @@ Sessions you can see, stop, and manage.
   full disk or a read-only database, is no longer dropped. The session stays tracked
   while the game runs and is recorded with its original start once the database
   accepts writes again, or written whole when the game exits first.
+- A new Stats view shows what you have played and when. It reports recorded play beside
+  the totals your launchers and emulators report, never adds the two together, and names
+  the window the recorded figures really cover, so a first partial month is not presented
+  as a whole year. Time is broken down by system and by launcher or emulator, which
+  covers emulated consoles as well as Steam and the other stores.
 
 ## 1.10.0
 

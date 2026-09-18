@@ -898,6 +898,17 @@ set_tests_properties(omakade_now_playing_desktop omakade_now_playing_couch
   FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError"
   TIMEOUT 20)
 
+# The stats screen renders against a fixture of recorded sessions, so the sections have real
+# figures to draw and any QML error in them fails the test rather than waiting for a person to
+# open the view.
+add_test(NAME omakade_stats_screen COMMAND omakade
+  --render-overlay=stats --render-size=900x900
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-desktop.png)
+set_tests_properties(omakade_stats_screen PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError"
+  TIMEOUT 20)
+
 qt_add_executable(omakade_save_backups_tests SaveBackupsTests.cpp)
 target_link_libraries(omakade_save_backups_tests PRIVATE omakade_core Qt6::Test)
 add_test(NAME omakade_save_backups_tests COMMAND omakade_save_backups_tests)

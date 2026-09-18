@@ -13,6 +13,7 @@ ApplicationWindow {
     property bool backupEditorOpen: false
     property bool bulkOrganizationOpen: false
     property bool homeOpen: false
+    property bool statsOpen: false
     property var homeLibraryState: null
     property string homeReturnIdentity: ""
     property string homeReturnAction: ""
@@ -200,6 +201,7 @@ ApplicationWindow {
             return detailsLoader.item
         }
         if (homeOpen) return homeScreen
+        if (statsOpen) return statsScreen
         return null
     }
 
@@ -398,6 +400,7 @@ ApplicationWindow {
     function openLibrarySearch() {
         if (root.activeActionMenu && root.activeActionMenu.opened) root.activeActionMenu.close()
         root.homeOpen = false
+        root.statsOpen = false
         if (root.couchMode) couchLibraryView.openSearch()
         else Qt.callLater(searchField.forceActiveFocus)
     }
@@ -681,6 +684,9 @@ ApplicationWindow {
             }
         }
         if (enabled) {
+            // The couch library takes the whole window, and the stats screen has no couch
+            // treatment yet, so it closes rather than hiding behind the couch view.
+            root.statsOpen = false
             couchLibraryView.currentIndex = libraryView.currentIndex
             root.desktopVisibility = root.visibility
         } else {
@@ -1218,6 +1224,9 @@ ApplicationWindow {
                 detailsLoader.item.closeCollectionEditor()
             } else if (root.detailOpen) {
                 root.closeDetails()
+            } else if (root.statsOpen) {
+                root.statsOpen = false
+                Qt.callLater(root.focusLibrary)
             } else if (root.homeOpen) {
                 root.homeOpen = false
                 Qt.callLater(root.focusLibrary)
@@ -1304,7 +1313,7 @@ ApplicationWindow {
         anchors.fill: parent
         opacity: root.detailOpen ? 0 : 1
         scale: root.detailOpen ? 0.985 : 1
-        visible: !root.homeOpen && !root.couchMode && opacity > 0
+        visible: !root.homeOpen && !root.statsOpen && !root.couchMode && opacity > 0
         enabled: !root.couchMode && !root.detailOpen
 
         // Arrow keys move between the filters and toolbar controls, and Down with nothing
@@ -1358,6 +1367,11 @@ ApplicationWindow {
                     }
 
                     Column {
+                        // Below the window's own minimum width the row has to give up the
+                        // wordmark: five destinations plus the app name do not fit across 600
+                        // pixels, and the destinations matter more than repeating the name the
+                        // window title already shows.
+                        visible: root.width >= 700
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 1
                         Text {
@@ -1381,12 +1395,17 @@ ApplicationWindow {
                 GlassButton {
                     objectName: "openHomeButton"
                     text: "HOME"; compact: true
-                    onClicked: { root.homeOpen = true; Qt.callLater(homeScreen.focusHome) }
+                    onClicked: { root.statsOpen = false; root.homeOpen = true; Qt.callLater(homeScreen.focusHome) }
                 }
                 GlassButton {
                     objectName: "libraryDestinationButton"
                     text: "LIBRARY"; compact: true; selected: true
-                    onClicked: libraryView.focusGrid()
+                    onClicked: { root.statsOpen = false; libraryView.focusGrid() }
+                }
+                GlassButton {
+                    objectName: "statsDestinationButton"
+                    text: "STATS"; compact: true
+                    onClicked: { root.homeOpen = false; root.statsOpen = true; Qt.callLater(statsScreen.focusStats) }
                 }
                 Item { Layout.fillWidth: true }
 
@@ -1731,6 +1750,15 @@ ApplicationWindow {
     }
 
     Binding { target: Home; property: "active"; value: root.homeOpen }
+    Binding { target: Stats; property: "active"; value: root.statsOpen }
+    StatsScreen {
+        id: statsScreen
+        objectName: "statsScreen"
+        anchors.fill: parent
+        visible: root.statsOpen && !root.couchMode && !root.detailOpen
+        couchMode: root.couchMode
+        onLibraryRequested: { root.statsOpen = false; Qt.callLater(root.focusLibrary) }
+    }
     HomeScreen {
         id: homeScreen
         objectName: "homeScreen"
