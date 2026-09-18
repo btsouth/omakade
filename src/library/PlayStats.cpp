@@ -65,7 +65,8 @@ PlayStats::PlayStats(UnifiedGameModel* games, const QString& path, QObject* pare
   m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connection);
   m_database.setDatabaseName(path.isEmpty() ? QStringLiteral(":memory:") : path);
   if (!m_database.open())
-    m_error = QStringLiteral("Could not read the library database.");
+    m_error = QStringLiteral("The library database could not be read, so there are no figures to "
+                             "show.");
   else
     m_valid = true;
   if (games == nullptr)
@@ -354,13 +355,26 @@ void PlayStats::recompute() {
     librarySeconds += game.playtimeSeconds;
   }
 
-  qint64 topSeconds = 0;
-  QString topTitle;
-  for (auto it = secondsByGame.cbegin(); it != secondsByGame.cend(); ++it) {
-    if (it.value() > topSeconds) {
-      topSeconds = it.value();
-      topTitle = titleByGame.value(it.key());
-    }
+  // The ranked games, which is what a recap is really made of: the headline carries the first one
+  // and the list gives the reader the rest of the shape.
+  QVector<QPair<qint64, QString>> rankedGames;
+  rankedGames.reserve(secondsByGame.size());
+  for (auto it = secondsByGame.cbegin(); it != secondsByGame.cend(); ++it)
+    rankedGames.append({it.value(), titleByGame.value(it.key())});
+  std::stable_sort(rankedGames.begin(), rankedGames.end(),
+                   [](const QPair<qint64, QString>& left, const QPair<qint64, QString>& right) {
+                     return left.first > right.first;
+                   });
+
+  qint64 topSeconds = rankedGames.isEmpty() ? 0 : rankedGames.first().first;
+  const QString topTitle = rankedGames.isEmpty() ? QString() : rankedGames.first().second;
+
+  m_topGames.clear();
+  for (int index = 0; index < rankedGames.size() && index < 5; ++index) {
+    m_topGames.append(QVariantMap{
+        {QStringLiteral("title"), rankedGames.at(index).second},
+        {QStringLiteral("seconds"), rankedGames.at(index).first},
+        {QStringLiteral("share"), shareOf(rankedGames.at(index).first, recordedSeconds)}});
   }
 
   m_headline = QVariantMap{

@@ -2,6 +2,7 @@
 #include "achievements/RetroAchievementsService.h"
 #include "achievements/SteamAccountService.h"
 #include "app/AppSettings.h"
+#include "app/CardExport.h"
 #include "app/IdleInhibitor.h"
 #include "app/SingleInstance.h"
 #include "artwork/CoverImageProvider.h"
@@ -598,8 +599,18 @@ int main(int argc, char* argv[]) {
   const QString screenshotPath =
       optionValue(application.arguments(), QStringLiteral("--render-screenshot"));
   const QString renderSize = optionValue(application.arguments(), QStringLiteral("--render-size"));
-  const QString renderOverlay =
+  QString renderOverlay =
       optionValue(application.arguments(), QStringLiteral("--render-overlay"));
+  // `--export-card=<path>` renders the year-in-review card offscreen, writes it, and exits with
+  // the outcome. It is how the exported image is produced and checked without a window, and it
+  // gives the card a way out of the app for a script.
+  const QString cardExportPath =
+      optionValue(application.arguments(), QStringLiteral("--export-card"));
+  if (!cardExportPath.isEmpty() && renderOverlay.isEmpty())
+    renderOverlay = QStringLiteral("year-in-review");
+  // Both the stats screen and the card read the same fixture, which is why they share a flag.
+  const bool statsFixture = renderOverlay == QStringLiteral("stats")
+                            || renderOverlay == QStringLiteral("year-in-review");
   // The Now Playing render fixture keeps the pid of its stand-in game so the check can
   // find that exact row's stop control.
   qint64 nowPlayingFixturePid = 0;
@@ -628,7 +639,7 @@ int main(int argc, char* argv[]) {
     return testRestoreStartup(application, theme, restoreStartupTest,
         application.arguments().contains("--couch"), requestedRenderSize, screenshotPath);
   }
-  const bool renderMode = !screenshotPath.isEmpty();
+  const bool renderMode = !screenshotPath.isEmpty() || !cardExportPath.isEmpty();
   const bool gogSettingsTest = application.arguments().contains("--gog-settings-test");
   const bool linkedPreferenceTest = application.arguments().contains("--linked-preference-test");
   const bool gogSettingsFixture = gogSettingsTest || renderOverlay == "gog-folders";
@@ -865,10 +876,94 @@ int main(int argc, char* argv[]) {
       savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") ||
       renderOverlay == QStringLiteral("bulk-editor") ||
       renderOverlay == QStringLiteral("session-history") ||
-      renderOverlay == QStringLiteral("stats") ||
+      statsFixture ||
       renderOverlay == QStringLiteral("now-playing") || renderOverlay == "library-repair-controls") {
     if (!artworkFixture.isValid()) return EXIT_FAILURE;
     libraryDatabasePath = artworkFixture.filePath(QStringLiteral("library.sqlite"));
+  }
+  if (statsFixture) {
+    // Completion state and achievements have to exist before the library model is built, because
+    // the model reads the organization table once when it loads. Without them the sections that
+    // report progress would draw their empty states in the render check and prove nothing.
+    QSqlDatabase fixture;
+    if (!SessionDatabase::open(fixture, libraryDatabasePath,
+                               QStringLiteral("omakade-stats-state")))
+      return EXIT_FAILURE;
+    QSqlQuery query(fixture);
+    if (!query.exec(QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS game_organization (source TEXT NOT NULL, runner TEXT NOT "
+            "NULL, app_id TEXT NOT NULL, completion_status TEXT NOT NULL DEFAULT '', tags_json "
+            "TEXT NOT NULL DEFAULT '[]', pinned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(source, "
+            "runner, app_id))")) ||
+        !query.exec(QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS achievements (app_id TEXT NOT NULL, api_name TEXT NOT "
+            "NULL, title TEXT NOT NULL, description TEXT, icon_url TEXT, icon_path TEXT, unlocked "
+            "INTEGER NOT NULL, unlock_time INTEGER NOT NULL, rarity REAL NOT NULL, hidden INTEGER "
+            "NOT NULL, current_progress REAL NOT NULL, maximum_progress REAL NOT NULL, source TEXT "
+            "NOT NULL, PRIMARY KEY(app_id, api_name))")))
+      return EXIT_FAILURE;
+    for (const auto& completion : {std::make_tuple("Demo", "demo-1", "completed"),
+                                   std::make_tuple("Demo", "demo-2", "playing"),
+                                   std::make_tuple("Demo", "demo-3", "abandoned"),
+                                   std::make_tuple("Steam", "demo-0", "completed")}) {
+      if (!query.exec(QStringLiteral("INSERT OR REPLACE INTO game_organization"
+                                     "(source, runner, app_id, completion_status) VALUES('%1', '', "
+                                     "'%2', '%3')")
+                          .arg(QString::fromUtf8(std::get<0>(completion)),
+                               QString::fromUtf8(std::get<1>(completion)),
+                               QString::fromUtf8(std::get<2>(completion)))))
+        return EXIT_FAILURE;
+    }
+    // Achievements carry their own unlock times, so the period figures have something to select.
+    const qint64 unlockedAt =
+        QDateTime(QDate::currentDate().addDays(-2), QTime(20, 0)).toSecsSinceEpoch();
+    for (const auto& achievement :
+         {std::make_tuple("demo-1", "ACH_FIRST", "First Steps", 1, 4.7),
+          std::make_tuple("demo-2", "ACH_LONG", "Long Haul", 1, 11.2),
+          std::make_tuple("demo-3", "ACH_OPEN", "Still Untouched", 0, 0.0)}) {
+      const QString statement =
+          QStringLiteral("INSERT OR REPLACE INTO achievements(app_id, api_name, title, "
+                         "description, icon_url, icon_path, unlocked, unlock_time, rarity, hidden, "
+                         "current_progress, maximum_progress, source) VALUES('%1', '%2', '%3', '', "
+                         "'', '', %4, %5, %6, 0, 0, 1, 'steam-local')")
+              .arg(QString::fromUtf8(std::get<0>(achievement)),
+                   QString::fromUtf8(std::get<1>(achievement)),
+                   QString::fromUtf8(std::get<2>(achievement)))
+              .arg(std::get<3>(achievement) != 0 ? 1 : 0)
+              .arg(std::get<3>(achievement) != 0 ? unlockedAt : 0)
+              .arg(std::get<4>(achievement));
+      if (!query.exec(statement)) return EXIT_FAILURE;
+    }
+    // Genres and ratings reach the library through the metadata layer rather than from a source
+    // model, so the sections that report them read these entries. The key is the source, a NUL,
+    // the runner, a NUL, and the app id.
+    if (!query.exec(QStringLiteral(
+            "CREATE TABLE IF NOT EXISTS game_metadata (game_key TEXT PRIMARY KEY, payload TEXT "
+            "NOT NULL)")))
+      return EXIT_FAILURE;
+    const auto metadataKey = [](const QString& source, const QString& appId) {
+      return source + QChar::Null + QChar::Null + appId;
+    };
+    for (const auto& entry :
+         {std::make_tuple("Steam", "demo-0",
+                          R"({"genres":["Platformer"],"rating":90,"ratingCount":210})"),
+          std::make_tuple("Demo", "demo-1",
+                          R"({"genres":["Action","Adventure"],"rating":86,"ratingCount":120})"),
+          std::make_tuple("Demo", "demo-2",
+                          R"({"genres":["Role Playing"],"rating":92,"ratingCount":340})"),
+          std::make_tuple("Demo", "demo-3",
+                          R"({"genres":["Shooter"],"rating":74,"ratingCount":58})")}) {
+      QSqlQuery metadata(fixture);
+      metadata.prepare(QStringLiteral(
+          "INSERT OR REPLACE INTO game_metadata(game_key, payload) VALUES(?, ?)"));
+      metadata.addBindValue(metadataKey(QString::fromUtf8(std::get<0>(entry)),
+                                        QString::fromUtf8(std::get<1>(entry))));
+      metadata.addBindValue(QString::fromUtf8(std::get<2>(entry)));
+      if (!metadata.exec()) return EXIT_FAILURE;
+    }
+    fixture.close();
+    fixture = QSqlDatabase();
+    QSqlDatabase::removeDatabase(QStringLiteral("omakade-stats-state"));
   }
   ManualGameModel manualGames(libraryDatabasePath.isEmpty() ? QStringLiteral(":memory:") : libraryDatabasePath);
   UnifiedGameModel unifiedGames(libraryDatabasePath);
@@ -1165,7 +1260,10 @@ int main(int argc, char* argv[]) {
     demoMetadataDir = std::make_unique<QTemporaryDir>();
     if (demoMetadataDir->isValid()) {
       gameMetadata = std::make_unique<GameMetadata>(
-          renderOverlay == "library-repair-controls" ? libraryDatabasePath : demoMetadataDir->filePath(QStringLiteral("metadata.sqlite3")), nullptr);
+          renderOverlay == "library-repair-controls" || statsFixture
+              ? libraryDatabasePath
+              : demoMetadataDir->filePath(QStringLiteral("metadata.sqlite3")),
+          nullptr);
       gameMetadata->setLibrary(&unifiedGames);
       unifiedGames.setMetadata(gameMetadata.get());
     }
@@ -1296,9 +1394,17 @@ int main(int argc, char* argv[]) {
   // playtime can never disagree with what a game's card says, and it computes nothing until
   // the screen is open.
   PlayStats stats(&unifiedGames, libraryDatabasePath);
+  // The card is written from C++ so the path is one place rather than composed in QML, and so a
+  // headless export can end the run with the outcome.
+  CardExport cardExport;
+  QObject::connect(&cardExport, &CardExport::exportReported, &application,
+                   [&application](bool written) {
+                     application.exit(written ? EXIT_SUCCESS : EXIT_FAILURE);
+                   });
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
   engine.rootContext()->setContextProperty("Stats", &stats);
+  engine.rootContext()->setContextProperty("CardExport", &cardExport);
   const bool scrollTrace = qEnvironmentVariableIsSet("OMAKADE_SCROLL_TRACE");
   engine.rootContext()->setContextProperty("ScrollTraceEnabled", scrollTrace);
   if (scrollTrace) {
@@ -1371,7 +1477,7 @@ int main(int argc, char* argv[]) {
     playSessionStore = std::make_unique<PlaySessionStore>(libraryDatabasePath);
     playSessionStore->setEnabled(preferences.trackPlaySessions());
   }
-  if (renderOverlay == QStringLiteral("stats")) {
+  if (statsFixture) {
     // A spread of recorded sessions so every section of the stats screen has something real to
     // draw in a render check: more than one game and source, days apart, different hours, one
     // long session and one short one, and a return after a gap.
@@ -1832,8 +1938,13 @@ int main(int argc, char* argv[]) {
           });
         });
       }
-      if (renderOverlay == QStringLiteral("stats")) {
+      if (statsFixture) {
         quickWindow->setProperty("statsOpen", true);
+      }
+      if (!cardExportPath.isEmpty()) {
+        // One shot: the export writes the card and reports the outcome, which ends the run.
+        QMetaObject::invokeMethod(quickWindow, "exportYearInReviewCard",
+                                  Q_ARG(QVariant, cardExportPath));
       }
       if (renderOverlay == QStringLiteral("now-playing")) {
         // Home has to be the open view: the panel lives on the Home screen.
@@ -3121,6 +3232,9 @@ int main(int argc, char* argv[]) {
           }
           if (tiles.size() != 6) { qCritical() << "Home tiles did not load"; application.exit(EXIT_FAILURE); return; }
         }
+        // A run that was asked for a card and not for a screenshot ends when the card has been
+        // written, so there is nothing to grab here and no reason to end the run early.
+        if (screenshotPath.isEmpty()) return;
         const QImage screenshot = quickWindow->grabWindow();
         if (screenshot.isNull() || !screenshot.save(screenshotPath)) {
           qCritical() << "Could not save screenshot to" << screenshotPath;

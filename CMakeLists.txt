@@ -282,6 +282,8 @@ endif()
 
 qt_add_executable(omakade
   src/app/main.cpp
+  src/app/CardExport.cpp
+  src/app/CardExport.h
   src/app/IdleInhibitor.cpp
   src/app/IdleInhibitor.h
 )
@@ -308,6 +310,7 @@ qt_add_qml_module(omakade
   qml/components/FieldClearButton.qml
   qml/components/CoverSizeControl.qml
     qml/components/CoverArtwork.qml
+    qml/components/YearInReviewCard.qml
     qml/components/SaveProtectionPanel.qml
     qml/components/SaveBackupMenu.qml
     qml/components/LaunchSetupPanel.qml
@@ -333,6 +336,7 @@ qt_add_qml_module(omakade
     qml/screens/ManualGameEditor.qml
     qml/screens/HomeScreen.qml
     qml/screens/StatsScreen.qml
+    qml/screens/YearInReviewPreview.qml
     qml/screens/GameDetails.qml
 )
 

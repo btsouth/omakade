@@ -40,6 +40,7 @@ class PlayStats final : public QObject {
   Q_PROPERTY(QVariantList bySystem READ bySystem NOTIFY changed)
   Q_PROPERTY(QVariantList byHour READ byHour NOTIFY changed)
   Q_PROPERTY(QVariantList byWeekday READ byWeekday NOTIFY changed)
+  Q_PROPERTY(QVariantList topGames READ topGames NOTIFY changed)
   Q_PROPERTY(QVariantMap sessionShape READ sessionShape NOTIFY changed)
   Q_PROPERTY(QVariantMap streaks READ streaks NOTIFY changed)
   Q_PROPERTY(QVariantMap achievements READ achievements NOTIFY changed)
@@ -80,6 +81,7 @@ public:
   // 24 entries of hour, seconds; 7 entries of weekday (0 = Monday), seconds.
   [[nodiscard]] QVariantList byHour() const { return m_byHour; }
   [[nodiscard]] QVariantList byWeekday() const { return m_byWeekday; }
+  [[nodiscard]] QVariantList topGames() const { return m_topGames; }
   // count, totalSeconds, averageSeconds, longestSeconds, longestTitle, longestStartedAt,
   // overTwoHours, buckets (label, count).
   [[nodiscard]] QVariantMap sessionShape() const { return m_sessionShape; }
@@ -149,6 +151,8 @@ private:
   QVariantList m_bySystem;
   QVariantList m_byHour;
   QVariantList m_byWeekday;
+  // The most played games of the period, most first, capped at five.
+  QVariantList m_topGames;
   QVariantMap m_sessionShape;
   QVariantMap m_streaks;
   QVariantMap m_achievements;

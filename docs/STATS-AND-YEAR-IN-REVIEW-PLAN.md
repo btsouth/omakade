@@ -209,3 +209,88 @@ The check also renders at 1100 by 1700 as well as 900 by 900 now: the first scre
 only the top half, and the sections below the fold were going unverified. That is how a
 "missing" launcher row turned out to be an artifact of the crop rather than a defect, and it is
 worth knowing which of the two you are looking at before reporting either.
+
+- 2026-09-17: **slice 4 done.** Achievements (unlocked in the period, the rate against everything
+  the library knows, the rarest of the period with its rarity and its game), the marks the
+  library holds on games, and habits read against the whole history: first-time plays, one and
+  done, and returns after 30 days or more with the gaps named in a sentence. The library section
+  gained genres by recorded time and the top rated games.
+
+Reading the render paid again. The fixture had written a timestamp into the achievements
+`unlocked` column, so the screen reported "3579033600 unlocked in all" and a 100% unlock rate
+beside zero unlocks for the period. That was my fixture, not the screen, and only the picture
+showed it: the unit test never looks at that number. Two smaller corrections came from the same
+pass. "3 achievement knowns" was the count helper pluralising a whole phrase, and the marks rows
+were scaled against the hundred-game library, so one finished game drew a sliver; they now scale
+against the games that carry a mark, with the basis written above them.
+
+Two figures in the render check look wrong and are not worth fixing. The library total is the
+demo model's own hours, which is what that figure is and why it is labelled as what the launchers
+report. And the demo library carries no systems and no installation paths, so it reports zero
+systems and no genre attribution. The genre figure is pinned by the unit test, which matches a
+session to a game by path and asserts the seconds land on the right genre; the render fixture
+cannot show it because a demo game has no path for a session to match. Worth knowing before
+reading that absent heading as a defect.
+
+**A regression worth remembering, caught by the suite rather than by my own check.** Slice 4's
+screen read `.length` off `library.completions`, a map key that is absent until the model
+computes. The stats screen is instantiated in every window whether or not it is open, and the
+model does no work until the view asks for it, so that one binding threw a TypeError in **every
+other render overlay in the suite**: 52 tests failed, none of them the stats ones. The stats
+overlay passed because in that run the model *is* computed and the key exists. Every map key the
+screen reads is now normalised once at the top of the file (`root.completions`,
+`root.achievementInfo`, `root.backlogReturns` and the rest) instead of at each use, which is the
+shape that cannot fail when the model is empty.
+
+- 2026-09-17: **slice 5 done.** `qml/components/YearInReviewCard.qml` (one fixed-proportion
+  scene: the period's recorded time with the window under it, four figures across, the ranked most
+  played games, the hours strip with a sentence, where the time went with bars, what was unlocked,
+  the library total the launchers report labelled as theirs, and the provenance note on the image
+  itself), `YearInReviewPreview.qml` (the card scaled to fit with SAVE IMAGE, OPEN FOLDER and
+  CLOSE), `src/app/CardExport.{h,cpp}` for where the file goes, and `--export-card=<path>` so the
+  exported image can be produced and checked without a window and generated from a script. The
+  export is a real 1000 by 1500 PNG, crisp rather than upscaled, and the two headless checks are
+  the card rendering in its preview and the export itself, where the app exits with the write's
+  outcome so a failure is a failing test rather than an export path nobody exercised.
+
+Three passes on the card came from looking at the exported image rather than at the code. The
+first showed a dead lower third, because a card with one top game has nothing to put there; that
+is what a ranked most-played list is for, and it needed `PlayStats::topGames` behind it. The
+second showed the ranking and a library line had filled the space and pushed the footer off the
+bottom edge, so the section spacing and the footer sentence were rebalanced to fit. The library
+line is the honest way to fill a card: it is a real figure, labelled as what the launchers report
+and explicitly not part of the recorded totals above it.
+
+The ranked list is the same recorded time as the headline figure, most played first, and the test
+asserts both so the recap's list and its hero figure cannot drift apart.
+
+- 2026-09-17: **slice 6 written and checked.** A STATS entry in the couch toolbar wired into the
+  controller's left/right chain, a couch treatment of its own (entering Couch Mode no longer closes
+  the screen, and it paints above the couch library via a z order, since the couch view is a later
+  sibling), an error state for a library database that could not be read, and explicit arrow chains
+  between the period chips, MAKE A CARD and BACK, and between the card preview's buttons with the
+  chain stepping over OPEN FOLDER until a save makes it exist.
+
+Three fixes came out of looking at the couch render rather than the code:
+
+- The screen's translucent backdrop let the couch library behind it read straight through the
+  figures. It is opaque in Couch Mode now. On the desktop the same translucency shows only the
+  wallpaper, which is why the desktop render never made it obvious.
+- The couch scale was 1.25, which left the supporting text at desk-reading size on a television.
+  It is 1.7 now; the screen scrolls, so the cost is scrolling rather than legibility. The buttons
+  keep the app's own couch rule (`height / 900`), because a screen that sizes its controls
+  differently from the rest of the couch UI is worse than one that follows it.
+- Figure rows now reserve their detail line whether or not it has text, so a row of figures shares
+  one baseline. The same misalignment had been flagged on the desktop render and I had left it.
+
+
+**The startup benchmark, and what it was actually measuring.** `omakade_couch_thousand_game_startup`
+holds the first frame to 500 ms, and it failed once the card and its preview were part of the
+window. The screen is now loaded on first open rather than with the window, which is the right
+default anyway: a view nobody opened should not be paid for on every launch. That fixed my share of
+it, and the numbers say so: with both builds run alternately under the same load, the branch without
+any of this code breaches the same 500 ms budget exactly as often (1 run in 5 each), and runs 3 to 5
+of each sit within 5 ms of each other. The machine's load average was 12.85 at the time, with an
+unrelated python3 at 97% CPU, which is what the spread tracks. Worth writing down because the
+temptation is to call this test flaky and move on: it is neither flaky nor mine, it is a budget that
+does not hold while the machine is busy, and the comparison against the baseline is what shows it.

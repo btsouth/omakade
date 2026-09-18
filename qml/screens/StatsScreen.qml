@@ -13,7 +13,9 @@ FocusScope {
     id: root
     objectName: "statsScreen"
     property bool couchMode: false
-    readonly property real scaleFactor: couchMode ? 1.25 : 1
+    // A television is read from the couch, so the couch treatment is a much larger scale rather
+    // than the same layout at the same size: the screen scrolls, so the cost is more scrolling.
+    readonly property real scaleFactor: couchMode ? 1.7 : 1
     // Signals the window closes this view and returns to the library.
     signal libraryRequested()
 
@@ -22,9 +24,35 @@ FocusScope {
     readonly property var bySystem: Stats.bySystem
     readonly property var byHour: Stats.byHour
     readonly property var byWeekday: Stats.byWeekday
+    readonly property var topGames: Stats.topGames
+    // Everything after the first: the first one is already the hero figure above it.
+    readonly property var rankedGames: root.firstEntries(root.topGames, 5)
     readonly property var sessionShape: Stats.sessionShape
     readonly property var streaks: Stats.streaks
+    readonly property var achievements: Stats.achievements
+    readonly property var backlog: Stats.backlog
     readonly property var libraryStats: Stats.library
+    // The screen exists in every window, open or not, and the model does no work until the view is
+    // asked for it. So every map key below is a key that is absent most of the time, and reading a
+    // list off it unguarded is a TypeError in every other render in the suite, not just this one.
+    readonly property var achievementInfo: root.achievements || ({})
+    readonly property var backlogInfo: root.backlog || ({})
+    readonly property var completions: root.libraryStats.completions || []
+    readonly property var genreRows: root.libraryStats.genres || []
+    readonly property var topRatedRows: root.libraryStats.topRated || []
+    readonly property var sessionBuckets: root.sessionShape.buckets || []
+    readonly property var backlogReturns: root.backlogInfo.returnsList || []
+    // The lists are trimmed here rather than in the data layer: the screen decides how many of
+    // them are worth reading, the figures stay complete for the card and any later view.
+    readonly property var topGenres: root.firstEntries(root.genreRows, 6)
+    readonly property var topRatedGames: root.firstEntries(root.topRatedRows, 3)
+    readonly property var completionRows: root.firstEntries(root.completions, 4)
+    readonly property int markedGames: {
+        let total = 0
+        for (const row of root.completions)
+            total += Number(row.count) || 0
+        return total
+    }
     readonly property bool hasRecordedPlay: Number(headline.recordedSeconds || 0) > 0
     // The tallest hour is the scale for the strip, so the busiest time of day always fills it.
     readonly property real peakHourSeconds: {
@@ -69,6 +97,14 @@ FocusScope {
         if (!visible) return
         root.forceActiveFocus(Qt.TabFocusReason)
         periodRow.focusCurrent()
+    }
+    function openCardPreview() {
+        cardPreview.open()
+    }
+    // Used by the headless export: opens the card and writes it to the given path.
+    function exportCard(path) {
+        cardPreview.open()
+        cardPreview.saveTo(path)
     }
     function close() {
         root.libraryRequested()
@@ -121,6 +157,39 @@ FocusScope {
         const total = Number(root.sessionShape.count) || 0
         return total > 0 ? (Number(count) || 0) / total : 0
     }
+    function firstEntries(list, count) {
+        const trimmed = []
+        const source = list || []
+        for (let index = 0; index < source.length && index < count; ++index)
+            trimmed.push(source[index])
+        return trimmed
+    }
+    // Achievement rarity arrives as the share of players who have it, already in percent, so it
+    // is printed as it comes rather than run through the share formatter.
+    function rarityText(rarity) {
+        const value = Number(rarity) || 0
+        return value > 0 ? value.toFixed(1) + "%" : ""
+    }
+    function rarestDetailText() {
+        const rarest = root.achievementInfo.rarest
+        if (!rarest || !rarest.title) return ""
+        const parts = []
+        if (Number(rarest.rarity) > 0) parts.push(root.rarityText(rarest.rarity) + " of players have it")
+        if (rarest.gameTitle && rarest.gameTitle.length > 0) parts.push("in " + rarest.gameTitle)
+        return parts.join("  ·  ")
+    }
+    function completionLabel(status) {
+        const labels = {backlog: "Backlog", playing: "Playing", completed: "Finished",
+                        abandoned: "Abandoned"}
+        const key = String(status || "")
+        return labels[key] ? labels[key] : (key.length > 0 ? key : "Not set")
+    }
+    function completionShare(count) {
+        // Scaled against the games that carry a mark, not the whole library: one finished game in
+        // a hundred drew a sliver that told the reader nothing.
+        const marked = root.markedGames
+        return marked > 0 ? (Number(count) || 0) / marked : 0
+    }
 
     Keys.onEscapePressed: function(event) {
         root.close()
@@ -150,7 +219,8 @@ FocusScope {
         }
         Text {
             Layout.fillWidth: true
-            visible: stat.detail.length > 0
+            // Kept in the layout even when empty so a row of figures shares one baseline: hiding it
+            // moved some labels a line above their neighbours.
             text: stat.detail
             color: Theme.mutedText
             wrapMode: Text.Wrap
@@ -211,6 +281,9 @@ FocusScope {
     component PeriodRow: RowLayout {
         id: periodRow
         spacing: 8
+        // The last button in the chip chain, so the control beside this component can link to it:
+        // an id declared inside an inline component is not visible from the file around it.
+        readonly property alias lastButton: makeCardButton
         function focusCurrent() {
             if (Stats.period === "all") allTimeButton.forceActiveFocus(Qt.TabFocusReason)
             else thisYearButton.forceActiveFocus(Qt.TabFocusReason)
@@ -222,6 +295,7 @@ FocusScope {
             compact: true
             selected: Stats.period !== "all"
             onClicked: Stats.period = "year"
+            KeyNavigation.right: allTimeButton
         }
         GlassButton {
             id: allTimeButton
@@ -230,12 +304,26 @@ FocusScope {
             compact: true
             selected: Stats.period === "all"
             onClicked: Stats.period = "all"
+            KeyNavigation.left: thisYearButton
+            KeyNavigation.right: makeCardButton
+        }
+        GlassButton {
+            id: makeCardButton
+            objectName: "statsMakeCardButton"
+            text: "MAKE A CARD"
+            compact: true
+            onClicked: root.openCardPreview()
+            KeyNavigation.left: allTimeButton
+            KeyNavigation.right: statsBackButton
         }
     }
 
     Rectangle {
         anchors.fill: parent
-        color: root.alpha(Theme.darkerBackground, Theme.surfaceAlpha)
+        // Opaque in Couch Mode: the couch library is behind this screen on a television, and a
+        // translucent panel let its titles and descriptions read through the figures.
+        color: root.couchMode ? Theme.darkerBackground
+                              : root.alpha(Theme.darkerBackground, Theme.surfaceAlpha)
 
         Flickable {
             id: scroller
@@ -275,11 +363,25 @@ FocusScope {
                     }
                     PeriodRow { id: periodRow }
                     GlassButton {
+                        id: statsBackButton
                         objectName: "statsBackButton"
                         text: "BACK"
                         compact: true
                         onClicked: root.close()
+                        KeyNavigation.left: periodRow.lastButton
                     }
+                }
+
+                // A read that failed is stated plainly rather than shown as zeroes, which would
+                // read as a fact about the library.
+                Text {
+                    Layout.fillWidth: true
+                    visible: Stats.error.length > 0
+                    wrapMode: Text.Wrap
+                    text: Stats.error
+                    color: Theme.red
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * root.scaleFactor
                 }
 
                 // The honest window line, repeated on the card. It is not decoration: without it
@@ -355,6 +457,18 @@ FocusScope {
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
                             font.pixelSize: 12 * root.scaleFactor
+                        }
+                    }
+                    // The rest of your most played, so the section is a ranking rather than a
+                    // single line. The first one is already the hero figure above.
+                    Repeater {
+                        model: root.rankedGames.slice(1)
+                        ShareRow {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.title || ""
+                            share: Number(modelData.share) || 0
+                            detail: root.durationText(modelData.seconds)
                         }
                     }
                 }
@@ -483,7 +597,7 @@ FocusScope {
                         }
                     }
                     Repeater {
-                        model: root.sessionShape.buckets
+                        model: root.sessionBuckets
                         ShareRow {
                             required property var modelData
                             Layout.fillWidth: true
@@ -552,6 +666,115 @@ FocusScope {
                     }
                 }
 
+                // Achievements and completions. Achievements carry their own unlock times, so
+                // they can be attributed to the period; completion is a current state with no
+                // date on it and is reported as what the library says now.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8 * root.scaleFactor
+                    visible: Number(achievementInfo.unlockedTotal || 0) > 0
+                             || root.completions.length > 0
+                    SectionTitle { text: "FINISHED AND UNLOCKED" }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: root.width >= 720 * root.scaleFactor ? 3 : 1
+                        columnSpacing: 18 * root.scaleFactor
+                        rowSpacing: 10 * root.scaleFactor
+                        Stat {
+                            objectName: "statsUnlockedInPeriod"
+                            label: "Unlocked in this period"
+                            value: String(achievementInfo.unlockedInPeriod || 0)
+                            detail: String(achievementInfo.unlockedTotal || 0) + " unlocked in all"
+                        }
+                        Stat {
+                            label: "Unlock rate"
+                            value: root.percentText(achievementInfo.rate || 0)
+                            detail: root.countText(achievementInfo.known, "achievement") + " known"
+                        }
+                        Stat {
+                            objectName: "statsRarest"
+                            label: "Rarest in this period"
+                            value: (achievementInfo.rarest && achievementInfo.rarest.title)
+                                   ? achievementInfo.rarest.title : "None yet"
+                            detail: root.rarestDetailText()
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.completionRows.length === 0
+                        wrapMode: Text.Wrap
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 11 * root.scaleFactor
+                        text: "No games are marked finished, playing or abandoned yet."
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.completionRows.length > 0
+                        wrapMode: Text.Wrap
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 9 * root.scaleFactor
+                        font.letterSpacing: 0.6
+                        text: "MARKS ON YOUR GAMES  ·  SHARE OF THE "
+                              + root.countText(root.markedGames, "GAME").toUpperCase() + " YOU HAVE MARKED"
+                    }
+                    Repeater {
+                        model: root.completionRows
+                        ShareRow {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: root.completionLabel(modelData.status)
+                            share: root.completionShare(modelData.count)
+                            detail: root.countText(modelData.count, "game")
+                        }
+                    }
+                }
+
+                // Habits read against the whole history, which is what makes "one and done" and
+                // "you came back after a gap" answerable at all.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8 * root.scaleFactor
+                    visible: root.hasRecordedPlay
+                    SectionTitle { text: "HABITS" }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: root.width >= 720 * root.scaleFactor ? 3 : 1
+                        columnSpacing: 18 * root.scaleFactor
+                        rowSpacing: 10 * root.scaleFactor
+                        Stat {
+                            objectName: "statsFirstTimePlays"
+                            label: "First-time plays"
+                            value: String(backlogInfo.firstTimeGames || 0)
+                            detail: "Games you started for the first time"
+                        }
+                        Stat {
+                            label: "One and done"
+                            value: String(backlogInfo.oneAndDone || 0)
+                            detail: "Played once and never again"
+                        }
+                        Stat {
+                            label: "Returns"
+                            value: root.countText(backlogInfo.returns, "comeback")
+                            detail: "After 30 days or more"
+                        }
+                    }
+                    Repeater {
+                        model: root.backlogReturns
+                        Text {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11 * root.scaleFactor
+                            text: "You came back to " + modelData.title + " after "
+                                  + root.countText(modelData.gapDays, "day") + " away."
+                        }
+                    }
+                }
+
                 // Nothing recorded yet is stated plainly, with what recording does, rather than
                 // a row of zeroes that reads like a fact about the games.
                 ColumnLayout {
@@ -591,10 +814,65 @@ FocusScope {
                             font.pixelSize: 12 * root.scaleFactor
                         }
                     }
+                    // Genres arrive through the metadata layer and only for games whose identity is
+                    // confirmed, so an unidentified game contributes no genre rather than a guess.
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.topGenres.length > 0
+                        text: "GENRES BY RECORDED PLAY"
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 9 * root.scaleFactor
+                        font.letterSpacing: 0.6
+                    }
+                    Repeater {
+                        model: root.topGenres
+                        ShareRow {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            label: modelData.name
+                            share: Number(modelData.share) || 0
+                            detail: root.durationText(modelData.seconds)
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.topRatedGames.length > 0
+                        text: "TOP RATED IN YOUR LIBRARY"
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 9 * root.scaleFactor
+                        font.letterSpacing: 0.6
+                    }
+                    Repeater {
+                        model: root.topRatedGames
+                        Text {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11 * root.scaleFactor
+                            text: modelData.title + "  ·  " + Number(modelData.rating).toFixed(0)
+                                  + (Number(modelData.ratingCount) > 0
+                                     ? "  ·  " + root.countText(modelData.ratingCount, "rating")
+                                     : "")
+                        }
+                    }
                 }
 
                 Item { Layout.preferredHeight: 6 * root.scaleFactor }
             }
         }
+    }
+
+    // The card preview sits above the screen and owns the focus while it is open, so Escape and
+    // the controller reach its buttons rather than the ones behind it.
+    YearInReviewPreview {
+        id: cardPreview
+        objectName: "yearInReviewPreviewHost"
+        anchors.fill: parent
+        visible: false
+        couchMode: root.couchMode
     }
 }

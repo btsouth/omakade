@@ -879,8 +879,12 @@ and OPR delivery (#42) is handled by the Omarchy package repository.
 running games (#53), accurate playtime (Hyprland window-title matching so file-picker
 loads count, optional pause-on-unfocus, imported/recorded overlap reconciliation), a
 per-game session history with safe deletion, and opt-in Discord Rich Presence driven by
-the recorder. The stats screen and shareable year-in-review card follow after that,
-timed to land before the holiday season.
+the recorder. The stats screen and shareable year-in-review card land with it: a Stats view
+showing the period's recorded time beside the totals the launchers report, the hours and
+weekdays you play, session shape and streaks, achievements and backlog habits, and the
+library's own numbers, plus a card the view writes as a PNG with the window its figures
+cover printed on the image. Every dated figure is clamped to the window recording actually
+observed, so a first partial month is never presented as a whole year.
 
 **M9: Console expansion (from 1.12), in batches of about three sources.** Each source
 follows the established pattern (scanner, model, launcher, recorder profile, tests,

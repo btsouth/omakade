@@ -55,11 +55,21 @@ Sessions you can see, stop, and manage.
   while the game runs and is recorded with its original start once the database
   accepts writes again, or written whole when the game exits first.
 - A new Stats view shows what you have played and when: the time Omakade recorded beside
-  the totals your launchers and emulators report, the most played game, where the time went
+  the totals your launchers and emulators report, your most played games, where the time went
   by system and by launcher or emulator, the hours and weekdays you actually play, how long
-  your sessions run, and your longest streak. Recorded figures name the window they cover,
+  your sessions run, your longest streak, the achievements you unlocked and how rare they are,
+  what the library says about your progress, and how you treat your backlog: games started for
+  the first time, played once and never again, and returned to after a month away. Recorded
+  figures name the window they cover,
   so a first partial month is not presented as a whole year, and launcher totals are never
-  added to recorded play.
+  added to recorded play. It has a Couch Mode treatment of its own, with a STATS entry in the couch
+  toolbar and navigation that works from a controller, so it reaches a television rather than only a
+  desk.
+- The Stats view can write a shareable year-in-review card: a portrait image with the period's
+  recorded time, your most played games, when you play, where the time went and what you
+  unlocked. The card also shows the library totals your launchers and emulators report, labelled
+  as theirs, and the note saying what window the recorded figures cover travels on the image
+  itself, so a card someone else receives still explains itself.
 
 ## 1.10.0
 

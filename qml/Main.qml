@@ -201,7 +201,7 @@ ApplicationWindow {
             return detailsLoader.item
         }
         if (homeOpen) return homeScreen
-        if (statsOpen) return statsScreen
+        if (statsOpen) return statsLoader.item
         return null
     }
 
@@ -403,6 +403,22 @@ ApplicationWindow {
         root.statsOpen = false
         if (root.couchMode) couchLibraryView.openSearch()
         else Qt.callLater(searchField.forceActiveFocus)
+    }
+
+    // The headless card export: open the stats view, then write the card where it was told to.
+    // The screen loads on first open, so the path is recorded first and either the loader picks it
+    // up when it finishes or it is used here if the screen is already loaded. The one-shot path
+    // exists so the exported image can be produced and checked without a window, and so the card
+    // can be generated from a script.
+    function exportYearInReviewCard(path) {
+        root.pendingCardExport = path
+        root.statsLoaded = true
+        root.statsOpen = true
+        if (statsLoader.item) {
+            const target = root.pendingCardExport
+            root.pendingCardExport = ""
+            statsLoader.item.exportCard(target)
+        }
     }
 
     function toggleLibraryControls() {
@@ -684,9 +700,8 @@ ApplicationWindow {
             }
         }
         if (enabled) {
-            // The couch library takes the whole window, and the stats screen has no couch
-            // treatment yet, so it closes rather than hiding behind the couch view.
-            root.statsOpen = false
+            // The couch library takes the whole window; the stats screen has a couch treatment of
+            // its own and paints above it, so nothing has to close here.
             couchLibraryView.currentIndex = libraryView.currentIndex
             root.desktopVisibility = root.visibility
         } else {
@@ -1405,7 +1420,13 @@ ApplicationWindow {
                 GlassButton {
                     objectName: "statsDestinationButton"
                     text: "STATS"; compact: true
-                    onClicked: { root.homeOpen = false; root.statsOpen = true; Qt.callLater(statsScreen.focusStats) }
+                    onClicked: {
+                        root.homeOpen = false
+                        root.statsOpen = true
+                        Qt.callLater(function() {
+                            if (statsLoader.item) statsLoader.item.focusStats()
+                        })
+                    }
                 }
                 Item { Layout.fillWidth: true }
 
@@ -1751,13 +1772,40 @@ ApplicationWindow {
 
     Binding { target: Home; property: "active"; value: root.homeOpen }
     Binding { target: Stats; property: "active"; value: root.statsOpen }
-    StatsScreen {
-        id: statsScreen
-        objectName: "statsScreen"
+    // The stats screen is loaded the first time it is opened rather than with the window: it and
+    // the card it can write are a large slice of the QML, and the startup benchmark holds the first
+    // frame to a budget, so a view nobody has opened must not be paid for on every launch. The
+    // screen stays loaded once it has been seen.
+    property bool statsLoaded: false
+    property string pendingCardExport: ""
+    onStatsOpenChanged: {
+        if (root.statsOpen) root.statsLoaded = true
+    }
+    Loader {
+        id: statsLoader
+        objectName: "statsLoader"
         anchors.fill: parent
-        visible: root.statsOpen && !root.couchMode && !root.detailOpen
-        couchMode: root.couchMode
-        onLibraryRequested: { root.statsOpen = false; Qt.callLater(root.focusLibrary) }
+        active: root.statsLoaded
+        source: "screens/StatsScreen.qml"
+        visible: root.statsOpen && !root.detailOpen
+        // Above the couch library, which is a later sibling and would otherwise paint over it.
+        z: 12
+        onLoaded: {
+            item.couchMode = Qt.binding(function() { return root.couchMode })
+            if (root.pendingCardExport.length > 0) {
+                const path = root.pendingCardExport
+                root.pendingCardExport = ""
+                item.exportCard(path)
+            }
+            if (root.statsOpen) item.focusStats()
+        }
+        Connections {
+            target: statsLoader.item
+            function onLibraryRequested() {
+                root.statsOpen = false
+                Qt.callLater(root.focusLibrary)
+            }
+        }
     }
     HomeScreen {
         id: homeScreen
@@ -1828,6 +1876,12 @@ ApplicationWindow {
         onSavedFiltersRequested: root.openSavedFilters()
         onRandomRequested: root.pickRandomGame()
         onSettingsRequested: root.diagnosticsOpen = true
+        onStatsRequested: {
+            root.statsOpen = true
+            Qt.callLater(function() {
+                if (statsLoader.item) statsLoader.item.focusStats()
+            })
+        }
         onHomeRequested: { root.homeOpen = true; Qt.callLater(homeScreen.focusHome) }
         onDesktopRequested: root.setCouchMode(false)
         onCoverRequested: function(source, appId) {

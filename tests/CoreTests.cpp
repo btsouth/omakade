@@ -8275,6 +8275,15 @@ void CoreTests::statsReportRecordedPlayBesideLibraryTotals() {
   QCOMPARE(headline.value(QStringLiteral("topGameTitle")).toString(), QStringLiteral("Alpha"));
   QCOMPARE(headline.value(QStringLiteral("topGameSeconds")).toLongLong(), qint64(2700));
   QCOMPARE(qRound(headline.value(QStringLiteral("topGameShare")).toDouble() * 100), 82);
+  // The ranked list is the same recorded time as the headline, most played first, so the recap's
+  // list and its hero figure can never disagree.
+  QCOMPARE(stats.topGames().size(), 2);
+  QCOMPARE(stats.topGames().at(0).toMap().value(QStringLiteral("title")).toString(),
+           QStringLiteral("Alpha"));
+  QCOMPARE(stats.topGames().at(0).toMap().value(QStringLiteral("seconds")).toLongLong(), qint64(2700));
+  QCOMPARE(stats.topGames().at(1).toMap().value(QStringLiteral("title")).toString(),
+           QStringLiteral("Beta"));
+  QCOMPARE(stats.topGames().at(1).toMap().value(QStringLiteral("seconds")).toLongLong(), qint64(600));
   // The library's own totals sit beside the recorded ones and are never mixed into them.
   QCOMPARE(headline.value(QStringLiteral("librarySeconds")).toLongLong(), qint64(43200));
   QCOMPARE(headline.value(QStringLiteral("libraryGames")).toInt(), 2);

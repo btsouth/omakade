@@ -49,6 +49,7 @@ FocusScope {
     signal settingsRequested()
     signal homeRequested()
     signal desktopRequested()
+    signal statsRequested()
     signal coverRequested(string source, string appId)
 
     Accessible.name: "Couch library"
@@ -372,7 +373,7 @@ FocusScope {
                 text: "HOME"
                 compact: true
                 onClicked: root.homeRequested()
-                KeyNavigation.left: desktopButton
+                KeyNavigation.left: statsButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }
             GlassButton {
@@ -394,6 +395,17 @@ FocusScope {
                 displayScale: Math.max(1, root.uiScale * 1.18)
                 onClicked: root.desktopRequested()
                 KeyNavigation.left: settingsButton
+                KeyNavigation.right: statsButton
+                KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
+            }
+            GlassButton {
+                id: statsButton
+                objectName: "couchStatsButton"
+                text: "STATS"
+                compact: true
+                displayScale: Math.max(1, root.uiScale * 1.18)
+                onClicked: root.statsRequested()
+                KeyNavigation.left: desktopButton
                 KeyNavigation.right: homeButton
                 KeyNavigation.down: root.detailView ? favoriteButton : gameGrid
             }

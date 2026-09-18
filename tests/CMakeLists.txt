@@ -913,6 +913,22 @@ set_tests_properties(omakade_stats_screen omakade_stats_screen_full PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError"
   TIMEOUT 20)
+# The card, open in its preview.
+add_test(NAME omakade_stats_card COMMAND omakade
+  --render-overlay=year-in-review --render-size=1200x1000
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-card-preview.png)
+# The card written out. The app exits with the outcome of the write, so a run that cannot produce
+# the file fails here rather than leaving an export path nobody ever exercised.
+add_test(NAME omakade_card_export COMMAND omakade
+  --export-card=${CMAKE_CURRENT_BINARY_DIR}/stats-card.png)
+# The same screen in Couch Mode, which is how it reaches a television.
+add_test(NAME omakade_stats_couch COMMAND omakade --couch
+  --render-overlay=stats --render-size=1920x1080
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-couch.png)
+set_tests_properties(omakade_stats_card omakade_card_export omakade_stats_couch PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError"
+  TIMEOUT 30)
 
 qt_add_executable(omakade_save_backups_tests SaveBackupsTests.cpp)
 target_link_libraries(omakade_save_backups_tests PRIVATE omakade_core Qt6::Test)
