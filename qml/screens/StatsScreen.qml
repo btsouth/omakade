@@ -19,6 +19,29 @@ FocusScope {
     // Signals the window closes this view and returns to the library.
     signal libraryRequested()
 
+    // The card preview, exposed so the window can route focus and Escape into it while it is open.
+    readonly property alias cardPreviewItem: cardPreview
+    readonly property bool cardPreviewOpen: cardPreview.visible
+    function closeCardPreview() {
+        cardPreview.close()
+    }
+
+    // Keeps a focus stop inside the scrollable content on screen. The screen is one long scroll and
+    // its sections are the only focusable things inside it, so without this a controller can reach
+    // the header and nothing below it.
+    function revealItem(item) {
+        if (!item || !scroller) return
+        const position = item.mapToItem(scroller.contentItem, 0, 0)
+        const margin = 24 * scaleFactor
+        if (position.y < scroller.contentY + margin) {
+            scroller.contentY = Math.max(0, position.y - margin)
+        } else if (position.y + item.height > scroller.contentY + scroller.height - margin) {
+            scroller.contentY = Math.min(
+                Math.max(0, scroller.contentHeight - scroller.height),
+                position.y + item.height - scroller.height + margin)
+        }
+    }
+
     readonly property var headline: Stats.headline
     readonly property var bySource: Stats.bySource
     readonly property var bySystem: Stats.bySystem
@@ -170,11 +193,18 @@ FocusScope {
         const value = Number(rarity) || 0
         return value > 0 ? value.toFixed(1) + "%" : ""
     }
+    readonly property bool rarestIsRarity: String(root.achievementInfo.rarest
+                                                  && root.achievementInfo.rarest.basis
+                                                  ? root.achievementInfo.rarest.basis : "")
+                                           === "rarity"
     function rarestDetailText() {
         const rarest = root.achievementInfo.rarest
         if (!rarest || !rarest.title) return ""
         const parts = []
-        if (Number(rarest.rarity) > 0) parts.push(root.rarityText(rarest.rarity) + " of players have it")
+        if (root.rarestIsRarity && Number(rarest.rarity) > 0)
+            parts.push(root.rarityText(rarest.rarity) + " of players have it")
+        else if (rarest.source === "retroachievements")
+            parts.push("RetroAchievements")
         if (rarest.gameTitle && rarest.gameTitle.length > 0) parts.push("in " + rarest.gameTitle)
         return parts.join("  ·  ")
     }
@@ -272,10 +302,16 @@ FocusScope {
     component SectionTitle: Text {
         Layout.fillWidth: true
         Layout.topMargin: 6 * root.scaleFactor
-        color: Theme.mutedText
+        color: activeFocus ? Theme.accent : Theme.mutedText
         font.family: Theme.fontFamily
         font.pixelSize: 10 * root.scaleFactor
         font.letterSpacing: 1.0
+        // One focus stop per section. The screen is a single long scroll with nothing else
+        // focusable inside it, so these are what let a controller or Tab walk the whole thing
+        // rather than stopping at the header; each one scrolls itself into view when focused.
+        focus: true
+        activeFocusOnTab: true
+        onActiveFocusChanged: if (activeFocus) root.revealItem(this)
     }
 
     component PeriodRow: RowLayout {
@@ -395,16 +431,6 @@ FocusScope {
                     font.family: Theme.fontFamily
                     font.pixelSize: 11 * root.scaleFactor
                 }
-                Text {
-                    Layout.fillWidth: true
-                    visible: Stats.error.length > 0
-                    text: Stats.error
-                    color: Theme.red
-                    wrapMode: Text.Wrap
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11 * root.scaleFactor
-                }
-
                 GridLayout {
                     Layout.fillWidth: true
                     columns: root.width >= 720 * root.scaleFactor ? 4 : 2
@@ -430,7 +456,8 @@ FocusScope {
                         objectName: "statsLibraryTotal"
                         label: "Library total"
                         value: root.durationText(headline.librarySeconds)
-                        detail: "What your launchers and emulators report, all time"
+                        detail: "All time, as your library reports it. Where an emulator keeps no "
+                                + "counter of its own this is the recorded time above."
                     }
                 }
 
@@ -532,7 +559,7 @@ FocusScope {
                             const night = root.lateNightSeconds()
                             if (night > 0)
                                 sentences.push(root.percentText(night / Math.max(1, Number(headline.recordedSeconds)))
-                                               + " of it happens after 23:00")
+                                               + " of it happens after 23:00 and before 05:00")
                             return sentences.length > 0 ? sentences.join(". ") + "." : ""
                         }
                     }
@@ -631,7 +658,7 @@ FocusScope {
                         Stat {
                             label: "Days off"
                             value: String(root.streaks.daysOff || 0)
-                            detail: "Days you did not play"
+                            detail: "Days off while the recorder was running"
                         }
                     }
                 }
@@ -687,13 +714,17 @@ FocusScope {
                             detail: String(achievementInfo.unlockedTotal || 0) + " unlocked in all"
                         }
                         Stat {
-                            label: "Unlock rate"
+                            label: "Unlock rate (all time)"
                             value: root.percentText(achievementInfo.rate || 0)
                             detail: root.countText(achievementInfo.known, "achievement") + " known"
                         }
                         Stat {
                             objectName: "statsRarest"
-                            label: "Rarest in this period"
+                            // "Rarest" only where the source publishes a rarity. RetroAchievements
+                            // rows carry none, so a period with unlocks would otherwise read "None
+                            // yet"; those fall back to the newest unlock, labelled as what it is.
+                            label: root.rarestIsRarity ? "Rarest in this period"
+                                                       : "Latest in this period"
                             value: (achievementInfo.rarest && achievementInfo.rarest.title)
                                    ? achievementInfo.rarest.title : "None yet"
                             detail: root.rarestDetailText()
@@ -808,7 +839,7 @@ FocusScope {
                             font.pixelSize: 12 * root.scaleFactor
                         }
                         Text {
-                            text: root.countText(libraryStats.systems, "system")
+                            text: root.countText(libraryStats.systems, "console")
                             color: Theme.foreground
                             font.family: Theme.fontFamily
                             font.pixelSize: 12 * root.scaleFactor
@@ -819,7 +850,7 @@ FocusScope {
                     Text {
                         Layout.fillWidth: true
                         visible: root.topGenres.length > 0
-                        text: "GENRES BY RECORDED PLAY"
+                        text: "GENRES BY RECORDED PLAY  ·  A GAME COUNTS IN EACH OF ITS GENRES, SO THESE OVERLAP"
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
                         font.pixelSize: 9 * root.scaleFactor
@@ -838,7 +869,7 @@ FocusScope {
                     Text {
                         Layout.fillWidth: true
                         visible: root.topRatedGames.length > 0
-                        text: "TOP RATED IN YOUR LIBRARY"
+                        text: "TOP RATED  ·  SCORES FROM IGDB"
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
                         font.pixelSize: 9 * root.scaleFactor

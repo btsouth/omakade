@@ -284,6 +284,52 @@ Three fixes came out of looking at the couch render rather than the code:
   one baseline. The same misalignment had been flagged on the desktop render and I had left it.
 
 
+- 2026-09-17: **two fresh-eyes reviews, and the fixes they earned.** One reviewer took the honesty
+  of every figure, the other took whether the destination can be reached, used and left in every
+  window state. Both found real defects, which is the point of asking.
+
+  From the honesty review:
+  - **"Library total" claimed to be launcher-reported and "not recorded play", but for emulators
+    that keep no counter of their own (Dolphin, Cemu, shadPS4, Xenia, RomM) the reconciled figure
+    *is* the recorded time**, so the screen and the card showed the same hours twice and called
+    them different things. The screen now says "all time, as your library reports it, and where an
+    emulator keeps no counter of its own this is the recorded time above", and the card says the
+    same in its footer.
+  - **Genres do not partition the total**: a game counts in every genre it carries, so those bars
+    can sum to two or three times the recorded whole. The heading now says so.
+  - **The card's system list was silently cut to the top four**, so its percentages visibly stopped
+    short of 100 with nothing saying why. It now ends with "and N more".
+  - **"Games played" counted installation paths**, so a linked game played from two installations
+    read as two games in the headline while the ranking under it showed one.
+  - **"Rarest in this period" could never name a RetroAchievements unlock**, because RA rows carry
+    no rarity and the query filtered on `rarity > 0`. It now falls back to the newest unlock in the
+    period and the tile says "Latest in this period" instead of "Rarest".
+  - **"Unlock rate" is an all-time figure sitting between two period tiles**; it is labelled
+    "(all time)" now.
+  - **Days off cannot know about gaps when the recorder was switched off**, so the tile says "Days
+    off while the recorder was running".
+  - **A session that recorded no play still marked its day as played**, disagreeing with the hours
+    and the games played in the same figure family. Days now require recorded play.
+  - "N systems" counted only console-tagged games, so a PC-only library read "0 systems"; the tile
+    says "consoles". "After 23:00" now says "after 23:00 and before 05:00". The card's hour strip
+    no longer draws a bar for an empty hour, and the top-rated list names IGDB as the score's
+    source. The error banner was rendered twice and is rendered once.
+
+  From the reachability review:
+  - **SAVE IMAGE quit the running app.** The exit hook for the headless export was connected
+    unconditionally, so the first save ended the session and OPEN FOLDER could never be used. The
+    connection is now wired only for a one-shot `--export-card` run, and the comment that claimed
+    nothing listened to it is corrected.
+  - **Escape with the card preview open closed the whole destination and left the preview open
+    behind it**, because the window's Escape shortcut runs before the focused item. The chain has a
+    branch for the preview now.
+  - **Tab walked out of the preview onto the controls behind its scrim**, which then took the
+    keypress. The window's navigation container is the preview while it is open.
+  - **In Couch Mode the screen could not be scrolled at all**, so a controller could reach the
+    header and nothing else: the screen is one long scroll with nothing focusable inside it. Every
+    section heading is now a focus stop that scrolls itself into view, which is how the rest of the
+    app makes a long screen traversable.
+
 **The startup benchmark, and what it was actually measuring.** `omakade_couch_thousand_game_startup`
 holds the first frame to 500 ms, and it failed once the card and its preview were part of the
 window. The screen is now loaded on first open rather than with the window, which is the right

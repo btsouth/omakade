@@ -277,7 +277,7 @@ void PlayStats::recompute() {
   qint64 hourSeconds[24] = {};
   qint64 weekdaySeconds[7] = {};
   QSet<QDate> playedDays;
-  QSet<QString> playedPaths;
+  QSet<QString> playedGames;
   qint64 longestSeconds = 0;
   QString longestTitle;
   qint64 longestStartedAt = 0;
@@ -307,11 +307,16 @@ void PlayStats::recompute() {
     secondsBySystem[system.first] += seconds;
     if (system.second)
       consoleSystems.insert(system.first);
-    if (seconds > 0)
-      playedPaths.insert(session.path);
-
-    const QDateTime started = QDateTime::fromSecsSinceEpoch(session.startedAt);
-    playedDays.insert(started.date());
+    if (seconds > 0) {
+      // Counted by game rather than by path: a linked game played from two of its installations is
+      // one game in the ranking above, and the headline must not disagree with the list under it.
+      const LibraryGame* played = byPath.value(session.path, nullptr);
+      playedGames.insert(played != nullptr ? played->identity : session.path);
+      // A day only counts as played when the recording actually saw play on it. A session that
+      // recorded nothing does not belong in the streak family while being absent from the hours
+      // and the games played.
+      playedDays.insert(QDateTime::fromSecsSinceEpoch(session.startedAt).date());
+    }
     if (seconds > longestSeconds) {
       longestSeconds = seconds;
       longestTitle = titleForPath(session.path);
@@ -381,7 +386,7 @@ void PlayStats::recompute() {
       {QStringLiteral("recordedSeconds"), recordedSeconds},
       {QStringLiteral("recordedSessions"), sessions.size()},
       {QStringLiteral("daysPlayed"), playedDays.size()},
-      {QStringLiteral("gamesPlayed"), playedPaths.size()},
+      {QStringLiteral("gamesPlayed"), playedGames.size()},
       {QStringLiteral("allTimeRecordedSeconds"), allTimeRecordedSeconds},
       {QStringLiteral("librarySeconds"), librarySeconds},
       {QStringLiteral("libraryGames"), libraryGames},
@@ -512,8 +517,31 @@ void PlayStats::recompute() {
           {QStringLiteral("rarity"), best.value(1).toDouble()},
           {QStringLiteral("source"), source},
           {QStringLiteral("appId"), appId},
+          {QStringLiteral("basis"), QStringLiteral("rarity")},
           {QStringLiteral("gameTitle"),
            titleByAppId.value(librarySourceForAchievements(source) + kUnitSeparator + appId)}};
+    } else {
+      // Not every source publishes a rarity: RetroAchievements rows carry none at all, and
+      // filtering them out made a period with unlocks report "None yet". Fall back to the newest
+      // unlock and say so, rather than claiming there was nothing.
+      QSqlQuery recent(m_database);
+      recent.prepare(QStringLiteral("SELECT title, source, app_id FROM achievements "
+                                    "WHERE unlocked = 1 AND unlock_time >= ? AND unlock_time < ? "
+                                    "ORDER BY unlock_time DESC LIMIT 1"));
+      recent.addBindValue(from);
+      recent.addBindValue(to);
+      if (recent.exec() && recent.next()) {
+        const QString source = recent.value(1).toString();
+        const QString appId = recent.value(2).toString();
+        rarest = QVariantMap{
+            {QStringLiteral("title"), recent.value(0).toString()},
+            {QStringLiteral("rarity"), 0.0},
+            {QStringLiteral("source"), source},
+            {QStringLiteral("appId"), appId},
+            {QStringLiteral("basis"), QStringLiteral("recent")},
+            {QStringLiteral("gameTitle"),
+             titleByAppId.value(librarySourceForAchievements(source) + kUnitSeparator + appId)}};
+      }
     }
     m_achievements =
         QVariantMap{{QStringLiteral("unlockedInPeriod"), unlockedInPeriod},

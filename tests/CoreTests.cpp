@@ -8206,6 +8206,10 @@ void CoreTests::statsReportRecordedPlayBesideLibraryTotals() {
                        nextEvening, 900, nextEvening + 900);
     addRecordedSession(database, QStringLiteral("/games/beta.iso"), QStringLiteral("PCSX2"),
                        evening, 600, evening + 600);
+    // A session that recorded no play at all: it is a session row, but it must not count as a day
+    // played or a game played, or the streak family disagrees with the hours above it.
+    addRecordedSession(database, QStringLiteral("/games/alpha.nsp"), QStringLiteral("Ryujinx"),
+                       evening + 2 * 86400, 0, evening + 2 * 86400);
     // Genres reach the library through the metadata layer, not from the source, so the fixture
     // seeds it the way identification does: one payload per game key, source + NUL + runner +
     // NUL + app id.
@@ -8269,7 +8273,8 @@ void CoreTests::statsReportRecordedPlayBesideLibraryTotals() {
 
   const QVariantMap headline = stats.headline();
   QCOMPARE(headline.value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(3300));
-  QCOMPARE(headline.value(QStringLiteral("recordedSessions")).toInt(), 3);
+  QCOMPARE(headline.value(QStringLiteral("recordedSessions")).toInt(), 4);
+  // Still two days and two games: the session that recorded nothing is a session and no more.
   QCOMPARE(headline.value(QStringLiteral("daysPlayed")).toInt(), 2);
   QCOMPARE(headline.value(QStringLiteral("gamesPlayed")).toInt(), 2);
   QCOMPARE(headline.value(QStringLiteral("topGameTitle")).toString(), QStringLiteral("Alpha"));
@@ -8303,7 +8308,9 @@ void CoreTests::statsReportRecordedPlayBesideLibraryTotals() {
   const QVariantMap topSource = stats.bySource().at(0).toMap();
   QCOMPARE(topSource.value(QStringLiteral("name")).toString(), QStringLiteral("Ryujinx"));
   QCOMPARE(topSource.value(QStringLiteral("seconds")).toLongLong(), qint64(2700));
-  QCOMPARE(topSource.value(QStringLiteral("sessions")).toInt(), 2);
+  // Three session rows for Ryujinx: two with play and the zero-length one, which is a session and
+  // no more. Its seconds are unchanged, which is what the row reports.
+  QCOMPARE(topSource.value(QStringLiteral("sessions")).toInt(), 3);
   QCOMPARE(topSource.value(QStringLiteral("games")).toInt(), 1);
   QCOMPARE(stats.bySource().at(1).toMap().value(QStringLiteral("name")).toString(),
            QStringLiteral("PCSX2"));
@@ -8581,6 +8588,11 @@ void CoreTests::statsReportAchievementsAndNameTheRecordedWindow() {
                    QStringLiteral("steam-web"));
     addAchievement(database, QStringLiteral("alpha"), QStringLiteral("LOCKED"),
                    QStringLiteral("Not Yet"), false, 0, 0.0, QStringLiteral("steam-web"));
+    // An unlock with no rarity at all, the way RetroAchievements reports them, in a year of its own.
+    addAchievement(database, QStringLiteral("ra-1"), QStringLiteral("RA_ONE"),
+                   QStringLiteral("No Rarity"), true,
+                   QDateTime(QDate(year - 2, 6, 1), QTime(12, 0)).toSecsSinceEpoch(), 0.0,
+                   QStringLiteral("retroachievements"));
     // A session in the period, so recording starts after the year began and the note has to say so.
     addRecordedSession(database, QStringLiteral("/games/alpha.exe"), QStringLiteral("Xenia"),
                        inPeriod, 900, inPeriod + 900);
@@ -8601,14 +8613,27 @@ void CoreTests::statsReportAchievementsAndNameTheRecordedWindow() {
 
   const QVariantMap achievements = stats.achievements();
   QCOMPARE(achievements.value(QStringLiteral("unlockedInPeriod")).toLongLong(), qint64(1));
-  QCOMPARE(achievements.value(QStringLiteral("unlockedTotal")).toLongLong(), qint64(2));
-  QCOMPARE(achievements.value(QStringLiteral("known")).toLongLong(), qint64(3));
-  QCOMPARE(qRound(achievements.value(QStringLiteral("rate")).toDouble() * 100), 67);
+  // Three unlocked in all (two Steam, one with no rarity) out of four cached rows.
+  QCOMPARE(achievements.value(QStringLiteral("unlockedTotal")).toLongLong(), qint64(3));
+  QCOMPARE(achievements.value(QStringLiteral("known")).toLongLong(), qint64(4));
+  QCOMPARE(qRound(achievements.value(QStringLiteral("rate")).toDouble() * 100), 75);
   const QVariantMap rarest = achievements.value(QStringLiteral("rarest")).toMap();
   QCOMPARE(rarest.value(QStringLiteral("title")).toString(), QStringLiteral("First Steps"));
   QVERIFY(qAbs(rarest.value(QStringLiteral("rarity")).toDouble() - 0.05) < 1e-9);
+  QCOMPARE(rarest.value(QStringLiteral("basis")).toString(), QStringLiteral("rarity"));
   // The achievement's game is named from the library's own identity, across source naming.
   QCOMPARE(rarest.value(QStringLiteral("gameTitle")).toString(), QStringLiteral("Alpha"));
+
+  // A source that publishes no rarity must not read as "nothing unlocked". RetroAchievements rows
+  // carry rarity zero, and the period below holds only one of those, so the figure falls back to
+  // the newest unlock and says its basis is recency rather than rarity.
+  stats.setYear(year - 2);
+  const QVariantMap unlockOnly = stats.achievements();
+  QCOMPARE(unlockOnly.value(QStringLiteral("unlockedInPeriod")).toLongLong(), qint64(1));
+  const QVariantMap latest = unlockOnly.value(QStringLiteral("rarest")).toMap();
+  QCOMPARE(latest.value(QStringLiteral("title")).toString(), QStringLiteral("No Rarity"));
+  QCOMPARE(latest.value(QStringLiteral("basis")).toString(), QStringLiteral("recent"));
+  stats.setYear(year);
 
   // The card and the screen both repeat what the recorded figures really cover.
   QCOMPARE(stats.recordingStartsAt(), inPeriod);

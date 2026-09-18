@@ -1394,13 +1394,18 @@ int main(int argc, char* argv[]) {
   // playtime can never disagree with what a game's card says, and it computes nothing until
   // the screen is open.
   PlayStats stats(&unifiedGames, libraryDatabasePath);
-  // The card is written from C++ so the path is one place rather than composed in QML, and so a
-  // headless export can end the run with the outcome.
+  // The card is written from C++ so the path is one place rather than composed in QML. The exit
+  // hook is only wired for a one-shot export: saving a card from the screen must never end the
+  // session, which is what an unconditional connection here would do to the first SAVE IMAGE press.
   CardExport cardExport;
-  QObject::connect(&cardExport, &CardExport::exportReported, &application,
-                   [&application](bool written) {
-                     application.exit(written ? EXIT_SUCCESS : EXIT_FAILURE);
-                   });
+  if (cardExportPath.isEmpty()) {
+    qInfo() << "Card export: interactive, the app keeps running after a save";
+  } else {
+    QObject::connect(&cardExport, &CardExport::exportReported, &application,
+                     [&application](bool written) {
+                       application.exit(written ? EXIT_SUCCESS : EXIT_FAILURE);
+                     });
+  }
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
   engine.rootContext()->setContextProperty("Stats", &stats);

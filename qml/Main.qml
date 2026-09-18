@@ -201,7 +201,13 @@ ApplicationWindow {
             return detailsLoader.item
         }
         if (homeOpen) return homeScreen
-        if (statsOpen) return statsLoader.item
+        if (statsOpen) {
+            const stats = statsLoader.item
+            // While the card preview is open it owns the focus: without this, Tab walks out of it
+            // onto the controls behind its scrim, which then take the keypress.
+            if (stats && stats.cardPreviewOpen) return stats.cardPreviewItem
+            return stats
+        }
         return null
     }
 
@@ -1239,6 +1245,10 @@ ApplicationWindow {
                 detailsLoader.item.closeCollectionEditor()
             } else if (root.detailOpen) {
                 root.closeDetails()
+            } else if (root.statsOpen && statsLoader.item && statsLoader.item.cardPreviewOpen) {
+                // The preview owns the screen while it is open, so Escape closes it rather than the
+                // whole destination: the window shortcut sees Escape before the focused item does.
+                statsLoader.item.closeCardPreview()
             } else if (root.statsOpen) {
                 root.statsOpen = false
                 Qt.callLater(root.focusLibrary)

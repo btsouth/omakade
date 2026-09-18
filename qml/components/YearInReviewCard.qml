@@ -100,6 +100,10 @@ Item {
             picked.push(list[index])
         return picked
     }
+    readonly property bool rarestIsRarity: String(card.achievements.rarest
+                                                  && card.achievements.rarest.basis
+                                                  ? card.achievements.rarest.basis : "")
+                                           === "rarity"
     function rarestText() {
         const rarest = card.achievements.rarest
         if (!rarest || !rarest.title) return ""
@@ -316,7 +320,7 @@ Item {
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width
-                                height: Math.max(2, parent.height
+                                height: Math.max(0, parent.height
                                                  * (card.peakHourSeconds > 0
                                                     ? (Number(modelData.seconds) || 0)
                                                       / card.peakHourSeconds : 0))
@@ -342,7 +346,7 @@ Item {
                             sentences.push(card.busiestWeekdayText() + " was your busiest day")
                         if (card.lateNightShare() > 0)
                             sentences.push(card.percentText(card.lateNightShare())
-                                           + " after 23:00")
+                                           + " after 23:00 and before 05:00")
                         return sentences.join(". ") + (sentences.length > 0 ? "." : "")
                     }
                 }
@@ -397,6 +401,16 @@ Item {
                         }
                     }
                 }
+                // The rows above are the top few, so say how many were left out: without this the
+                // percentages visibly stop short of 100 and the card looks like it lost a slice.
+                Text {
+                    Layout.fillWidth: true
+                    visible: card.bySystem.length > card.topSystems.length
+                    text: "and " + card.countText(card.bySystem.length - card.topSystems.length, "more")
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 17 * card.unit
+                }
             }
 
             // Unlocked.
@@ -422,7 +436,7 @@ Item {
                     Layout.fillWidth: true
                     visible: card.rarestText().length > 0
                     wrapMode: Text.Wrap
-                    text: "Rarest: " + card.rarestText()
+                    text: (card.rarestIsRarity ? "Rarest: " : "Latest: ") + card.rarestText()
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pixelSize: 19 * card.unit
@@ -444,7 +458,7 @@ Item {
                     color: Qt.rgba(1, 1, 1, 0.12)
                 }
                 Text {
-                    text: "YOUR LIBRARY, AS YOUR LAUNCHERS AND EMULATORS REPORT IT"
+                    text: "YOUR LIBRARY, ALL TIME"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 15 * card.unit
@@ -474,12 +488,14 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    text: "Recorded by Omakade, counting from the day it first saw a game run. The "
-                          + "library figure above is what your launchers and emulators report, not "
-                          + "recorded play."
+                    // Short on purpose: the card is a fixed height and a longer sentence pushes the
+                    // footer off its bottom edge.
+                    text: "Recorded by Omakade from the day it first saw a game run. The library "
+                          + "figure above is all time, and where an emulator keeps no counter it is "
+                          + "that same time."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 15 * card.unit
+                    font.pixelSize: 14 * card.unit
                 }
             }
         }

@@ -22,7 +22,8 @@ public:
   // Hands the file's folder to the desktop so the player can find what was just written.
   [[nodiscard]] Q_INVOKABLE bool reveal(const QString& path) const;
   // Called once when a one-shot export finishes, so a headless run can report the outcome and
-  // exit with it. The interactive path writes its own status and nothing listens to this.
+  // exit with it. Nothing is connected to this unless an export was requested on the command line,
+  // so a card saved from the screen leaves the app running.
   Q_INVOKABLE void reportExport(bool written);
 
 signals:
