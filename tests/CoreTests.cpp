@@ -46,6 +46,7 @@
 #include "library/GameRoles.h"
 #include "library/HeroicGameModel.h"
 #include "library/HomeModel.h"
+#include "library/PlayStats.h"
 #include "library/LibraryFilterModel.h"
 #include "library/LutrisGameModel.h"
 #include "library/ManualGameModel.h"
@@ -170,6 +171,121 @@ private:
   QString m_title;
   QString m_coverPath;
 };
+
+// One library game with everything the stats figures read, including the installation path a
+// session is recorded under. The demo model carries no paths, and the recorded side cannot be
+// exercised without them.
+struct StatsGame {
+  QString title;
+  QString source;
+  QString system; // the console id the source models report, such as "switch"
+  QString appId;
+  QString path;
+  QStringList genres;
+  qint64 playtimeSeconds = 0;
+  QString completion;
+  int rating = 0;
+  int ratingCount = 0;
+  bool linked = false;
+};
+
+class StatsSourceModel final : public QAbstractListModel {
+public:
+  explicit StatsSourceModel(QVector<StatsGame> games) : m_games(std::move(games)) {}
+  [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override {
+    return parent.isValid() ? 0 : static_cast<int>(m_games.size());
+  }
+  [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override {
+    if (!index.isValid() || index.row() < 0 || index.row() >= m_games.size())
+      return {};
+    const StatsGame& game = m_games.at(index.row());
+    switch (role) {
+    case GameRoles::Title:
+      return game.title;
+    case GameRoles::Source:
+      return game.source;
+    case GameRoles::System:
+      return game.system;
+    case GameRoles::AppId:
+      return game.appId;
+    case GameRoles::Runner:
+      return QString{};
+    case GameRoles::InstallPath:
+      return game.path;
+    case GameRoles::Genres:
+      return game.genres;
+    case GameRoles::PlaytimeSeconds:
+      return game.playtimeSeconds;
+    case GameRoles::PlaytimeText:
+      return GameRoles::formatPlaytime(game.playtimeSeconds);
+    case GameRoles::CompletionStatus:
+      return game.completion;
+    case GameRoles::Rating:
+      return game.rating;
+    case GameRoles::RatingCount:
+      return game.ratingCount;
+    case GameRoles::Linked:
+      return game.linked;
+    case GameRoles::Hidden:
+    case GameRoles::Favorite:
+    case GameRoles::IsPortal:
+      return false;
+    default:
+      return {};
+    }
+  }
+  [[nodiscard]] QHash<int, QByteArray> roleNames() const override { return GameRoles::names(); }
+
+private:
+  QVector<StatsGame> m_games;
+};
+
+// Records one session the way the recorder leaves it. An open session keeps ended_at at 0 and
+// reports only the seconds flushed so far.
+void addRecordedSession(QSqlDatabase& database, const QString& path, const QString& source,
+                        qint64 startedAt, qint64 seconds, qint64 endedAt) {
+  const qint64 id = SessionDatabase::beginSession(database, path, source, startedAt, 100, 100);
+  QVERIFY2(id > 0, "the fixture session could not be opened");
+  if (endedAt > 0)
+    QVERIFY2(SessionDatabase::endSession(database, id, endedAt, seconds),
+             "the fixture session could not be closed");
+  else
+    QVERIFY2(SessionDatabase::updateProgress(database, id, seconds, startedAt + seconds),
+             "the fixture session could not be flushed");
+}
+
+// The achievement tables exactly as the app's own code creates them, so these figures are
+// exercised against the real column set rather than an invented one.
+void createAchievementTables(QSqlDatabase& database) {
+  QSqlQuery query(database);
+  QVERIFY(query.exec(QStringLiteral(
+      "CREATE TABLE achievement_summary (app_id TEXT PRIMARY KEY, unlocked INTEGER NOT NULL, "
+      "total INTEGER NOT NULL, source TEXT NOT NULL, updated_at INTEGER NOT NULL)")));
+  QVERIFY(query.exec(QStringLiteral(
+      "CREATE TABLE achievements (app_id TEXT NOT NULL, api_name TEXT NOT NULL, title TEXT NOT "
+      "NULL, description TEXT, icon_url TEXT, icon_path TEXT, unlocked INTEGER NOT NULL, "
+      "unlock_time INTEGER NOT NULL, rarity REAL NOT NULL, hidden INTEGER NOT NULL, "
+      "current_progress REAL NOT NULL, maximum_progress REAL NOT NULL, source TEXT NOT NULL, "
+      "PRIMARY KEY(app_id, api_name))")));
+}
+
+void addAchievement(QSqlDatabase& database, const QString& appId, const QString& apiName,
+                    const QString& title, bool unlocked, qint64 unlockTime, double rarity,
+                    const QString& source) {
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral(
+      "INSERT INTO achievements(app_id, api_name, title, description, icon_url, icon_path, "
+      "unlocked, unlock_time, rarity, hidden, current_progress, maximum_progress, source) "
+      "VALUES(?, ?, ?, '', '', '', ?, ?, ?, 0, 0, 1, ?)"));
+  query.addBindValue(appId);
+  query.addBindValue(apiName);
+  query.addBindValue(title);
+  query.addBindValue(unlocked ? 1 : 0);
+  query.addBindValue(unlockTime);
+  query.addBindValue(rarity);
+  query.addBindValue(source);
+  QVERIFY2(query.exec(), "the fixture achievement could not be stored");
+}
 
 // A source that can rescan and find the same games, or find more, so the library's reaction to
 // each can be held to what it should be.
@@ -838,6 +954,12 @@ private slots:
   void pendingClosesAreBoundedUnderAStorageFailure();
   void sessionInsertFailureDoesNotLoseTheSession();
   void sessionInsertFailureWithABackwardClockStillRecordsPlaytime();
+  void statsReportRecordedPlayBesideLibraryTotals();
+  void statsLimitFiguresToTheChosenPeriod();
+  void statsSpreadPlayAcrossTheHoursItHappened();
+  void statsSurviveOpenSessionsAndSparseMetadata();
+  void statsCountStreaksReturnsAndFirstTimePlays();
+  void statsReportAchievementsAndNameTheRecordedWindow();
   void titleFlickerDoesNotFragmentASession();
   void titleIndexRebuildsOnlyWhenACacheChanges();
   void shippedProfilesMatchCemuWua();
@@ -8064,6 +8186,418 @@ void CoreTests::sessionInsertFailureWithABackwardClockStillRecordsPlaytime() {
     QCOMPARE(query.value(2).toLongLong(), 60);
   }
   QSqlDatabase::removeDatabase(connection);
+}
+
+void CoreTests::statsReportRecordedPlayBesideLibraryTotals() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("stats-totals");
+  const int year = QDate::currentDate().year();
+  const QDate day = QDate(year, 2, 10);
+  const qint64 evening = QDateTime(day, QTime(20, 0)).toSecsSinceEpoch();
+  const qint64 nextEvening = QDateTime(day.addDays(1), QTime(20, 0)).toSecsSinceEpoch();
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    addRecordedSession(database, QStringLiteral("/games/alpha.nsp"), QStringLiteral("Ryujinx"),
+                       evening, 1800, evening + 1800);
+    addRecordedSession(database, QStringLiteral("/games/alpha.nsp"), QStringLiteral("Ryujinx"),
+                       nextEvening, 900, nextEvening + 900);
+    addRecordedSession(database, QStringLiteral("/games/beta.iso"), QStringLiteral("PCSX2"),
+                       evening, 600, evening + 600);
+    // Genres reach the library through the metadata layer, not from the source, so the fixture
+    // seeds it the way identification does: one payload per game key, source + NUL + runner +
+    // NUL + app id.
+    QSqlQuery schema(database);
+    QVERIFY(schema.exec(QStringLiteral(
+        "CREATE TABLE game_metadata (game_key TEXT PRIMARY KEY, payload TEXT NOT NULL)")));
+    const auto metadataKey = [](const QString& source, const QString& appId) {
+      return source + QChar::Null + QChar::Null + appId;
+    };
+    QSqlQuery metadata(database);
+    metadata.prepare(QStringLiteral("INSERT INTO game_metadata(game_key, payload) VALUES(?, ?)"));
+    metadata.addBindValue(metadataKey(QStringLiteral("Ryujinx"), QStringLiteral("alpha")));
+    metadata.addBindValue(
+        QStringLiteral("{\"genres\":[\"Adventure\"],\"rating\":90,\"ratingCount\":12}"));
+    QVERIFY(metadata.exec());
+    metadata.addBindValue(metadataKey(QStringLiteral("PCSX2"), QStringLiteral("beta")));
+    metadata.addBindValue(QStringLiteral("{\"genres\":[\"Role Playing\"]}"));
+    QVERIFY(metadata.exec());
+    // Completion is a current state the library keeps in its own organization table, created
+    // here exactly as the library creates it so the read path is the real one.
+    QSqlQuery organization(database);
+    QVERIFY(organization.exec(QStringLiteral(
+        "CREATE TABLE game_organization (source TEXT NOT NULL, runner TEXT NOT NULL, app_id TEXT "
+        "NOT NULL, completion_status TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT "
+        "'[]', pinned INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(source, runner, app_id))")));
+    QVERIFY(organization.exec(QStringLiteral(
+        "INSERT INTO game_organization(source, runner, app_id, completion_status) "
+        "VALUES('Ryujinx', '', 'alpha', 'Playing')")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  AppSettings settings(directory.path() + QStringLiteral("/config.toml"));
+  GameInsightsService insights(directory.path() + QStringLiteral("/insights.db"), &settings);
+  GameMetadata metadata(path, &insights);
+
+  StatsSourceModel source(
+      {StatsGame{.title = QStringLiteral("Alpha"),
+                 .source = QStringLiteral("Ryujinx"),
+                 .system = QStringLiteral("switch"),
+                 .appId = QStringLiteral("alpha"),
+                 .path = QStringLiteral("/games/alpha.nsp"),
+                 .genres = {QStringLiteral("Adventure")},
+                 .playtimeSeconds = 36000,
+                 .completion = QStringLiteral("Playing"),
+                 .rating = 90,
+                 .ratingCount = 12},
+       StatsGame{.title = QStringLiteral("Beta"),
+                 .source = QStringLiteral("PCSX2"),
+                 .system = QStringLiteral("ps2"),
+                 .appId = QStringLiteral("beta"),
+                 .path = QStringLiteral("/games/beta.iso"),
+                 .genres = {QStringLiteral("Role Playing")},
+                 .playtimeSeconds = 7200}});
+  UnifiedGameModel games(path);
+  games.addSourceModel(&source);
+  games.setMetadata(&metadata);
+  PlayStats stats(&games, path);
+  stats.setYear(year);
+  stats.refresh();
+
+  const QVariantMap headline = stats.headline();
+  QCOMPARE(headline.value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(3300));
+  QCOMPARE(headline.value(QStringLiteral("recordedSessions")).toInt(), 3);
+  QCOMPARE(headline.value(QStringLiteral("daysPlayed")).toInt(), 2);
+  QCOMPARE(headline.value(QStringLiteral("gamesPlayed")).toInt(), 2);
+  QCOMPARE(headline.value(QStringLiteral("topGameTitle")).toString(), QStringLiteral("Alpha"));
+  QCOMPARE(headline.value(QStringLiteral("topGameSeconds")).toLongLong(), qint64(2700));
+  QCOMPARE(qRound(headline.value(QStringLiteral("topGameShare")).toDouble() * 100), 82);
+  // The library's own totals sit beside the recorded ones and are never mixed into them.
+  QCOMPARE(headline.value(QStringLiteral("librarySeconds")).toLongLong(), qint64(43200));
+  QCOMPARE(headline.value(QStringLiteral("libraryGames")).toInt(), 2);
+  QCOMPARE(headline.value(QStringLiteral("allTimeRecordedSeconds")).toLongLong(), qint64(3300));
+  QCOMPARE(stats.periodLabel(), QString::number(year));
+
+  // Every breakdown is a part of the recorded whole.
+  QCOMPARE(stats.bySource().size(), 2);
+  const QVariantMap topSource = stats.bySource().at(0).toMap();
+  QCOMPARE(topSource.value(QStringLiteral("name")).toString(), QStringLiteral("Ryujinx"));
+  QCOMPARE(topSource.value(QStringLiteral("seconds")).toLongLong(), qint64(2700));
+  QCOMPARE(topSource.value(QStringLiteral("sessions")).toInt(), 2);
+  QCOMPARE(topSource.value(QStringLiteral("games")).toInt(), 1);
+  QCOMPARE(stats.bySource().at(1).toMap().value(QStringLiteral("name")).toString(),
+           QStringLiteral("PCSX2"));
+
+  // The system comes from the library's own row for the game, not from a guess at the emulator.
+  QCOMPARE(stats.bySystem().size(), 2);
+  const QVariantMap topSystem = stats.bySystem().at(0).toMap();
+  QCOMPARE(topSystem.value(QStringLiteral("name")).toString(), QStringLiteral("Nintendo Switch"));
+  QCOMPARE(topSystem.value(QStringLiteral("console")).toBool(), true);
+
+  // Genre time is attributed through the same path mapping, so it agrees with the game's time.
+  const QVariantList genres = stats.library().value(QStringLiteral("genres")).toList();
+  QCOMPARE(genres.size(), 2);
+  QCOMPARE(genres.at(0).toMap().value(QStringLiteral("name")).toString(),
+           QStringLiteral("Adventure"));
+  QCOMPARE(genres.at(0).toMap().value(QStringLiteral("seconds")).toLongLong(), qint64(2700));
+  QCOMPARE(stats.library().value(QStringLiteral("systems")).toInt(), 2);
+  QCOMPARE(stats.library().value(QStringLiteral("topRated")).toList().size(), 1);
+  const QVariantList completions = stats.library().value(QStringLiteral("completions")).toList();
+  QCOMPARE(completions.size(), 1);
+  // The library normalises completion to a lowercase id, and the screen labels it from that id.
+  QCOMPARE(completions.at(0).toMap().value(QStringLiteral("status")).toString(),
+           QStringLiteral("playing"));
+}
+
+void CoreTests::statsLimitFiguresToTheChosenPeriod() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("stats-period");
+  const int year = QDate::currentDate().year();
+  const qint64 thisYear = QDateTime(QDate(year, 2, 10), QTime(20, 0)).toSecsSinceEpoch();
+  const qint64 lastYear = QDateTime(QDate(year - 1, 2, 10), QTime(20, 0)).toSecsSinceEpoch();
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    addRecordedSession(database, QStringLiteral("/games/alpha.nsp"), QStringLiteral("Ryujinx"),
+                       thisYear, 1200, thisYear + 1200);
+    addRecordedSession(database, QStringLiteral("/games/alpha.nsp"), QStringLiteral("Ryujinx"),
+                       lastYear, 3600, lastYear + 3600);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  StatsSourceModel source({StatsGame{.title = QStringLiteral("Alpha"),
+                                     .source = QStringLiteral("Ryujinx"),
+                                     .system = QStringLiteral("switch"),
+                                     .appId = QStringLiteral("alpha"),
+                                     .path = QStringLiteral("/games/alpha.nsp"),
+                                     .playtimeSeconds = 4800}});
+  UnifiedGameModel games(path);
+  games.addSourceModel(&source);
+  PlayStats stats(&games, path);
+
+  stats.setYear(year);
+  stats.refresh();
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(1200));
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 1);
+  // All time keeps everything, and says so in the period label.
+  stats.setPeriod(QStringLiteral("all"));
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(4800));
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 2);
+  QCOMPARE(stats.headline().value(QStringLiteral("allTimeRecordedSeconds")).toLongLong(),
+           qint64(4800));
+  QCOMPARE(stats.periodLabel(), QStringLiteral("All time"));
+
+  // A year before recording started reports nothing rather than borrowing another year's play.
+  stats.setPeriod(QStringLiteral("year"));
+  stats.setYear(year - 5);
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(0));
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 0);
+  QVERIFY(stats.windowNote().contains(QString::number(year - 5)));
+
+  // Back in the chosen year: the game was already played last year, so it is not a first-time
+  // play this year, and the year-long gap between the two sessions is a return.
+  stats.setYear(year);
+  QCOMPARE(stats.backlog().value(QStringLiteral("firstTimeGames")).toInt(), 0);
+  QCOMPARE(stats.backlog().value(QStringLiteral("returns")).toInt(), 1);
+  QCOMPARE(stats.backlog().value(QStringLiteral("longestGapDays")).toLongLong(),
+           (thisYear - (lastYear + 3600)) / 86400);
+}
+
+void CoreTests::statsSpreadPlayAcrossTheHoursItHappened() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("stats-hours");
+  const int year = QDate::currentDate().year();
+  // Half past ten at night for two hours: the play belongs to three clock hours and two days.
+  const qint64 start = QDateTime(QDate(year, 2, 10), QTime(22, 30)).toSecsSinceEpoch();
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    addRecordedSession(database, QStringLiteral("/games/alpha.nsp"), QStringLiteral("Ryujinx"),
+                       start, 7200, start + 7200);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  StatsSourceModel source({StatsGame{.title = QStringLiteral("Alpha"),
+                                     .source = QStringLiteral("Ryujinx"),
+                                     .system = QStringLiteral("switch"),
+                                     .appId = QStringLiteral("alpha"),
+                                     .path = QStringLiteral("/games/alpha.nsp"),
+                                     .playtimeSeconds = 7200}});
+  UnifiedGameModel games(path);
+  games.addSourceModel(&source);
+  PlayStats stats(&games, path);
+  stats.setYear(year);
+  stats.refresh();
+
+  QCOMPARE(stats.byHour().size(), 24);
+  const auto hourSeconds = [&stats](int hour) {
+    return stats.byHour().at(hour).toMap().value(QStringLiteral("seconds")).toLongLong();
+  };
+  QCOMPARE(hourSeconds(22), qint64(1800)); // 22:30 to 23:00
+  QCOMPARE(hourSeconds(23), qint64(3600)); // 23:00 to midnight
+  QCOMPARE(hourSeconds(0), qint64(1800));  // midnight to 00:30
+  qint64 hourTotal = 0;
+  for (const QVariant& entry : stats.byHour())
+    hourTotal += entry.toMap().value(QStringLiteral("seconds")).toLongLong();
+  QCOMPARE(hourTotal, qint64(7200));
+  QCOMPARE(stats.byWeekday().size(), 7);
+  qint64 weekdayTotal = 0;
+  for (const QVariant& entry : stats.byWeekday())
+    weekdayTotal += entry.toMap().value(QStringLiteral("seconds")).toLongLong();
+  QCOMPARE(weekdayTotal, qint64(7200));
+  // Two clock hours land on the next day, and the play counts there too.
+  QCOMPARE(stats.byWeekday().at(QDate(year, 2, 11).dayOfWeek() - 1)
+               .toMap()
+               .value(QStringLiteral("seconds"))
+               .toLongLong(),
+           qint64(1800));
+  // The session itself belongs to the day it started on, which is what a session count means.
+  QCOMPARE(stats.headline().value(QStringLiteral("daysPlayed")).toInt(), 1);
+  QCOMPARE(stats.sessionShape().value(QStringLiteral("count")).toInt(), 1);
+}
+
+void CoreTests::statsSurviveOpenSessionsAndSparseMetadata() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("stats-sparse");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    database.close();
+  }
+
+  // A library row with no genres, no system and a path nothing was recorded under.
+  StatsSourceModel source({StatsGame{.title = QStringLiteral("Sparse"),
+                                     .source = QStringLiteral("Ryujinx"),
+                                     .appId = QStringLiteral("sparse"),
+                                     .path = QStringLiteral("/games/elsewhere.nsp"),
+                                     .playtimeSeconds = 5000}});
+  UnifiedGameModel games(path);
+  games.addSourceModel(&source);
+  PlayStats stats(&games, path);
+  stats.refresh();
+
+  // Nothing recorded yet is said plainly rather than shown as a row of zeroes.
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(0));
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 0);
+  QCOMPARE(stats.windowNote(), QStringLiteral("Nothing has been recorded yet."));
+  QCOMPARE(stats.streaks().value(QStringLiteral("longestRun")).toInt(), 0);
+  QCOMPARE(stats.library().value(QStringLiteral("games")).toInt(), 1);
+
+  // An open session keeps ended_at at 0 and reports the seconds flushed so far, and a path the
+  // library does not know still counts and still gets a readable name.
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    addRecordedSession(database, QStringLiteral("/tmp/stats-fixture/orphan.nsp"),
+                       QStringLiteral("Ryujinx"), 1700000000, 1200, 0);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+  // All time, because the open session below is old and a year period would exclude it. That
+  // is the point of the fixture: the counts follow the chosen period exactly.
+  stats.setPeriod(QStringLiteral("all"));
+  stats.refresh();
+
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(1200));
+  QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 1);
+  QCOMPARE(stats.headline().value(QStringLiteral("gamesPlayed")).toInt(), 1);
+  QVERIFY2(stats.headline().value(QStringLiteral("topGameTitle")).toString().contains(
+               QStringLiteral("orphan")),
+           qPrintable(QStringLiteral("unexpected title for an unknown path: %1")
+                          .arg(stats.headline().value(QStringLiteral("topGameTitle")).toString())));
+  QCOMPARE(stats.sessionShape().value(QStringLiteral("count")).toInt(), 1);
+  QCOMPARE(stats.sessionShape().value(QStringLiteral("averageSeconds")).toLongLong(), qint64(1200));
+  // Missing metadata is reported as missing, not invented.
+  QCOMPARE(stats.library().value(QStringLiteral("genres")).toList().size(), 0);
+  QCOMPARE(stats.library().value(QStringLiteral("systems")).toInt(), 0);
+  QCOMPARE(stats.library().value(QStringLiteral("topRated")).toList().size(), 0);
+  QCOMPARE(stats.library().value(QStringLiteral("completions")).toList().size(), 0);
+  QVERIFY(!stats.windowNote().isEmpty());
+}
+
+void CoreTests::statsCountStreaksReturnsAndFirstTimePlays() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("stats-streaks");
+  const QDate today = QDate::currentDate();
+  const qint64 todayStart = QDateTime(today, QTime(20, 0)).toSecsSinceEpoch();
+  const qint64 yesterdayStart = QDateTime(today.addDays(-1), QTime(20, 0)).toSecsSinceEpoch();
+  const qint64 twoDaysAgoStart = QDateTime(today.addDays(-2), QTime(20, 0)).toSecsSinceEpoch();
+  const qint64 comebackStart = QDateTime(QDate(2025, 12, 1), QTime(20, 0)).toSecsSinceEpoch();
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    addRecordedSession(database, QStringLiteral("/games/steady.nsp"), QStringLiteral("Ryujinx"),
+                       twoDaysAgoStart, 600, twoDaysAgoStart + 600);
+    addRecordedSession(database, QStringLiteral("/games/steady.nsp"), QStringLiteral("Ryujinx"),
+                       yesterdayStart, 600, yesterdayStart + 600);
+    addRecordedSession(database, QStringLiteral("/games/steady.nsp"), QStringLiteral("Ryujinx"),
+                       todayStart, 600, todayStart + 600);
+    addRecordedSession(database, QStringLiteral("/games/comeback.nsp"), QStringLiteral("Ryujinx"),
+                       comebackStart, 600, comebackStart + 600);
+    addRecordedSession(database, QStringLiteral("/games/comeback.nsp"), QStringLiteral("Ryujinx"),
+                       todayStart + 60, 600, todayStart + 660);
+    addRecordedSession(database, QStringLiteral("/games/once.nsp"), QStringLiteral("Ryujinx"),
+                       todayStart + 120, 300, todayStart + 420);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  UnifiedGameModel games(path);
+  PlayStats stats(&games, path);
+  // All time, so a run crossing the new year is still one run.
+  stats.setPeriod(QStringLiteral("all"));
+  stats.refresh();
+
+  // Four days were played in all: three consecutive ones, plus the return a year earlier.
+  QCOMPARE(stats.streaks().value(QStringLiteral("daysPlayed")).toInt(), 4);
+  QCOMPARE(stats.streaks().value(QStringLiteral("longestRun")).toInt(), 3);
+  QCOMPARE(stats.streaks().value(QStringLiteral("currentRun")).toInt(), 3);
+  QVERIFY(stats.streaks().value(QStringLiteral("daysOff")).toInt() > 0);
+  QCOMPARE(stats.streaks().value(QStringLiteral("lastDay")).toString(), today.toString(Qt::ISODate));
+
+  const QVariantMap backlog = stats.backlog();
+  // All time, so every game's first recorded session falls inside the period, and the two
+  // games whose only session is here are one-and-done. The year-scoped readings of these same
+  // figures are pinned in statsLimitFiguresToTheChosenPeriod, which uses fixed dates.
+  QCOMPARE(backlog.value(QStringLiteral("firstTimeGames")).toInt(), 3);
+  QCOMPARE(backlog.value(QStringLiteral("oneAndDone")).toInt(), 1);
+  QCOMPARE(backlog.value(QStringLiteral("returns")).toInt(), 1);
+  // The gap is measured from the end of the previous session for the same game.
+  QCOMPARE(backlog.value(QStringLiteral("longestGapDays")).toLongLong(),
+           (todayStart + 60 - (comebackStart + 600)) / 86400);
+  const QVariantList returns = backlog.value(QStringLiteral("returnsList")).toList();
+  QCOMPARE(returns.size(), 1);
+  QVERIFY(returns.at(0).toMap().value(QStringLiteral("title")).toString().contains(
+      QStringLiteral("comeback")));
+}
+
+void CoreTests::statsReportAchievementsAndNameTheRecordedWindow() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/library.sqlite3");
+  const QString connection = QStringLiteral("stats-achievements");
+  const int year = QDate::currentDate().year();
+  const qint64 inPeriod = QDateTime(QDate(year, 3, 1), QTime(12, 0)).toSecsSinceEpoch();
+  const qint64 beforePeriod = QDateTime(QDate(year - 1, 5, 1), QTime(12, 0)).toSecsSinceEpoch();
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    createAchievementTables(database);
+    addAchievement(database, QStringLiteral("alpha"), QStringLiteral("FIRST_STEPS"),
+                   QStringLiteral("First Steps"), true, inPeriod, 0.05,
+                   QStringLiteral("steam-web"));
+    addAchievement(database, QStringLiteral("alpha"), QStringLiteral("OLD"),
+                   QStringLiteral("Long Ago"), true, beforePeriod, 0.4,
+                   QStringLiteral("steam-web"));
+    addAchievement(database, QStringLiteral("alpha"), QStringLiteral("LOCKED"),
+                   QStringLiteral("Not Yet"), false, 0, 0.0, QStringLiteral("steam-web"));
+    // A session in the period, so recording starts after the year began and the note has to say so.
+    addRecordedSession(database, QStringLiteral("/games/alpha.exe"), QStringLiteral("Xenia"),
+                       inPeriod, 900, inPeriod + 900);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  StatsSourceModel source({StatsGame{.title = QStringLiteral("Alpha"),
+                                     .source = QStringLiteral("Steam"),
+                                     .appId = QStringLiteral("alpha"),
+                                     .path = QStringLiteral("/games/alpha.exe"),
+                                     .playtimeSeconds = 900}});
+  UnifiedGameModel games(path);
+  games.addSourceModel(&source);
+  PlayStats stats(&games, path);
+  stats.setYear(year);
+  stats.refresh();
+
+  const QVariantMap achievements = stats.achievements();
+  QCOMPARE(achievements.value(QStringLiteral("unlockedInPeriod")).toLongLong(), qint64(1));
+  QCOMPARE(achievements.value(QStringLiteral("unlockedTotal")).toLongLong(), qint64(2));
+  QCOMPARE(achievements.value(QStringLiteral("known")).toLongLong(), qint64(3));
+  QCOMPARE(qRound(achievements.value(QStringLiteral("rate")).toDouble() * 100), 67);
+  const QVariantMap rarest = achievements.value(QStringLiteral("rarest")).toMap();
+  QCOMPARE(rarest.value(QStringLiteral("title")).toString(), QStringLiteral("First Steps"));
+  QVERIFY(qAbs(rarest.value(QStringLiteral("rarity")).toDouble() - 0.05) < 1e-9);
+  // The achievement's game is named from the library's own identity, across source naming.
+  QCOMPARE(rarest.value(QStringLiteral("gameTitle")).toString(), QStringLiteral("Alpha"));
+
+  // The card and the screen both repeat what the recorded figures really cover.
+  QCOMPARE(stats.recordingStartsAt(), inPeriod);
+  QVERIFY2(stats.windowNote().contains(QStringLiteral("Recording starts")),
+           qPrintable(stats.windowNote()));
+  QVERIFY2(stats.windowNote().contains(QString::number(year)), qPrintable(stats.windowNote()));
 }
 
 void CoreTests::titleFlickerDoesNotFragmentASession() {

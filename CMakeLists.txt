@@ -181,6 +181,8 @@ add_library(omakade_core STATIC
   src/library/ManualGameModel.cpp
   src/library/ManualGameModel.h
   src/library/PersonalDataRules.h
+  src/library/PlayStats.cpp
+  src/library/PlayStats.h
   src/library/MockGameModel.cpp
   src/library/MockGameModel.h
   src/library/SteamGameModel.cpp
