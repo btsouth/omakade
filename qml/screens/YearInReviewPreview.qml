@@ -13,6 +13,8 @@ FocusScope {
     objectName: "yearInReviewPreview"
     property bool couchMode: false
     readonly property real scaleFactor: couchMode ? 1.2 : 1
+    // The card is only worth writing when the figures behind it could actually be read.
+    readonly property bool readable: Stats.error.length === 0
     property string status: ""
     property string savedPath: ""
     property string failure: ""
@@ -35,6 +37,12 @@ FocusScope {
     // Writes the card to `path`, or to the standard location when no path is given. The grab is
     // asynchronous, so the outcome is reported in the callback.
     function saveTo(path) {
+        // A card of zeroes written while the database cannot be read would present them as figures.
+        if (!readable) {
+            failure = Stats.error
+            CardExport.reportExport(false)
+            return
+        }
         const target = (path && path.length > 0) ? path : CardExport.pathFor(Stats.periodLabel)
         if (target.length === 0) {
             failure = "No pictures folder could be found to write the card into."
@@ -125,12 +133,24 @@ FocusScope {
                 width: card.cardWidth
                 height: card.cardHeight
                 anchors.centerIn: parent
+                visible: root.readable
                 scale: Math.min(1, parent.width / width, parent.height / height)
                 transformOrigin: Item.Center
                 YearInReviewCard {
                     id: card
                     anchors.fill: parent
                 }
+            }
+            Text {
+                anchors.centerIn: parent
+                width: parent.width * 0.8
+                visible: !root.readable
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
+                text: Stats.error
+                color: Theme.red
+                font.family: Theme.fontFamily
+                font.pixelSize: 13 * root.scaleFactor
             }
         }
 
