@@ -10,3 +10,6 @@ __pycache__/
 
 /output/
 /stage/
+
+# Source- and compiler-validated CI build cache
+.ccache/
