@@ -16,7 +16,7 @@ env:
   # Compiler output is validated against source/dependencies and compiler
   # content by ccache; package builds stay clean and all tests still run.
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  CCACHE_BASEDIR: ${{ github.workspace }}
+  # Preserve absolute __FILE__ paths: source-inspection tests run from tests/.
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 500M
   CMAKE_C_COMPILER_LAUNCHER: ccache
@@ -51,8 +51,8 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .ccache
-          key: ccache-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: ccache-v1-${{ runner.os }}-${{ runner.arch }}-
+          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-v2-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
