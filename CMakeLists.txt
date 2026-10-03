@@ -467,7 +467,8 @@ install(FILES LICENSE COPYRIGHT
 install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
 )
-install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md CHANGELOG.md docs/COMPATIBILITY.md
+install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md SECURITY.md RELEASING.md
+  CHANGELOG.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
 )
 install(DIRECTORY skills/omakade-tv-gaming
@@ -478,10 +479,8 @@ install(DIRECTORY skills/omakade-tv-gaming
   PATTERN "__pycache__" EXCLUDE
 )
 
-install(FILES docs/GUIDE.md docs/RECORDING-COVERAGE.md
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
-)
-install(FILES docs/GAME-MODE.md
+install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/RECORDING-COVERAGE.md
+  docs/CONTROLLER-NAVIGATION.md docs/BACKUP-FORMAT.md docs/SAVE-SETS.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
 )
 
