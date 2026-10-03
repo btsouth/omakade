@@ -49,6 +49,12 @@ h1 em { color: var(--cream); font-style: normal; }
 .app-window img, .app-window video { display: block; width: 100%; height: auto; }
 .app-window figcaption { padding: 12px 16px; color: var(--muted); text-align: left; font-size: 10px; }
 
+.installation { padding-bottom: 80px; }
+.installation h2 { color: var(--cream); font-size: clamp(24px, 4vw, 36px); }
+.installation p { max-width: 800px; color: var(--muted); font-family: Inter, system-ui, sans-serif; line-height: 1.7; }
+.installation pre { padding: 20px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); line-height: 1.7; }
+.installation .actions { justify-content: flex-start; }
+
 .principles { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .principles article { padding: 55px 40px; border-right: 1px solid var(--line); }
 .principles article:first-child { padding-left: 0; }

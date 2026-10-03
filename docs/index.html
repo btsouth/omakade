@@ -39,9 +39,9 @@
         <div class="eyebrow"><span></span> Built for Omarchy</div>
         <h1>Your games,<br><em>beautifully together.</em></h1>
         <p class="lede">A fast, local-first home for Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, Battle.net, Epic, GOG, and Amazon games. Built for Linux and styled to match Omarchy.</p>
-        <p class="lede">New in 1.6: controller-first Couch Mode, direct GOG support, and ARM64 packages.</p>
+        <p class="lede">Available for x86_64 and ARM64 on Omarchy and Arch Linux.</p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/btsouth/omakade/releases/latest">Get Omakade</a>
+          <a class="button primary" href="#install">Install Omakade</a>
           <a class="button secondary" href="https://github.com/btsouth/omakade#build">Build from source</a>
         </div>
 
@@ -52,6 +52,19 @@
           </video>
           <figcaption>A real Steam library running in the Osaka Jade Omarchy theme.</figcaption>
         </figure>
+      </section>
+
+      <section class="installation wrap" id="install" aria-labelledby="install-title">
+        <h2 id="install-title">Install from the signed repository</h2>
+        <p>Add the repository once, then install Omakade:</p>
+        <pre tabindex="0" aria-label="Installation commands"><code>curl -fsSL https://pkgs.btso.dev/install.sh | bash
+sudo pacman -S btsouth/omakade</code></pre>
+        <p>Updates arrive with your normal system update (<code>omarchy update</code> or <code>sudo pacman -Syu</code>). If you installed a release download, run these commands once to add the repository.</p>
+        <p>On Omarchy, its repository takes priority during system updates, so newer Omakade versions arrive when OPR updates. The commands above explicitly install the signed repository's version.</p>
+        <div class="actions">
+          <a class="button secondary" href="https://pkgs.btso.dev/">About the signed repository</a>
+          <a class="button secondary" href="https://github.com/btsouth/omakade#install-on-omarchy-or-arch">Other install options</a>
+        </div>
       </section>
 
       <section class="principles wrap" id="features">
