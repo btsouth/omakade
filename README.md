@@ -115,6 +115,8 @@ sudo pacman -S btsouth/omakade
 On Omarchy, pacman prefers the Omarchy repository's copy during system
 updates, so Omakade there moves to a new version when OPR does. On other Arch
 systems this repository is the only source, and updates arrive as released.
+To update directly from my repository on Omarchy, run
+`sudo pacman -Syu btsouth/omakade`.
 
 ### Install or upgrade from the Omarchy Package Repository
 
