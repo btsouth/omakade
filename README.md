@@ -115,6 +115,21 @@ The Omarchy package repository may carry an older version than the latest GitHub
 release. `pacman -S omarchy/omakade` installs that repository version. Use the
 verified release package below when you need the published version shown here.
 
+### Install from my package repository
+
+My [signed package repository](https://github.com/btsouth/pkgs) carries each
+release within an hour of publication, for x86_64 and ARM64. Add it once and
+Omakade updates with the rest of your system:
+
+```bash
+curl -fsSL https://pkgs.btso.dev/install.sh | bash
+sudo pacman -S btsouth/omakade
+```
+
+On Omarchy, pacman prefers the Omarchy repository's copy during system
+updates, so Omakade there moves to a new version when OPR does. On other Arch
+systems this repository is the only source, and updates arrive as released.
+
 ### Install or upgrade from the terminal
 
 These commands are for x86_64. For ARM64, replace `x86_64` with `aarch64`
