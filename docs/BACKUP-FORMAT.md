@@ -1,11 +1,8 @@
 # Backup format and implementation notes
 
-Status: archive codec, read-only snapshot exporter, internal database importer,
-core-settings restore method, recovery journal, and asynchronous preview/export
-service implemented. Startup recovery and Settings export/preview/confirmation
-controls are integrated. Released-database migration is covered by a fixture
-generated from the frozen v1.6.0 core. Release and maintainer acceptance checks
-remain part of the completion plan.
+The `.omakade-backup` format stores personal library choices, selected artwork,
+and supported preferences. For export and restore steps, see the
+[guide](GUIDE.md#back-up-your-library).
 
 ## Archive envelope
 
@@ -78,7 +75,7 @@ the exact JSON integer range. Restore runs in a database
 transaction and checks the recorder's ownership lock before touching history. A running recorder
 blocks restore with a retry message. For the packaged service, stop `omakade-sessiond.service`
 before applying the queued restore and start it again afterward. Turning tracking off alone does
-not stop that service. No service was stopped during development or automated testing.
+not stop that service.
 
 The recovery archive includes history and identifications. Isolated subprocess tests interrupt
 restore and undo at their checkpoints, then verify recovery, including the recorded game paths.

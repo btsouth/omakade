@@ -100,9 +100,6 @@ other games. Changing a layout does not silently migrate or retarget old backups
 }
 ```
 
-The local candidate includes explicit mappings for the existing Bloodborne and Eden wrappers.
-Those mappings live in user configuration; machine-specific game paths are not shipped in code.
-
 ## Validation
 
 Regression tests cover multi-file restore/undo, deleted folders and entirely deleted sets,
@@ -110,16 +107,6 @@ empty files, corruption, redirected paths, changed layouts, shared-history dedup
 retention, interrupted restores, refusal to overwrite external progress, native/Flatpak
 layouts, and launch-before-write ordering for every dedicated emulator source. Desktop and
 couch fixtures exercise ordinary and shared-storage confirmations with disposable saves.
-
-Private build evidence, live read-only inventory, original hashes, and installation manifests
-are under `build/save-complete-20260909/`. The later save-management checkpoint passed the
-complete x86 Release suite: 232/232 tests. Both complete save suites and eight desktop/Couch
-list, restore, shared-storage, and deletion fixtures passed. The rendered states were visually
-checked. Earlier staged smoke, desktop, and AppStream validation passed. Read-only inventory
-found 220 unique save files.
-Live backup verification was deferred because Ryujinx was running; the running-game guard
-left its saves alone. Automation never restores real saves. Maintainer gameplay and
-physical-controller acceptance of the exact candidate are still required before publication.
 
 ## Format references
 

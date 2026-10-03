@@ -20,7 +20,6 @@ How each source is discovered and how the main features work. The
 - [Stream with Sunshine and Moonlight](#stream-with-sunshine-and-moonlight)
 - [Use a dedicated TV alongside agent work](#use-a-dedicated-tv-alongside-agent-work)
 - [ARM64](#arm64)
-- [Full feature list](#full-feature-list)
 
 ## Sources
 
@@ -256,10 +255,9 @@ paged history with confirmed deletion. Stats remembers the chosen period and exp
 local Year in Review image. Imported lifetime totals remain separate from dated recordings.
 Optional Discord presence is off by default; see [Privacy](../PRIVACY.md) for what it shares.
 
-File-picker loads can be recorded on Hyprland when the game window title
-confidently matches an imported game. Command-line matching cannot identify
-those loads because the command line carries no game path. See the
-[recording coverage notes](RECORDING-COVERAGE.md) for validation limits.
+File-picker loads can be recorded through a known window title on Hyprland or
+Dolphin's live playtime record. Other internal loads may remain unattributed. See
+the [recording coverage notes](RECORDING-COVERAGE.md) for validation limits.
 
 ## Stream with Sunshine and Moonlight
 
@@ -317,57 +315,3 @@ discovery, and Couch Mode on Apple Silicon with Asahi Linux. The `fex-steam`
 wrapper that provides `/usr/bin/steam` can still fail to start games from any
 `steam://` request, including Steam's own client. That is a wrapper limitation,
 not something Omakade can work around; see issue #13 for details and workarounds.
-
-## Full feature list
-
-- Responsive browsing and themed controls across Home, Library, Details and Settings.
-- Logical Couch toolbar rows and usable controller/keyboard focus from a cold launch.
-- Verified save-backup copies when relocating game paths, with original backups preserved.
-- Local Stats and a shareable Year in Review PNG, with clear recorded-time coverage.
-- Now Playing, safe stop controls, full session-history paging, and optional Discord presence.
-- Better file-picker recording, optional pause-on-unfocus, and reliable history deletion.
-- Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, RPCS3, PPSSPP,
-  Ryujinx, Cemu, melonDS, shadPS4, Dolphin, and Xenia discovery, plus direct GOG installation
-  discovery, including Steam non-Steam shortcuts and games sideloaded into
-  Heroic, plus Battle.net games from Wine, Proton, and Bottles prefixes
-- Console cards for cartridge and disc systems, with a per-system choice
-  between cards and library tiles, per-game pinning, and ROM folder scanning
-  for EmuDeck-style layouts
-- Optional local session recording from supported emulator process arguments,
-  with paged per-game Play History across linked installations
-- Versioned save protection for supported emulator save sets, with explicit
-  restore confirmation, interrupted-restore recovery, manual snapshots, storage
-  usage, and confirmed backup deletion
-- Optional read-only RomM integration with a locally mounted library and offline catalog
-- Per-installation launch setup, diagnostics, and missing-path repair
-- Save-protection overview, custom layouts, retention controls, and reviewed cleanup
-- Guided library repair with persistent progress and separate identity/artwork undo
-- Optional Home, persistent Up Next, and local discovery suggestions
-- Genre, decade, and platform filters with saved-filter persistence
-- One-click details and delegated launching through the owning platform
-- Omarchy palette, font, transparency, and live theme updates
-- Search, favorites, hidden games, sorting, and source filters that combine,
-  including one chip for every emulator
-- Runtime source controls with scan status and detected locations
-- Optional close-after-launch behavior
-- Collections, tags, completion states, and smart organization filters
-- Local Steam achievements plus optional Web API enrichment
-- Optional RetroAchievements progress for supported RetroArch systems
-- Optional Steam owned-library sync with installed and ready-to-install views
-- Optional IGDB ratings, popularity sorting, and game-length estimates, plus
-  release dates, original platform, genres, credits, and a background
-  paragraph on game details
-- SteamGridDB portrait covers with per-game identification and artwork choices
-- Adjustable cover size and per-console grouping preferences
-- Local, downloaded, and user-selected cover, hero, and logo artwork
-- Manual games, preferred installations, extra GOG folders, bulk organization,
-  saved filters, a random pick, and personal backup and restore
-- Explicit linking for games installed through multiple sources
-- Optional cached ProtonDB community badges for Steam store games, plus
-  ProtonDB and PCGamingWiki shortcuts with actionable launch errors
-- Keyboard, mouse, and controller navigation
-- Controller-first Couch Mode with Detail and Grid views, on-screen search,
-  and controller input that stays with your game after launch
-- x86_64 and ARM64 packages, with checksums, SBOMs, and signed provenance
-- Optional Sunshine app export so Moonlight can start Omakade or any installed
-  game, plus `--play` and `--quit` commands

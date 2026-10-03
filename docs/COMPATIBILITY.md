@@ -1,5 +1,9 @@
 # Compatibility report
 
+These dated reports describe the versions and environments tested at the time.
+They do not certify every launcher layout or the current release. For supported
+sources and setup, see the [guide](GUIDE.md).
+
 ## 1.12 PPSSPP local acceptance, September 20, 2026
 
 Native PPSSPP `1.20.4-4` from the Arch repositories was tested with the MIT-licensed
@@ -70,13 +74,6 @@ verified app id and was exercised with the same homebrew; it launched and the re
 14-second row. melonDS still has no current-session artifact that proves which game its own file
 picker loaded, so that path remains command-line and window-title attribution only.
 
-## Four-feature candidate, September 12, 2026
-
-The [candidate guide](FOUR-FEATURES-CANDIDATE.md) records automated desktop/Couch UI,
-launch routing, save recovery, library repair, and fixture-backed RomM coverage.
-Real RomM server operation, physical-controller feel, and gameplay await maintainer testing.
-The older environment matrix below is historical.
-
 ## Reference Omarchy system
 
 Verified through September 4, 2026:
@@ -146,8 +143,7 @@ The completion candidate passes 81 automated checks covering personal-data
 migration, backup recovery, controller flows, offscreen layouts, and a cached
 large-library fixture. The maintainer confirmed the installed grid fix looks
 good. Physical controller, broader real-launcher, and native ARM64 validation
-remain separate from these checks. See
-[COMPLETION-PROGRESS.md](COMPLETION-PROGRESS.md) for evidence and limitations.
+remain separate from these checks.
 
 ## Automated visual matrix
 

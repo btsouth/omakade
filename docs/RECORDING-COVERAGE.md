@@ -23,11 +23,6 @@ game change works. Recording does not inject code, control emulators, or detect 
 | Imported totals | Source parser and baseline fixtures | Updated emulator formats and unusual library layouts |
 | Discord Rich Presence | Frame encoding, handshake and command payloads, socket search including sandboxed clients, and a real round trip over a live socket covering the handshake, a command, connection reuse and clearing | A real Discord or Vesktop client showing the presence for a real game |
 
-The earlier local Ryujinx launch/return produced a closed session. That is
-historical evidence, not acceptance of the current candidate. Game tests remain
-paused at the maintainer's request. The Z-A freezes have not been attributed to
-Omakade, LSFG, or focus changes.
-
 New configurations default to recording off. Existing explicit choices persist;
 legacy configurations without the key retain the previous enabled default.
 The preference controls recording and whether recorded totals contribute to the

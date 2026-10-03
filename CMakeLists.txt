@@ -467,7 +467,7 @@ install(FILES LICENSE COPYRIGHT
 install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
 )
-install(FILES README.md PRIVACY.md SUPPORT.md CHANGELOG.md docs/COMPATIBILITY.md
+install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md CHANGELOG.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
 )
 install(DIRECTORY skills/omakade-tv-gaming

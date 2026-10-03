@@ -5,88 +5,58 @@
 
 **Your games, beautifully together.**
 
-[![Omakade library showing installed games from multiple launchers](docs/assets/library-preview.webp)](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
+Omakade brings your Linux games into one library that follows your Omarchy theme.
+Browse, organize, and launch games from Steam, Heroic, Lutris, Faugus, Battle.net,
+GOG, and supported emulators with a keyboard, mouse, or controller.
 
-[Watch the 18-second demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
+[![Omakade library](docs/assets/library-preview.webp)](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
 
-Omakade is a Linux game library built for Omarchy. It brings
-installed Steam, Lutris, Heroic, Faugus, RetroArch, Battle.net, Epic, GOG, and Amazon games
-into one quiet, cover-focused home that follows the active Omarchy theme.
+[Watch the demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4) ·
+[Homepage](https://btsouth.github.io/omakade/) · [Guide](docs/GUIDE.md) ·
+[Support](SUPPORT.md)
 
-[Project homepage](https://btsouth.github.io/omakade/) ·
-[Guide](docs/GUIDE.md) · [Roadmap](PLAN.md) · [Support](SUPPORT.md)
+## Features
 
-> Omakade is an independent community project. It is not an official Omarchy
-> application.
+- One library for installed games, with optional Steam and Heroic owned-library views
+- Console libraries for RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Cemu, melonDS,
+  shadPS4, Dolphin, and Xenia
+- Controller-first Couch Mode, plus [Game Mode](docs/GAME-MODE.md) for a chosen
+  display and sound output with desktop restoration when you leave
+- Favorites, collections, tags, saved filters, custom artwork, and a random pick
+- Optional playtime recording, session history, stats, and a Year in Review image
+- Steam achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
+- Emulator save backups, personal library backup and restore, and Sunshine/Moonlight export
 
-## What you get
+![Game details, playtime, and achievements](docs/assets/game-details.webp)
 
-- One library for Steam, Lutris, Heroic, Faugus, Battle.net, and GOG games,
-  whether the launcher is native or Flatpak
-- Emulated games from RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Cemu, melonDS,
-  shadPS4, Dolphin, and Xenia, grouped behind one card per console
-- The Omarchy palette, font, and transparency, updated live when the theme changes
-- Couch Mode, a controller-first fullscreen view with on-screen search
-- Game Mode, with a chosen display and sound output, restored when you leave
-- Keyboard, mouse, and controller navigation on every screen
-- Favorites, collections, tags, completion states, saved filters, and a random pick
-- Optional playtime recording with session history, stats, and a Year in Review image
-- Local Steam achievements, with optional RetroAchievements, IGDB, SteamGridDB,
-  and ProtonDB details
-- Versioned save backups for supported emulators
-- Sunshine export so Moonlight can start Omakade or any installed game
+Installed-game discovery and core browsing work offline without an account or API
+key. Play uses the owning launcher or emulator; accounts, downloads, updates,
+DRM, cloud saves, and compatibility settings stay with those applications.
 
-![Omakade game details showing playtime, IGDB insights, and Steam achievements](docs/assets/game-details.webp)
+Omakade is an independent community project, not an official Omarchy application.
 
-Play hands each game to the launcher that owns it. Omakade reads launcher data
-without modifying it, and the launchers stay responsible for installs, accounts,
-updates, cloud saves, DRM, and compatibility tools. Core discovery, browsing,
-artwork, and launching work offline with no account or API key.
+## Install
 
-The [guide](docs/GUIDE.md) covers each source and feature in detail.
+On Omarchy:
 
-## Install on Omarchy or Arch
+```bash
+sudo pacman -S omarchy/omakade
+```
 
-### Install from my package repository
+Omakade then updates with your system. OPR may carry an older release.
 
-My [signed package repository](https://github.com/btsouth/pkgs) carries each
-release within an hour of publication, for x86_64 and ARM64. Add it once and
-Omakade updates with the rest of your system:
+For Omarchy or Arch, my [signed package repository](https://github.com/btsouth/pkgs)
+provides x86_64 and ARM64 packages. Add it once, then install:
 
 ```bash
 curl -fsSL https://pkgs.btso.dev/install.sh | bash
 sudo pacman -S btsouth/omakade
 ```
 
-On Omarchy, pacman prefers the Omarchy repository's copy during system
-updates, so Omakade there moves to a new version when OPR does. On other Arch
-systems this repository is the only source, and updates arrive as released.
-To update directly from my repository on Omarchy, run
-`sudo pacman -Syu btsouth/omakade`.
+On Omarchy, use `sudo pacman -Syu btsouth/omakade` to update from this repository
+explicitly; normal system updates prefer OPR's copy.
 
-### Install or upgrade from the Omarchy Package Repository
-
-On Omarchy, install Omakade from OPR with:
-
-```bash
-sudo pacman -S omarchy/omakade
-```
-
-After that, Omakade updates with normal Omarchy system updates. Launch it from
-the application launcher or run `omakade` in a terminal.
-
-The Omarchy package repository may carry an older version than the latest GitHub
-release. `pacman -S omarchy/omakade` installs that repository version. Use my
-signed repository above when you need the latest published version.
-
-### Install or upgrade from the terminal
-
-These commands are for x86_64. For ARM64, replace `x86_64` with `aarch64`
-in the package filename and download URL.
-
-These commands download Omakade and its checksum into the current directory,
-verify the package, and install it. If Omakade is already installed, `pacman -U`
-upgrades it in place without removing your settings or library data:
+You can also download and verify a release package directly:
 
 ```bash
 curl -fLO https://github.com/btsouth/omakade/releases/download/v1.14.1/omakade-1.14.1-1-x86_64.pkg.tar.zst
@@ -95,74 +65,39 @@ sha256sum -c SHA256SUMS --ignore-missing
 sudo pacman -U ./omakade-1.14.1-1-x86_64.pkg.tar.zst
 ```
 
-For ARM64, replace `x86_64` with `aarch64` in the package filename and download
-URL. The same files are under **Assets** on the
-[latest release](https://github.com/btsouth/omakade/releases/latest) if you
-prefer a browser download.
-
-`pacman -U` upgrades an existing installation in place. Omakade keeps its local
-library and settings when the package is upgraded or removed.
+For ARM64, replace `x86_64` with `aarch64`. Packages are also available under
+[release assets](https://github.com/btsouth/omakade/releases/latest).
+Upgrading preserves your library and settings.
 
 ## Getting started
 
-Installed games appear without any setup or account. Run `omakade --demo` to
-explore the UI with a deterministic fictional library instead.
+Open Omakade from the application launcher or run `omakade`. Installed games
+appear automatically. Use `omakade --demo` to try a fictional library.
 
-Use `Ctrl+F` to search, arrow keys to navigate, Enter to open details, Escape
-to return, and F11 to enter or leave Couch Mode. The controller Start button
-does the same. `Ctrl+M` toggles reduced motion and `Ctrl+D` opens settings and
-source diagnostics. `omakade --couch` starts directly in Couch Mode.
+| Control | Action |
+| --- | --- |
+| `Ctrl+F` | Search |
+| Arrow keys / Enter | Navigate / open details |
+| Escape | Go back |
+| F11 / controller Start | Toggle Couch Mode |
+| `Ctrl+D` | Settings and source diagnostics |
+| `Ctrl+M` | Toggle reduced motion |
 
-Use **Settings → Controls → Start Game Mode** or `omakade --game-mode` for a
-dedicated gaming display and sound output. See the [Game Mode guide](docs/GAME-MODE.md)
-for setup, recovery, and current limits.
+`omakade --couch` starts fullscreen. Use **Settings → Controls → Start Game Mode**
+or `omakade --game-mode` for a dedicated gaming display and sound output.
 
-To include owned games that are not installed, see the Steam and Heroic guides below.
-Use **Sort: Installed** to show installed games first; uninstalled covers are dimmed.
-
-Where to go next in the guide:
-
-- [Include uninstalled Heroic games](docs/GUIDE.md#include-uninstalled-heroic-games)
-- [Include uninstalled Steam games](docs/GUIDE.md#include-uninstalled-steam-games)
-- [Set up consoles and emulators](docs/GUIDE.md#consoles-and-emulators)
-- [Add a native game manually](docs/GUIDE.md#add-a-native-game-manually)
-- [Track play sessions](docs/GUIDE.md#track-play-sessions)
-- [Stream with Sunshine and Moonlight](docs/GUIDE.md#stream-with-sunshine-and-moonlight)
-- [Back up your library](docs/GUIDE.md#back-up-your-library)
+The [guide](docs/GUIDE.md) covers sources, owned libraries, organization, recording,
+backups, and streaming. See the [Game Mode guide](docs/GAME-MODE.md) for setup and recovery.
 
 ## Build
 
-Requirements:
-
-- CMake 3.24 or newer
-- Ninja
-- C++20 compiler
-- Python 3 for the test suite
-- Qt 6.8 or newer with Concurrent, Core, Gui, Network, Qml, Quick, Quick
-  Controls, SQL, and Test, plus the SVG and image format plugins
-- SDL 3
-- libsecret
-- libzip
-- LayerShellQt (`layer-shell-qt` on Arch)
-
-```bash
-cmake --preset dev
-cmake --build --preset dev
-ctest --preset dev
-./build/dev/omakade
-```
+See [Contributing](CONTRIBUTING.md) for dependencies and build/test commands.
 
 ## Local data
 
-- Library: `~/.local/share/omakade/library.sqlite3`
-- Settings: `~/.config/omakade/config.toml`
-- Downloaded artwork: `~/.cache/omakade/`
-- Selected custom artwork: `~/.local/share/omakade/artwork/`
-- Play sessions: `play_sessions` and `play_baselines` tables in the library
+Your library and custom artwork live in `~/.local/share/omakade/`, settings in
+`~/.config/omakade/config.toml`, and downloaded artwork in `~/.cache/omakade/`.
+Optional Steam and IGDB credentials use Secret Service.
 
-Optional Steam and IGDB credentials are stored by Secret Service, and cached
-metadata stays available offline.
-
-See [PRIVACY.md](PRIVACY.md) for retained data and external requests,
-[CHANGELOG.md](CHANGELOG.md) for release notes, and the current
-[compatibility report](docs/COMPATIBILITY.md) for tested platform layouts.
+[Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md) ·
+[Compatibility reports](docs/COMPATIBILITY.md) · [Security](SECURITY.md)

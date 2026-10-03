@@ -1,12 +1,12 @@
 # Support
 
-Please include these details with a bug report:
+Open a [GitHub issue](https://github.com/btsouth/omakade/issues/new/choose) with
+these details:
 
 - Omakade version
 - Omarchy version and active theme
-- Native or Flatpak installation for Steam, Lutris, Heroic, Faugus, RetroArch,
-  PCSX2, Ryujinx, or Battle.net (and whether Battle.net runs under Wine,
-  Proton, or Bottles)
+- The launcher or emulator version and whether it is native or Flatpak
+- For Battle.net, whether it runs under Wine, Proton, or Bottles
 - The source shown for the affected game
 - `umu-launcher` version for a direct Windows GOG game
 - Steps that reproduce the problem
