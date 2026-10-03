@@ -60,6 +60,12 @@ ActionMenu {
     }
 
     function beginAll() {
+        // A shortcut can hide a confirmed stop while its worker is still
+        // running. Reopening its dialog must keep that completion attached.
+        if (pending && leaveGameModeAfterStop && GameMode.hasSession) {
+            open()
+            return
+        }
         mode = "all"
         heading = leaveGameModeAfterStop ? "STOP GAMES AND LEAVE" : "STOP ALL GAMES"
         game = ({})
@@ -96,7 +102,7 @@ ActionMenu {
         function onFinished(okay, message, lines) {
             if (!stopPanel.pending) return
             stopPanel.pending = false
-            if (okay && stopPanel.leaveGameModeAfterStop && GameMode.active) {
+            if (okay && stopPanel.leaveGameModeAfterStop && GameMode.hasSession) {
                 stopPanel.pending = true
                 stopPanel.waitingForExitScan = true
                 GameStop.refreshLiveGames(true)
@@ -111,8 +117,11 @@ ActionMenu {
 
     Connections {
         target: GameMode
-        function onActiveChanged() {
-            if (!GameMode.active) stopPanel.waitingForExitScan = false
+        function onStateChanged() {
+            if (!GameMode.hasSession) {
+                stopPanel.waitingForExitScan = false
+                stopPanel.pending = false
+            }
         }
     }
 
@@ -294,7 +303,9 @@ ActionMenu {
     }
 
     onClosed: {
-        pending = false
+        // Hiding the controls on park does not cancel a confirmed Stop + Leave.
+        if (!(pending && leaveGameModeAfterStop && GameMode.hasSession))
+            pending = false
         resultMessage = ""
         resultLines = []
     }

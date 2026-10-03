@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Super + Ctrl + G returns to the desktop and resumes the complete Game Mode session,
+  with or without a game. Details, selection, focus and scroll stay in place until
+  End Game Mode, Stop Games and Leave, or closing Omakade.
+- Running games stay on their workspace with attributable game audio muted while away.
+  A game ending releases its game/audio records and keeps the library session available.
+
 ## 1.14.1
 
 Fixes the Game Mode shortcut leaving a new Omakade window on your desktop.

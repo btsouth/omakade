@@ -50,7 +50,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Concurrent Core Gui Network Qml Quick QuickControls2 Sql Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Concurrent Core DBus Gui Network Qml Quick QuickControls2 Sql Test)
 # GuiPrivate exposes the Wayland window native interface used by the idle inhibitor.
 find_package(Qt6 6.8 OPTIONAL_COMPONENTS GuiPrivate)
 if(OMAKADE_IDLE_INHIBIT AND NOT TARGET Qt6::GuiPrivate)
@@ -429,6 +429,7 @@ target_compile_definitions(omakade PRIVATE
 target_link_libraries(omakade PRIVATE
   omakade_core
   Qt6::Core
+  Qt6::DBus
   Qt6::Gui
   Qt6::Qml
   Qt6::Quick

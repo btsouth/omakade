@@ -21,22 +21,29 @@ ActionMenu {
     initialFocus: backButton
     readonly property var liveGames: typeof GameStop !== "undefined" && GameStop ? GameStop.runningGames : []
     readonly property bool scanning: typeof GameStop !== "undefined" && GameStop && GameStop.scanning
-    readonly property bool untrackedGame: Launcher.gameRunning && liveGames.length === 0
+    property int workspaceGames: 0
+    readonly property bool untrackedGame: (Launcher.gameRunning || workspaceGames > 0)
+                                         && liveGames.length === 0
     readonly property real textScale: host.couchMode ? Math.max(1, Math.min(2, host.height / 900)) : 1
 
     function refreshGames() {
         if (typeof GameStop !== "undefined" && GameStop) GameStop.refreshLiveGames()
     }
     function openControls() {
+        workspaceGames = 0
         open()
         refreshGames()
         GameMode.refresh()
+        GameMode.checkWorkspace()
     }
     // Closes this panel and the stop dialog it may have opened, so the overlay surface can
     // hide without leaving either of them thinking they are still open.
     function closeAll() {
         stopAndLeave.close()
         panel.close()
+    }
+    function ownsMenu(menu) {
+        return menu === panel || menu === stopAndLeave
     }
 
     GameStopPanel {
@@ -56,6 +63,10 @@ ActionMenu {
     Connections {
         target: panel
         function onClosed() { Qt.callLater(panel.host.focusCurrentSurface) }
+    }
+    Connections {
+        target: GameMode
+        function onWorkspaceChecked(otherWindows) { panel.workspaceGames = otherWindows }
     }
 
     Text {
@@ -107,9 +118,18 @@ ActionMenu {
     MenuAction {
         id: leaveButton
         objectName: panel.namePrefix + "gameModeLeaveButton"
-        text: panel.liveGames.length > 0 || panel.untrackedGame
-              ? "LEAVE WITH GAMES RUNNING" : "LEAVE GAME MODE"
-        enabled: !GameMode.busy
+        text: "RETURN TO DESKTOP"
+        enabled: !GameMode.busy && GameMode.active
+        onClicked: {
+            GameMode.park()
+            panel.close()
+        }
+    }
+    MenuAction {
+        objectName: panel.namePrefix + "gameModeEndButton"
+        text: "END GAME MODE"
+        visible: panel.liveGames.length === 0
+        enabled: !GameMode.busy && !panel.scanning
         onClicked: {
             panel.close()
             GameMode.exit()
@@ -117,8 +137,10 @@ ActionMenu {
     }
     Text {
         Layout.fillWidth: true
-        visible: panel.liveGames.length > 0 || panel.untrackedGame
-        text: "Leaving without stopping keeps games running on your desktop."
+        text: "Return to Desktop keeps your library, selection and place in the session. "
+              + "Super + Ctrl + G resumes it. Running games stay on their workspace with sound muted; "
+              + "gameplay may continue unless the game pauses itself. Ending Game Mode restores the desktop "
+              + "and releases the session; it only stops games through Stop Games and Leave."
         wrapMode: Text.Wrap
         font.family: Theme.fontFamily
         font.pixelSize: 11 * panel.textScale

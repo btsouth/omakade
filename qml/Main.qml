@@ -483,6 +483,7 @@ ApplicationWindow {
     }
 
     function revealNavigationItem(container, item) {
+        if (root.gameModeNavigationRestoring) return
         if (root.activeActionMenu && container === root.activeActionMenu.contentItem) {
             const scroll = container.navigationScrollView || container
             if (root.isWithin(item, scroll)) root.revealInScrollView(scroll, item)
@@ -697,10 +698,15 @@ ApplicationWindow {
     }
 
     function focusCurrentSurface() {
+        if (root.gameModeNavigationRestoring) return
         const container = root.navigationContainer()
         const current = root.activeFocusItem
         if (container && root.isWithin(current, container)
                 && current.visible && current.enabled) {
+            // Regaining window focus after resume must not scroll the retained
+            // page merely because its focused control is above the current view.
+            if (GameMode.active && root.gameModeNavigation
+                    && root.gameModeNavigation.focus === current) return
             root.revealNavigationItem(container, current)
         } else if (container) {
             root.focusWithin(container, true)
@@ -719,13 +725,26 @@ ApplicationWindow {
     }
 
     function updateCouchMode(enabled, remember) {
-        if (root.couchMode === enabled) {
-            return
-        }
+        root.updateCouchModeInternal(enabled, remember, true)
+    }
+
+    function clearCouchNavigation() {
         root.returnToViewMenu = false
         if (coverSizePopup.opened) coverSizePopup.close()
         if (activeActionMenu && activeActionMenu.opened) activeActionMenu.close()
-        if (!enabled) {
+        if (root.couchTextEntryOpen) root.closeCouchTextEntry(false)
+        if (couchLibraryView.searchOpen) couchLibraryView.closeSearch(false)
+        if (couchLibraryView.browseOpen) couchLibraryView.closeBrowse()
+    }
+
+    function updateCouchModeInternal(enabled, remember, changeVisibility, retainNavigation) {
+        if (root.couchMode === enabled) {
+            return
+        }
+        if (!retainNavigation) root.returnToViewMenu = false
+        if (!retainNavigation && coverSizePopup.opened) coverSizePopup.close()
+        if (!retainNavigation && activeActionMenu && activeActionMenu.opened) activeActionMenu.close()
+        if (!enabled && !retainNavigation) {
             if (root.couchTextEntryOpen) {
                 root.closeCouchTextEntry(false)
             }
@@ -739,23 +758,24 @@ ApplicationWindow {
         if (enabled) {
             // The couch library takes the whole window; the stats screen has a couch treatment of
             // its own and paints above it, so nothing has to close here.
-            couchLibraryView.currentIndex = libraryView.currentIndex
+            if (!retainNavigation) couchLibraryView.currentIndex = libraryView.currentIndex
             root.desktopVisibility = root.visibility
-        } else {
+        } else if (!retainNavigation) {
             libraryView.currentIndex = couchLibraryView.currentIndex
         }
         root.couchMode = enabled
         if (remember) {
             Preferences.couchModeEnabled = enabled
         }
-        root.visibility = enabled ? Window.FullScreen : root.desktopVisibility
-        Qt.callLater(root.focusCurrentSurface)
+        if (changeVisibility !== false)
+            root.visibility = enabled ? Window.FullScreen : root.desktopVisibility
+        if (!retainNavigation) Qt.callLater(root.focusCurrentSurface)
     }
 
     function setCouchMode(enabled) {
         // Game Mode owns Couch Mode for its session. Every way of switching modes opens
         // its controls instead, so one stray press cannot switch the display off.
-        if (root.gameModeActive) {
+        if (GameMode.hasSession) {
             root.openGameModeControls()
             return
         }
@@ -774,16 +794,102 @@ ApplicationWindow {
 
     readonly property bool gameModeActive: GameMode.active
     property bool couchBeforeGameMode: false
+    property int desktopBeforeGameModeVisibility: Window.Windowed
+    property var gameModeNavigation: null
+    property bool gameModeNavigationRestoring: false
+    property var gameModeLastFocus: null
+
+    onActiveFocusItemChanged: {
+        // Only the dismissed Game Mode controls need their underlying return focus.
+        if (GameMode.active && !GameMode.busy && !root.gameModeControlsMenuOpen()
+                && !root.gameModeNavigationRestoring && root.activeFocusItem)
+            root.gameModeLastFocus = root.activeFocusItem
+    }
+
+    function gameModeControlsMenuOpen() {
+        return root.activeActionMenu && gameModeControlsLoader.item
+                && gameModeControlsLoader.item.ownsMenu(root.activeActionMenu)
+    }
+
+    function captureGameModeNavigation() {
+        const scrolls = []
+        function collect(item) {
+            if (!item) return
+            if (typeof item.contentY === "number" && typeof item.contentHeight === "number")
+                scrolls.push({item: item, x: item.contentX, y: item.contentY})
+            for (const child of item.children) collect(child)
+        }
+        collect(root.contentItem)
+        root.gameModeNavigation = {focus: root.gameModeControlsMenuOpen()
+            ? root.gameModeLastFocus : root.activeFocusItem, scrolls: scrolls}
+    }
+
+    function parkGameModeNavigation() {
+        root.gameModeNavigationRestoring = false
+    }
+
+    function restoreGameModeNavigation() {
+        const saved = root.gameModeNavigation
+        if (saved && saved.focus && saved.focus.visible && saved.focus.enabled)
+            saved.focus.forceActiveFocus(Qt.OtherFocusReason)
+        // Let layouts and focus callbacks settle before restoring scroll offsets.
+        Qt.callLater(function() {
+            if (saved) {
+                for (const scroll of saved.scrolls) {
+                    if (!scroll.item) continue
+                    scroll.item.contentX = scroll.x
+                    scroll.item.contentY = scroll.y
+                }
+            }
+            root.gameModeNavigationRestoring = false
+            if (!saved || !saved.focus || !saved.focus.visible || !saved.focus.enabled)
+                root.focusCurrentSurface()
+            GameMode.focusGame()
+        })
+    }
+
+    function endGameMode() {
+        root.gameModeNavigation = null
+        root.gameModeLastFocus = null
+        root.gameModeNavigationRestoring = false
+        // End also runs from a parked session whose desktop mode is already set.
+        // Cleanup must not depend on updateCouchModeInternal changing that mode.
+        root.clearCouchNavigation()
+        root.updateCouchModeInternal(root.couchBeforeGameMode, false, !GameMode.displayManaged)
+    }
+
+    function captureGameModeDesktopMode() {
+        root.couchBeforeGameMode = root.couchMode
+        root.desktopBeforeGameModeVisibility = root.couchMode ? root.desktopVisibility : root.visibility
+    }
 
     // Called once the display, sound and window are in place.
     function enterGameMode() {
-        root.couchBeforeGameMode = root.couchMode
         root.updateCouchMode(true, false)
+        root.desktopVisibility = root.desktopBeforeGameModeVisibility
+        // Placement clears fullscreen to trade a tiled Couch Mode window.
+        root.visibility = Window.FullScreen
+    }
+
+    function resumeGameMode() {
+        // The desktop mode belongs to the retained session, not a transient
+        // compositor mode while the library is being moved and remapped.
+        const desktopMode = root.desktopVisibility
+        root.gameModeNavigationRestoring = true
+        root.updateCouchModeInternal(true, false, true, true)
+        root.desktopVisibility = desktopMode
+        root.visibility = Window.FullScreen
+        Qt.callLater(root.restoreGameModeNavigation)
     }
 
     // Called before the desktop is put back, so the window returns in the mode it left.
-    function leaveGameMode() {
-        root.updateCouchMode(root.couchBeforeGameMode, false)
+    function leaveGameMode(retainNavigation) {
+        root.gameModeNavigationRestoring = retainNavigation === true
+        root.hideGameModeOverlay()
+        if (gameModeControlsLoader.item) gameModeControlsLoader.item.closeAll()
+        if (!retainNavigation) root.clearCouchNavigation()
+        root.updateCouchModeInternal(root.couchBeforeGameMode, false,
+                                     !GameMode.displayManaged, retainNavigation === true)
     }
 
     function openGameModeControls() {
@@ -826,65 +932,15 @@ ApplicationWindow {
         gameModeOverlay.visible = false
     }
 
-    // The Game Mode key. It starts Game Mode and leaves it again, except that a running
-    // game is never left behind or stopped by one key press: the controls open instead.
-    // Steam and other launchers start games themselves, so Omakade looks for running games
-    // and for any other window on the Game Mode workspace before it leaves.
-    property bool gameModeToggleChecking: false
-    property bool gameModeToggleScanned: false
-    property int gameModeToggleWindows: -1
+    // The shortcut always returns to the desktop or resumes the same session.
+    // The controller validates game identity and audio before any park effects.
     function toggleGameMode() {
-        if (GameMode.busy || root.gameModeToggleChecking) return
-        if (!root.gameModeActive) {
-            GameMode.enter()
-            return
-        }
-        if (Launcher.gameRunning) {
-            root.showGameModeControlsForGame()
-            return
-        }
-        const scanner = typeof GameStop !== "undefined" && GameStop ? GameStop : null
-        root.gameModeToggleChecking = true
-        root.gameModeToggleScanned = scanner === null
-        root.gameModeToggleWindows = -1
-        GameMode.checkWorkspace()
-        if (scanner) scanner.refreshLiveGames()
-    }
-    function finishGameModeToggle() {
-        if (!root.gameModeToggleChecking || !root.gameModeToggleScanned
-                || root.gameModeToggleWindows < 0) return
-        root.gameModeToggleChecking = false
-        const live = typeof GameStop !== "undefined" && GameStop ? GameStop.runningGames.length : 0
-        if (Launcher.gameRunning || live > 0 || root.gameModeToggleWindows > 0)
-            root.showGameModeControlsForGame()
-        else if (root.gameModeActive && !GameMode.busy)
-            GameMode.exit()
-    }
-    function showGameModeControlsForGame() {
-        if (root.showGameModeOverlay())
-            return
-        root.diagnosticsOpen = false
-        GameMode.focusWindow()
-        if (gameModeControlsLoader.item) gameModeControlsLoader.item.openControls()
+        GameMode.toggle()
     }
     Connections {
         target: GameMode
-        function onWorkspaceChecked(otherWindows) {
-            root.gameModeToggleWindows = otherWindows
-            root.finishGameModeToggle()
-        }
-        // Leaving Game Mode takes the reason for the overlay with it.
-        function onActiveChanged() {
+        function onStateChanged() {
             if (!GameMode.active) root.hideGameModeOverlay()
-        }
-    }
-    Connections {
-        target: typeof GameStop !== "undefined" ? GameStop : null
-        ignoreUnknownSignals: true
-        function onLiveGamesChanged() {
-            if (!root.gameModeToggleChecking || GameStop.scanning) return
-            root.gameModeToggleScanned = true
-            root.finishGameModeToggle()
         }
     }
 
@@ -1165,7 +1221,7 @@ ApplicationWindow {
             // Filters or selection may have changed during the feedback frame.
             Library.recordLaunchByIdentity(choice.source, choice.runner || "", choice.appId)
             // Game Mode keeps the library open so the game returns to it.
-            if (Preferences.closeAfterLaunch && !pendingSaveWarning && !root.gameModeActive) Qt.callLater(Qt.quit)
+            if (Preferences.closeAfterLaunch && !pendingSaveWarning && !GameMode.hasSession) Qt.callLater(Qt.quit)
         }
     }
 
@@ -1443,7 +1499,7 @@ ApplicationWindow {
         }
     }
 
-    visible: true
+    visible: typeof ColdGameModeRequested === "undefined" || !ColdGameModeRequested
     width: 1380
     height: 880
     minimumWidth: 820
@@ -2283,7 +2339,7 @@ ApplicationWindow {
             installations: root.selectedInstallations
             selectedInstallation: root.selectedInstallation
             couchMode: root.couchMode
-            navigationEnabled: !root.activeActionMenu && !root.backupEditorOpen && !root.bulkOrganizationOpen && !root.savedFiltersOpen && !root.artworkEditorOpen && !root.manualEditorOpen && !root.linkDialogOpen && !root.diagnosticsOpen
+            navigationEnabled: !root.gameModeNavigationRestoring && !root.activeActionMenu && !root.backupEditorOpen && !root.bulkOrganizationOpen && !root.savedFiltersOpen && !root.artworkEditorOpen && !root.manualEditorOpen && !root.linkDialogOpen && !root.diagnosticsOpen
                                && !root.collectionDeleteOpen
             onBackRequested: root.closeDetails()
             onRelocationRequested: key => root.openRepairRelocation(key, "")
@@ -3358,7 +3414,7 @@ ApplicationWindow {
 
     Loader {
         id: gameModeControlsLoader
-        active: root.gameModeActive
+        active: GameMode.hasSession
         sourceComponent: GameModePanel {
             host: root
             anchorItem: couchLibraryView

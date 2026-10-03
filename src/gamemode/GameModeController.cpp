@@ -5,9 +5,11 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QThread>
+#include <limits>
 
 namespace {
 constexpr int kPollStepMs = 250;
@@ -40,13 +42,44 @@ QString outputLabel(const GameModeOutput& output) {
 } // namespace
 
 QJsonObject GameModeState::toJson() const {
-  return {{"version", 1},
+  QJsonArray gamesJson, streamsJson;
+  for (const auto& game : games) {
+    gamesJson.append(QJsonObject{{"address", game.address},
+                                 {"pid", game.process.pid},
+                                 {"start", game.process.procStart},
+                                 {"steam", game.process.steamAppId},
+                                 {"wine", game.process.winePrefix},
+                                 {"flatpak", game.process.flatpakAppId},
+                                 {"fullscreen", game.fullscreen},
+                                 {"fullscreen_client", game.fullscreenClient}});
+  }
+  for (const auto& stream : mutedStreams) {
+    streamsJson.append(QJsonObject{{"index", static_cast<qint64>(stream.index)},
+                                   {"pid", stream.process.pid},
+                                   {"start", stream.process.procStart},
+                                   {"steam", stream.process.steamAppId},
+                                   {"token", stream.token},
+                                   {"muted", stream.muted}});
+  }
+  return {{"version", 2},
+          {"phase", phase == GameModePhase::DesktopRetained ? "parked" : "active"},
+          {"owner_start", ownerStart},
+          {"temporary_window", temporaryWindow},
+          {"desktop_pending", desktopPending},
+          {"retention_ending", retentionEnding},
+          {"focused_workspace", focusedWorkspace},
+          {"focused_window", focusedWindow},
+          {"last_game_window", lastGameWindow},
+          {"games", gamesJson},
+          {"streams", streamsJson},
           {"owner_pid", ownerPid},
           {"output", output},
           {"enabled_output", enabledOutput},
           {"output_workspace", outputWorkspace},
           {"focused_output", focusedOutput},
           {"window_workspace", windowWorkspace},
+          {"window_fullscreen", windowFullscreen},
+          {"window_fullscreen_client", windowFullscreenClient},
           {"window_placed", windowPlaced},
           {"placeholder", placeholder},
           {"previous_sink", previousSink},
@@ -55,8 +88,56 @@ QJsonObject GameModeState::toJson() const {
 }
 
 bool GameModeState::fromJson(const QJsonObject& object, GameModeState* state) {
-  if (state == nullptr || object.value("version").toInt() != 1) {
+  if (state == nullptr ||
+      (object.value("version").toInt() != 1 && object.value("version").toInt() != 2)) {
     return false;
+  }
+  if (object.value("version").toInt() == 2 &&
+      object.value("phase").toString() != QStringLiteral("active") &&
+      object.value("phase").toString() != QStringLiteral("parked"))
+    return false;
+  *state = {};
+  state->phase = object.value("phase").toString() == "parked" ? GameModePhase::DesktopRetained
+                                                              : GameModePhase::Active;
+  state->ownerStart = object.value("owner_start").toVariant().toLongLong();
+  if (!object.contains("owner_start"))
+    state->ownerStart = -1;
+  state->temporaryWindow = object.value("temporary_window").toBool();
+  state->desktopPending = object.value("desktop_pending").toBool();
+  state->retentionEnding = object.value("retention_ending").toBool();
+  state->focusedWorkspace = object.value("focused_workspace").toString();
+  state->focusedWindow = object.value("focused_window").toString();
+  state->lastGameWindow = object.value("last_game_window").toString();
+  for (const auto& value : object.value("games").toArray()) {
+    const auto game = value.toObject();
+    GameModeProcess process{game.value("pid").toVariant().toLongLong(),
+                            game.value("start").toVariant().toLongLong(),
+                            game.value("steam").toString(), game.value("wine").toString(),
+                            game.value("flatpak").toString()};
+    if (!process.valid() || game.value("address").toString().isEmpty())
+      return false;
+    const int fullscreen = game.value("fullscreen").toInt();
+    const int fullscreenClient = game.value("fullscreen_client").toInt();
+    if (fullscreen < 0 || fullscreen > 3 || fullscreenClient < 0 || fullscreenClient > 3)
+      return false;
+    state->games.append({game.value("address").toString(), process, fullscreen, fullscreenClient});
+  }
+  for (const auto& value : object.value("streams").toArray()) {
+    const auto stream = value.toObject();
+    GameModeStream record;
+    bool indexOk = false;
+    const auto streamIndex = stream.value("index").toVariant().toString().toULongLong(&indexOk);
+    if (!indexOk || streamIndex > std::numeric_limits<quint32>::max())
+      return false;
+    record.index = static_cast<quint32>(streamIndex);
+    record.process = {stream.value("pid").toVariant().toLongLong(),
+                      stream.value("start").toVariant().toLongLong(),
+                      stream.value("steam").toString()};
+    record.token = stream.value("token").toString();
+    record.muted = stream.value("muted").toBool();
+    if (!record.process.valid() || record.token.isEmpty())
+      return false;
+    state->mutedStreams.append(record);
   }
   state->ownerPid = object.value("owner_pid").toVariant().toLongLong();
   state->output = object.value("output").toString();
@@ -64,6 +145,12 @@ bool GameModeState::fromJson(const QJsonObject& object, GameModeState* state) {
   state->outputWorkspace = object.value("output_workspace").toString();
   state->focusedOutput = object.value("focused_output").toString();
   state->windowWorkspace = object.value("window_workspace").toString();
+  state->windowFullscreen = object.value("window_fullscreen").toInt(-1);
+  state->windowFullscreenClient = object.value("window_fullscreen_client").toInt(-1);
+  if (state->windowFullscreen < -1 || state->windowFullscreen > 3 ||
+      state->windowFullscreenClient < -1 || state->windowFullscreenClient > 3 ||
+      (state->windowFullscreen < 0) != (state->windowFullscreenClient < 0))
+    return false;
   state->windowPlaced = object.value("window_placed").toBool();
   state->placeholder = object.value("placeholder").toBool();
   state->previousSink = object.value("previous_sink").toString();
@@ -121,7 +208,9 @@ bool GameModeController::save(const GameModeState& state) const {
   if (!file.open(QIODevice::WriteOnly)) {
     return false;
   }
-  file.write(QJsonDocument(state.toJson()).toJson(QJsonDocument::Indented));
+  const auto bytes = QJsonDocument(state.toJson()).toJson(QJsonDocument::Indented);
+  if (file.write(bytes) != bytes.size())
+    return false;
   return file.commit();
 }
 
@@ -133,8 +222,7 @@ bool GameModeController::load(GameModeState* state) const {
   const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
   file.close();
   if (!document.isObject() || !GameModeState::fromJson(document.object(), state)) {
-    // An unreadable record cannot be acted on and must not block the next session.
-    forget();
+    // Preserve an unreadable record: dropping it could strand muted game audio.
     return false;
   }
   return true;
@@ -172,6 +260,8 @@ void GameModeController::showPlaceholder(bool visible) const {
 GameModeController::Result GameModeController::enter(const GameModeSettings& settings,
                                                      qint64 windowPid) {
   Result result;
+  if (m_parked)
+    return resume(settings, windowPid);
   if (m_active) {
     result.error = QStringLiteral("Game Mode is already on.");
     return result;
@@ -179,18 +269,22 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
   // What a crashed session left changed would otherwise be recorded as the state to
   // return to.
   const Result recovered = recover();
-  if (!recovered.ok && recovered.notes.isEmpty()) {
+  if (!recovered.ok) {
     // Another running Omakade owns the session.
     result.error = recovered.error;
     return result;
   }
-  // Recovery that cannot finish is reported once and then dropped, so a tool that has
-  // since been removed cannot block Game Mode for good.
+  // Completed recovery notes remain useful; unfinished recovery blocks new effects.
   result.notes = recovered.notes;
   forget();
 
   GameModeState state;
   state.ownerPid = QCoreApplication::applicationPid();
+  for (const auto& process : ProcFs::listProcesses()) {
+    if (process.pid == state.ownerPid)
+      state.ownerStart = process.procStart;
+  }
+  state.temporaryWindow = m_temporaryWindow;
   const bool displayChosen =
       !settings.outputName.isEmpty() || !settings.outputDescription.isEmpty();
   const bool compositor = managed();
@@ -201,13 +295,28 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     return result;
   }
   const auto fail = [&](const QString& message) {
-    restore(state, windowPid, false, &result.notes);
+    if (!restore(state, windowPid, false, &result.notes)) {
+      m_state = state;
+      m_active = true;
+      (void)save(m_state);
+    } else {
+      forget();
+    }
     result.error = message;
     return result;
   };
 
   GameModeWindow window;
   if (compositor) {
+    QString snapshotError;
+    // Capture before showing a cold root: mapping it may take focus.
+    const bool captured = captureDesktop(&state, &snapshotError);
+    if (state.temporaryWindow && !captured) {
+      result.error = snapshotError;
+      return result;
+    }
+    if (state.temporaryWindow)
+      visibility(true);
     QString error;
     const QVector<GameModeOutput> outputs = m_compositor->outputs(&error);
     if (outputs.isEmpty()) {
@@ -253,10 +362,12 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     const GameModeOutput target = outputs.at(index);
     state.output = target.name;
     state.windowWorkspace = window.workspace;
-    for (const GameModeOutput& output : outputs) {
-      if (output.focused) {
-        state.focusedOutput = output.name;
-      }
+    state.windowFullscreen = window.fullscreenMode;
+    state.windowFullscreenClient = window.fullscreenClient;
+    if (state.focusedOutput.isEmpty()) {
+      for (const auto& output : outputs)
+        if (output.focused)
+          state.focusedOutput = output.name;
     }
     if (target.enabled) {
       state.outputWorkspace = target.workspace;
@@ -274,7 +385,11 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
           [&] {
             for (const GameModeOutput& output : m_compositor->outputs()) {
               if (output.name == target.name) {
-                return output.enabled && !output.workspace.isEmpty();
+                if (output.enabled && !output.workspace.isEmpty()) {
+                  state.outputWorkspace = output.workspace;
+                  return true;
+                }
+                return false;
               }
             }
             return false;
@@ -325,10 +440,9 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     QString error;
     // A tiled window that is simply moved away and back lands wherever the layout puts a
     // new window. A placeholder keeps its exact place instead. A floating window keeps its
-    // own position, so it needs none, and Hyprland will not swap a fullscreen one.
+    // own position, so it needs none. The compositor clears fullscreen before swapping.
     GameModeWindow placeholder;
-    if (m_placeholder && !window.floating && !window.fullscreen &&
-        m_compositor->holdPlaceholder()) {
+    if (m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
@@ -341,6 +455,7 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
       }
     }
     state.windowPlaced = true;
+    state.desktopPending = true;
     state.placeholder = placeholder.valid();
     if (!save(state)) {
       return fail(QStringLiteral("Could not record Game Mode's window position."));
@@ -358,7 +473,8 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
       state.silencedNotifications = true;
       if (!save(state)) {
         state.silencedNotifications = false;
-        result.notes.append(QStringLiteral("Notifications were left on because recovery state could not be saved."));
+        result.notes.append(QStringLiteral(
+            "Notifications were left on because recovery state could not be saved."));
       } else if (!m_notifications->setSilenced(true)) {
         state.silencedNotifications = false;
         (void)save(state);
@@ -367,28 +483,611 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
   }
 
   if (!save(state)) {
-    result.notes.append(QStringLiteral(
-        "Game Mode's state could not be saved. Leave it from Omakade so everything is put back."));
+    if (state.windowPlaced || state.enabledOutput || !state.sessionSink.isEmpty() ||
+        state.silencedNotifications)
+      return fail(QStringLiteral("Could not record Game Mode's state."));
+    result.notes.append(
+        QStringLiteral("Recovery storage is unavailable; no desktop settings were changed."));
   }
   m_state = state;
+  m_sessionSettings = settings;
   m_active = true;
   result.ok = true;
   result.output = state.output;
   return result;
 }
 
-GameModeController::Result GameModeController::exit(qint64 windowPid) {
-  if (!m_active) {
-    return recover();
+void GameModeController::visibility(bool visible) const {
+  if (m_windowVisibility)
+    m_windowVisibility(visible);
+}
+
+bool GameModeController::captureDesktop(GameModeState* state, QString* error) {
+  GameModeDesktopFocus focus;
+  if (!managed()) {
+    if (error)
+      *error =
+          QStringLiteral("The desktop compositor is unavailable; the session is still retained.");
+    return false;
   }
-  Result result;
-  result.output = m_state.output;
-  result.ok = restore(m_state, windowPid, false, &result.notes);
-  if (!result.ok) {
-    result.error = QStringLiteral("Game Mode ended, but not everything could be put back.");
+  if (!m_compositor->desktopFocus(&focus, error))
+    return false;
+  state->focusedOutput = focus.output;
+  state->focusedWorkspace = focus.workspace;
+  state->focusedWindow = focus.address;
+  return true;
+}
+
+bool GameModeController::muteGames(QString* error) {
+  if (!m_audio || !m_audio->available()) {
+    if (error)
+      *error = QStringLiteral("Quiet Return to Desktop needs available game audio controls.");
+    return false;
   }
+  QVector<GameModeStream> streams;
+  if (!m_audio->streams(&streams, error))
+    return false;
+  for (const auto& stream : streams) {
+    bool attributed = false;
+    for (const auto& game : m_state.games) {
+      if (!m_compositor->processAlive(game.process))
+        continue;
+      if (stream.process == game.process ||
+          (stream.process.valid() && !game.process.steamAppId.isEmpty() &&
+           game.process.steamAppId != QStringLiteral("0") &&
+           stream.process.steamAppId == game.process.steamAppId)) {
+        attributed = true;
+        break;
+      }
+    }
+    if (!attributed) {
+      bool ambiguous = !stream.muted && !stream.process.valid();
+      for (const auto& game : m_state.games) {
+        if (stream.process.pid == game.process.pid ||
+            (!game.process.winePrefix.isEmpty() &&
+             game.process.winePrefix == stream.process.winePrefix) ||
+            (!game.process.flatpakAppId.isEmpty() &&
+             game.process.flatpakAppId == stream.process.flatpakAppId))
+          ambiguous = true;
+      }
+      if (ambiguous) {
+        if (error)
+          *error = QStringLiteral("Potential game audio could not be attributed safely; shared "
+                                  "Wine or Flatpak scope cannot authorize muting.");
+        return false;
+      }
+      continue;
+    }
+    if (!stream.process.valid() || stream.token.isEmpty()) {
+      if (error)
+        *error = QStringLiteral(
+            "This game's audio has no stable stream identity, so it cannot be hidden safely.");
+      return false;
+    }
+    bool recorded = false;
+    for (const auto& previous : m_state.mutedStreams)
+      if (previous.sameStream(stream))
+        recorded = true;
+    if (!recorded) {
+      m_state.mutedStreams.append(stream); // includes its original mute state
+      if (!save(m_state)) {
+        m_state.mutedStreams.removeLast();
+        if (error)
+          *error = QStringLiteral("Could not record the game's audio recovery state.");
+        return false;
+      }
+    }
+    if (!stream.muted && !m_audio->setStreamMuted(stream, true, error))
+      return false;
+  }
+  return true;
+}
+
+bool GameModeController::unmuteGames(QStringList* notes) {
+  if (m_state.mutedStreams.isEmpty())
+    return true;
+  QVector<GameModeStream> streams;
+  QString error;
+  if (!m_audio || !m_audio->available() || !m_audio->streams(&streams, &error)) {
+    if (notes)
+      notes->append(QStringLiteral("Game audio recovery is pending: %1").arg(error));
+    return false;
+  }
+  bool complete = true;
+  for (int index = m_state.mutedStreams.size() - 1; index >= 0; --index) {
+    const auto record = m_state.mutedStreams.at(index);
+    bool found = false;
+    for (const auto& stream : streams) {
+      if (!stream.sameStream(record))
+        continue;
+      found = true;
+      if (!record.muted && stream.muted && !m_audio->setStreamMuted(record, false, &error)) {
+        complete = false;
+        if (notes)
+          notes->append(QStringLiteral("The game's audio could not be restored: %1").arg(error));
+      } else {
+        m_state.mutedStreams.removeAt(index);
+        if (!save(m_state)) {
+          m_state.mutedStreams.insert(index, record);
+          complete = false;
+        }
+      }
+      break;
+    }
+    if (!found) {
+      // Gone or reused stream: do not write to the new process or stream.
+      m_state.mutedStreams.removeAt(index);
+      if (!save(m_state)) {
+        m_state.mutedStreams.insert(index, record);
+        complete = false;
+      }
+    }
+  }
+  return complete;
+}
+
+bool GameModeController::focusRetainedGame() {
+  if (!managed() || m_state.games.isEmpty())
+    return false;
+  QVector<GameModeGameWindow> windows;
+  QString error;
+  if (!m_compositor->gameWindows(workspace(), m_state.ownerPid, &windows, &error))
+    return false;
+  // Recovery can carry an exited or reused owner's pid. Only this process's exact
+  // identity permits clearing the library root's fullscreen state.
+  const qint64 ownerPid = m_state.ownerPid == QCoreApplication::applicationPid() &&
+                                  ProcFs::processAlive(m_state.ownerPid, m_state.ownerStart)
+                              ? m_state.ownerPid
+                              : 0;
+  GameModeGameWindow fallback;
+  for (const auto& window : windows) {
+    for (const auto& retained : m_state.games) {
+      if (window.address == retained.address && window.process == retained.process &&
+          m_compositor->processAlive(window.process)) {
+        if (window.address == m_state.lastGameWindow)
+          return m_compositor->focusGameWindow(retained, ownerPid, &error);
+        if (fallback.address.isEmpty())
+          fallback = retained;
+      }
+    }
+  }
+  if (fallback.address.isEmpty())
+    return false;
+  m_state.lastGameWindow = fallback.address;
+  return m_compositor->focusGameWindow(fallback, ownerPid, &error);
+}
+
+bool GameModeController::exposeGames(QStringList* notes, bool focus) {
+  if (!managed()) {
+    if (notes)
+      notes->append(QStringLiteral("The desktop is unavailable; game recovery remains recorded."));
+    return false;
+  }
+  for (int index = m_state.games.size() - 1; index >= 0; --index)
+    if (!m_compositor->processAlive(m_state.games.at(index).process))
+      m_state.games.removeAt(index);
+  // A disappeared workspace is normal once the last game process has ended.
+  if (m_state.games.isEmpty())
+    return true;
+  QString error;
+  const auto outputs = m_compositor->outputs(&error);
+  QString destination;
+  for (const auto& output : outputs)
+    if (output.enabled && (destination.isEmpty() || output.focused))
+      destination = output.name;
+  if (destination.isEmpty() || !m_compositor->moveWorkspace(workspace(), destination, &error)) {
+    if (notes)
+      notes->append(QStringLiteral("The game workspace could not be exposed: %1").arg(error));
+    return false;
+  }
+  if (focus) {
+    if (!focusRetainedGame() && !m_compositor->focusWorkspace(workspace(), &error)) {
+      if (notes)
+        notes->append(QStringLiteral("The retained game could not be focused: %1").arg(error));
+      return false;
+    }
+  }
+  return true;
+}
+
+bool GameModeController::finishRetention(qint64 windowPid, QStringList* notes) {
+  m_state.retentionEnding = true;
+  if (!save(m_state)) {
+    if (notes)
+      notes->append(QStringLiteral("Retention cleanup could not be recorded."));
+    return false;
+  }
+  for (int index = m_state.games.size() - 1; index >= 0; --index)
+    if (m_compositor && !m_compositor->processAlive(m_state.games.at(index).process))
+      m_state.games.removeAt(index);
+  // A partial park can still own a window, focus, sink, notifications or TV power.
+  // Restore those first so the final exposure is on a surviving, accessible display.
+  const bool desktopRestored = restore(m_state, windowPid, false, notes, true);
+  const bool exposed = m_state.games.isEmpty() || exposeGames(notes, true);
+  const bool audioRestored = exposed && unmuteGames(notes);
+  if (!desktopRestored || !exposed || !audioRestored) {
+    (void)save(m_state);
+    return false;
+  }
+  forget();
   m_state = {};
   m_active = false;
+  m_parked = false;
+  return true;
+}
+
+GameModeController::Result GameModeController::park(qint64 windowPid) {
+  Result result;
+  result.output = m_state.output;
+  if (m_parked) {
+    if (m_state.retentionEnding)
+      return refreshParked();
+    result.ok = true;
+    return result;
+  }
+  if (!m_active) {
+    result.error = QStringLiteral("Game Mode is not active.");
+    return result;
+  }
+  QString error;
+  QVector<GameModeGameWindow> games;
+  if (!managed() || !m_compositor->gameWindows(workspace(), windowPid, &games, &error)) {
+    result.error =
+        error.isEmpty()
+            ? QStringLiteral(
+                  "Quiet Return to Desktop needs an available compositor and safe game discovery.")
+            : error;
+    return result;
+  }
+  for (const auto& game : games) {
+    if (!game.process.valid() || !m_compositor->processAlive(game.process)) {
+      result.error = QStringLiteral("The running game's identity could not be verified.");
+      return result;
+    }
+  }
+  const GameModeState original = m_state;
+  m_state.games = games;
+  GameModeDesktopFocus focus;
+  if (!games.isEmpty() && !m_compositor->desktopFocus(&focus, &error)) {
+    m_state = original;
+    result.error = error;
+    return result;
+  }
+  for (const auto& game : games)
+    if (game.address == focus.address)
+      m_state.lastGameWindow = game.address;
+  if (games.isEmpty())
+    m_state.lastGameWindow.clear();
+  else if (m_state.lastGameWindow.isEmpty())
+    m_state.lastGameWindow = games.first().address;
+  // Persist park intent before any audio write; crash recovery must unmute and expose.
+  m_state.phase = GameModePhase::DesktopRetained;
+  if (!save(m_state)) {
+    m_state = original;
+    result.error = QStringLiteral("Could not record Return to Desktop recovery state.");
+    return result;
+  }
+  if (!games.isEmpty() && !muteGames(&error)) {
+    const bool undone = unmuteGames(&result.notes);
+    if (undone) {
+      m_state = original;
+      if (!save(m_state))
+        result.notes.append(QStringLiteral("Recovery state could not be updated."));
+    }
+    result.error =
+        QStringLiteral("The game stayed visible because it could not be silenced: %1").arg(error);
+    return result;
+  }
+  // Leaving Couch Mode can change fullscreen on the game workspace. Capture
+  // the game first; UI work remains queued and is processed during unmap waits.
+  if (m_beforeParkRestore)
+    m_beforeParkRestore();
+  if (!restore(m_state, windowPid, false, &result.notes, true)) {
+    // Remain owned, with all pending effects recorded. Resume rolls back partial park.
+    m_parked = true;
+    m_active = false;
+    const auto rollback = resume(m_sessionSettings, windowPid);
+    // An unsuccessful return is not time spent away on a new desktop.
+    if (m_active || m_parked) {
+      m_state.focusedOutput = original.focusedOutput;
+      m_state.focusedWorkspace = original.focusedWorkspace;
+      m_state.focusedWindow = original.focusedWindow;
+      m_state.outputWorkspace = original.outputWorkspace;
+      if (!save(m_state))
+        result.notes.append(QStringLiteral("The rollback desktop snapshot could not be recorded."));
+    }
+    result.notes.append(rollback.notes);
+    if (!rollback.ok)
+      result.notes.append(rollback.error);
+    result.error = QStringLiteral("Return to Desktop failed; the retained session needs recovery.");
+    return result;
+  }
+  m_parked = true;
+  m_active = false;
+  result.ok = true;
+  return result;
+}
+
+GameModeController::Result GameModeController::resume(const GameModeSettings& settings,
+                                                      qint64 windowPid) {
+  Result result;
+  result.output = m_state.output;
+  if (!m_parked) {
+    result.error = QStringLiteral("No retained Game Mode session is waiting to resume.");
+    return result;
+  }
+  const auto refreshed = refreshParked();
+  if (!refreshed.ok || !m_parked)
+    return refreshed;
+  const GameModeState parkedState = m_state;
+  QString error;
+  GameModeState next = m_state;
+  // Capture the desktop before a hidden cold root is mapped or any focus changes.
+  if (!captureDesktop(&next, &error)) {
+    result.error = error;
+    return result;
+  }
+  if (!next.temporaryWindow && !next.windowPlaced && !next.desktopPending) {
+    const auto currentWindow = m_compositor->windowForPid(windowPid);
+    if (currentWindow.valid() && currentWindow.workspace != workspace()) {
+      next.windowWorkspace = currentWindow.workspace;
+      next.windowFullscreen = currentWindow.fullscreenMode;
+      next.windowFullscreenClient = currentWindow.fullscreenClient;
+    }
+  }
+  const auto outputs = m_compositor->outputs(&error);
+  QString chosen = m_state.output;
+  if (!settings.outputName.isEmpty() || !settings.outputDescription.isEmpty()) {
+    const int index = findOutput(outputs, settings.outputName, settings.outputDescription);
+    if (index < 0) {
+      result.error = QStringLiteral("The Game Mode display is no longer connected.");
+      return result;
+    }
+    chosen = outputs.at(index).name;
+  }
+  int targetIndex = -1;
+  for (int index = 0; index < outputs.size(); ++index)
+    if (outputs.at(index).name == chosen)
+      targetIndex = index;
+  if (targetIndex < 0) {
+    result.error = QStringLiteral("The Game Mode display is no longer connected.");
+    return result;
+  }
+  next.output = chosen;
+  next.outputWorkspace = outputs.at(targetIndex).workspace;
+  next.enabledOutput = m_state.enabledOutput || !outputs.at(targetIndex).enabled;
+  next.phase = GameModePhase::DesktopRetained; // pending resume remains recoverable
+  m_state = next;
+  const auto fail = [&](const QString& message) {
+    // Restore only this resume's effects; games and original mute records stay retained.
+    const bool undone = restore(m_state, windowPid, false, &result.notes, true);
+    if (undone) {
+      m_state = parkedState;
+      (void)save(m_state);
+    }
+    // If unmute failed partially, re-mute every surviving stream before hiding.
+    QString muteError;
+    if (!m_state.games.isEmpty() && !muteGames(&muteError)) {
+      result.notes.append(muteError);
+      (void)finishRetention(windowPid, &result.notes);
+    }
+    result.error = message;
+    return result;
+  };
+  if (!save(m_state)) {
+    m_state = parkedState;
+    result.error = QStringLiteral("Could not record resume recovery state.");
+    return result;
+  }
+  if (m_state.enabledOutput) {
+    if (!m_compositor->setOutputEnabled(chosen, true, &error))
+      return fail(QStringLiteral("Could not turn the Game Mode display back on."));
+    if (!waitFor(
+            [&] {
+              for (const auto& output : m_compositor->outputs())
+                if (output.name == chosen && output.enabled && !output.workspace.isEmpty()) {
+                  m_state.outputWorkspace = output.workspace;
+                  return true;
+                }
+              return false;
+            },
+            kOutputWaitMs))
+      return fail(QStringLiteral("The Game Mode display did not turn back on."));
+  }
+  if (!settings.sinkName.isEmpty()) {
+    bool present = false;
+    if (m_audio && m_audio->available())
+      present = waitFor(
+          [&] {
+            for (const auto& sink : m_audio->sinks())
+              if (sink.name == settings.sinkName)
+                return true;
+            return false;
+          },
+          m_state.enabledOutput ? kSinkWaitMs : 0);
+    if (!present)
+      return fail(QStringLiteral("The Game Mode sound output is unavailable."));
+    const auto previous = m_audio->defaultSink();
+    if (previous != settings.sinkName) {
+      m_state.previousSink = previous;
+      m_state.sessionSink = settings.sinkName;
+      if (!save(m_state) || !m_audio->setDefaultSink(settings.sinkName))
+        return fail(QStringLiteral("Could not select the Game Mode sound output."));
+    }
+  }
+  m_state.desktopPending = true;
+  m_state.windowPlaced = true;
+  if (!save(m_state))
+    return fail(QStringLiteral("Could not record desktop restoration state."));
+  if (m_state.temporaryWindow)
+    visibility(true);
+  GameModeWindow window;
+  if (!waitFor(
+          [&] {
+            window = m_compositor->windowForPid(windowPid);
+            return window.valid();
+          },
+          kWindowWaitMs))
+    return fail(QStringLiteral("Omakade's session window could not be mapped."));
+  // The warm window may have moved while parked; this cycle owns its current home.
+  if (window.workspace != workspace()) {
+    GameModeWindow placeholder;
+    if (m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
+      showPlaceholder(true);
+      (void)waitFor(
+          [&] {
+            placeholder = m_compositor->placeholderForPid(windowPid);
+            return placeholder.valid();
+          },
+          kPlaceholderWaitMs, kPlaceholderStepMs);
+      if (!placeholder.valid())
+        showPlaceholder(false);
+    }
+    m_state.placeholder = placeholder.valid();
+    m_state.windowPlaced = true;
+    if (!save(m_state) || !m_compositor->placeWindow(window.address, workspace(), chosen,
+                                                     placeholder.address, &error))
+      return fail(QStringLiteral("Omakade's session window could not be restored."));
+  }
+  // Move the existing game workspace: never enter a fresh library session over it.
+  if (!m_compositor->moveWorkspace(workspace(), chosen, &error) ||
+      !m_compositor->focusWorkspace(workspace(), &error))
+    return fail(QStringLiteral("The retained game workspace could not be restored: %1").arg(error));
+  if (settings.silenceNotifications && m_notifications && m_notifications->available()) {
+    bool silenced = false;
+    if (m_notifications->silenced(&silenced) && !silenced) {
+      m_state.silencedNotifications = true;
+      if (!save(m_state) || !m_notifications->setSilenced(true))
+        return fail(QStringLiteral("Could not restore Game Mode notification settings."));
+    }
+  }
+  // Unmute only once the game is exposed. On failure the rollback retains the journal.
+  if (!unmuteGames(&result.notes))
+    return fail(QStringLiteral("The retained game's audio could not be restored."));
+  m_state.phase = GameModePhase::Active;
+  if (!save(m_state))
+    return fail(QStringLiteral("Could not record the resumed session."));
+  m_parked = false;
+  m_active = true;
+  m_sessionSettings = settings;
+  result.ok = true;
+  result.resumedGame = !m_state.games.isEmpty();
+  result.output = chosen;
+  // Parent restores couch/fullscreen UI before focusRetainedGame(), avoiding UI focus races.
+  return result;
+}
+
+GameModeController::Result GameModeController::refreshParked() {
+  Result result;
+  result.ok = true;
+  result.output = m_state.output;
+  if (!m_parked)
+    return result;
+  if (m_state.retentionEnding) {
+    result.ok = finishRetention(m_state.ownerPid, &result.notes);
+    if (!result.ok)
+      result.error = QStringLiteral("Retained game cleanup remains pending.");
+    return result;
+  }
+  QString error;
+  QVector<GameModeGameWindow> windows;
+  QVector<GameModeGameWindow> survivors;
+  for (const auto& game : m_state.games)
+    if (m_compositor && m_compositor->processAlive(game.process))
+      survivors.append(game);
+  if (!managed() ||
+      !m_compositor->gameWindows(workspace(), m_state.ownerPid, &windows, &error)) {
+    result.ok = false;
+    result.error =
+        error.isEmpty() ? QStringLiteral("The retained game cannot be inspected safely.") : error;
+    // Unknown is not empty. Keep an empty library's authority and journal so a
+    // delayed launch can be discovered on retry; never silently discard it.
+    if (!survivors.isEmpty() && !finishRetention(m_state.ownerPid, &result.notes))
+      result.notes.append(QStringLiteral("Retained game cleanup remains recorded."));
+    return result;
+  }
+  // The same verified workspace discovery used at park authorizes late arrivals,
+  // even when no game had mapped yet. Audio still requires a direct process/start
+  // identity or exact Steam witness; Wine/Flatpak scope never authorizes adoption.
+  for (const auto& window : windows) {
+    if (window.address.isEmpty() || !window.process.valid() ||
+        window.process.pid == m_state.ownerPid || !m_compositor->processAlive(window.process)) {
+      result.ok = false;
+      result.error = QStringLiteral("The arriving game's identity could not be verified.");
+      return result;
+    }
+    bool known = false;
+    for (const auto& game : survivors) {
+      if (window.address == game.address && window.process == game.process)
+        known = true;
+    }
+    // Preserve the captured presentation for known windows across every poll.
+    if (!known)
+      survivors.append(window);
+  }
+  m_state.games = survivors;
+  if (survivors.isEmpty()) {
+    // The library owns the session, even after the last game exits. Restore any
+    // partial park effects and exact surviving audio records without moving focus
+    // for a completed park. No audio service is needed for a verified empty,
+    // fully restored library session.
+    m_state.lastGameWindow.clear();
+    for (int index = m_state.mutedStreams.size() - 1; index >= 0; --index)
+      if (m_compositor && !m_compositor->processAlive(m_state.mutedStreams.at(index).process))
+        m_state.mutedStreams.removeAt(index); // Never touch a dead or reused stream owner.
+    const bool audioRestored = unmuteGames(&result.notes);
+    const bool desktopRestored = restore(m_state, m_state.ownerPid, false, &result.notes, true);
+    result.ok = audioRestored && desktopRestored && save(m_state);
+    if (!result.ok)
+      result.error =
+          QStringLiteral("The library is retained, but desktop or audio recovery remains pending.");
+    return result;
+  }
+  // Release exited/reused streams without changing any desktop focus.
+  QVector<GameModeStream> streams;
+  if (!m_audio || !m_audio->available() || !m_audio->streams(&streams, &error)) {
+    result.ok = false;
+  } else {
+    for (int index = m_state.mutedStreams.size() - 1; index >= 0; --index) {
+      bool found = false;
+      for (const auto& stream : streams)
+        if (stream.sameStream(m_state.mutedStreams.at(index)))
+          found = true;
+      if (!found)
+        m_state.mutedStreams.removeAt(index);
+    }
+    result.ok = save(m_state) && muteGames(&error);
+  }
+  if (!result.ok) {
+    result.error = QStringLiteral("The retained game could not stay quiet: %1").arg(error);
+    // Fatal audio failure exposes the game, then restores audio; it is never silently hidden.
+    if (!finishRetention(m_state.ownerPid, &result.notes))
+      result.notes.append(QStringLiteral("Retained game cleanup remains recorded."));
+  }
+  return result;
+}
+
+GameModeController::Result GameModeController::exit(qint64 windowPid) {
+  if (!m_active && !m_parked)
+    return recover();
+  Result result;
+  result.output = m_state.output;
+  if (m_parked) {
+    // Shutdown/screen removal explicitly relinquishes retention and exposes the game.
+    result.ok = finishRetention(windowPid, &result.notes);
+  } else {
+    result.ok = unmuteGames(&result.notes) && restore(m_state, windowPid, false, &result.notes);
+  }
+  if (!result.ok) {
+    result.error =
+        QStringLiteral("Game Mode could not be fully restored; recovery remains recorded.");
+    (void)save(m_state);
+    return result;
+  }
+  forget();
+  m_state = {};
+  m_active = false;
+  m_parked = false;
   return result;
 }
 
@@ -397,144 +1096,240 @@ GameModeController::Result GameModeController::recover() {
   result.ok = true;
   GameModeState state;
   if (!load(&state)) {
+    if (QFile::exists(m_statePath)) {
+      result.ok = false;
+      result.error = QStringLiteral("Game Mode's recovery record could not be read safely.");
+    }
     return result;
   }
   const qint64 self = QCoreApplication::applicationPid();
-  if (state.ownerPid == self && m_active) {
+  const bool sameOwner =
+      state.ownerStart < 0 || ProcFs::processAlive(state.ownerPid, state.ownerStart);
+  const bool currentOwner = state.ownerPid == self && sameOwner;
+  if (currentOwner && (m_active || m_parked))
     return result;
-  }
-  if (state.ownerPid != self && m_ownerAlive(state.ownerPid)) {
+  if (state.ownerPid != self && sameOwner && m_ownerAlive(state.ownerPid)) {
     result.ok = false;
     result.error = QStringLiteral("Game Mode belongs to another running Omakade.");
     return result;
   }
   result.output = state.output;
-  result.ok = restore(state, state.ownerPid == self ? self : 0,
-                      state.ownerPid != self, &result.notes);
+  m_state = state;
+  const bool retained = state.phase == GameModePhase::DesktopRetained;
+  // A parked crash must not replay already-consumed desktop changes.
+  result.ok = restore(m_state, currentOwner ? self : 0, !currentOwner, &result.notes, retained);
+  bool audioSafe = true;
+  if (retained && !m_state.games.isEmpty()) {
+    audioSafe = exposeGames(&result.notes, true);
+    result.ok = audioSafe && result.ok;
+  }
+  const bool audioRestored = audioSafe && unmuteGames(&result.notes);
+  result.ok = audioRestored && result.ok;
   if (!result.ok) {
+    (void)save(m_state);
     result.error = QStringLiteral("An interrupted Game Mode session could not be fully undone.");
+  } else {
+    forget();
+    m_state = {};
   }
   return result;
 }
 
-bool GameModeController::restore(const GameModeState& state, qint64 windowPid, bool ownerGone,
-                                 QStringList* notes) const {
+bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ownerGone,
+                                 QStringList* notes, bool retained) {
   bool complete = true;
-  const auto note = [notes](const QString& text) {
-    if (notes != nullptr) {
+  const auto note = [&](const QString& text) {
+    if (notes)
       notes->append(text);
+  };
+  const auto record = [&] {
+    if (!save(state)) {
+      complete = false;
+      note(QStringLiteral("Restored effects could not be recorded; recovery remains pending."));
     }
   };
-
   if (state.silencedNotifications) {
-    if (m_notifications == nullptr || !m_notifications->available() ||
-        !m_notifications->setSilenced(false)) {
+    if (!m_notifications || !m_notifications->available() || !m_notifications->setSilenced(false)) {
       complete = false;
       note(QStringLiteral("Notifications are still silenced."));
+    } else {
+      state.silencedNotifications = false;
+      record();
     }
   }
-
   const bool compositor = managed();
-  if (state.windowPlaced && !compositor) {
+  const bool putFocusBack = state.desktopPending || state.windowPlaced;
+  if (putFocusBack && !ownerGone)
+    state.desktopPending = true;
+  if (putFocusBack && !compositor) {
     complete = false;
     note(QStringLiteral("The desktop is unavailable, so windows could not be put back."));
   }
-  if (compositor && !ownerGone && state.windowPlaced) {
-    if (windowPid > 0 && !state.windowWorkspace.isEmpty()) {
-      const GameModeWindow window = m_compositor->windowForPid(windowPid);
+  if (compositor && state.windowPlaced) {
+    bool returned = true;
+    if (!ownerGone && !state.temporaryWindow && windowPid > 0 && !state.windowWorkspace.isEmpty()) {
+      const auto window = m_compositor->windowForPid(windowPid);
       if (window.valid() && window.workspace == workspace()) {
-        // Trading places with the placeholder returns the window to the exact spot it
-        // left. Without one, or when it was closed, the window is moved back instead.
-        const GameModeWindow placeholder =
+        const auto placeholder =
             state.placeholder ? m_compositor->placeholderForPid(windowPid) : GameModeWindow{};
         const bool traded =
             placeholder.valid() &&
             m_compositor->returnWindow(window.address, state.windowWorkspace,
                                        placeholder.address) &&
             m_compositor->windowForPid(windowPid).workspace == state.windowWorkspace;
-        if (traded) {
-          m_compositor->focusWindow(window.address);
-        } else if (!m_compositor->returnWindow(window.address, state.windowWorkspace, {})) {
+        if (!traded && !m_compositor->returnWindow(window.address, state.windowWorkspace, {})) {
+          returned = false;
           complete = false;
           note(QStringLiteral("Omakade's window could not be moved back."));
         }
       }
     }
-    if (state.placeholder) {
+    if (returned && !ownerGone && state.temporaryWindow) {
+      visibility(false);
+      if (!waitFor([&] { return !m_compositor->windowForPid(windowPid).valid(); }, kWindowWaitMs,
+                   kPlaceholderStepMs)) {
+        returned = false;
+        complete = false;
+        note(QStringLiteral(
+            "Omakade's temporary window did not hide; desktop recovery is pending."));
+      }
+    }
+    if (returned && state.placeholder) {
       showPlaceholder(false);
+      if (!ownerGone &&
+          !waitFor([&] { return !m_compositor->placeholderForPid(windowPid).valid(); },
+                   kPlaceholderWaitMs, kPlaceholderStepMs)) {
+        returned = false;
+        complete = false;
+        note(QStringLiteral("The layout placeholder did not hide; desktop recovery is pending."));
+      }
+    }
+    if (returned && !ownerGone && !state.temporaryWindow && windowPid > 0 &&
+        state.windowFullscreen >= 0) {
+      const auto restoredWindow = m_compositor->windowForPid(windowPid);
+      if (!restoredWindow.valid() ||
+          !m_compositor->setWindowMode(restoredWindow.address, state.windowFullscreen,
+                                       state.windowFullscreenClient)) {
+        returned = false;
+        complete = false;
+        note(QStringLiteral("Omakade's original window mode could not be restored."));
+      }
+    }
+    if (returned) {
+      state.windowPlaced = false;
+      state.placeholder = false;
+      record();
     }
   }
-
-  // A game or launcher left running on the Game Mode workspace would be stranded there,
-  // still playing sound, once the workspace goes away. It comes to the desktop instead.
-  // This also runs for a session whose owner is gone, so a crash does not strand it.
-  if (compositor) {
+  if (state.windowPlaced && !ownerGone)
+    return false;
+  // Legacy exit/recovery still brings leftover windows home. Normal park never does.
+  if (compositor && !retained) {
     QString destination = state.windowWorkspace;
-    if (destination.isEmpty() && !state.outputWorkspace.isEmpty() &&
-        state.outputWorkspace != workspace()) {
+    if (destination.isEmpty() && state.outputWorkspace != workspace())
       destination = state.outputWorkspace;
-    }
-    if (!destination.isEmpty()) {
-      for (const QString& address :
-           m_compositor->otherWindowAddressesOn(workspace(), state.ownerPid)) {
-        // Moved without following, so the desktop's focus is put back below.
+    if (!destination.isEmpty())
+      for (const auto& address : m_compositor->otherWindowAddressesOn(workspace(), state.ownerPid))
         if (!m_compositor->returnWindow(address, destination, {})) {
           complete = false;
           note(QStringLiteral("A window left on the Game Mode display could not be moved."));
         }
+  }
+  if (compositor && putFocusBack && !ownerGone && !state.windowPlaced) {
+    if (!state.output.isEmpty() && !state.outputWorkspace.isEmpty() &&
+        state.outputWorkspace != workspace()) {
+      if (!m_compositor->focusOutput(state.output) ||
+          !m_compositor->focusWorkspace(state.outputWorkspace)) {
+        complete = false;
+        note(QStringLiteral("The previous display workspace could not be restored."));
       }
     }
-  }
-
-  if (compositor && !ownerGone && state.windowPlaced) {
-    // A display Game Mode turned on is about to go away; one that was already on gets
-    // back the workspace it was showing.
-    if (!state.enabledOutput && !state.output.isEmpty() && !state.outputWorkspace.isEmpty() &&
-        state.outputWorkspace != workspace()) {
-      m_compositor->focusOutput(state.output);
-      m_compositor->focusWorkspace(state.outputWorkspace);
-    }
-    if (!state.focusedOutput.isEmpty() && state.focusedOutput != state.output) {
-      m_compositor->focusOutput(state.focusedOutput);
+    if (!state.focusedOutput.isEmpty() && !m_compositor->focusOutput(state.focusedOutput))
+      complete = false;
+    if (!state.focusedWorkspace.isEmpty() && !m_compositor->focusWorkspace(state.focusedWorkspace))
+      complete = false;
+    if (!state.focusedWindow.isEmpty() && !m_compositor->focusWindow(state.focusedWindow)) {
+      // The precise window may have closed. The captured workspace remains the fallback.
+      note(QStringLiteral("The previously focused window is no longer available."));
     }
   }
-
+  if (compositor && putFocusBack && !state.windowPlaced) {
+    if (complete) {
+      state.desktopPending = false;
+      record();
+    }
+  }
   if (!state.sessionSink.isEmpty()) {
-    if (m_audio == nullptr || !m_audio->available()) {
+    if (!m_audio || !m_audio->available()) {
       complete = false;
       note(QStringLiteral("The sound output could not be put back."));
     } else {
-      const QVector<GameModeSink> sinks = m_audio->sinks();
-      const auto exists = [&sinks](const QString& name) {
-        for (const GameModeSink& sink : sinks) {
-          if (sink.name == name) {
+      const auto sinks = m_audio->sinks();
+      const auto exists = [&](const QString& name) {
+        for (const auto& sink : sinks)
+          if (sink.name == name)
             return true;
-          }
-        }
         return false;
       };
       const QString current = m_audio->defaultSink();
-      // A different default means the user chose it during the session; keep it.
+      bool restored = true;
       if (current == state.sessionSink || !exists(state.sessionSink)) {
-        if (state.previousSink.isEmpty() || !exists(state.previousSink)) {
+        if (state.previousSink.isEmpty() || !exists(state.previousSink))
           note(QStringLiteral("The previous sound output is gone, so the current one was kept."));
-        } else if (current != state.previousSink && !m_audio->setDefaultSink(state.previousSink)) {
-          complete = false;
-          note(QStringLiteral("The sound output could not be put back."));
-        }
+        else if (current != state.previousSink && !m_audio->setDefaultSink(state.previousSink))
+          restored = false;
+      }
+      if (restored) {
+        state.sessionSink.clear();
+        state.previousSink.clear();
+        record();
+      } else {
+        complete = false;
+        note(QStringLiteral("The sound output could not be put back."));
       }
     }
   }
-
-  if (state.enabledOutput) {
-    if (!compositor || !m_compositor->setOutputEnabled(state.output, false)) {
-      complete = false;
-      note(QStringLiteral("%1 could not be turned off.").arg(state.output));
+  if (state.enabledOutput && compositor) {
+    QString outputError;
+    const auto outputs = m_compositor->outputs(&outputError);
+    bool connected = false;
+    for (const auto& output : outputs)
+      if (output.name == state.output)
+        connected = true;
+    if (!connected && outputError.isEmpty() && !outputs.isEmpty()) {
+      state.enabledOutput = false;
+      record();
     }
   }
-
+  if (state.enabledOutput) {
+    bool safe = compositor;
+    if (safe && retained && !state.games.isEmpty()) {
+      QString error;
+      const auto outputs = m_compositor->outputs(&error);
+      QString destination;
+      for (const auto& output : outputs) {
+        if (!output.enabled || output.name == state.output)
+          continue;
+        if (destination.isEmpty() || output.name == state.focusedOutput)
+          destination = output.name;
+      }
+      safe =
+          !destination.isEmpty() && m_compositor->moveWorkspace(workspace(), destination, &error);
+      if (!safe)
+        note(QStringLiteral("The game workspace could not be relocated safely: %1").arg(error));
+    }
+    if (!safe || !m_compositor->setOutputEnabled(state.output, false)) {
+      complete = false;
+      note(QStringLiteral("%1 was kept on to avoid stranding a game.").arg(state.output));
+    } else {
+      state.enabledOutput = false;
+      record();
+    }
+  }
   if (complete) {
-    forget();
+    state.outputWorkspace.clear();
+    if (QFile::exists(m_statePath))
+      record();
   }
   return complete;
 }

@@ -18,13 +18,28 @@ struct GameModeSettings {
 
 // Everything a session changed, written to disk before each change so an interrupted
 // session can still be undone by the next start or by `omakade --game-mode-exit`.
+enum class GameModePhase { Ended, Active, DesktopRetained };
+
 struct GameModeState {
+  GameModePhase phase = GameModePhase::Active;
+  qint64 ownerStart = -1;
+  bool temporaryWindow = false;
+  bool desktopPending = false;
+  // Fatal retention failures must finish cleanup before another resume can start.
+  bool retentionEnding = false;
+  QString focusedWorkspace;
+  QString focusedWindow;
+  QString lastGameWindow;
+  QVector<GameModeGameWindow> games;
+  QVector<GameModeStream> mutedStreams;
   qint64 ownerPid = 0;
   QString output; // display the session is on; empty when unmanaged
   bool enabledOutput = false;
-  QString outputWorkspace; // what that display showed before
-  QString focusedOutput;   // display that had focus before
-  QString windowWorkspace; // where Omakade's window was
+  QString outputWorkspace;   // what that display showed before
+  QString focusedOutput;     // display that had focus before
+  QString windowWorkspace;   // where Omakade's window was
+  int windowFullscreen = -1; // -1 for an older journal without window modes
+  int windowFullscreenClient = -1;
   // Set before the window is moved, so a move that fails halfway still gets focus put back.
   bool windowPlaced = false;
   // A placeholder window holds the main window's place in the layout.
@@ -48,6 +63,7 @@ class GameModeController {
 public:
   struct Result {
     bool ok = false;
+    bool resumedGame = false;
     QString error;
     // Things that could not be put back or were skipped, for the status line and the log.
     QStringList notes;
@@ -72,10 +88,30 @@ public:
 
   [[nodiscard]] Result enter(const GameModeSettings& settings, qint64 windowPid);
   [[nodiscard]] Result exit(qint64 windowPid);
+  [[nodiscard]] Result park(qint64 windowPid);
+  [[nodiscard]] Result resume(const GameModeSettings& settings, qint64 windowPid);
+  [[nodiscard]] Result refreshParked();
+  [[nodiscard]] bool focusRetainedGame();
+  void setTemporaryWindow(bool temporary) { m_temporaryWindow = temporary; }
+  void setWindowVisibility(std::function<void(bool)> callback) {
+    m_windowVisibility = std::move(callback);
+  }
+
+  // Runs after recording game presentation, before returning the desktop. Nonblocking.
+  void setBeforeParkRestore(std::function<void()> callback) {
+    m_beforeParkRestore = std::move(callback);
+  }
+
   // Undoes a session left behind by a process that is gone. A no-op without one.
   [[nodiscard]] Result recover();
 
   [[nodiscard]] bool active() const { return m_active; }
+  [[nodiscard]] bool parked() const { return m_parked; }
+  [[nodiscard]] GameModePhase phase() const {
+    return m_active   ? GameModePhase::Active
+           : m_parked ? GameModePhase::DesktopRetained
+                      : GameModePhase::Ended;
+  }
   [[nodiscard]] const GameModeState& state() const { return m_state; }
 
   // Picks the configured display: by description first, since connector names move
@@ -90,8 +126,15 @@ private:
   void forget() const;
   // Shared by leaving, by a failed entry, and by recovery. Returns false when something
   // that needed undoing could not be undone.
-  bool restore(const GameModeState& state, qint64 windowPid, bool ownerGone,
-               QStringList* notes) const;
+  bool restore(GameModeState& state, qint64 windowPid, bool ownerGone, QStringList* notes,
+               bool retained = false);
+  bool muteGames(QString* error);
+  bool unmuteGames(QStringList* notes);
+  bool captureDesktop(GameModeState* state, QString* error);
+  bool exposeGames(QStringList* notes, bool focus);
+  bool finishRetention(qint64 windowPid, QStringList* notes);
+  void visibility(bool visible) const;
+
   [[nodiscard]] bool waitFor(const std::function<bool()>& ready, int timeoutMs,
                              int stepMs = 250) const;
   void showPlaceholder(bool visible) const;
@@ -104,5 +147,10 @@ private:
   OwnerAlive m_ownerAlive;
   Placeholder m_placeholder;
   GameModeState m_state;
+  GameModeSettings m_sessionSettings;
   bool m_active = false;
+  bool m_parked = false;
+  bool m_temporaryWindow = false;
+  std::function<void(bool)> m_windowVisibility;
+  std::function<void()> m_beforeParkRestore;
 };

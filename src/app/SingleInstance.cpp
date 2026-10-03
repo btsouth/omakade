@@ -34,6 +34,8 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
           emit journalProtectionDegraded();
         } else if (command == "game-mode enter" || command == "game-mode exit") {
           emit gameModeRequested(command.endsWith("enter"));
+        } else if (command == "game-mode desktop") {
+          emit gameModeDesktopRequested();
         } else if (command == "game-mode toggle") {
           emit gameModeToggleRequested();
         } else if (command == "quit") {

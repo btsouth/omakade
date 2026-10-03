@@ -20,6 +20,12 @@ public:
   [[nodiscard]] GameModeWindow windowForPid(qint64 pid) override;
   [[nodiscard]] int otherWindowsOn(const QString& workspace, qint64 pid) override;
   [[nodiscard]] QStringList otherWindowAddressesOn(const QString& workspace, qint64 pid) override;
+  bool gameWindows(const QString& workspace, qint64 owner, QVector<GameModeGameWindow>* windows,
+                   QString* error) override;
+  bool processAlive(const GameModeProcess& process) override;
+  bool desktopFocus(GameModeDesktopFocus* focus, QString* error) override;
+  bool moveWorkspace(const QString& workspace, const QString& output, QString* error) override;
+  [[nodiscard]] static QString moveWorkspaceScript(const QString& workspace, const QString& output);
   [[nodiscard]] GameModeWindow placeholderForPid(qint64 pid) override;
   bool holdPlaceholder(QString* error = nullptr) override;
   bool placeWindow(const QString& address, const QString& workspace, const QString& output,
@@ -27,6 +33,10 @@ public:
   bool returnWindow(const QString& address, const QString& workspace, const QString& placeholder,
                     QString* error = nullptr) override;
   bool focusWindow(const QString& address, QString* error = nullptr) override;
+  bool setWindowMode(const QString& address, int mode, int clientMode,
+                     QString* error = nullptr) override;
+  bool focusGameWindow(const GameModeGameWindow& game, qint64 ownerPid,
+                       QString* error = nullptr) override;
   bool focusWorkspace(const QString& workspace, QString* error = nullptr) override;
   bool focusOutput(const QString& name, QString* error = nullptr) override;
 
@@ -38,9 +48,9 @@ public:
   [[nodiscard]] static QString placeholderTitle();
   // Finds Omakade's window in `hyprctl -j clients`, preferring its own window class over
   // any other window the process owns. With `placeholder`, finds the placeholder instead.
-  [[nodiscard]] static GameModeWindow
-  parseWindow(const QByteArray& clientsJson, const QVector<GameModeOutput>& outputs, qint64 pid,
-              bool placeholder = false);
+  [[nodiscard]] static GameModeWindow parseWindow(const QByteArray& clientsJson,
+                                                  const QVector<GameModeOutput>& outputs,
+                                                  qint64 pid, bool placeholder = false);
   // The selector a dispatcher accepts for a workspace object: "3", "name:couch" or
   // "special:scratchpad". Empty for the placeholder a disabled output reports.
   [[nodiscard]] static QString workspaceSelector(const QJsonObject& workspace);
@@ -58,10 +68,11 @@ public:
   [[nodiscard]] static QString outputScript(const QString& name, bool enabled);
   [[nodiscard]] static QString holdScript();
   [[nodiscard]] static QString placeScript(const QString& address, const QString& workspace,
-                                           const QString& output,
-                                           const QString& placeholder = {});
+                                           const QString& output, const QString& placeholder = {});
   [[nodiscard]] static QString returnScript(const QString& address, const QString& workspace);
   [[nodiscard]] static QString tradeScript(const QString& address, const QString& placeholder);
+  [[nodiscard]] static QString focusGameScript(const GameModeGameWindow& game,
+                                               const QString& ownerAddress);
 
 private:
   bool eval(const QString& script, QString* error);
@@ -76,6 +87,12 @@ public:
   [[nodiscard]] QVector<GameModeSink> sinks(QString* error = nullptr) override;
   [[nodiscard]] QString defaultSink() override;
   bool setDefaultSink(const QString& name, QString* error = nullptr) override;
+
+  bool streams(QVector<GameModeStream>* streams, QString* error) override;
+  bool setStreamMuted(const GameModeStream& stream, bool muted, QString* error) override;
+  // Parsing alone leaves procStart unknown; streams() fills it from procfs.
+  [[nodiscard]] static bool parseStreams(const QByteArray& json, QVector<GameModeStream>* streams,
+                                         QString* error = nullptr);
 
   // Parses `pactl -f json list sinks`.
   [[nodiscard]] static QVector<GameModeSink> parseSinks(const QByteArray& json,

@@ -1,4 +1,7 @@
 #include "gamemode/GameModeDesktop.h"
+#include "tracking/ProcFs.h"
+#include <QFileInfo>
+#include <limits>
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -128,7 +131,9 @@ GameModeWindow HyprlandGameModeCompositor::parseWindow(const QByteArray& clients
       continue;
     }
     window.floating = client.value(QLatin1String("floating")).toBool();
-    window.fullscreen = client.value(QLatin1String("fullscreen")).toInt() != 0;
+    window.fullscreenMode = client.value(QLatin1String("fullscreen")).toInt();
+    window.fullscreenClient = client.value(QLatin1String("fullscreenClient")).toInt();
+    window.fullscreen = window.fullscreenMode != 0;
     window.workspace = workspaceSelector(client.value(QLatin1String("workspace")).toObject());
     const int monitor = client.value(QLatin1String("monitor")).toInt(-1);
     for (const GameModeOutput& output : outputs) {
@@ -183,15 +188,16 @@ QString HyprlandGameModeCompositor::holdScript() {
 }
 
 QString HyprlandGameModeCompositor::placeScript(const QString& address, const QString& workspace,
-                                                const QString& output,
-                                                const QString& placeholder) {
+                                                const QString& output, const QString& placeholder) {
   const QString window = luaString(QStringLiteral("address:") + address);
   // Trading places puts the placeholder in the window's node of the layout tree, so the
   // other windows keep their size and position while the window is away.
   const QString trade =
       placeholder.isEmpty()
           ? QString{}
-          : QStringLiteral("hl.dispatch(hl.dsp.window.swap({ window = %1, target = %2 }))\n")
+          : QStringLiteral("hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = "
+                           "0, client = 0 }))\n"
+                           "hl.dispatch(hl.dsp.window.swap({ window = %1, target = %2 }))\n")
                 .arg(window, luaString(QStringLiteral("address:") + placeholder));
   // Focusing the output first makes a new workspace open there, not wherever focus was.
   return trade + QStringLiteral("hl.dispatch(hl.dsp.focus({ monitor = %1 }))\n"
@@ -266,8 +272,7 @@ QStringList HyprlandGameModeCompositor::otherWindowAddressesOn(const QString& wo
 }
 
 QStringList HyprlandGameModeCompositor::otherWindowAddresses(const QByteArray& clientsJson,
-                                                             const QString& workspace,
-                                                             qint64 pid) {
+                                                             const QString& workspace, qint64 pid) {
   QStringList addresses;
   for (const QJsonValue& value : QJsonDocument::fromJson(clientsJson).array()) {
     const QJsonObject client = value.toObject();
@@ -322,10 +327,61 @@ bool HyprlandGameModeCompositor::returnWindow(const QString& address, const QStr
 }
 
 bool HyprlandGameModeCompositor::focusWindow(const QString& address, QString* error) {
-  return validAddress(address) &&
-         eval(QStringLiteral("hl.dispatch(hl.dsp.focus({ window = %1 }))")
-                  .arg(luaString(QStringLiteral("address:") + address)),
+  return validAddress(address) && eval(QStringLiteral("hl.dispatch(hl.dsp.focus({ window = %1 }))")
+                                           .arg(luaString(QStringLiteral("address:") + address)),
+                                       error);
+}
+
+bool HyprlandGameModeCompositor::setWindowMode(const QString& address, int mode, int clientMode,
+                                               QString* error) {
+  if (!validAddress(address) || mode < 0 || mode > 3 || clientMode < 0 || clientMode > 3)
+    return false;
+  return eval(QStringLiteral("hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = "
+                             "%2, client = %3 }))")
+                  .arg(luaString(QStringLiteral("address:") + address))
+                  .arg(mode)
+                  .arg(clientMode),
               error);
+}
+
+QString HyprlandGameModeCompositor::focusGameScript(const GameModeGameWindow& game,
+                                                    const QString& ownerAddress) {
+  if (!validAddress(game.address) || (!ownerAddress.isEmpty() && !validAddress(ownerAddress)) ||
+      game.address == ownerAddress || game.fullscreen < 0 || game.fullscreen > 3 ||
+      game.fullscreenClient < 0 || game.fullscreenClient > 3)
+    return {};
+  QString script;
+  if (!ownerAddress.isEmpty())
+    script =
+        QStringLiteral(
+            "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 "
+            "}))\n")
+            .arg(luaString(QStringLiteral("address:") + ownerAddress));
+  // Qt remapping/fullscreen can replace a game's compositor fullscreen on this workspace.
+  // Restore the modes captured at park, including windowed (0), in the same eval as focus.
+  script += QStringLiteral(
+                "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = %2, client = "
+                "%3 }))\n"
+                "hl.dispatch(hl.dsp.focus({ window = %1 }))")
+                .arg(luaString(QStringLiteral("address:") + game.address))
+                .arg(game.fullscreen)
+                .arg(game.fullscreenClient);
+  return script;
+}
+
+bool HyprlandGameModeCompositor::focusGameWindow(const GameModeGameWindow& game, qint64 ownerPid,
+                                                 QString* error) {
+  if (ownerPid < 0 || game.process.pid == ownerPid || !processAlive(game.process)) {
+    setError(error, QStringLiteral("The retained game's identity is no longer valid."));
+    return false;
+  }
+  const auto owner = ownerPid > 0 ? windowForPid(ownerPid) : GameModeWindow{};
+  const auto script = focusGameScript(game, owner.address);
+  if (script.isEmpty()) {
+    setError(error, QStringLiteral("The retained game's presentation is invalid."));
+    return false;
+  }
+  return eval(script, error);
 }
 
 bool HyprlandGameModeCompositor::focusWorkspace(const QString& workspace, QString* error) {
@@ -428,4 +484,217 @@ bool OmarchyGameModeNotifications::setSilenced(bool silenced) {
   run(QStringLiteral("omarchy-shell"),
       {QStringLiteral("-q"), QStringLiteral("omarchy.indicators"), QStringLiteral("refresh")});
   return true;
+}
+
+// Retained-session queries distinguish a failed scan from an empty workspace.
+bool HyprlandGameModeCompositor::gameWindows(const QString& workspace, qint64 owner,
+                                             QVector<GameModeGameWindow>* windows, QString* error) {
+  QByteArray json;
+  if (!windows || !run(QStringLiteral("hyprctl"), {"-j", "clients"}, &json)) {
+    setError(error, QStringLiteral("Hyprland could not inspect game windows."));
+    return false;
+  }
+  const auto document = QJsonDocument::fromJson(json);
+  if (!document.isArray()) {
+    setError(error, QStringLiteral("Hyprland returned invalid game windows."));
+    return false;
+  }
+  const auto processes = ProcFs::listProcesses(true);
+  windows->clear();
+  for (const auto& value : document.array()) {
+    const auto client = value.toObject();
+    const qint64 pid = client.value("pid").toVariant().toLongLong();
+    if (pid == owner || !client.value("mapped").toBool() ||
+        workspaceSelector(client.value("workspace").toObject()) != workspace)
+      continue;
+    const QString address = client.value("address").toString();
+    if (!validAddress(address)) {
+      setError(error, QStringLiteral("A game window has no usable address."));
+      return false;
+    }
+    bool found = false;
+    for (const auto& process : processes) {
+      if (process.pid != pid)
+        continue;
+      found = true;
+      // These are excluded as witnesses, never expanded into their descendants.
+      const QString executable = QFileInfo(process.exePath).fileName().toLower();
+      const QString comm = process.comm.toLower();
+      const QStringList launchers{
+          "steam",     "steamwebhelper", "heroic",       "lutris",       "faugus-launcher",
+          "legendary", "battle.net.exe", "explorer.exe", "services.exe", "wineserver"};
+      if (launchers.contains(comm) || launchers.contains(executable))
+        break;
+      const GameModeProcess identity{pid, process.procStart, process.steamAppId, process.winePrefix,
+                                     process.flatpakAppId};
+      if (!identity.valid() || !ProcFs::processAlive(pid, process.procStart)) {
+        setError(error, QStringLiteral("A game process changed during discovery."));
+        return false;
+      }
+      const int fullscreen = client.value("fullscreen").toInt();
+      const int fullscreenClient = client.value("fullscreenClient").toInt();
+      if (fullscreen < 0 || fullscreen > 3 || fullscreenClient < 0 || fullscreenClient > 3) {
+        setError(error, QStringLiteral("A game window has an invalid fullscreen mode."));
+        return false;
+      }
+      windows->append({address, identity, fullscreen, fullscreenClient});
+      break;
+    }
+    if (!found) {
+      setError(error, QStringLiteral("A mapped game's process identity could not be read."));
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HyprlandGameModeCompositor::processAlive(const GameModeProcess& process) {
+  return process.valid() && ProcFs::processAlive(process.pid, process.procStart);
+}
+
+bool HyprlandGameModeCompositor::desktopFocus(GameModeDesktopFocus* focus, QString* error) {
+  QByteArray active;
+  QString outputError;
+  const auto monitors = outputs(&outputError);
+  if (!focus || monitors.isEmpty() || !outputError.isEmpty() ||
+      !run(QStringLiteral("hyprctl"), {"-j", "activewindow"}, &active)) {
+    setError(error, QStringLiteral("Hyprland could not capture desktop focus."));
+    return false;
+  }
+  const auto document = QJsonDocument::fromJson(active);
+  if (!document.isObject()) {
+    setError(error, QStringLiteral("Hyprland returned invalid desktop focus."));
+    return false;
+  }
+  *focus = {};
+  for (const auto& monitor : monitors) {
+    if (monitor.focused && monitor.enabled) {
+      focus->output = monitor.name;
+      focus->workspace = monitor.workspace;
+    }
+  }
+  const auto window = document.object();
+  const QString address = window.value("address").toString();
+  if (validAddress(address))
+    focus->address = address;
+  if (focus->output.isEmpty() || focus->workspace.isEmpty()) {
+    setError(error, QStringLiteral("The focused desktop workspace is unknown."));
+    return false;
+  }
+  return true;
+}
+
+QString HyprlandGameModeCompositor::moveWorkspaceScript(const QString& workspace,
+                                                        const QString& output) {
+  // Verified in LuaBindingsDispatchers.cpp: workspace.move takes workspace and monitor.
+  // There is no follow parameter. Move a non-visible workspace to avoid following it.
+  return QStringLiteral("hl.dispatch(hl.dsp.workspace.move({ workspace = %1, monitor = %2 }))")
+      .arg(luaString(workspace), luaString(output));
+}
+
+bool HyprlandGameModeCompositor::moveWorkspace(const QString& workspace, const QString& output,
+                                               QString* error) {
+  GameModeDesktopFocus before;
+  if (workspace.isEmpty() || output.isEmpty() || !desktopFocus(&before, error))
+    return false;
+  QString script = moveWorkspaceScript(workspace, output);
+  if (before.workspace != workspace) {
+    script += QStringLiteral("\nhl.dispatch(hl.dsp.focus({ monitor = %1 }))")
+                  .arg(luaString(before.output));
+    script += QStringLiteral("\nhl.dispatch(hl.dsp.focus({ workspace = %1 }))")
+                  .arg(luaString(before.workspace));
+    if (!before.address.isEmpty())
+      script += QStringLiteral("\nhl.dispatch(hl.dsp.focus({ window = %1 }))")
+                    .arg(luaString(QStringLiteral("address:") + before.address));
+  }
+  if (!eval(script, error))
+    return false;
+  QByteArray json;
+  if (!run(QStringLiteral("hyprctl"), {"-j", "workspaces"}, &json)) {
+    setError(error, QStringLiteral("Workspace relocation could not be verified."));
+    return false;
+  }
+  const auto document = QJsonDocument::fromJson(json);
+  if (!document.isArray()) {
+    setError(error, QStringLiteral("Hyprland returned invalid workspace placement."));
+    return false;
+  }
+  for (const auto& value : document.array()) {
+    const auto entry = value.toObject();
+    if (workspaceSelector(entry) == workspace && entry.value("monitor").toString() == output)
+      return true;
+  }
+  setError(error, QStringLiteral("The game workspace did not reach the requested display."));
+  return false;
+}
+
+bool PactlGameModeAudio::parseStreams(const QByteArray& json, QVector<GameModeStream>* streams,
+                                      QString* error) {
+  const auto document = QJsonDocument::fromJson(json);
+  if (!streams || !document.isArray()) {
+    setError(error, QStringLiteral("pactl returned invalid sink inputs."));
+    return false;
+  }
+  streams->clear();
+  for (const auto& value : document.array()) {
+    const auto entry = value.toObject();
+    const auto properties = entry.value("properties").toObject();
+    bool indexOk = false;
+    const qulonglong index = entry.value("index").toVariant().toString().toULongLong(&indexOk);
+    if (!indexOk || index > std::numeric_limits<quint32>::max()) {
+      setError(error, QStringLiteral("pactl returned an invalid sink input index."));
+      return false;
+    }
+    GameModeStream stream;
+    stream.index = static_cast<quint32>(index);
+    stream.process.pid = properties.value("application.process.id").toVariant().toLongLong();
+    stream.token = properties.value("object.serial").toVariant().toString();
+    stream.muted = entry.value("mute").toBool();
+    streams->append(stream);
+  }
+  return true;
+}
+
+bool PactlGameModeAudio::streams(QVector<GameModeStream>* streams, QString* error) {
+  QByteArray json;
+  if (!run(QStringLiteral("pactl"), {"-f", "json", "list", "sink-inputs"}, &json)) {
+    setError(error, QStringLiteral("pactl could not inspect game audio streams."));
+    return false;
+  }
+  if (!parseStreams(json, streams, error))
+    return false;
+  const auto processes = ProcFs::listProcesses(true);
+  for (auto& stream : *streams) {
+    for (const auto& process : processes) {
+      if (process.pid == stream.process.pid &&
+          ProcFs::processAlive(process.pid, process.procStart)) {
+        stream.process.procStart = process.procStart;
+        stream.process.steamAppId = process.steamAppId;
+        stream.process.winePrefix = process.winePrefix;
+        stream.process.flatpakAppId = process.flatpakAppId;
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+bool PactlGameModeAudio::setStreamMuted(const GameModeStream& stream, bool muted, QString* error) {
+  QVector<GameModeStream> current;
+  if (!stream.process.valid() || stream.token.isEmpty() || !streams(&current, error))
+    return false;
+  for (const auto& candidate : current) {
+    if (!candidate.sameStream(stream))
+      continue;
+    // Revalidate process start immediately before the indexed write.
+    if (!ProcFs::processAlive(stream.process.pid, stream.process.procStart))
+      return false;
+    if (run(QStringLiteral("pactl"),
+            {"set-sink-input-mute", QString::number(stream.index), muted ? "1" : "0"}))
+      return true;
+    setError(error, QStringLiteral("pactl could not change the game's mute state."));
+    return false;
+  }
+  setError(error, QStringLiteral("The game audio stream changed before muting."));
+  return false;
 }

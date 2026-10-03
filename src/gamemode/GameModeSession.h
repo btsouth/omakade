@@ -6,6 +6,7 @@
 #include <QFutureWatcher>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QVariantList>
 #include <QVector>
 
@@ -20,6 +21,8 @@ class GameModeSession final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool active READ active NOTIFY stateChanged)
   Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
+  Q_PROPERTY(bool parked READ parked NOTIFY stateChanged)
+  Q_PROPERTY(bool hasSession READ hasSession NOTIFY stateChanged)
   Q_PROPERTY(QString statusText READ statusText NOTIFY stateChanged)
   // False when the compositor cannot be managed, which leaves only the current display.
   Q_PROPERTY(bool displayManaged READ displayManaged NOTIFY devicesChanged)
@@ -51,6 +54,9 @@ public:
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] bool busy() const { return m_busy; }
+  [[nodiscard]] bool parked() const { return m_parked; }
+  [[nodiscard]] bool hasSession() const { return m_active || m_parked; }
+  void setTemporaryWindow(bool temporary);
   [[nodiscard]] QString statusText() const { return m_statusText; }
   [[nodiscard]] bool displayManaged() const { return m_displayManaged; }
   [[nodiscard]] bool soundManaged() const { return m_soundManaged; }
@@ -81,6 +87,8 @@ public:
   Q_INVOKABLE void selectSound(int index);
   Q_INVOKABLE void enter();
   Q_INVOKABLE void exit();
+  Q_INVOKABLE void park();
+  Q_INVOKABLE void focusGame();
   Q_INVOKABLE void toggle();
   // Gives Omakade's window keyboard focus through the compositor. A game that has focus
   // keeps it otherwise, and the Game Mode controls would open behind it.
@@ -99,10 +107,16 @@ signals:
   void stateChanged();
   void devicesChanged();
   // The desktop is ready: the window should enter Couch Mode now.
+  void entering();
   void entered();
   // The window should leave Couch Mode; the desktop is put back right after.
-  void leaving();
+  void leaving(bool retainNavigation);
   void exited();
+  // Capture navigation on the GUI thread before any park effects or window unmap.
+  void parking();
+  void parkedOnDesktop();
+  void resumed();
+  void windowVisibilityRequested(bool visible);
   // The placeholder window that keeps Omakade's place in the desktop layout should be
   // shown or hidden. Emitted from the worker thread.
   void placeholderRequested(bool visible);
@@ -128,6 +142,8 @@ private:
   void finishRefresh();
   void finishChange();
   void startChange();
+  void refreshParked();
+  enum class Change { Enter, Exit, Park, Resume, RefreshParked };
   void screenRemoved(QScreen* screen);
   [[nodiscard]] int currentDisplayIndex() const;
   [[nodiscard]] int currentSoundIndex() const;
@@ -152,7 +168,13 @@ private:
   bool m_notificationsManaged = false;
   bool m_active = false;
   bool m_busy = false;
-  bool m_entering = false;
+  bool m_parked = false;
+  bool m_parkUiLeft = false;
+  QString m_lastParkError;
+  Change m_change = Change::Enter;
+  bool m_resumeAfterRefresh = false;
+  bool m_exitAfterChange = false;
+  QTimer m_parkTimer;
   bool m_recoveryChecked = false;
   bool m_refreshPending = false;
   bool m_changePending = false;

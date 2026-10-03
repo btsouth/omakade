@@ -56,12 +56,12 @@ import QtQuick.Layouts
             })
         }
         // Games that would be left running on a display Game Mode is about to give back.
-        readonly property int gameModeLiveGames: GameMode.active && typeof GameStop !== "undefined" && GameStop
+        readonly property int gameModeLiveGames: GameMode.hasSession && typeof GameStop !== "undefined" && GameStop
             ? GameStop.runningGames.length : 0
         function refreshGameMode() {
             GameMode.refresh()
             GameModeShortcut.refresh()
-            if (GameMode.active && typeof GameStop !== "undefined" && GameStop)
+            if (GameMode.hasSession && typeof GameStop !== "undefined" && GameStop)
                 GameStop.refreshLiveGames()
         }
         required property var host
@@ -1412,7 +1412,7 @@ import QtQuick.Layouts
                     spacing: 14
                     visible: settingsOverlay.section === 3
                 Text { Layout.fillWidth: true; text: Controller.connected ? "CONTROLLER · " + Controller.name : "CONTROLLER · NOT CONNECTED"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 12 * settingsPanel.uiScale }
-                GlassButton { compact: true; enabled: !GameMode.active; text: host.couchMode ? "SWITCH TO DESKTOP" : "SWITCH TO COUCH MODE"; onClicked: host.setCouchMode(!host.couchMode) }
+                GlassButton { compact: true; enabled: !GameMode.hasSession; text: host.couchMode ? "SWITCH TO DESKTOP" : "SWITCH TO COUCH MODE"; onClicked: host.setCouchMode(!host.couchMode) }
                 Text {
                     Layout.topMargin: 10
                     text: "GAME MODE"
@@ -1445,7 +1445,7 @@ import QtQuick.Layouts
                     model: GameMode.displayOptions
                     textRole: "label"
                     currentIndex: GameMode.displayIndex
-                    enabled: !GameMode.active && !GameMode.busy
+                    enabled: !GameMode.hasSession && !GameMode.busy
                     onActivated: index => GameMode.selectDisplay(index)
                     Accessible.name: "Game Mode display"
                 }
@@ -1474,7 +1474,7 @@ import QtQuick.Layouts
                     model: GameMode.soundOptions
                     textRole: "label"
                     currentIndex: GameMode.soundIndex
-                    enabled: !GameMode.active && !GameMode.busy
+                    enabled: !GameMode.hasSession && !GameMode.busy
                     onActivated: index => GameMode.selectSound(index)
                     Accessible.name: "Game Mode sound output"
                 }
@@ -1499,7 +1499,7 @@ import QtQuick.Layouts
                     GlassButton {
                         objectName: "gameModeNotificationsButton"
                         compact: true
-                        enabled: !GameMode.active && !GameMode.busy
+                        enabled: !GameMode.hasSession && !GameMode.busy
                         text: GameMode.silenceNotifications ? "SILENCED" : "UNCHANGED"
                         onClicked: GameMode.silenceNotifications = !GameMode.silenceNotifications
                     }
@@ -1547,7 +1547,7 @@ import QtQuick.Layouts
                     Layout.fillWidth: true
                     visible: text !== ""
                     text: settingsOverlay.gameModeLiveGames > 0
-                          ? "A game is still running. Stop it first, or it moves to your desktop when Game Mode ends."
+                          ? "A game is still running. Use Game Mode controls to return to your desktop or stop the game."
                           : GameMode.statusText
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
@@ -1561,13 +1561,21 @@ import QtQuick.Layouts
                         objectName: "gameModeButton"
                         compact: true
                         enabled: !GameMode.busy
-                        text: !GameMode.active ? "START GAME MODE"
+                        text: GameMode.parked ? "RESUME GAME MODE" : !GameMode.hasSession ? "START GAME MODE"
                               : "GAME MODE CONTROLS"
                         onClicked: {
                             host.diagnosticsOpen = false
                             if (GameMode.active) host.openGameModeControls()
                             else GameMode.enter()
                         }
+                    }
+                    GlassButton {
+                        objectName: "gameModeEndSessionButton"
+                        compact: true
+                        visible: GameMode.parked
+                        enabled: !GameMode.busy
+                        text: "GAME MODE CONTROLS"
+                        onClicked: host.openGameModeControls()
                     }
                     GlassButton {
                         objectName: "gameModeStopGamesButton"

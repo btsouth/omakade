@@ -12,12 +12,13 @@ Open **Settings → Controls** and look under **Game Mode**.
 
 - **Display** is where Couch Mode opens. **Current display** uses the display Omakade is
   already on. A display listed as **off until Game Mode** is turned on when Game Mode
-  starts and turned off again when it ends.
+  starts and turned off again when you return to the desktop or end the session.
 - **Sound** is the output used while Game Mode is on. **Keep current sound output** leaves
   sound alone.
 - **Notifications in Game Mode** silences Omarchy notifications for the session.
 - **Keyboard shortcut** adds Super + Ctrl + G, which Omarchy leaves free. It starts Game
-  Mode, and pressing it again leaves. If the key is already used for something else,
+  Mode, returns to the desktop when active, and resumes the same session on the next
+  press. If the key is already used for something else,
   Omakade says what and adds nothing.
 
 Choose **Start Game Mode**, or run:
@@ -33,23 +34,45 @@ That works whether or not Omakade is already open. The shortcut is one line in
 o.bind("SUPER + CTRL + G", "Game Mode", "omakade --game-mode-toggle")
 ```
 
-`omakade --game-mode-toggle` starts Game Mode, or leaves it when it is on. With a game
-still running, it opens the Game Mode controls over the game instead, so one key press
-never stops a game or leaves it behind. **Back to Game** closes them again, as does
-Escape or the controller's back button.
+`omakade --game-mode-toggle` starts Game Mode, returns to the desktop when active,
+and resumes the retained session on the next press. It works with or without a running
+game. Your details page, selection, navigation, expanded sections and scroll position
+stay in memory. Returning never opens the controls or stops a game.
 
-If Game Mode launched Omakade, leaving closes it after restoring your desktop. If
-Omakade was already open, leaving returns it to its previous window and layout.
+If Game Mode launched Omakade, returning hides its window while keeping the same
+session and IPC owner. If Omakade was already open, it returns to its previous window,
+layout and mode. Resuming uses that same window and library. Reopening Omakade while
+parked resumes the session too. Each completed return/resume cycle captures the current
+desktop and the warm window's current home and compositor mode.
 
 The desktop entry also carries a **Game Mode** action for launchers that show actions.
 
-To leave, press the shortcut again, or press Start on the controller or F11 on the
-keyboard while Omakade is in front and choose **Leave Game Mode** in the compact
-controls. While a game is in front, the shortcut is the way in: Start belongs to the
-game. **Back to Library**
-keeps the session running. When a game is running, the controls offer **Stop Games and
-Leave…** with a separate confirmation, or **Leave with Games Running**. You can also run
-`omakade --game-mode-exit`. Closing Omakade leaves Game Mode too.
+Press Start on the controller or F11 on the keyboard while Omakade is in front to open
+the compact Game Mode controls. **Back to Library** keeps the session active, and
+**Back to Game** dismisses the overlay when it is over a game. Escape or the controller's
+back button dismisses the controls too. While a game has focus, Start belongs to the
+game. Bring Omakade to the foreground to use F11 or Start for its controls; the shortcut
+continues to return and resume directly.
+
+**Return to Desktop** always retains the complete session. Running games stay on their
+own workspace with only attributable game audio muted. The same shortcut resumes and
+focuses the game, or the retained library when no game is running. A game ending while
+you are away releases its game/audio records and keeps your library available.
+`omakade --game-mode-desktop` performs the same return action from a terminal.
+
+To end the session explicitly, choose **Stop Games and Leave…** and confirm the named
+running games. A failed stop keeps the session available. When no safe stop targets are
+available, choose **End Game Mode**; this restores desktop effects and releases the
+session without stopping untracked games. Settings offers **Resume Game Mode** and
+**Game Mode Controls** while parked, and display, sound and notification choices stay
+locked until the session ends. `omakade --game-mode-exit` ends it too, as does closing
+Omakade. Ending closes an Omakade instance launched just for Game Mode; a previously
+open instance remains open. Retention lasts only in the running process, so crash
+recovery restores effects and clears the interrupted session rather than reopening its UI.
+
+Games and emulators that pause when unfocused keep that behavior. Muting alone does
+not pause gameplay. If Omakade cannot identify or silence game audio safely, it keeps
+the game visible and explains why Return to Desktop could not complete.
 
 ## Keep a TV for games only
 
@@ -89,23 +112,31 @@ what was missing.
 
 ## If something interrupts it
 
-- **The display is unplugged or disabled.** Game Mode ends and sound goes back to the
+- **The display is unplugged or disabled while playing.** Game Mode ends and sound goes back to the
   previous output. Windows that were on the display move to another one, as Hyprland
-  does for any display that goes away.
+  does for any display that goes away. A parked session stays quiet if its configured
+  display cannot be restored; the shortcut reports the failure with a notification.
 - **Omakade crashes or is killed.** The changes are recorded in
   `~/.local/state/omakade/game-mode.json`. The next time Omakade starts, or when you run
   `omakade --game-mode-exit`, the display is turned off again and sound and notifications
   are put back.
+- **A parked game can no longer be kept quiet.** Omakade makes the game accessible,
+  restores its audio, and reports the failure. Recovery state remains recorded until
+  any pending desktop changes are restored.
 - **A game is still running when you leave.** The controls name running games and offer
   **Stop Games and Leave…**. A failed stop keeps Game Mode active. If you choose
-  **Leave with Games Running**, the game moves to the workspace Omakade returns to and
-  keeps running there. Its sound follows the desktop's output back.
+  **Return to Desktop**, the game stays on its own workspace with its audio muted. Your previous desktop
+  and focused window return. Super + Ctrl + G resumes the same session and focuses
+  the game, rather than opening a new library over it. Gameplay continues unless
+  the game or emulator supports pausing while unfocused.
 
 ## Limits
 
 - Choosing a display and the dedicated workspace need Hyprland with a Lua configuration,
   which is what Omarchy 4 ships. On other setups Game Mode uses the current display and
-  still handles sound.
+  still handles sound, but Return to Desktop is refused when safe game discovery and
+  desktop restoration are unavailable. Use End Game Mode or `--game-mode-exit` instead.
+  Library-only parking does not require game audio controls; parking a running game does.
 - Sound switching requires `pactl` (`libpulse` on Arch) and a running
   PulseAudio-compatible server, such as PipeWire with `pipewire-pulse`. Omarchy
   includes these. Without them, leave **Sound** at **Keep current sound output**.
@@ -158,14 +189,18 @@ physical display behavior, audible sound, or real game behavior. The following
 checks can also be driven automatically on a real machine; record physical
 observations separately:
 
-1. One display: start and leave Game Mode from Settings. The previous workspace and
-   window layout return exactly.
+1. One display: start Game Mode with no game, navigate to details and scroll, then
+   toggle to desktop and back three times. The same page, selection, focus and scroll
+   return; the previous desktop workspace and window layout return on each park.
+   End Game Mode explicitly and verify the journal and temporary owner are cleared.
 2. A second display that is normally on: Couch Mode opens there, and leaving restores the
    workspace it was showing and returns focus to the first display.
 3. A display that is disabled in `monitors.lua`: it turns on, and turns off when leaving.
 4. A chosen sound output: game audio plays there, and the previous output returns.
 5. Launch a Steam game, an emulator and one Heroic or Lutris game. Each opens on the
-   Game Mode display, and Couch Mode has focus again after quitting.
+   Game Mode display. Return and resume with the shortcut, then return and quit the
+   game while parked. The library session remains and resumes without dead game/audio
+   records. Stop Games and Leave still asks for confirmation and ends the session.
 6. Kill Omakade during Game Mode, then start it again. The display, sound and
    notifications are put back.
 7. Unplug or disable the display during Game Mode. Game Mode ends and sound returns.
