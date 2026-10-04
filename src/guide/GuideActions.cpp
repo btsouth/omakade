@@ -100,8 +100,8 @@ QJsonArray Tree::identities() const {
   for (const auto& e : m_entries) ids.append(QJsonObject{{"pid", e.pid}, {"start", e.start}});
   return ids;
 }
-void Tree::signal(int number) {
-  for (auto it = m_entries.crbegin(); it != m_entries.crend(); ++it) ::syscall(SYS_pidfd_send_signal, it->fd, number, nullptr, 0);
+void Tree::signal(int number, qint64 exceptPid) {
+  for (auto it = m_entries.crbegin(); it != m_entries.crend(); ++it) if (it->pid != exceptPid) ::syscall(SYS_pidfd_send_signal, it->fd, number, nullptr, 0);
 }
 bool Tree::alive() const {
   for (const auto& e : m_entries) if (::syscall(SYS_pidfd_send_signal, e.fd, 0, nullptr, 0) == 0) {

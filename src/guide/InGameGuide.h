@@ -60,6 +60,7 @@ private:
   QVariantMap m_session, m_metadata, m_quitSession;
   QString m_output, m_family = "keyboard", m_token, m_socketPath;
   GuideInput m_input;
+  int m_testPadWriter = -1;
   QProcess m_guard;
   QLocalSocket m_mango;
   GuideActions::Tree m_resumeTree, m_quitTree;

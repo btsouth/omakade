@@ -2,7 +2,8 @@
 #include "guide/GuideActions.h"
 #include "guide/InGameGuide.h"
 #include <QTemporaryDir>
-#include <sys/eventfd.h>
+#include <fcntl.h>
+#include "tracking/PlaySessionStore.h"
 #include "guide/GuidePayload.h"
 #include "tracking/ProcFs.h"
 
@@ -32,6 +33,8 @@ private slots:
   void notesStorage();
   void couchScale();
   void perDeviceGrab();
+  void identifyOnGrabbedDevice();
+  void trackedQuit();
   void guardDeathResume();
   void quitEscalation();
   void guardDiesDuringPause();
@@ -237,14 +240,108 @@ void InGameGuideTests::couchScale() {
   QCOMPARE(scale.call({"2", 100}).toNumber(), 2.0);
 }
 void InGameGuideTests::perDeviceGrab() {
-  GuideInput input; int opens = 0;
-  input.setAccess({[] { return QList<GuideListener::Controller>{{"event0", "a", "Busy pad", false}, {"event1", "b", "Xbox pad", false}}; },
-    [&opens](const QString&) { return opens++ == 0 ? -1 : ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC); }, [](int) { return true; }});
+  GuideInput input;
+  int writer = -1, ungrabs = 0;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{{"event0", "a", "Busy pad", false}, {"event1", "b", "Unavailable pad", false}, {"event2", "c", "Xbox pad", false}}; };
+  access.open = [&writer](const QString& node) {
+    if (node == "event1") return -1;
+    int pipe[2];
+    if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+    if (node == "event0") writer = pipe[1];
+    else ::close(pipe[1]);
+    return pipe[0];
+  };
+  int grabs = 0;
+  access.grab = [&grabs](int) { return ++grabs % 2 == 0; };
+  access.ungrab = [&ungrabs](int) { ++ungrabs; };
+  input.setAccess(access);
   QString family, warning;
-  QVERIFY(input.grab("event0", &family, &warning)); QCOMPARE(input.grabbedCount(), size_t(1));
+  QSignalSpy actions(&input, &GuideInput::action);
+  QVERIFY(input.grab("event0", &family, &warning));
+  QCOMPARE(input.deviceCount(), size_t(2)); QCOMPARE(input.grabbedCount(), size_t(1));
   QVERIFY(warning.contains("Busy pad may still reach the game"));
-  input.release(); QCOMPARE(input.grabbedCount(), size_t(0));
+  QVERIFY(warning.contains("Unavailable pad could not be opened"));
+  input_event event{}; event.type = EV_KEY; event.code = BTN_DPAD_DOWN; event.value = 1;
+  QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
+  QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
+  input.release(); ::close(writer);
+  QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(ungrabs, 1);
+  QVERIFY(input.grab("event-missing", &family, &warning));
+  QVERIFY(warning.contains("Busy pad may still reach the game"));
+  QVERIFY(warning.contains("Unavailable pad could not be opened"));
+  QVERIFY(warning.contains("controller that opened the guide disconnected"));
+  input.release(); ::close(writer); QCOMPARE(ungrabs, 2);
 }
+
+void InGameGuideTests::identifyOnGrabbedDevice() {
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  int fd = -1, writer = -1, opens = 0, uploads = 0, plays = 0, erases = 0;
+  bool supported = true, canUpload = true, canPlay = true;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{{"event0", "a", "Xbox pad", false}}; };
+  access.open = [&](const QString&) { int pipe[2]; if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1; ++opens; writer = pipe[1]; return fd = pipe[0]; };
+  access.grab = [&](int grabbed) { return grabbed == fd; };
+  access.supportsRumble = [&](int device) { return device == fd && supported; };
+  access.upload = [&](int device, ff_effect* effect) {
+    if (device != fd || effect->type != FF_RUMBLE || effect->id != -1 || effect->replay.length != 500 || effect->u.rumble.strong_magnitude != 0x7000) return false;
+    ++uploads; effect->id = 7; return canUpload;
+  };
+  access.play = [&](int device, int effect) { if (device != fd || effect != 7) return false; ++plays; return canPlay; };
+  access.erase = [&](int device, int effect) { if (device == fd && effect == 7) ++erases; };
+  guide.m_input.setAccess(access);
+  QString family, error;
+  QVERIFY(guide.m_input.grab("event0", &family, &error)); QCOMPARE(guide.m_input.grabbedCount(), size_t(1));
+  guide.m_opened = true;
+  guide.message({{"action", "identify"}, {"value", "/dev/input/event0"}});
+  QCOMPARE(opens, 1); QCOMPARE(uploads, 1); QCOMPARE(plays, 1);
+  QTRY_COMPARE_WITH_TIMEOUT(erases, 1, 1000);
+  supported = false;
+  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("no rumble support"));
+  QCOMPARE(uploads, 1); QCOMPARE(plays, 1);
+  supported = true; canUpload = false;
+  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("upload"));
+  canUpload = true; canPlay = false;
+  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("play")); QCOMPARE(erases, 2);
+  canPlay = true;
+  QVERIFY(guide.m_input.identify("/dev/input/event0", &error));
+  guide.m_input.release(); QCOMPARE(erases, 3); ::close(writer);
+  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("no longer connected"));
+}
+
+void InGameGuideTests::trackedQuit() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  QProcess game;
+  game.start("python3", {"-u", "-c", "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready'); time.sleep(30)"});
+  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead());
+  const auto pid = game.processId();
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == pid) start = process.procStart;
+  QVERIFY(start > 0);
+  const auto path = directory.filePath("sessions.sqlite3");
+  {
+    QSqlDatabase database;
+    const QString connection = "guide-tracked-quit";
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QVERIFY(SessionDatabase::beginSession(database, "tracked-game", "Manual", QDateTime::currentSecsSinceEpoch(), pid, start) > 0);
+    database.close(); database = {}; QSqlDatabase::removeDatabase(connection);
+  }
+  PlaySessionStore store(path); store.refreshNowPlaying(); QCOMPARE(store.nowPlaying().size(), 1);
+  InGameGuide guide(&store, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_opened = true; guide.m_token = "tracked";
+  guide.m_session = store.nowPlaying().first().toMap();
+  guide.message({{"action", "quit-confirmed"}});
+  QCOMPARE(store.nowPlaying().size(), 1);
+  QVERIFY(store.nowPlaying().first().toMap().value("stopping").toBool());
+  QVERIFY(!store.nowPlaying().first().toMap().value("forceReady").toBool());
+  QVERIFY(!guide.m_forceReady);
+  guide.message({{"action", "force-quit"}}); QVERIFY(!game.waitForFinished(50));
+  // The existing original-game test waits for the real five-second gate.
+  guide.m_forceReady = true;
+  guide.message({{"action", "force-quit"}}); QVERIFY(game.waitForFinished());
+  store.refreshNowPlaying(); QVERIFY(store.nowPlaying().isEmpty());
+}
+
 void InGameGuideTests::guardDeathResume() {
   QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
   qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;

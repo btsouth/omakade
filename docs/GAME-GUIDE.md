@@ -19,7 +19,8 @@ Guide-capable controller evdev nodes, including virtual pads, and translates the
 physical button positions, hats and calibrated left stick into guide actions. The
 keyboard uses the same actions. B, Guide and Start close the guide; LB/RB change tabs.
 Grabs are per device. A pad that cannot be grabbed does not block opening; the guide
-warns that the named pad may still reach the game. A disconnected reader or a dropped input report closes
+keeps reading any pad it can open and warns that the named pad may still reach the game.
+A pad it cannot open is skipped with a warning. A disconnected reader or a dropped input report closes
 and releases every grab. Omakade's SDL navigation remains in the library, while guide
 navigation uses the separate evdev translator.
 
@@ -105,7 +106,8 @@ is no on-screen keyboard. Notes are limited to 8 KiB and writes are atomic.
 
 Quit resumes first, then sends SIGTERM to the game's pinned process tree. After
 five seconds, a surviving tree enables explicit Force quit with SIGKILL. The guide
-stays open during that grace period. Generic mode uses Hyprland's close-window
+stays open during that grace period. Tracked games also use the play-session store's
+stop path so the library reflects the pending stop. Generic mode uses Hyprland's close-window
 request, then checks the original window and process identity before force quit.
 Library and Desktop resume the game and leave the guide. Steam handoff resumes,
 closes, restores the known window and sends Shift+Tab after 250 ms.
@@ -132,6 +134,10 @@ on the next launch, as the UI says. No external FPS route was verified.
 Sources: [socket implementation](https://github.com/flightlessmango/MangoHud/blob/master/src/control.cpp),
 [normal socket client](https://github.com/flightlessmango/MangoHud/blob/master/control/src/control/__init__.py),
 [mangoapp client](https://github.com/flightlessmango/MangoHud/blob/master/src/app/control.c).
+
+Controller identify uses a 500 ms rumble effect on Omakade's existing evdev fd
+while the native guide is open. Generic mode uses the plugin helper. Controllers
+without rumble support report an error. Physical rumble requires hardware testing.
 
 See `omarchy-plugin/README.md` for capture paths, replay, audio, batteries, settings
 and couch scale. Those features work independently of Omakade.

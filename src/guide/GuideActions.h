@@ -20,7 +20,7 @@ public:
   bool pin(qint64 pid, qint64 start);
   bool adopt(const QJsonArray& identities);
   QJsonArray identities() const;
-  void signal(int number);
+  void signal(int number, qint64 exceptPid = -1);
   bool alive() const;
   void clear();
 private:

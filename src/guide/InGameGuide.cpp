@@ -21,6 +21,8 @@
 #include <QSaveFile>
 #include <QElapsedTimer>
 #include <csignal>
+#include <fcntl.h>
+#include <linux/input.h>
 #include <QStandardPaths>
 #include <QUuid>
 #include <unistd.h>
@@ -103,13 +105,19 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
   });
 }
 
-InGameGuide::~InGameGuide() { finishClose(false); }
+InGameGuide::~InGameGuide() { finishClose(false); if (m_testPadWriter >= 0) ::close(m_testPadWriter); }
 
 void InGameGuide::setInjectedInputEnabled(bool enabled) {
   m_injectedInput = enabled;
   if (enabled && qEnvironmentVariableIsSet("OMAKADE_GUIDE_TEST_UNGRABBABLE"))
     m_input.setAccess({[] { return QList<GuideListener::Controller>{{"event-test", "test-pad", "Test pad", false}}; },
-        [](const QString&) { errno = EBUSY; return -1; }, [](int) { return false; }});
+        [this](const QString&) {
+          int pipe[2];
+          if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+          if (m_testPadWriter >= 0) ::close(m_testPadWriter);
+          m_testPadWriter = pipe[1];
+          return pipe[0];
+        }, [](int) { return false; }});
 }
 
 void InGameGuide::refreshGame() {
@@ -356,7 +364,15 @@ void InGameGuide::message(const QJsonObject& data) {
     shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
   } else if (action == "inject" && m_injectedInput && m_opened) {
     const auto event = data.value("value").toObject();
-    m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
+    if (m_testPadWriter >= 0) {
+      input_event raw{};
+      raw.type = event.value("type").toInt(); raw.code = event.value("code").toInt(); raw.value = event.value("value").toInt();
+      ::write(m_testPadWriter, &raw, sizeof(raw));
+    } else m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
+  } else if (action == "identify" && m_opened) {
+    QString error;
+    const bool ok = m_input.identify(data.value("value").toString(), &error);
+    toast(ok ? "Controller identified" : "Controller could not be identified", error);
   } else if (action == "desktop" || action == "library") {
     m_restoreFocus = false;
     close();
@@ -397,11 +413,15 @@ void InGameGuide::message(const QJsonObject& data) {
       if (!m_forceReady) return;
       if (ProcFs::processAlive(m_quitSession.value("pid").toLongLong(), m_quitSession.value("procStart").toLongLong()))
         m_quitTree.pin(m_quitSession.value("pid").toLongLong(), m_quitSession.value("procStart").toLongLong());
-      m_quitTree.signal(SIGKILL); close(); return;
+      const auto pid = m_quitSession.value("pid").toLongLong();
+      const bool stopped = m_sessions && m_sessions->forceStopSession(pid, m_quitSession.value("procStart").toLongLong());
+      m_quitTree.signal(SIGKILL, stopped ? pid : -1); close(); return;
     }
     if (!m_quitTree.pin(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) { toast("Game is no longer running"); return; }
     m_quitSession = m_session;
-    m_quitTree.signal(SIGTERM);
+    const auto pid = m_quitSession.value("pid").toLongLong();
+    const bool stopped = m_sessions && m_sessions->stopSession(pid, m_quitSession.value("procStart").toLongLong());
+    m_quitTree.signal(SIGTERM, stopped ? pid : -1);
     const auto token = m_token;
     QTimer::singleShot(5000, this, [this, token] {
       if (token != m_token) return;

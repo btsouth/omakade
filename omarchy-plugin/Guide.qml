@@ -289,6 +289,7 @@ Item {
       }
       if (liveMedia.act(name, arg) || liveCapture.act(name, arg) || liveSystem.act(name, arg)) return
       if (name === "identify" && arg) {
+        if (root.backend) { root.notify(name, arg); return }
         liveSystem.run(["python3", liveCapture.helper, "identify", arg], function(ok) { root.showToast({title: ok ? "Controller identified" : "Controller could not be identified"}) }); return
       }
       if (name === "pair") { root.close(); liveSystem.run(["omarchy-shell", "shell", "summon", "omarchy.bluetooth"]); return }
