@@ -34,6 +34,7 @@ private slots:
   void guardDeathResume();
   void quitEscalation();
   void guardDiesDuringPause();
+  void failedPinRetainsRecovery();
 };
 
 void InGameGuideTests::payloadUnknowns() {
@@ -254,6 +255,16 @@ void InGameGuideTests::guardDeathResume() {
   QTRY_VERIFY_WITH_TIMEOUT([&] { stat.seek(0); auto bytes = stat.readAll(); return bytes.mid(bytes.lastIndexOf(')') + 2, 1) != "T"; }(), 3000);
   game.terminate(); QVERIFY(game.waitForFinished());
 }
+void InGameGuideTests::failedPinRetainsRecovery() {
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  GuideActions::Tree recovery; QVERIFY(recovery.pin(game.processId(), start));
+  recovery.signal(SIGSTOP);
+  auto ids = recovery.identities(); ids.append(QJsonObject{{"pid", 1}, {"start", 1}});
+  QVERIFY(!recovery.adopt(ids)); QVERIFY(!recovery.identities().isEmpty()); recovery.signal(SIGCONT);
+  game.terminate(); QVERIFY(game.waitForFinished());
+}
+
 void InGameGuideTests::guardDiesDuringPause() {
   QProcess game; game.start("python3", {"-u", "-c", "import subprocess; child=subprocess.Popen(['sleep','30']); print(child.pid); child.wait()"});
   QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); const auto child = game.readAllStandardOutput().trimmed().toLongLong();

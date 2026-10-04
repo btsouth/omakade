@@ -50,20 +50,24 @@ QByteArray mangoVisibilityCommand(bool before, bool after) { return before == af
 Tree::~Tree() { clear(); }
 void Tree::clear() { for (const auto& e : m_entries) ::close(e.fd); m_entries.clear(); }
 bool Tree::adopt(const QJsonArray& identities) {
-  clear();
+  std::vector<Entry> next;
+  const auto refuse = [&next] { for (const auto& e : next) ::close(e.fd); return false; };
   for (const auto& value : identities) {
     const auto e = value.toObject();
     const auto pid = e.value("pid").toInteger(), start = e.value("start").toInteger();
-    if (pid <= 1 || pid == ::getpid() || start <= 0) { clear(); return false; }
+    if (pid <= 1 || pid == ::getpid() || start <= 0) return refuse();
     const int fd = ::syscall(SYS_pidfd_open, pid, 0);
     QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
     if (fd < 0 || QFileInfo(stat).ownerId() != ::getuid() || !ProcFs::processAlive(pid, start)) {
       if (fd >= 0) ::close(fd);
-      clear(); return false;
+      return refuse();
     }
-    m_entries.push_back({pid, start, fd});
+    next.push_back({pid, start, fd});
   }
-  return !m_entries.empty();
+  if (next.empty()) return false;
+  // A failed extension must retain the already pinned recovery tree.
+  clear(); m_entries = std::move(next);
+  return true;
 }
 bool Tree::pin(qint64 pid, qint64 start) {
   if (!ProcFs::processAlive(pid, start)) return false;

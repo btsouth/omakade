@@ -82,6 +82,10 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
   connect(&m_input, &GuideInput::lost, this, &InGameGuide::close);
   connect(&m_input, &GuideInput::action, this, [this](const QString& action, const QString& family) {
     if (!m_opened && !m_opening) return;
+    if (m_opening) {
+      if (action == "b" || action == "guide" || action == "start") close();
+      return;
+    }
     if (m_family != family) {
       m_family = family;
       shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
