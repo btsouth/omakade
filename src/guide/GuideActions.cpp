@@ -73,6 +73,12 @@ bool Tree::pin(qint64 pid, qint64 start) {
   if (!ProcFs::processAlive(pid, start)) return false;
   QJsonArray ids{QJsonObject{{"pid", pid}, {"start", start}}};
   QSet<qint64> selected{pid};
+  // Keep pinned descendants even if they were reparented during graceful quit.
+  for (const auto& entry : m_entries) {
+    if (selected.contains(entry.pid) || !ProcFs::processAlive(entry.pid, entry.start)) continue;
+    selected.insert(entry.pid);
+    ids.append(QJsonObject{{"pid", entry.pid}, {"start", entry.start}});
+  }
   const auto processes = ProcFs::listProcesses();
   for (int pass = 0; pass < 32; ++pass) {
     bool added = false;

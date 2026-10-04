@@ -282,12 +282,17 @@ void InGameGuideTests::guardDiesDuringPause() {
 }
 
 void InGameGuideTests::quitEscalation() {
-  QProcess game; game.start("python3", {"-u", "-c", "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready'); time.sleep(30)"});
+  QProcess game; game.start("python3", {"-u", "-c", "import signal,time,subprocess; children=[]; signal.signal(signal.SIGTERM,lambda *args: (children.append(subprocess.Popen(['sleep','30'])),print(children[-1].pid))); print('ready'); time.sleep(30)"});
   QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); qint64 start = -1;
   for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
   GuideActions::Tree tree; QVERIFY(!tree.pin(game.processId(), start + 1)); QVERIFY(tree.pin(game.processId(), start));
-  tree.signal(SIGTERM); QVERIFY(!game.waitForFinished(100)); QVERIFY(tree.alive());
-  tree.signal(SIGKILL); QVERIFY(game.waitForFinished()); QVERIFY(!tree.alive());
+  tree.signal(SIGTERM); QVERIFY(game.waitForReadyRead(1000));
+  const auto child = game.readAllStandardOutput().split('\n');
+  qint64 childPid = 0; for (const auto& line : child) if (line.toLongLong() > 1) childPid = line.toLongLong();
+  QVERIFY(childPid > 1); QVERIFY(!game.waitForFinished(100)); QVERIFY(tree.alive());
+  QVERIFY(tree.pin(game.processId(), start)); QVERIFY(tree.identities().size() >= 2);
+  tree.signal(SIGKILL); QVERIFY(game.waitForFinished());
+  QTRY_VERIFY(!tree.alive());
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

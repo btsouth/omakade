@@ -359,8 +359,10 @@ void InGameGuide::message(const QJsonObject& data) {
   } else if (action == "desktop" || action == "library") {
     m_restoreFocus = false;
     close();
-    if (action == "desktop" && m_gameMode) m_gameMode->park();
-    else emit libraryRequested();
+    if (action == "desktop") {
+      if (m_gameMode && m_gameMode->active()) m_gameMode->park();
+      else QTimer::singleShot(150, this, [] { QProcess::startDetached("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"}); });
+    } else emit libraryRequested();
   } else if (action == "backup" && m_opened && !m_session.value("saveContext").toMap().isEmpty()) {
     const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
     const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
@@ -392,6 +394,8 @@ void InGameGuide::message(const QJsonObject& data) {
     stopGuard();
     if (action == "force-quit") {
       if (!m_forceReady) return;
+      if (ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong()))
+        m_quitTree.pin(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong());
       m_quitTree.signal(SIGKILL); close(); return;
     }
     if (!m_quitTree.pin(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) { toast("Game is no longer running"); return; }
