@@ -285,7 +285,7 @@ Item {
       if (liveMedia.act(name, arg) || liveCapture.act(name, arg) || liveSystem.act(name, arg)) return
       if (name === "pair") { root.close(); liveSystem.run(["omarchy-shell", "shell", "summon", "omarchy.bluetooth"]); return }
       if (root.backend && ["pause-while-open", "backup", "desktop", "library", "steam-overlay", "hud", "limit", "enable-mangohud"].indexOf(name) >= 0) { root.notify(name, arg); return }
-      if (name === "desktop") { root.close(); liveSystem.run(["hyprctl", "dispatch", "workspace", "empty"]); return }
+      if (name === "desktop") { root.close(); liveSystem.hypr('hl.dsp.focus({workspace="empty"})', ["workspace", "empty"]); return }
       if (name === "library") { root.close(); liveSystem.run(["omakade"]); return }
       if (name === "enable-mangohud") { root.showToast({title: "MangoHud setup", detail: "Install MangoHud and add MANGOHUD=1 to the game's launch environment"}); return }
       root.showToast({title: "Control unavailable", detail: "The required device or service is not connected"})
@@ -351,7 +351,7 @@ Item {
     liveSystem.run(["python3", "-c", "import sys; s=open('/proc/%s/stat'%sys.argv[1]).read(); print(s[s.rfind(')')+2:].split()[19])", String(window.pid)], function(ok, start) {
       if (!ok) return
       var w = Object.assign({}, root.genericWindow); w.procStart = start; root.genericWindow = w
-      liveSystem.run(["hyprctl", "dispatch", "closewindow", "address:" + w.address])
+      liveSystem.hypr("hl.dsp.window.close({window=" + JSON.stringify("address:" + w.address) + "})", ["closewindow", "address:" + w.address])
       genericQuitTimer.restart()
     })
   }

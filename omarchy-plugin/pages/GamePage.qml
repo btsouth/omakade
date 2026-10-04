@@ -135,7 +135,7 @@ PageRhythm {
 
   bottomBlock: Action {
     id: quit
-    visible: root.hasGame || !!root.d.window.address
+    visible: root.hasGame || !!(root.d.window || {}).address
     g: root.g; width: parent.width; height: root.g.s(54)
     icon: root.g.icon.power; danger: true
     title: root.game.forceReady ? "Force quit game" : "Quit game"; trailing: "Asks first"

@@ -737,7 +737,7 @@ LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& install
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
-  m_launchIdentity = {{"source", source}, {"appId", id}, {"path", installPath}};
+  m_launchIdentity = {{"source", source}, {"appId", id}, {"path", source == "Manual" ? id : installPath}};
   const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
           .contains(source))

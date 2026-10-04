@@ -32,7 +32,7 @@ public:
   Q_INVOKABLE bool toggle(const QString& node = {});
   Q_INVOKABLE void close();
   // Only enabled explicitly in isolated acceptance runs, through the authenticated socket.
-  void setInjectedInputEnabled(bool enabled) { m_injectedInput = enabled; }
+  void setInjectedInputEnabled(bool enabled);
 signals:
   void changed();
   void libraryRequested();

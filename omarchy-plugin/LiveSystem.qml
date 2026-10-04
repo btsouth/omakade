@@ -25,6 +25,12 @@ Item {
       onExited: function(code, status) { result(code === 0 && status === 0, output.trim()); destroy() }
     }
   }
+  function hypr(expression, legacy, done) {
+    run(["hyprctl", "dispatch", expression], function(ok, text) {
+      if (ok && !/^error:/i.test(text)) { if (done) done(true); return }
+      run(["hyprctl", "dispatch"].concat(legacy), function(success, reply) { if (done) done(success && !/^error:/i.test(reply)) })
+    })
+  }
   function set(key, value) {
     var copy = Object.assign({}, root.system); copy[key] = value; root.system = copy
   }

@@ -7,9 +7,7 @@ overlay plugin built from the shell's own kit (`qs.Commons`, `qs.Ui`), so it
 follows the active theme's colours, font, corner radius, spacing and popup
 border.
 
-Status: design stage. Every page runs on fixture data; nothing controls a game,
-capture, audio or hardware yet. Omakade's service will supply live data and
-controller input.
+Live actions are connected. Fixture payloads remain available for isolated layout previews.
 
 ## Input
 
@@ -43,3 +41,35 @@ The script shows a still "game" fullscreen, then summons the guide with
 `tools/guide-overlay-preview/fixtures/lantern-road.json` on each page. Payload
 keys: `fixture`, `tab`, `pad` (`xbox`, `playstation`, `nintendo`, `deck`,
 `keyboard`), `scale`, `confirm`, `toast`, `audit` (logs the contrast audit).
+
+## Live actions
+
+The plugin owns capture, audio, media, battery status and quick settings. It works
+without Omakade. Omakade adds the game card, notes, safe pause and quit, Steam
+handoff, known emulator save backups and MangoHud launch setup.
+
+Screenshot saves the frame taken before the guide appeared, on the game's output.
+It uses Omasnap's output directory and filename settings, including the Omarchy
+and Omasnap environment overrides. Recording and replay use separate plugin-owned
+gpu-screen-recorder processes on that output. Replay starts off; choose 30, 60 or
+120 seconds and turn it on before saving a replay. REC and REPLAY show while their
+processes run. Capture errors produce an error toast. Recent captures come from
+the real screenshot and recording directories. The recording folder opens with
+the desktop handler.
+
+Sound uses Quickshell PipeWire for output volume, output and input selection and
+microphone mute. MPRIS supplies artwork and playback controls. UPower supplies
+battery readings; controller identity without a battery comes from sysfs. Missing
+readings stay absent. Low battery alerts fire once at 20% and once at 10% for each
+controller per shell session. Closed-guide alerts use desktop notifications and
+respect DND. Identification is hidden because the generic services provide no
+verified rumble or LED control. Pair opens Omarchy's Bluetooth panel.
+
+Couch scale adds Auto, 1x, 1.25x, 1.5x and 2x to the shell's size tokens. Auto uses
+the game's output physical width: at least 800 mm selects 1.5x, at most 200 mm
+selects 1.25x, and other or unknown widths select 1x. Capture sound, replay length,
+button prompts and couch scale are stored in `$XDG_STATE_HOME/omarchy/guide/settings.json`.
+The replay process itself is never restarted automatically after shell restart.
+
+The fixture preview remains separate from live state. Its example capture files,
+FPS and devices are for rendering only.

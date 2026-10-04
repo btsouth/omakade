@@ -1,4 +1,4 @@
-# In-game guide (I1)
+# In-game guide
 
 The guide is the `omakade.guide` Omarchy shell overlay in `omarchy-plugin/`.
 Omakade owns game discovery, controller input and pause state. The shell renders the
@@ -18,7 +18,8 @@ policy. It forwards the originating event node. While open, Omakade grabs all de
 Guide-capable controller evdev nodes, including virtual pads, and translates their
 physical button positions, hats and calibrated left stick into guide actions. The
 keyboard uses the same actions. B, Guide and Start close the guide; LB/RB change tabs.
-A failed grab refuses to open. A disconnected reader or a dropped input report closes
+Grabs are per device. A pad that cannot be grabbed does not block opening; the guide
+warns that the named pad may still reach the game. A disconnected reader or a dropped input report closes
 and releases every grab. Omakade's SDL navigation remains in the library, while guide
 navigation uses the separate evdev translator.
 
@@ -41,8 +42,9 @@ process start identities, stops parents before descendants, and resumes only pro
 it stopped. Its stdin is owned by Omakade: close, normal exit, a crash or SIGKILL of
 Omakade closes the pipe and sends SIGCONT. Controller grabs belong to Omakade's file
 descriptors and are released by RAII or process death. Processes already stopped by
-another owner are never claimed. The guard itself being forcibly killed cannot run
-cleanup.
+another owner are never claimed. Before each stop, the guard reports the identity and waits for Omakade to pin it
+with a pidfd. Omakade watches guard exit and resumes that recorded tree itself,
+including guard death during pause setup.
 
 EVIOCGRAB only isolates evdev readers. Physical hidraw readers, Steam Input behavior
 and buffered input after SIGCONT still need controller/game hardware acceptance.
@@ -79,19 +81,60 @@ snapshots with `omarchy-shell shell call omakade.guide update JSON` while open:
 Optional unknown fields are omitted. Without a game `data` is empty. Families are
 `keyboard`, `xbox`, `playstation`, `nintendo`, `deck`, or `generic`. The local socket is
 user-only and receives newline-delimited `{version:1, token, action, value}` messages
-for opened, closed and native actions. Shell commands are serialized so input ordering
-is preserved. `input`, `state` and `update` are callable root methods. An open-only
+for opened, closed and native actions. The socket also carries optional newline-delimited input, update and toast messages
+from Omakade. Input is ordered on that persistent connection. Old v1 payload
+readers ignore the added optional fields. Shell lifecycle commands remain serialized. `input`, `state` and `update` are callable root methods. An open-only
 heartbeat releases ownership if the shell disappears or opens a different payload.
 
 The fixture payload (`fixture`, `tab`, `pad`, `scale`, `audit`) remains supported by
 preview tooling. A generic summon with `{}` clears game and notes and opens System,
-with a real clock and independent quick settings. I2 actions show their unavailable
-state rather than reporting a fictional screenshot, recording or replay.
+with a real clock and independent quick settings. Generic capture, audio, media, batteries and quick settings stay plugin-owned.
+Game controls are absent without a known game; unknown hardware values stay absent.
 
 Frozen capture resets the source on each open and waits for `ScreencopyView.hasContent`
 before mapping the overlay. If capture is unsupported, it opens after a bounded 750 ms
 with the theme scrim. Theme changes snapshot the complete previous panel and fade it
-out over the new panel in 500 ms; reduced motion applies the new theme immediately.
+out over the new panel in 180 ms; reduced motion applies the new theme immediately.
+
+## Game actions
+
+Notes use one local text file per source and game identity under Omakade's data
+folder, in `guide-notes`. A keyboard edits the text, Ctrl+S saves, and Escape
+returns. Controllers see read-only notes with an Edit with a keyboard hint. There
+is no on-screen keyboard. Notes are limited to 8 KiB and writes are atomic.
+
+Quit resumes first, then sends SIGTERM to the game's pinned process tree. After
+five seconds, a surviving tree enables explicit Force quit with SIGKILL. The guide
+stays open during that grace period. Generic mode uses Hyprland's close-window
+request, then checks the original window and process identity before force quit.
+Library and Desktop resume the game and leave the guide. Steam handoff resumes,
+closes, restores the known window and sends Shift+Tab after 250 ms.
+
+A directly launched emulator retains its actual launch save context. Backup uses
+the existing save-layout resolver and SaveSetStore, pauses the known tree while
+copying, and keeps ten timestamped versions under `guide-backups`. The control
+hides for recorder-only sessions and unresolved layouts. It never guesses paths
+from an emulator name. Existing backup integrity and size limits still apply.
+
+Omakade adds `MANGOHUD=1` only to directly launched Manual games and emulators when
+MangoHud is installed. Each launch has a unique configuration and abstract control
+socket. The HUD always starts hidden. Steam shows the launch option
+`MANGOHUD=1 %command%`; games with no verified control socket show setup guidance.
+The Performance page reports driver-provided CPU/GPU, RAM/VRAM, temperature and
+power counters where available. It omits unavailable sensors and FPS telemetry.
+
+MangoHud's normal Vulkan/OpenGL socket accepts `:hud;` to toggle visibility. It
+supports neither selecting HUD detail nor setting a frame limit. `mangohudctl`
+uses a separate System V protocol for mangoapp and does not control the normal
+injected HUD. Off/FPS/FPS+frametime/Full and Off/30/40/60/120/display-rate choices
+save preferences; visibility changes now when connected, detail and limit apply
+on the next launch, as the UI says. No external FPS route was verified.
+Sources: [socket implementation](https://github.com/flightlessmango/MangoHud/blob/master/src/control.cpp),
+[normal socket client](https://github.com/flightlessmango/MangoHud/blob/master/control/src/control/__init__.py),
+[mangoapp client](https://github.com/flightlessmango/MangoHud/blob/master/src/app/control.c).
+
+See `omarchy-plugin/README.md` for capture paths, replay, audio, batteries, settings
+and couch scale. Those features work independently of Omakade.
 
 ## Isolated verification
 
@@ -118,6 +161,13 @@ used by the evdev reader, without claiming that a box has real controller device
 
 Native tests cover payload and plugin parser agreement, unknown data, button mapping,
 axis calibration/hysteresis, family selection, process-tree pause, identity refusal,
-and pipe-loss resume. A box covers shell IPC, capture, navigation, themes, process
+pipe-loss and guard-death resume, per-device grabs, notes storage, quit escalation,
+MangoHud configuration and Auto couch-scale boundaries. A box covers shell IPC, capture, navigation, themes, process
 signals and compositor focus. Physical evdev grabs, hidraw/Steam Input leak paths and
 multiple physical monitors remain hardware checks.
+
+For input latency, run `tools/guide-i2/latency.py` inside the box. Native
+`--guide-input-test` emits receive-to-focus-acknowledgment timing, including the
+return trip. `OMAKADE_GUIDE_LEGACY_INPUT=1` selects the old per-input shell spawn
+only in that test mode. `OMAKADE_GUIDE_TEST_UNGRABBABLE=1` injects a refused pad
+access in the same opted-in mode; it does not claim physical-device acceptance.

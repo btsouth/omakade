@@ -23,14 +23,14 @@ Item {
   }
   function activate() { chosen(String(options[(indexOf(value) + 1) % options.length].value)) }
 
-  implicitHeight: head.height + g.s(56)
+  implicitHeight: (detailLabel.visible ? detailLabel.y + detailLabel.height : head.height) + g.s(56)
 
   Label { id: head; g: root.g; role: "caps"; text: root.label; y: root.g.s(4) }
-  Label { g: root.g; role: "small"; text: root.detail; anchors.right: parent.right; anchors.verticalCenter: head.verticalCenter }
+  Label { id: detailLabel; g: root.g; role: "small"; text: root.detail; visible: text !== ""; width: parent.width; wrapMode: Text.WordWrap; y: head.height + g.s(4) }
   Rectangle {
     id: group
     width: parent.width; height: root.g.s(40)
-    anchors.top: head.bottom; anchors.topMargin: root.g.s(8)
+    anchors.top: detailLabel.visible ? detailLabel.bottom : head.bottom; anchors.topMargin: root.g.s(8)
     radius: root.g.innerRadius
     color: root.g.well
     border.width: 1; border.color: root.g.line

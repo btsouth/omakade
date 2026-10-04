@@ -101,6 +101,13 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
 
 InGameGuide::~InGameGuide() { finishClose(false); }
 
+void InGameGuide::setInjectedInputEnabled(bool enabled) {
+  m_injectedInput = enabled;
+  if (enabled && qEnvironmentVariableIsSet("OMAKADE_GUIDE_TEST_UNGRABBABLE"))
+    m_input.setAccess({[] { return QList<GuideListener::Controller>{{"event-test", "test-pad", "Test pad", false}}; },
+        [](const QString&) { errno = EBUSY; return -1; }, [](int) { return false; }});
+}
+
 void InGameGuide::refreshGame() {
   if (m_sessions) m_sessions->refreshNowPlaying();
   const auto previous = m_session;
@@ -370,7 +377,8 @@ void InGameGuide::message(const QJsonObject& data) {
     if (window.valid()) QTimer::singleShot(250, this, [this, window] {
       if (m_opened || m_opening) return;
       m_compositor->focusWindow(window.address);
-      QProcess::startDetached("hyprctl", {"dispatch", "sendshortcut", "SHIFT, TAB, address:" + window.address});
+      const auto expression = QStringLiteral("hl.dsp.send_shortcut({mods=\"SHIFT\",key=\"TAB\",window=\"address:%1\"})").arg(window.address);
+      QProcess::startDetached("hyprctl", {"dispatch", expression});
     });
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();

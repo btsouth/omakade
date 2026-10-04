@@ -14,7 +14,7 @@
 namespace GuideActions {
 QString key(const QVariantMap& game) {
   if (game.isEmpty()) return {};
-  const auto identity = game.value("source").toString().toUtf8() + '\0' + game.value("path").toString().toUtf8();
+  const auto identity = game.value("source").toString().toUtf8() + '\0' + game.value("path", game.value("appId")).toString().toUtf8();
   return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex());
 }
 QString notes(const QString& directory, const QString& key) {

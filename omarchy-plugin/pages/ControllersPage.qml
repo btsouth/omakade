@@ -11,7 +11,7 @@ PageRhythm {
   property var padItems: []
   property var rows: {
     var r = []
-    for (var i = 0; i < padItems.length; i++) if (root.pads[i] && root.pads[i].identifiable) r.push([padItems[i]])
+    for (var i = 0; i < padItems.length; i++) if (root.pads[i] && root.pads[i].identifiable !== false) r.push([padItems[i]])
     r.push([pair])
     r.push([prompts])
     return r
@@ -36,7 +36,7 @@ PageRhythm {
         readonly property bool low: modelData.battery !== undefined && modelData.battery <= 20
         width: root.width
         height: root.g.s(index === 0 ? 164 : 114) + (index === 0 ? root.heroExtra : 0)
-        onTriggered: if (modelData.identifiable) root.act("identify", modelData.name)
+        onTriggered: if (modelData.identifiable !== false) root.act("identify", modelData.name)
 
         Rectangle {
           anchors.fill: parent; radius: root.g.radius
@@ -82,7 +82,7 @@ PageRhythm {
   }
 
   Label {
-    visible: root.pads.some(p => p.identifiable)
+    visible: root.pads.some(p => p.identifiable !== false)
     g: root.g; role: "small"
     leftPadding: root.g.s(10)
     width: parent.width; wrapMode: Text.WordWrap
