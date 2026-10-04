@@ -1826,6 +1826,9 @@ int main(int argc, char* argv[]) {
   InGameGuide inGameGuide(playSessionStore.get(), &unifiedGames, &gameMode, &gameModeCompositor, &launcher,
                           !isolatedTest && onOmarchy);
   inGameGuide.setInjectedInputEnabled(application.arguments().contains(QStringLiteral("--guide-input-test")));
+  const bool coldGuideRequest = guideToggleRequest ||
+                                (gameModeToggleRequest && inGameGuide.hasGame());
+  if (coldGuideRequest) gameModeRequest = false;
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
   engine.rootContext()->setContextProperty("Stats", &stats);
@@ -6903,7 +6906,7 @@ int main(int argc, char* argv[]) {
   QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow] {
     if (rootWindow) { rootWindow->show(); rootWindow->requestActivate(); }
   });
-  if (guideToggleRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice); });
+  if (coldGuideRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice); });
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {
     const auto windowStateBeforePreparation =

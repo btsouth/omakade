@@ -7,8 +7,11 @@ On other desktops, Omakade retains its existing Game Mode controls.
 
 While a known game runs, the existing Super + Ctrl + G shortcut and the controller
 Home button open or close the guide. With no game, the shortcut keeps its existing
-Game Mode start, desktop and resume behavior. F11 and the controls action use the guide
+Game Mode start, desktop and resume behavior. In Game Mode, F11 and the controls action use the guide
 on Omarchy. `omakade --guide-toggle` opens it directly, including without a game.
+
+A cold shortcut over a recognized running game starts Omakade with the guide,
+without entering the library's Game Mode first.
 
 Guide-button detection still uses `omakade-guide-button` and its short, solitary press
 policy. It forwards the originating event node. While open, Omakade grabs all detected
