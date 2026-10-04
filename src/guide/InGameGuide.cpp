@@ -113,6 +113,7 @@ void InGameGuide::setInjectedInputEnabled(bool enabled) {
 }
 
 void InGameGuide::refreshGame() {
+  if (m_opened && !m_quitSession.isEmpty()) return;
   if (m_sessions) m_sessions->refreshNowPlaying();
   const auto previous = m_session;
   auto sessions = m_sessions ? m_sessions->nowPlaying() : QVariantList{};
@@ -294,7 +295,7 @@ bool InGameGuide::toggle(const QString& node) {
   m_token = QUuid::createUuid().toString(QUuid::WithoutBraces);
   m_family = node.isEmpty() ? "keyboard" : "generic";
   QString pad, error;
-  m_forceReady = false; m_quitTree.clear();
+  m_forceReady = false; m_quitTree.clear(); m_quitSession.clear();
   m_input.grab(node, &pad, &error);
   m_grabWarning = error;
   if (!node.isEmpty()) m_family = pad;
@@ -394,11 +395,12 @@ void InGameGuide::message(const QJsonObject& data) {
     stopGuard();
     if (action == "force-quit") {
       if (!m_forceReady) return;
-      if (ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong()))
-        m_quitTree.pin(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong());
+      if (ProcFs::processAlive(m_quitSession.value("pid").toLongLong(), m_quitSession.value("procStart").toLongLong()))
+        m_quitTree.pin(m_quitSession.value("pid").toLongLong(), m_quitSession.value("procStart").toLongLong());
       m_quitTree.signal(SIGKILL); close(); return;
     }
     if (!m_quitTree.pin(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) { toast("Game is no longer running"); return; }
+    m_quitSession = m_session;
     m_quitTree.signal(SIGTERM);
     const auto token = m_token;
     QTimer::singleShot(5000, this, [this, token] {

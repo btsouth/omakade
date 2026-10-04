@@ -1,5 +1,6 @@
 #include "guide/GuideInput.h"
 #include "guide/GuideActions.h"
+#include "guide/InGameGuide.h"
 #include <QTemporaryDir>
 #include <sys/eventfd.h>
 #include "guide/GuidePayload.h"
@@ -35,6 +36,7 @@ private slots:
   void quitEscalation();
   void guardDiesDuringPause();
   void failedPinRetainsRecovery();
+  void quitKeepsItsOriginalGame();
 };
 
 void InGameGuideTests::payloadUnknowns() {
@@ -283,7 +285,7 @@ void InGameGuideTests::guardDiesDuringPause() {
 
 void InGameGuideTests::quitEscalation() {
   QProcess game; game.start("python3", {"-u", "-c", "import signal,time,subprocess; children=[]; signal.signal(signal.SIGTERM,lambda *args: (children.append(subprocess.Popen(['sleep','30'])),print(children[-1].pid))); print('ready'); time.sleep(30)"});
-  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); qint64 start = -1;
+  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); game.readAllStandardOutput(); qint64 start = -1;
   for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
   GuideActions::Tree tree; QVERIFY(!tree.pin(game.processId(), start + 1)); QVERIFY(tree.pin(game.processId(), start));
   tree.signal(SIGTERM); QVERIFY(game.waitForReadyRead(1000));
@@ -293,6 +295,24 @@ void InGameGuideTests::quitEscalation() {
   QVERIFY(tree.pin(game.processId(), start)); QVERIFY(tree.identities().size() >= 2);
   tree.signal(SIGKILL); QVERIFY(game.waitForFinished());
   QTRY_VERIFY(!tree.alive());
+}
+
+void InGameGuideTests::quitKeepsItsOriginalGame() {
+  QProcess game, other;
+  game.start("python3", {"-u", "-c", "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready'); time.sleep(30)"});
+  other.start("sleep", {"30"});
+  QVERIFY(game.waitForStarted()); QVERIFY(other.waitForStarted()); QVERIFY(game.waitForReadyRead());
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_opened = true; guide.m_token = "test";
+  guide.m_session = {{"pid", game.processId()}, {"procStart", start}, {"source", "Manual"}, {"path", "original"}};
+  guide.message({{"action", "quit-confirmed"}});
+  QVERIFY(!guide.m_forceReady); QVERIFY(!game.waitForFinished(50));
+  QTRY_VERIFY_WITH_TIMEOUT(guide.m_forceReady, 6000);
+  guide.m_session.insert("pid", other.processId());
+  guide.message({{"action", "force-quit"}});
+  QVERIFY(game.waitForFinished()); QVERIFY(other.state() == QProcess::Running);
+  other.terminate(); QVERIFY(other.waitForFinished());
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

@@ -37,6 +37,7 @@ signals:
   void changed();
   void libraryRequested();
 private:
+  friend class InGameGuideTests;
   void refreshGame();
   QJsonObject payload() const;
   bool setPaused(bool paused);
@@ -56,7 +57,7 @@ private:
   bool m_enabled = false, m_opened = false, m_opening = false, m_paused = false;
   bool m_restoreFocus = true;
   bool m_pauseWhileOpen = true, m_injectedInput = false, m_polling = false;
-  QVariantMap m_session, m_metadata;
+  QVariantMap m_session, m_metadata, m_quitSession;
   QString m_output, m_family = "keyboard", m_token, m_socketPath;
   GuideInput m_input;
   QProcess m_guard;
