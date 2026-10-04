@@ -1823,7 +1823,7 @@ int main(int argc, char* argv[]) {
       isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy);
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
-  InGameGuide inGameGuide(playSessionStore.get(), &unifiedGames, &gameMode, &gameModeCompositor,
+  InGameGuide inGameGuide(playSessionStore.get(), &unifiedGames, &gameMode, &gameModeCompositor, &launcher,
                           !isolatedTest && onOmarchy);
   inGameGuide.setInjectedInputEnabled(application.arguments().contains(QStringLiteral("--guide-input-test")));
   QQmlApplicationEngine engine;

@@ -14,7 +14,7 @@ namespace {
 struct Process { qint64 pid = 0, parent = 0, start = -1; char state = 0; };
 Process process(qint64 pid) {
   QFile file(QStringLiteral("/proc/%1/stat").arg(pid));
-  if (!file.open(QIODevice::ReadOnly) || file.ownerId() != ::getuid()) return {};
+  if (!file.open(QIODevice::ReadOnly) || QFileInfo(file).ownerId() != ::getuid()) return {};
   const auto stat = file.readAll();
   const auto fields = stat.mid(stat.lastIndexOf(')') + 2).simplified().split(' ');
   if (fields.size() <= 19) return {};
@@ -29,7 +29,7 @@ GuidePause::~GuidePause() { resume(); }
 
 bool GuidePause::stop(qint64 pid, qint64 start, QString* error) {
   resume();
-  if (pid <= 1 || pid == ::getpid() || start <= 0 || !ProcFs::processAlive(pid, start)) {
+  if (pid <= 1 || (pid == ::getpid() || pid == ::getppid()) || start <= 0 || !ProcFs::processAlive(pid, start)) {
     if (error) *error = "The game process identity is no longer valid.";
     return false;
   }

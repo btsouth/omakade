@@ -53,6 +53,7 @@ public:
   // True while a game process started by launch() is still alive. Games are started detached,
   // so this is polled from /proc rather than reported by QProcess.
   [[nodiscard]] bool gameRunning() const;
+  [[nodiscard]] QVariantList trackedGames() const;
   // Starts a detached process and follows it through gameRunning() until it exits.
   bool startTracked(const LaunchCommand& command, const QString& workingDirectory = {});
   [[nodiscard]] static LaunchCommand lutrisCommand(const QString& id, bool flatpak);
@@ -160,10 +161,13 @@ private:
   struct TrackedProcess {
     qint64 pid = 0;
     qint64 startTime = -1;
+    QVariantMap installation;
+    qint64 startedAt = 0;
   };
   SaveBackups* m_saveBackups = nullptr;
   QString m_lastError;
   bool m_preferStandaloneEmulators = false;
   QList<TrackedProcess> m_trackedProcesses;
+  QVariantMap m_launchIdentity;
   QTimer m_trackTimer;
 };

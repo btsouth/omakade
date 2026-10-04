@@ -40,7 +40,11 @@ Item {
   GuideTheme {
     id: g
     onThemeRequested: function(theme) {
-      if (!root.opened || Style.reduceMotion) { g.applyTheme(theme); return }
+      if (!root.opened || Style.reduceMotion) {
+        themeFade.stop(); previousTheme.opacity = 0
+        root.themeBusy = false; root.themeFrame = null
+        g.applyTheme(theme); return
+      }
       root.themeBusy = true
       panel.grabToImage(function(result) {
         root.themeFrame = result
@@ -86,7 +90,7 @@ Item {
   }
   function state(unused) {
     return JSON.stringify({opened: root.opened, opening: root.opening,
-      token: root.backend ? root.backend.token : "", output: window.screen ? window.screen.name : "",
+      token: root.backend ? root.backend.token : "", socket: root.backend ? root.backend.socket : "", output: window.screen ? window.screen.name : "",
       tab: root.tabs[root.tab].key, cursor: root.cursorOf(), pad: root.family,
       data: root.model, captured: frame.hasContent, themeBusy: root.themeBusy})
   }
@@ -282,7 +286,11 @@ Item {
   }
 
   function input(action) {
-    if (!root.opened) { if (action === "guide") root.open("{}"); return "closed" }
+    if (!root.opened) {
+      if (root.opening && ["guide", "start", "b"].indexOf(action) >= 0) root.close()
+      else if (!root.opening && action === "guide") root.open("{}")
+      return "closed"
+    }
     var rows = currentRows(), cur = cursorOf()
     var r = Math.min(cur[0], Math.max(0, rows.length - 1))
     var c = rows.length ? Math.min(cur[1], rows[r].length - 1) : 0
@@ -664,7 +672,7 @@ Item {
           Label {
             g: g; role: "small"; width: parent.width; horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: "Progress since your last save is lost. If it does not close, you can force it."
+            text: root.fixtureMode ? "Progress since your last save is lost. If it does not close, you can force it." : "Progress since your last save may be lost. Omakade asks the game to close."
           }
           Item { width: 1; height: g.s(10) }
           Row {

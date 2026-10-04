@@ -22,6 +22,7 @@ private slots:
   void axes();
   void families();
   void guardResumesOnOwnerDeath();
+  void guardTreeAndIdentity();
 };
 
 void InGameGuideTests::payloadUnknowns() {
@@ -136,6 +137,42 @@ void InGameGuideTests::guardResumesOnOwnerDeath() {
   QVERIFY(ProcFs::processAlive(game.processId(), start));
   game.terminate();
   QVERIFY(game.waitForFinished());
+}
+
+void InGameGuideTests::guardTreeAndIdentity() {
+  QProcess game;
+  game.start("python3", {"-u", "-c", "import subprocess; child = subprocess.Popen(['sleep','30']); print(child.pid); child.wait()"});
+  QVERIFY(game.waitForStarted());
+  QVERIFY(game.waitForReadyRead());
+  const auto child = game.readAllStandardOutput().trimmed().toLongLong();
+  QVERIFY(child > 1);
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QVERIFY(start > 0);
+  QProcess guard;
+  guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD));
+  QVERIFY(guard.waitForStarted());
+  auto send = [&guard, &game](qint64 identity) {
+    guard.write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", game.processId()}, {"start", identity}}).toJson(QJsonDocument::Compact) + '\n');
+    if (!guard.waitForReadyRead(3000)) return false;
+    return QJsonDocument::fromJson(guard.readAllStandardOutput()).object().value("ok").toBool();
+  };
+  QVERIFY(!send(start + 1));
+  QVERIFY(send(start));
+  auto state = [](qint64 pid) {
+    QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+    if (!stat.open(QIODevice::ReadOnly)) return QByteArray{};
+    const auto data = stat.readAll();
+    return data.mid(data.lastIndexOf(')') + 2, 1);
+  };
+  QCOMPARE(state(game.processId()), QByteArray("T"));
+  QCOMPARE(state(child), QByteArray("T"));
+  guard.closeWriteChannel();
+  QVERIFY(guard.waitForFinished(3000));
+  QTRY_VERIFY(state(game.processId()) != "T");
+  QTRY_VERIFY(state(child) != "T");
+  ::kill(child, SIGTERM);
+  QVERIFY(game.waitForFinished(3000));
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

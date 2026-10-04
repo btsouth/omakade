@@ -76,7 +76,7 @@ PageRhythm {
     width: parent.width; spacing: root.g.s(10)
     Action {
       id: extra
-      g: root.g; width: (parent.width - parent.spacing * 2) / 3
+      g: root.g; width: (parent.width - parent.spacing * (notes.visible ? 2 : 1)) / (notes.visible ? 3 : 2)
       variant: "tile"; height: root.g.s(116)
       icon: root.emulator ? root.g.icon.save : root.steam ? root.g.icon.steam : root.g.icon.desktop
       title: root.emulator ? "Saves" : root.steam ? "Steam" : "Desktop"
@@ -86,17 +86,17 @@ PageRhythm {
     Action {
       id: notes
       visible: root.game.notes !== undefined || root.game.note !== undefined
-      g: root.g; width: (parent.width - parent.spacing * 2) / 3
+      g: root.g; width: (parent.width - parent.spacing * (notes.visible ? 2 : 1)) / (notes.visible ? 3 : 2)
       variant: "tile"; height: root.g.s(116); icon: root.g.icon.notes
       title: "Notes"; detail: (root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) + ((root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) === 1 ? " note" : " notes")
       onTriggered: root.act("notes", null)
     }
     Action {
       id: pause
-      g: root.g; width: (parent.width - parent.spacing * 2) / 3
+      g: root.g; width: (parent.width - parent.spacing * (notes.visible ? 2 : 1)) / (notes.visible ? 3 : 2)
       variant: "tile"; height: root.g.s(116); icon: root.g.icon.pausedGame
       selected: !!root.game.pauseWhileOpen
-      title: "Pause"; detail: root.game.paused !== undefined ? (root.game.paused ? "Paused while the guide is open" : "Back to " + (root.game.title || "the game")) : root.game.pauseWhileOpen ? "On" : "Off"
+      title: "Pause"; detail: root.game.pauseWhileOpen ? "On" : "Off"
       onTriggered: root.act("pause-while-open", !root.game.pauseWhileOpen)
     }
   }

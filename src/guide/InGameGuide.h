@@ -4,11 +4,13 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QProcess>
+#include <QQueue>
 #include <QTimer>
 #include <QVariantMap>
 #include <functional>
 
 class GameModeSession;
+class GameLauncher;
 class HyprlandGameModeCompositor;
 class PlaySessionStore;
 class UnifiedGameModel;
@@ -19,7 +21,7 @@ class InGameGuide final : public QObject {
   Q_PROPERTY(bool available READ available CONSTANT)
 public:
   InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library, GameModeSession* gameMode,
-              HyprlandGameModeCompositor* compositor, bool enabled, QObject* parent = nullptr);
+              HyprlandGameModeCompositor* compositor, GameLauncher* launcher, bool enabled, QObject* parent = nullptr);
   ~InGameGuide() override;
   bool opened() const { return m_opened; }
   bool available() const { return m_enabled; }
@@ -38,13 +40,16 @@ private:
   void stopGuard();
   void poll();
   void shell(const QStringList& arguments, std::function<void(bool, QByteArray)> done = {});
+  void runShellCommand();
   void message(const QJsonObject& message);
   void finishClose(bool hide);
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
   GameModeSession* m_gameMode;
+  GameLauncher* m_launcher;
   HyprlandGameModeCompositor* m_compositor;
   bool m_enabled = false, m_opened = false, m_opening = false, m_paused = false;
+  bool m_restoreFocus = true;
   bool m_pauseWhileOpen = true, m_injectedInput = false, m_polling = false;
   QVariantMap m_session, m_metadata;
   QString m_output, m_family = "keyboard", m_token, m_socketPath;
@@ -52,4 +57,7 @@ private:
   QProcess m_guard;
   QLocalServer m_server;
   QTimer m_poll;
+  struct Command { QStringList arguments; std::function<void(bool, QByteArray)> done; };
+  QQueue<Command> m_commands;
+  bool m_shellRunning = false;
 };

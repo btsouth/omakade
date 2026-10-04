@@ -7,6 +7,7 @@
 #include "launch/GameLauncher.h"
 #include "tracking/PlaySessionStore.h"
 #include "tracking/ProcFs.h"
+#include "tracking/SessionStopper.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -38,9 +39,9 @@ QString preferenceKey(const QVariantMap& session) {
 
 InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
                           GameModeSession* gameMode, HyprlandGameModeCompositor* compositor,
-                          bool enabled, QObject* parent)
+                          GameLauncher* launcher, bool enabled, QObject* parent)
     : QObject(parent), m_sessions(sessions), m_library(library), m_gameMode(gameMode),
-      m_compositor(compositor), m_enabled(enabled) {
+      m_launcher(launcher), m_compositor(compositor), m_enabled(enabled) {
   m_socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) +
                  QStringLiteral("/omakade-guide-%1").arg(::getuid());
   m_server.setSocketOptions(QLocalServer::UserAccessOption);
@@ -61,8 +62,9 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
           buffer->remove(0, end + 1);
           if (data.value("version") != QJsonValue(GuidePayload::kVersion) ||
               data.value("token").toString() != m_token || m_token.isEmpty()) continue;
-          *authenticated = m_token;
+          if (data.value("action") == "opened") *authenticated = m_token;
           message(data);
+          if (data.value("action") == "inject") { socket->write("{\"ok\":true}\n"); socket->flush(); }
         }
       });
       connect(socket, &QLocalSocket::disconnected, this, [this, socket, authenticated] {
@@ -93,7 +95,19 @@ InGameGuide::~InGameGuide() { finishClose(false); }
 void InGameGuide::refreshGame() {
   if (m_sessions) m_sessions->refreshNowPlaying();
   const auto previous = m_session;
-  const auto sessions = m_sessions ? m_sessions->nowPlaying() : QVariantList{};
+  auto sessions = m_sessions ? m_sessions->nowPlaying() : QVariantList{};
+  // The launcher can describe games even when play-session recording is switched off.
+  if (m_launcher) {
+    for (const auto& value : m_launcher->trackedGames()) {
+      const auto owned = value.toMap();
+      const auto source = owned.value("source").toString();
+      if (source != "Manual" && !GameLauncher::isEmulatorSourceName(source)) continue;
+      if (!m_compositor || !m_compositor->windowForPid(owned.value("pid").toLongLong()).valid()) continue;
+      bool present = false;
+      for (const auto& session : sessions) if (session.toMap().value("pid") == owned.value("pid")) present = true;
+      if (!present) sessions.append(owned);
+    }
+  }
   const auto active = QJsonDocument::fromJson(hyprland("activewindow")).object();
   const auto focusedPid = active.value("pid").toInteger();
   QVariantMap chosen;
@@ -122,7 +136,8 @@ void InGameGuide::refreshGame() {
         const auto installation = value.toMap();
         const bool match = !chosen.isEmpty()
             ? installation.value("source") == chosen.value("source") &&
-              (installation.value("installPath") == chosen.value("path") ||
+              (installation.value("appId") == chosen.value("appId") ||
+               installation.value("installPath") == chosen.value("path") ||
                installation.value("appId") == chosen.value("path") ||
                installation.value("launchTarget") == chosen.value("path"))
             : steam.pid > 0 && installation.value("source") == "Steam" &&
@@ -131,6 +146,7 @@ void InGameGuide::refreshGame() {
         for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath,
                                GameRoles::PlaytimeSeconds, GameRoles::AchievementsTotal,
                                GameRoles::AchievementsUnlocked, GameRoles::Tags}) {
+          if (role == GameRoles::PlaytimeSeconds && installation.value("source") == "Manual") continue;
           const auto data = index.data(role);
           if (data.isValid()) m_metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), data);
         }
@@ -202,6 +218,12 @@ bool InGameGuide::toggle(const QString& node) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
   refreshGame();
+  m_restoreFocus = true;
+  if (!m_session.isEmpty() && m_compositor &&
+      ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) {
+    const auto gameWindow = m_compositor->windowForPid(m_session.value("pid").toLongLong());
+    if (gameWindow.valid()) m_compositor->focusWindow(gameWindow.address);
+  }
   m_token = QUuid::createUuid().toString(QUuid::WithoutBraces);
   m_family = node.isEmpty() ? "keyboard" : "generic";
   QString pad, error;
@@ -233,10 +255,21 @@ void InGameGuide::finishClose(bool hide) {
   m_opened = m_opening = false;
   m_token.clear();
   m_poll.stop();
+  m_polling = false;
+  m_commands.clear();
   m_input.release();
   stopGuard();
   emit changed();
   if (hide && hadGuide) shell({"shell", "hide", "omakade.guide"});
+  if (hadGuide && m_restoreFocus && !m_session.isEmpty()) {
+    const auto game = m_session;
+    QTimer::singleShot(100, this, [this, game] {
+      if (m_opened || m_opening || !m_compositor || (m_gameMode && m_gameMode->parked()) ||
+          !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong())) return;
+      const auto window = m_compositor->windowForPid(game.value("pid").toLongLong());
+      if (window.valid()) m_compositor->focusWindow(window.address);
+    });
+  }
 }
 
 void InGameGuide::message(const QJsonObject& data) {
@@ -253,12 +286,17 @@ void InGameGuide::message(const QJsonObject& data) {
     const auto event = data.value("value").toObject();
     m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
   } else if (action == "desktop" || action == "library") {
+    m_restoreFocus = false;
     close();
     if (action == "desktop" && m_gameMode) m_gameMode->park();
     else emit libraryRequested();
   } else if (action == "quit-confirmed" && m_sessions && m_opened) {
+    m_restoreFocus = false;
     stopGuard();
-    m_sessions->stopSession(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong());
+    const auto pid = m_session.value("pid").toLongLong();
+    const auto start = m_session.value("procStart").toLongLong();
+    if (!m_sessions->stopSession(pid, start))
+      SessionStopper::terminate(pid, start, ProcFs::processAlive, ProcFs::sendSignal);
     close();
   }
 }
@@ -282,14 +320,30 @@ void InGameGuide::poll() {
 }
 
 void InGameGuide::shell(const QStringList& arguments, std::function<void(bool, QByteArray)> done) {
+  m_commands.enqueue({arguments, std::move(done)});
+  runShellCommand();
+}
+
+void InGameGuide::runShellCommand() {
+  if (m_shellRunning || m_commands.isEmpty()) return;
+  m_shellRunning = true;
+  const auto command = m_commands.dequeue();
   auto* process = new QProcess(this);
-  connect(process, &QProcess::finished, this, [process, done](int code, QProcess::ExitStatus status) {
-    if (done) done(status == QProcess::NormalExit && code == 0, process->readAllStandardOutput());
+  auto completed = std::make_shared<bool>(false);
+  const auto finish = [this, process, command, completed](bool ok) {
+    if (*completed) return;
+    *completed = true;
+    if (command.done) command.done(ok, process->readAllStandardOutput());
     process->deleteLater();
+    m_shellRunning = false;
+    QTimer::singleShot(0, this, &InGameGuide::runShellCommand);
+  };
+  connect(process, &QProcess::finished, this, [finish](int code, QProcess::ExitStatus status) {
+    finish(status == QProcess::NormalExit && code == 0);
   });
-  connect(process, &QProcess::errorOccurred, this, [process, done](QProcess::ProcessError error) {
-    if (error == QProcess::FailedToStart) { if (done) done(false, {}); process->deleteLater(); }
+  connect(process, &QProcess::errorOccurred, this, [finish](QProcess::ProcessError error) {
+    if (error == QProcess::FailedToStart) finish(false);
   });
   QTimer::singleShot(2500, process, [process] { process->kill(); });
-  process->start("omarchy-shell", arguments);
+  process->start("omarchy-shell", command.arguments);
 }

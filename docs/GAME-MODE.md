@@ -50,6 +50,10 @@ desktop and the warm window's current home and compositor mode.
 
 The desktop entry also carries a **Game Mode** action for launchers that show actions.
 
+With the shell guide plugin enabled on Omarchy, these controls use the
+[in-game guide](GAME-GUIDE.md). While a known game runs, the Guide button and
+Super + Ctrl + G open or close it.
+
 Press Start on the controller or F11 on the keyboard while Omakade is in front to open
 the compact Game Mode controls. **Back to Library** keeps the session active, and
 **Back to Game** dismisses the overlay when it is over a game. Escape or the controller's
@@ -93,8 +97,10 @@ systemctl --user enable --now omakade-guide-button
 systemctl --user disable --now omakade-guide-button
 ```
 
-The service only reads controllers. It does not grab them, remap buttons or create a
-virtual controller, so games and Steam Input see every press as before. It reads only
+The button-detection service only reads controllers. While the in-game guide is
+open, Omakade separately grabs controller evdev nodes and can pause the game
+process tree. Closing releases the grabs and resumes processes it paused.
+Outside the guide, games and Steam Input receive ordinary input as before. It reads only
 devices that report a Home button, asks the kernel for button events alone, and needs
 no root access or extra permissions.
 

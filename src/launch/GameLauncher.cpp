@@ -9,6 +9,8 @@
 #include "sources/heroic/HeroicScanner.h"
 
 #include <QDesktopServices>
+#include <QDateTime>
+#include <QScopeGuard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -354,13 +356,26 @@ void GameLauncher::trackProcess(qint64 pid) {
     return;  // Already gone: a launcher stub that handed off and exited.
   }
   const bool wasRunning = gameRunning();
-  m_trackedProcesses.append({pid, startTime});
+  m_trackedProcesses.append({pid, startTime, m_launchIdentity, QDateTime::currentSecsSinceEpoch()});
   if (!m_trackTimer.isActive()) {
     m_trackTimer.start();
   }
   if (!wasRunning) {
     emit gameRunningChanged();
   }
+}
+
+QVariantList GameLauncher::trackedGames() const {
+  QVariantList games;
+  for (const auto& process : m_trackedProcesses) {
+    if (process.installation.isEmpty() || processStartTime(process.pid) != process.startTime) continue;
+    auto game = process.installation;
+    game.insert("pid", process.pid);
+    game.insert("procStart", process.startTime);
+    game.insert("elapsedSeconds", QDateTime::currentSecsSinceEpoch() - process.startedAt);
+    games.append(game);
+  }
+  return games;
 }
 
 void GameLauncher::pollTrackedProcesses() {
@@ -704,6 +719,8 @@ LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& install
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
+  m_launchIdentity = {{"source", source}, {"appId", id}, {"path", installPath}};
+  const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
           .contains(source))
     return launchPlannedEmulator({{"source",source},{"appId",id},{"flatpak",flatpak},{"runner",runner},{"installPath",installPath},{"launchTarget",launchTarget},{"system",system}});
