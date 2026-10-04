@@ -98,6 +98,9 @@ Item {
       }
     }
   }
+  function useKeyboard() {
+    if (root.family !== "keyboard") { root.family = "keyboard"; root.notify("input-family", "keyboard") }
+  }
   function notify(name, value) {
     if (!root.backend) return
     var message = JSON.stringify({version: 1, token: root.backend.token, action: name, value: value}) + "\n"
@@ -111,7 +114,7 @@ Item {
     root.fixtureMode = false
     fixtureFile.path = ""
     root.model = p.data
-    root.family = p.pad
+    root.family = p.pad !== "keyboard" && root.preferences.prompts !== "auto" ? root.preferences.prompts : p.pad
     root.outputName = p.output
     return "ok"
   }
@@ -566,7 +569,7 @@ Item {
       anchors.fill: parent
       focus: true
       Keys.onPressed: function(event) {
-        root.family = "keyboard"
+        root.useKeyboard()
         var a = root.keyAction(event)
         if (a !== "") { root.input(a); event.accepted = true }
       }
@@ -832,7 +835,7 @@ Item {
                 textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap
                 readOnly: root.family !== "keyboard"; selectByMouse: !readOnly
                 Keys.onPressed: function(e) {
-                  root.family = "keyboard"
+                  root.useKeyboard()
                   if (e.key === Qt.Key_Escape) { root.notify("notes-save", root.noteDraft); root.notesOpen = false; keys.forceActiveFocus(); e.accepted = true }
                   else if (e.key === Qt.Key_S && (e.modifiers & Qt.ControlModifier)) { root.notify("notes-save", root.noteDraft); e.accepted = true }
                 }

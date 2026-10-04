@@ -341,6 +341,7 @@ void InGameGuide::message(const QJsonObject& data) {
   }
   if (action == "opened") { m_opening = false; m_opened = true; emit changed(); }
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
+  else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
   else if (action == "closed") finishClose(false);
   else if (action == "pause-while-open" && m_opened) {
     m_pauseWhileOpen = data.value("value").toBool();
