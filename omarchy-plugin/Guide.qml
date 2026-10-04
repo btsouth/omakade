@@ -92,10 +92,11 @@ Item {
         root.backendQueue.forEach(function(message) { service.write(message) })
         service.flush()
         root.backendQueue = []
-      } else if (root.backend && root.opened) {
+      } else if (root.backend) {
         root.backend = null
+        root.backendQueue = []
         root.model = ({})
-        root.close()
+        if (root.opened || root.opening) root.close()
       }
     }
   }
