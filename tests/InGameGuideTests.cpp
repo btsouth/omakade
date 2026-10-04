@@ -198,10 +198,11 @@ void InGameGuideTests::protocolExtension() {
   QVERIFY(!engine.globalObject().property("parse").call({QString::fromUtf8(QJsonDocument(payload).toJson())}).isNull());
 }
 void InGameGuideTests::mangoBuilding() {
-  QProcessEnvironment base; base.insert("KEEP", "yes");
+  QProcessEnvironment base; base.insert("KEEP", "yes"); base.insert("MANGOHUD_CONFIG", "full"); base.insert("MANGOHUD_FPS_LIMIT", "144");
   QCOMPARE(GuideActions::mangoEnvironment(base, false, "/tmp/c"), base);
   const auto env = GuideActions::mangoEnvironment(base, true, "/tmp/c");
   QCOMPARE(env.value("MANGOHUD"), "1"); QCOMPARE(env.value("MANGOHUD_CONFIGFILE"), "/tmp/c"); QCOMPARE(env.value("KEEP"), "yes");
+  QCOMPARE(env.value("MANGOHUD_CONFIG"), "read_cfg,no_display"); QVERIFY(!env.contains("MANGOHUD_FPS_LIMIT"));
   for (const auto& level : {"off", "fps", "frametime", "full"}) {
     const auto config = GuideActions::mangoConfig("omakade-test", level, 60);
     QVERIFY(config.startsWith("no_display\ncontrol=omakade-test\nfps_limit=60\n"));

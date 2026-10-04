@@ -41,6 +41,8 @@ QProcessEnvironment mangoEnvironment(QProcessEnvironment base, bool installed, c
   if (installed && !config.isEmpty()) {
     base.insert("MANGOHUD", "1");
     base.insert("MANGOHUD_CONFIGFILE", config);
+    base.insert("MANGOHUD_CONFIG", "read_cfg,no_display");
+    base.remove("MANGOHUD_FPS_LIMIT");
   }
   return base;
 }
