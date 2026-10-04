@@ -5,6 +5,7 @@ Column {
   id: root
   required property var g
   required property var d
+  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
 
@@ -12,7 +13,7 @@ Column {
   readonly property bool hooked: !!perf.mangohud
   property var rows: hooked ? [[hud], [limit], [profile]] : [[setup], [profile]]
 
-  spacing: g.s(14)
+  spacing: g.rhythm(root, 24)
 
   // Frame rate and frame times, when MangoHud is in the game.
   Column {
@@ -21,7 +22,7 @@ Column {
     spacing: root.g.s(6)
     Row {
       spacing: root.g.s(10)
-      Label { g: root.g; role: "hero"; text: String(root.perf.fps || 0) }
+      Label { g: root.g; role: "hero"; font.pixelSize: root.g.f(64); text: String(root.perf.fps || 0) }
       Column {
         anchors.bottom: parent.bottom; anchors.bottomMargin: root.g.s(8)
         Label { g: root.g; role: "caps"; text: "fps" }
@@ -30,7 +31,7 @@ Column {
     }
     Sparkline {
       g: root.g
-      width: parent.width; height: root.g.s(96)
+      width: parent.width; height: root.g.s(180)
       values: root.perf.frametimes || []
       ceiling: 33.3
     }
@@ -73,13 +74,13 @@ Column {
 
   Column {
     width: parent.width
-    spacing: 0
+    spacing: root.g.s(12)
     ChoiceRow {
       id: hud
       visible: root.hooked
       g: root.g; width: parent.width
       label: "On-screen overlay"
-      options: [{ value: "off", label: "Off" }, { value: "fps", label: "FPS" }, { value: "frametime", label: "+ Frame time" }, { value: "full", label: "Full" }]
+      options: [{ value: "off", label: "Off" }, { value: "fps", label: "FPS" }, { value: "frametime", label: "+ Time" }, { value: "full", label: "Full" }]
       value: root.perf.hud || "off"
       onChosen: function(v) { root.act("hud", v) }
     }

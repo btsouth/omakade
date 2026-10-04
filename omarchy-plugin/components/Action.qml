@@ -13,6 +13,7 @@ Rectangle {
   property string trailing: ""
   property bool chevron: false
   property bool danger: false
+  property bool selected: false
   property string hintFamily: ""
   property string hintButton: ""
   property bool cursor: false
@@ -25,9 +26,16 @@ Rectangle {
 
   implicitHeight: variant === "primary" ? g.s(64) : variant === "tile" ? g.s(104) : g.s(44)
   radius: g.radius
-  color: variant === "row" ? "transparent" : g.well
-  border.width: variant === "row" ? 0 : Math.max(1, g.s(1))
+  color: variant === "row" && !selected && !danger ? "transparent" : g.well
+  border.width: variant === "row" && !danger ? 0 : 1
   border.color: g.line
+
+  Rectangle {
+    visible: root.selected || root.danger
+    width: root.g.s(3); height: parent.height - root.g.s(16)
+    x: root.g.s(1); anchors.verticalCenter: parent.verticalCenter
+    color: root.danger ? root.g.urgent : root.g.accent
+  }
 
   // Primary: a play disc, title and detail, then the button that triggers it.
   Row {
@@ -44,7 +52,7 @@ Rectangle {
       width: root.g.s(38); height: width; radius: width / 2
       color: root.g.accent
       anchors.verticalCenter: parent.verticalCenter
-      Glyph { g: root.g; anchors.centerIn: parent; anchors.horizontalCenterOffset: root.g.s(1); name: root.icon; size: root.g.f(20); color: root.g.background }
+      Glyph { g: root.g; anchors.centerIn: parent; anchors.horizontalCenterOffset: root.g.s(1); name: root.icon; size: root.g.f(20); color: root.g.accentInk }
     }
     Glyph {
       visible: root.variant === "row"
@@ -56,7 +64,7 @@ Rectangle {
       anchors.verticalCenter: parent.verticalCenter
       spacing: root.g.s(2)
       width: parent.width - x
-      Label { g: root.g; role: root.variant === "primary" ? "heading" : "body"; text: root.title; width: parent.width; color: root.danger ? root.g.urgent : root.g.foreground }
+      Label { g: root.g; role: root.variant === "primary" ? "heading" : "body"; text: root.title; width: parent.width; color: root.g.foreground }
       Label { g: root.g; role: "small"; text: root.detail; visible: text !== ""; width: parent.width }
     }
   }
@@ -70,7 +78,7 @@ Rectangle {
     Column {
       anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
       spacing: root.g.s(2)
-      Label { g: root.g; role: "title"; text: root.title; width: parent.width }
+      Label { g: root.g; role: "body"; font.bold: true; text: root.title; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2 }
       Label { g: root.g; role: "small"; text: root.detail; visible: text !== ""; width: parent.width }
     }
   }

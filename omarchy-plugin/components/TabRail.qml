@@ -37,22 +37,22 @@ Item {
         Rectangle {
           anchors.fill: parent
           radius: root.g.radius
-          color: parent.active ? Style.selectedFillFor(root.g.foreground, root.g.accent) : "transparent"
+          color: parent.active ? root.g.well : "transparent"
           Behavior on color { ColorAnimation { duration: Style.duration(140) } }
         }
         Rectangle {
           width: Math.max(2, root.g.s(3)); height: parent.active ? parent.height * 0.5 : 0
           radius: width / 2
           anchors.verticalCenter: parent.verticalCenter
-          x: -root.g.s(9)
+          x: parent.width + root.g.s(6)
           color: root.g.accent
           Behavior on height { NumberAnimation { duration: Style.duration(160); easing.type: Easing.OutCubic } }
         }
         Glyph {
           g: root.g; anchors.centerIn: parent; name: modelData.icon; size: root.g.f(20)
-          color: parent.active ? root.g.foreground : root.g.dim
+          color: parent.active || tabMouse.containsMouse ? root.g.foreground : root.g.dim
         }
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(index) }
+        MouseArea { id: tabMouse; hoverEnabled: true; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(index) }
       }
     }
   }

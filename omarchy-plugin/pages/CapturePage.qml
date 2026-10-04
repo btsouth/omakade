@@ -5,14 +5,23 @@ Column {
   id: root
   required property var g
   required property var d
+  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
 
   readonly property var cap: d.capture || {}
   readonly property var recent: (cap.recent || []).slice(0, 3)
-  property var rows: [[shot, clip], [record], [buffer], [length], [sound], [thumb0, thumb1, thumb2], [folder]]
+  readonly property var session: (cap.recent || []).filter(function(c) { return c.session })
+  property var captureItems: []
+  property var rows: [[shot, clip], [record], [buffer], [length], [sound], captureItems, [folder]]
 
-  spacing: g.s(10)
+  spacing: g.rhythm(root, 14)
+
+  Column {
+    width: parent.width; spacing: root.g.s(8)
+    Picture { g: root.g; width: parent.width; height: root.g.s(148); source: root.cap.lastShot || (root.recent[0] || {}).thumb || "" }
+    Label { g: root.g; role: "caption"; text: "Latest capture · " + ((root.recent[0] || {}).age || "This session"); width: parent.width }
+  }
 
   Row {
     width: parent.width
@@ -20,7 +29,7 @@ Column {
     Action {
       id: shot
       g: root.g; width: (parent.width - parent.spacing) / 2
-      variant: "tile"; icon: root.g.icon.capture
+      variant: "tile"; height: root.g.s(90); icon: root.g.icon.capture
       title: "Screenshot"; detail: "Without the guide"
       hintFamily: root.family; hintButton: "y"
       onTriggered: root.act("screenshot", null)
@@ -28,7 +37,7 @@ Column {
     Action {
       id: clip
       g: root.g; width: (parent.width - parent.spacing) / 2
-      variant: "tile"; icon: root.g.icon.replay
+      variant: "tile"; height: root.g.s(90); icon: root.g.icon.replay
       title: "Save replay"
       detail: root.cap.replayOn ? "Last " + root.cap.replaySeconds + " seconds" : "Replay buffer is off"
       hintFamily: root.family; hintButton: "x"
@@ -75,14 +84,16 @@ Column {
     }
   }
 
-  Section { g: root.g; text: "Recent"; width: parent.width }
+  Section { g: root.g; text: root.session.length ? "Recent · " + root.session.length + " this session" : "Recent"; width: parent.width }
 
   Row {
     width: parent.width
     spacing: root.g.s(10)
     Repeater {
       id: thumbs
-      model: 3
+      onItemAdded: (i, item) => root.captureItems = root.g.withItem(root.captureItems, i, item)
+      onItemRemoved: (i, item) => root.captureItems = root.g.withItem(root.captureItems, i, null)
+      model: root.recent.length
       delegate: Focusable {
         required property int index
         readonly property var item: root.recent[index] || null
@@ -102,14 +113,11 @@ Column {
           g: root.g; role: "small"
           anchors.top: pic.bottom; anchors.topMargin: root.g.s(6)
           width: parent.width
-          text: parent.item ? parent.item.kind + " · " + parent.item.age : ""
+          text: parent.item ? (parent.item.kind === "Screenshot" ? "Shot" : parent.item.kind) + " · " + parent.item.age : ""
         }
       }
     }
   }
-  property Item thumb0: thumbs.count > 0 ? thumbs.itemAt(0) : null
-  property Item thumb1: thumbs.count > 1 ? thumbs.itemAt(1) : null
-  property Item thumb2: thumbs.count > 2 ? thumbs.itemAt(2) : null
 
   Action {
     id: folder

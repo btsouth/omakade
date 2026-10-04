@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 
 // Always at the top: the time, how long this session has run, and the state of
 // everything that can change under a game (capture, network, alerts, power).
@@ -26,34 +27,25 @@ Item {
   Row {
     anchors.right: parent.right
     anchors.verticalCenter: parent.verticalCenter
-    spacing: root.g.s(14)
+    spacing: root.g.s(12)
 
-    // Replay buffer or recording: a dot that says something is being kept.
-    Row {
+    Rectangle {
       visible: !!(root.status.recording || (root.status.replay && root.status.replay.on))
-      spacing: root.g.s(6)
+      width: captureStatus.width + root.g.s(14); height: root.g.s(24)
+      radius: root.g.innerRadius
+      color: root.g.well; border.width: 1; border.color: root.g.line
       anchors.verticalCenter: parent.verticalCenter
-      Rectangle {
-        width: root.g.s(8); height: width; radius: width / 2
-        color: root.g.red
-        anchors.verticalCenter: parent.verticalCenter
-        SequentialAnimation on opacity {
-          running: !!root.status.recording; loops: Animation.Infinite
-          NumberAnimation { to: 0.35; duration: 700 }
-          NumberAnimation { to: 1; duration: 700 }
-        }
-      }
-      Label {
-        g: root.g; role: "caps"; color: root.g.foreground
-        text: root.status.recording ? "Rec " + (root.status.recordingTime || "")
-          : "Replay " + ((root.status.replay && root.status.replay.seconds) || 30) + "s"
-        anchors.verticalCenter: parent.verticalCenter
+      Row {
+        id: captureStatus
+        anchors.centerIn: parent; spacing: root.g.s(6)
+        Rectangle { width: root.g.s(6); height: width; radius: width / 2; color: root.g.urgent; anchors.verticalCenter: parent.verticalCenter }
+        Label { g: root.g; role: "caps"; color: root.g.foreground; text: root.status.recording ? "REC" + (root.status.recordingTime ? " " + root.status.recordingTime : "") : "REPLAY"; anchors.verticalCenter: parent.verticalCenter }
       }
     }
     Label {
       visible: root.status.fps !== undefined && root.status.fps !== null
       g: root.g; role: "caps"; color: root.g.foreground
-      text: root.status.fps + " fps"
+      text: root.status.fps + " FPS"
       anchors.verticalCenter: parent.verticalCenter
     }
     Glyph { visible: !!root.status.dnd; g: root.g; name: root.g.icon.dnd; size: root.g.f(16); anchors.verticalCenter: parent.verticalCenter }

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -15,7 +16,7 @@ import "Contrast.js" as Contrast
 //
 // Input arrives as actions (up, down, left, right, a, b, x, y, lb, rb, guide)
 // from the keyboard or, for controllers, from Omakade's service through
-// `omarchy-shell shell call omakade.guide input <action>`.
+// `omarchy-shell omakade.guide input <action>`.
 Item {
   id: root
 
@@ -53,7 +54,7 @@ Item {
     root.confirmingQuit = !!p.confirm
     root.confirmIndex = 0
     if (p.toast) root.showToast(p.toast)
-    if (p.audit) console.log("GUIDE_AUDIT " + JSON.stringify({ theme: p.audit, colors: g.contrastTheme, audit: Contrast.audit(g.contrastTheme), glyphs: root.glyphAudit() }))
+    if (p.audit) console.log("GUIDE_AUDIT " + JSON.stringify({ theme: p.audit, colors: g.contrastTheme, audit: Contrast.audit(g.contrastTheme), glyphs: root.glyphAudit(), pairings: Contrast.pairings(g.contrastTheme) }))
     if (root.opened) return
     // A fresh open lands on Resume, so A then B never surprises anyone.
     if (p.tab === undefined) { root.tab = 0; root.cursors = root.cursors.map(function() { return [0, 0] }) }
@@ -67,7 +68,7 @@ Item {
   }
 
   // The frozen frame has to be taken before the guide covers the screen.
-  Timer { id: openDelay; interval: 50; onTriggered: root.opened = true }
+  Timer { id: openDelay; interval: 16; onTriggered: root.opened = true }
 
   // Face-button letters on their discs, for the contrast table.
   function glyphAudit() {
@@ -156,6 +157,13 @@ Item {
   }
   readonly property var confirmRows: [[confirmCancel, confirmQuit]]
   function currentRows() { return root.confirmingQuit ? root.confirmRows : root.rowsOf(root.page) }
+  function focusControl(item) {
+    var rows = currentRows()
+    for (var r = 0; r < rows.length; r++) {
+      var c = rows[r].indexOf(item)
+      if (c >= 0) { setCursor(r, c); return }
+    }
+  }
   function cursorOf() { return root.confirmingQuit ? [0, root.confirmIndex] : root.cursors[root.tab] }
   function setCursor(r, c) {
     if (root.confirmingQuit) { root.confirmIndex = c } else {
@@ -220,13 +228,15 @@ Item {
 
   property bool ringAnimated: false
   function updateRing() {
+    if (layoutTimer.running) return
     var item = root.focused
     if (!item || !root.opened) { ring.visible = false; return }
     // Keep the focused control on screen.
     if (!root.confirmingQuit) {
       var inPage = item.mapToItem(scroller.contentItem, 0, 0)
       var margin = g.s(16)
-      if (inPage.y - margin < scroller.contentY) scroller.contentY = Math.max(0, inPage.y - margin)
+      if (scroller.contentHeight <= scroller.height + g.s(8)) scroller.contentY = 0
+      else if (inPage.y - margin < scroller.contentY) scroller.contentY = Math.max(0, inPage.y - margin)
       else if (inPage.y + item.height + margin > scroller.contentY + scroller.height)
         scroller.contentY = Math.min(scroller.contentHeight - scroller.height, inPage.y + item.height + margin - scroller.height)
     }
@@ -238,9 +248,19 @@ Item {
     ring.visible = true
   }
   onFocusedChanged: Qt.callLater(updateRing)
-  onTabChanged: { ringAnimated = false; Qt.callLater(function() { updateRing(); ringAnimated = true }) }
+  Timer {
+    id: layoutTimer
+    interval: 32
+    onTriggered: {
+      scroller.contentY = Math.max(0, Math.min(scroller.contentY, scroller.contentHeight - scroller.height))
+      root.updateRing()
+      root.ringAnimated = true
+    }
+  }
+  onTabChanged: { ringAnimated = false; scroller.contentY = 0; layoutTimer.restart() }
+  onOpenedChanged: if (opened) { ringAnimated = false; scroller.contentY = 0; layoutTimer.restart() }
   onConfirmingQuitChanged: Qt.callLater(updateRing)
-  onModelChanged: Qt.callLater(updateRing)
+  onModelChanged: layoutTimer.restart()
 
   // ------------------------------------------------------------ IPC
 
@@ -250,6 +270,7 @@ Item {
     function close(): void { root.close() }
     function input(action: string): string { return root.input(action) }
     function tab(name: string): void { root.setTab(name) }
+    function ready(): string { return root.opened && panel.opacity === 1 && !layoutTimer.running && !openDelay.running ? "ready" : "waiting" }
     function toast(json: string): void { root.showToast(JSON.parse(json)) }
   }
 
@@ -268,6 +289,15 @@ Item {
       live: false
       visible: false
     }
+    MultiEffect {
+      anchors.fill: parent
+      source: frame
+      visible: !!(root.model.game || {}).pauseWhileOpen
+      saturation: -0.7
+      scale: 0.985
+      opacity: root.opened ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Style.duration(180) } }
+    }
 
     // The game outside the panel: dimmed most near the panel. The dim is a
     // shadow, not a theme colour, so light themes read as a lit card over a
@@ -278,9 +308,20 @@ Item {
       Behavior on opacity { NumberAnimation { duration: Style.duration(180) } }
       gradient: Gradient {
         orientation: Gradient.Horizontal
-        GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.62) }
-        GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, 0.36) }
-        GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.16) }
+        GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.78) }
+        GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, 0.66) }
+        GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.55) }
+      }
+    }
+
+    Rectangle {
+      anchors.fill: parent
+      opacity: root.opened ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: Style.duration(180) } }
+      gradient: Gradient {
+        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.12) }
+        GradientStop { position: 0.45; color: "transparent" }
+        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.20) }
       }
     }
 
@@ -310,7 +351,7 @@ Item {
       width: rail.width + g.s(452)
       height: parent.height - margin * 2
       opacity: root.opened ? 1 : 0
-      Behavior on x { NumberAnimation { duration: Style.duration(220); easing.type: Easing.OutCubic } }
+      Behavior on x { NumberAnimation { duration: Style.duration(180); easing.type: Easing.OutCubic } }
       Behavior on opacity { NumberAnimation { duration: Style.duration(160) } }
 
       MouseArea { anchors.fill: parent }
@@ -330,7 +371,7 @@ Item {
         shadowColor: Qt.rgba(0, 0, 0, g.light ? 0.28 : 0.55)
         shadowBlur: 1.0
         shadowVerticalOffset: g.s(8)
-        blurMax: 64
+        blurMax: 96
         paddingRect: Qt.rect(0, 0, 0, 0)
         autoPaddingEnabled: true
         opacity: 1
@@ -396,12 +437,20 @@ Item {
       }
       Rectangle { id: glassMask; anchors.fill: parent; radius: g.radius; visible: false; layer.enabled: true }
 
-      // The shell's popup border, so themes that style panels style this too.
-      BorderSurface {
-        anchors.fill: parent
-        radius: g.radius
+      Rectangle {
+        anchors.fill: parent; radius: g.radius
         color: "transparent"
-        borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+        border.width: 1; border.color: g.line
+      }
+      Rectangle {
+        x: g.radius; y: 1
+        width: parent.width - g.radius * 2; height: 1
+        gradient: Gradient {
+          orientation: Gradient.Horizontal
+          GradientStop { position: 0; color: "transparent" }
+          GradientStop { position: 0.5; color: Util.alpha(g.foreground, 0.22) }
+          GradientStop { position: 1; color: "transparent" }
+        }
       }
 
       TabRail {
@@ -450,21 +499,22 @@ Item {
           anchors.top: heading.bottom; anchors.topMargin: g.s(16)
           anchors.bottom: footer.top; anchors.bottomMargin: g.s(12)
           contentWidth: width
-          contentHeight: root.page ? root.page.implicitHeight + g.s(8) : 0
+          contentHeight: root.page ? Math.max(scroller.height, root.page.implicitHeight + g.s(8)) : 0
           clip: true
           boundsBehavior: Flickable.StopAtBounds
           onContentYChanged: root.updateRing()
-          Behavior on contentY { NumberAnimation { duration: Style.duration(160); easing.type: Easing.OutCubic } }
+          onContentHeightChanged: layoutTimer.restart()
+          Behavior on contentY { enabled: root.ringAnimated; NumberAnimation { duration: Style.duration(160); easing.type: Easing.OutCubic } }
 
           Item {
             width: scroller.width
             height: scroller.contentHeight
-            GamePage { id: gamePage; g: g; d: root.model; family: root.family; width: parent.width; visible: root.tab === 0; onAct: (n, a) => root.act(n, a) }
-            CapturePage { id: capturePage; g: g; d: root.model; family: root.family; width: parent.width; visible: root.tab === 1; onAct: (n, a) => root.act(n, a) }
-            PerformancePage { id: performancePage; g: g; d: root.model; family: root.family; width: parent.width; visible: root.tab === 2; onAct: (n, a) => root.act(n, a) }
-            AudioPage { id: audioPage; g: g; d: root.model; family: root.family; width: parent.width; visible: root.tab === 3; onAct: (n, a) => root.act(n, a) }
-            ControllersPage { id: controllersPage; g: g; d: root.model; family: root.family; width: parent.width; visible: root.tab === 4; onAct: (n, a) => root.act(n, a) }
-            SystemPage { id: systemPage; g: g; d: root.model; family: root.family; width: parent.width; visible: root.tab === 5; onAct: (n, a) => root.act(n, a) }
+            GamePage { id: gamePage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 0; onAct: (n, a) => root.act(n, a) }
+            CapturePage { id: capturePage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 1; onAct: (n, a) => root.act(n, a) }
+            PerformancePage { id: performancePage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 2; onAct: (n, a) => root.act(n, a) }
+            AudioPage { id: audioPage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 3; onAct: (n, a) => root.act(n, a) }
+            ControllersPage { id: controllersPage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 4; onAct: (n, a) => root.act(n, a) }
+            SystemPage { id: systemPage; onRequestedFocus: (item) => root.focusControl(item); g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 5; onAct: (n, a) => root.act(n, a) }
           }
         }
 
@@ -475,15 +525,12 @@ Item {
           anchors.bottom: parent.bottom; anchors.bottomMargin: g.s(16)
           height: g.s(26)
           Rectangle { anchors.bottom: parent.top; anchors.bottomMargin: g.s(12); width: parent.width; height: Math.max(1, g.s(1)); color: g.line }
-          Row {
-            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+          RowLayout {
+            anchors.fill: parent
             spacing: g.s(16)
             Hint { g: g; family: root.family; button: "a"; label: "Select" }
             Hint { g: g; family: root.family; button: "b"; label: root.confirmingQuit ? "Cancel" : "Resume" }
-          }
-          Row {
-            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-            spacing: g.s(16)
+            Item { Layout.fillWidth: true }
             Hint { g: g; family: root.family; button: "y"; label: "Screenshot" }
             Hint { g: g; family: root.family; button: "x"; label: "Replay" }
           }

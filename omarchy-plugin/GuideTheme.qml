@@ -27,6 +27,7 @@ QtObject {
   readonly property color background: Color.background
   readonly property color accent: Color.accent
   readonly property color urgent: Color.urgent
+  readonly property color accentInk: Contrast.inkAt(Contrast.hex(accent), Contrast.hex(foreground), Contrast.hex(background), 4.6)
   readonly property color dim: Qt.darker(Color.foreground, 1.4)
   readonly property color base: pick("darker_background", Qt.darker(Color.background, 1.3))
   readonly property bool light: String(palette.mode || "") === "light"
@@ -43,11 +44,25 @@ QtObject {
     base: Contrast.hex(base)
   })
   readonly property real tint: Contrast.alpha(contrastTheme)
+  readonly property real graphFillAlpha: Contrast.graphAlpha(contrastTheme, tint)
 
   // Shared state chrome, from the shell's state tokens.
   readonly property color line: Util.alpha(foreground, light ? 0.16 : 0.12)
-  readonly property color well: Util.alpha(foreground, light ? 0.06 : 0.05)
-  readonly property color track: Util.alpha(foreground, 0.14)
+  readonly property color well: Util.alpha(foreground, Contrast.chromeAlpha(contrastTheme, tint, light ? 0.06 : 0.05, Contrast.roles(contrastTheme)))
+  readonly property color track: Util.alpha(foreground, Contrast.chromeAlpha(contrastTheme, tint, 0.14, Contrast.roles(contrastTheme).filter(function(r) { return r[0] !== "dim" }), well.a))
+
+  function withItem(items, index, item) {
+    var copy = items.slice(); copy[index] = item
+    return copy
+  }
+
+  function rhythm(container, minimum) {
+    var items = container.children, total = 0, count = 0
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].visible && items[i].height > 0) { total += items[i].height; count++ }
+    }
+    return Math.max(s(minimum), (container.availableHeight - total) / Math.max(1, count - 1))
+  }
 
   function pick(key, fallback) {
     var v = palette[key]
@@ -110,6 +125,7 @@ QtObject {
     readonly property string charging: "\u{f0084}"
     readonly property string mic: "\u{f036c}"
     readonly property string micOff: "\u{f036d}"
+    readonly property string headset: "\u{f02ce}"
     readonly property string speaker: "\u{f04c3}"
     readonly property string tv: "\u{f0502}"
     readonly property string brightness: "\u{f00df}"

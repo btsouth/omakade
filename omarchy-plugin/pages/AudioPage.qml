@@ -5,22 +5,25 @@ Column {
   id: root
   required property var g
   required property var d
+  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
 
   readonly property var audio: d.audio || {}
   readonly property var media: audio.nowPlaying || null
   readonly property var outputs: audio.outputs || []
+  property var transportItems: []
+  property var outputItems: []
   property var rows: {
     var r = []
-    if (media) r.push([prev, playPause, next])
+    if (media) r.push(transportItems)
     r.push([volume])
-    for (var i = 0; i < outputRepeater.count; i++) r.push([outputRepeater.itemAt(i)])
+    for (var i = 0; i < outputItems.length; i++) r.push([outputItems[i]])
     r.push([mic])
     return r
   }
 
-  spacing: g.s(10)
+  spacing: g.rhythm(root, 18)
 
   // Now playing: whatever MPRIS player is running.
   Rectangle {
@@ -39,60 +42,45 @@ Column {
       Row {
         width: parent.width
         spacing: root.g.s(14)
-        Picture { id: art; g: root.g; width: root.g.s(64); height: width; source: root.media ? root.media.art || "" : "" }
+        Picture { id: art; g: root.g; width: root.g.s(128); height: width; source: root.media ? root.media.art || "" : "" }
         Column {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - art.width - parent.spacing
           spacing: root.g.s(2)
           Label { g: root.g; role: "caps"; text: root.media ? root.media.player : "" }
-          Label { g: root.g; role: "title"; text: root.media ? root.media.title : ""; width: parent.width }
+          Label { g: root.g; role: "heading"; text: root.media ? root.media.title : ""; width: parent.width }
           Label { g: root.g; role: "small"; text: root.media ? root.media.artist : ""; width: parent.width }
         }
       }
-      Item {
-        width: parent.width; height: root.g.s(38)
-        Row {
-          id: transport
-          spacing: root.g.s(6)
-          anchors.verticalCenter: parent.verticalCenter
-          Repeater {
-            id: transportRepeater
-            model: ["previous", "play", "next"]
-            delegate: Focusable {
-              required property string modelData
-              width: root.g.s(38); height: width
-              onTriggered: root.act("media", modelData)
-              Rectangle {
-                anchors.fill: parent; radius: width / 2
-                color: modelData === "play" ? root.g.foreground : "transparent"
-                border.width: modelData === "play" ? 0 : Math.max(1, root.g.s(1)); border.color: root.g.line
-              }
-              Glyph {
-                g: root.g; anchors.centerIn: parent; size: root.g.f(18)
-                color: modelData === "play" ? root.g.background : root.g.foreground
-                name: modelData === "previous" ? root.g.icon.previous : modelData === "next" ? root.g.icon.next
-                  : (root.media && root.media.playing ? root.g.icon.pause : root.g.icon.play)
-              }
+      Meter {
+        g: root.g; width: parent.width
+        label: root.media ? root.media.position : ""
+        value: root.media ? root.media.length : ""
+        progress: root.media ? root.media.progress : 0
+        fill: root.g.foreground
+      }
+      Row {
+        spacing: root.g.s(16); anchors.horizontalCenter: parent.horizontalCenter
+        Repeater {
+          id: transportRepeater
+          onItemAdded: (i, item) => root.transportItems = root.g.withItem(root.transportItems, i, item)
+          onItemRemoved: (i, item) => root.transportItems = root.g.withItem(root.transportItems, i, null)
+          model: ["previous", "play", "next"]
+          delegate: Focusable {
+            required property string modelData
+            width: root.g.s(52); height: width
+            onTriggered: root.act("media", modelData)
+            Rectangle { anchors.fill: parent; radius: root.g.innerRadius; color: root.g.well; border.width: 1; border.color: root.g.line }
+            Glyph {
+              g: root.g; anchors.centerIn: parent; size: root.g.f(24)
+              name: modelData === "previous" ? root.g.icon.previous : modelData === "next" ? root.g.icon.next
+                : (root.media && root.media.playing ? root.g.icon.pause : root.g.icon.play)
             }
           }
-        }
-        Meter {
-          id: progress
-          g: root.g
-          anchors.left: transport.right; anchors.leftMargin: root.g.s(16)
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          label: root.media ? root.media.position : ""
-          value: root.media ? root.media.length : ""
-          progress: root.media ? root.media.progress : 0
-          fill: root.g.foreground
         }
       }
     }
   }
-  property Item prev: transportRepeater.count > 0 ? transportRepeater.itemAt(0) : null
-  property Item playPause: transportRepeater.count > 1 ? transportRepeater.itemAt(1) : null
-  property Item next: transportRepeater.count > 2 ? transportRepeater.itemAt(2) : null
 
   SliderRow {
     id: volume
@@ -106,13 +94,18 @@ Column {
   Section { g: root.g; text: "Output"; width: parent.width }
   Column {
     width: parent.width
+    spacing: root.g.s(6)
     Repeater {
       id: outputRepeater
+      onItemAdded: (i, item) => root.outputItems = root.g.withItem(root.outputItems, i, item)
+      onItemRemoved: (i, item) => root.outputItems = root.g.withItem(root.outputItems, i, null)
       model: root.outputs
       delegate: Action {
         required property var modelData
         g: root.g; width: root.width
-        icon: modelData.kind === "tv" ? root.g.icon.tv : root.g.icon.speaker
+        icon: modelData.kind === "tv" ? root.g.icon.tv : modelData.kind === "headset" || /headset/i.test(modelData.name) ? root.g.icon.headset : root.g.icon.speaker
+        height: root.g.s(58)
+        selected: !!modelData.current
         title: modelData.name
         detail: modelData.detail || ""
         trailing: modelData.current ? "\u{f012c}" : ""

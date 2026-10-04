@@ -11,6 +11,8 @@ Canvas {
   onValuesChanged: requestPaint()
   onStrokeChanged: requestPaint()
   onWidthChanged: requestPaint()
+  onHeightChanged: requestPaint()
+  Connections { target: root.g; function onGraphFillAlphaChanged() { root.requestPaint() } }
 
   onPaint: {
     var ctx = getContext("2d")
@@ -26,7 +28,7 @@ Canvas {
     ctx.lineTo(width, height)
     ctx.closePath()
     var grad = ctx.createLinearGradient(0, 0, 0, height)
-    grad.addColorStop(0, Qt.rgba(stroke.r, stroke.g, stroke.b, 0.28))
+    grad.addColorStop(0, Qt.rgba(stroke.r, stroke.g, stroke.b, g.graphFillAlpha))
     grad.addColorStop(1, Qt.rgba(stroke.r, stroke.g, stroke.b, 0))
     ctx.fillStyle = grad
     ctx.fill()

@@ -29,6 +29,7 @@ shoot() {
   for tab in $tabs; do
     omabox run -- omarchy-shell shell summon omakade.guide \
       "{\"fixture\":\"$fixture\",\"pad\":\"$pad\",\"scale\":$scale,\"tab\":\"$tab\",\"audit\":\"$name\"}" >/dev/null
+    omabox wait cmd -- bash -c 'test "$(omarchy-shell omakade.guide ready)" = ready' >/dev/null
     omabox wait still >/dev/null || true
     omabox shot -o "$out/$name-$tab.png" >/dev/null
   done

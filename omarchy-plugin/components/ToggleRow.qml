@@ -1,7 +1,7 @@
 import QtQuick
-import qs.Ui
+import qs.Commons
 
-// A setting that is on or off, with the shell's own switch.
+// A setting that is on or off, drawn with the guide surface tokens.
 Item {
   id: root
   required property var g
@@ -31,13 +31,12 @@ Item {
       Label { g: root.g; role: "small"; text: root.detail; visible: text !== ""; width: parent.width }
     }
   }
-  ToggleSwitch {
+  GuideSwitch {
     id: toggle
+    g: root.g
     anchors.right: parent.right; anchors.rightMargin: root.g.s(6)
     anchors.verticalCenter: parent.verticalCenter
     checked: root.checked
-    cursorRing: false
-    trackHeight: root.g.s(20)
-    onToggled: root.toggled(!root.checked)
   }
+  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.activate() }
 }
