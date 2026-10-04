@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "omakade.guide",
+  "name": "In-game guide",
+  "version": "0.1.0",
+  "author": "Omakade",
+  "license": "MIT",
+  "description": "A theme-matched guide over any running game: capture, performance, sound, controllers and quick settings, one button away.",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "Guide.qml" }
+}
