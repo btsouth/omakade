@@ -18,12 +18,12 @@ Item {
     implicitHeight: (compact ? 46 : 52) * s
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
     RectangularShadow {
-        x: 0; y: 12 * row.s; width: 3 * row.s; height: parent.height - 24 * row.s
+        x: 0; y: (parent.height - 20 * row.s) / 2; width: 3 * row.s; height: 20 * row.s
         radius: width / 2; blur: 14 * row.s
         color: row.tint(row.colors.accent, row.selected ? 0.5 : 0)
     }
     Rectangle {
-        x: 0; y: 12 * row.s; width: 3 * row.s; height: parent.height - 24 * row.s
+        x: 0; y: (parent.height - 20 * row.s) / 2; width: 3 * row.s; height: 20 * row.s
         radius: width / 2; color: row.colors.accent; visible: row.selected
     }
     Text {

@@ -20,7 +20,9 @@ values are not defaults. `gen-themes.py` reads the installed Omarchy palettes;
 render into the new render over 500 ms.
 
 Use arrows as D-pad, Enter as A, Escape as B, G as Guide, and T to cycle themes.
-The numbered rows show focus order. Up/down wraps through actions and captures.
+The small numbers show focus order. Up/down follows the visual order through
+actions and captures. Left/right moves between capture actions, thumbnails and
+music transport controls.
 A opens Controls & more; left/right or A changes its settings. B returns to the
 main page. Notes has a D-pad keyboard, Save and Cancel. Quit defaults to Keep
 playing and requires a second selection. `--page=tools`, `--focus=3`,
@@ -29,7 +31,12 @@ playing and requires a second selection. `--page=tools`, `--focus=3`,
 The glass has a saturated blurred frame, fine grain below the protective tint,
 soft shadow and a one-pixel edge. A translucent rim surrounds one continuous
 protected text surface, preserving the game without weakening text contrast.
-Focus uses an accent light bar and stronger text, with no row borders or coloured fill.
+The game header combines landscape art, an overlapping cover and a large title.
+Resume is the primary action, with paired capture controls directly beneath it.
+Controls & more uses large performance values, a sound/display group and compact
+music transport beside the track. Supporting groups have no borders or shadows;
+only purposeful action tiles receive a faint outline. Focus uses an accent light
+bar and glow, with no flat accent fill.
 
 `Contrast.js` is shared by the preview and audit. It keeps the 0.6 base and the
 original role floors, choosing the clearest tint in 0.01 steps from 0.55 to 1.00.
@@ -48,7 +55,9 @@ python3 tools/guide-overlay-preview/audit-contrast.py AUDIT_LOG BLACK_DIR WHITE_
 ```
 
 That report checks all four roles over both frames, samples empty patches of the
-actual 1920×1080 main-page glass, and produces JSON, CSV and a Markdown table.
+actual 1920×1080 glass, and produces JSON, CSV and a Markdown table. Export the
+same black/white pair with `--page=tools` and pass `--page=tools` to the audit
+script to check the settings composition too.
 Keep renders, reports and review evidence outside the repository. D-pad checks
 in omabox prove the prototype flow; physical controller routing and action
 integrations belong to subsequent implementation milestones.

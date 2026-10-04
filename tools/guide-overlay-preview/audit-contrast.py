@@ -32,6 +32,7 @@ def main():
     parser.add_argument("black_dir", type=Path)
     parser.add_argument("white_dir", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--page", choices=("home", "tools"), default="home")
     args = parser.parse_args()
     data = json.loads(args.audit_log.read_text().split("CONTRAST_AUDIT ", 1)[1].splitlines()[0])
     source = Path(__file__).with_name("themes.js").read_text()
@@ -39,10 +40,17 @@ def main():
     assert len(data) == len(themes) == 22
     assert {row["slug"] for row in data} == set(themes)
     keys = {"body": "foreground", "bright": "brightforeground", "muted": "mutedtext", "accent": "accent"}
-    # Empty patches inside header, each action, capture captions, device card and clock.
-    # These coordinates are for the 1920x1080 home-page export, not arbitrary layouts.
-    patches = [(630, 200), (630, 836), (630, 970), (1860, 64)]
-    patches += [(630, 400 + i * 43) for i in range(8)]
+    # Empty protected patches at 1920x1080, clear of text, art, progress and focus.
+    # Check every composition region; support groups share one continuous glass.
+    patches = [(690, 335), (690, 414), (700, 1004), (1860, 64)]
+    if args.page == "home":
+        patches += [(690, 485), (360, 590), (690, 590), (700, 674),
+                    (700, 714), (700, 750), (700, 786), (700, 822), (700, 858),
+                    (700, 910), (700, 950)]
+    else:
+        patches += [(340, 555), (690, 555), (700, 624), (700, 654),
+                    (700, 686), (700, 718), (700, 750), (460, 880),
+                    (690, 840), (700, 925), (700, 976)]
     details = []
     for theme in data:
         for frame, directory in (("black", args.black_dir), ("white", args.white_dir)):
@@ -54,7 +62,7 @@ def main():
                 role["rendered_" + frame] = rendered
                 assert rendered >= role["floor"], (theme["slug"], frame, role["role"], rendered, role["floor"])
                 assert role[frame] >= role["floor"]
-                details.append({"theme": theme["theme"], "alpha": theme["alpha"], "frame": frame,
+                details.append({"theme": theme["theme"], "alpha": theme["alpha"], "page": args.page, "frame": frame,
                                 "role": role["role"], "analytic": role[frame], "rendered": rendered,
                                 "floor": role["floor"], "pass": True})
         for role in theme["roles"]:
@@ -66,7 +74,7 @@ def main():
         writer.writeheader()
         writer.writerows(details)
     lines = ["Each cell is minimum / required contrast. Minimum includes both black and white frames,",
-             "the shared analytical calculation, and sampled 8-bit renders. All 176 role/frame checks pass.",
+             f"the shared analytical calculation, and sampled 8-bit {args.page} renders. All 176 role/frame checks pass.",
              "Floors: body/bright min(7, 90% of native theme contrast), muted min(4.5, 85%), accent min(3, 85%).",
              "The unchanged 0.6 glass base precedes the computed tint. Alpha includes blend-rounding bounds.", "",
              "| Theme | Tint | Body | Bright | Muted | Accent | Result |",

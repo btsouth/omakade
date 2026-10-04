@@ -123,6 +123,9 @@ Window {
         target: win
         function onFrameSwapped() {
             if (win.arg("export", "") === "" || win.exportBusy) return;
+            // Hyprland can paint a temporary tiled size before entering fullscreen.
+            // Do not advance the theme set until its requested geometry is rendered.
+            if (win.width !== 1920 || win.height !== 1080) return;
             win.exportBusy = true;
             if (!win.exportStarted) { win.exportStarted = true; win.themeIndex = 0; win.exportBusy = false; return }
             win.contentItem.grabToImage(result => {

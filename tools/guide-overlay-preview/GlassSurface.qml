@@ -14,12 +14,15 @@ Item {
     property real originY: y
     property real frameWidth: 1920
     property real frameHeight: 1080
+    property bool framed: true
+    property bool shadowed: true
     property real rim: 0
     property var zones: [{x: rim, y: rim, width: width - 2 * rim, height: height - 2 * rim}]
     default property alias content: contentItem.data
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
     RectangularShadow {
+        visible: glass.shadowed
         anchors.fill: parent
         radius: glass.radius
         blur: 80 * glass.scaleFactor
@@ -78,10 +81,12 @@ Item {
         Item { id: contentItem; anchors.fill: parent }
     }
     Rectangle {
+        visible: glass.framed
         anchors.fill: parent; radius: glass.radius; color: "transparent"
         border.width: 1; border.color: glass.tint(glass.colors.brightFg, 0.20)
     }
     Rectangle {
+        visible: glass.framed
         x: glass.radius; y: 1; width: parent.width - 2 * x; height: 1
         gradient: Gradient {
             orientation: Gradient.Horizontal
