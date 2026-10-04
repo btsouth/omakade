@@ -10,7 +10,7 @@ PageRhythm {
 
   readonly property var sys: d.system || {}
   readonly property var profiles: ["power-saver", "balanced", "performance"]
-  readonly property string profile: (d.performance || {}).profile || "balanced"
+  readonly property string profile: (d.performance || {}).profile || ""
   property var rows: [[wifi, bluetooth], [dnd, power], [light, suspend], [brightness], [library], [desktop]]
 
   Grid {
@@ -20,7 +20,7 @@ PageRhythm {
       id: wifi
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.wifi; title: "Wi-Fi"
-      detail: root.sys.wifi ? (root.sys.ssid || "Connected") : "Off"
+      detail: root.sys.wifi === undefined ? "Unavailable" : root.sys.wifi ? (root.sys.ssid || "Connected") : "Off"
       selected: !!root.sys.wifi
       onTriggered: root.act("wifi", !root.sys.wifi)
     }
@@ -28,7 +28,7 @@ PageRhythm {
       id: bluetooth
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.bluetooth; title: "Bluetooth"
-      detail: root.sys.bluetooth ? "On · 2 devices" : "Off"
+      detail: root.sys.bluetooth === undefined ? "Unavailable" : root.sys.bluetooth ? "On" : "Off"
       selected: !!root.sys.bluetooth
       onTriggered: root.act("bluetooth", !root.sys.bluetooth)
     }
@@ -36,7 +36,7 @@ PageRhythm {
       id: dnd
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.dnd; title: "Do not disturb"
-      detail: root.sys.dnd ? "On" : "Off"
+      detail: root.sys.dnd === undefined ? "Unavailable" : root.sys.dnd ? "On" : "Off"
       selected: !!root.sys.dnd
       onTriggered: root.act("dnd", !root.sys.dnd)
     }
@@ -44,14 +44,14 @@ PageRhythm {
       id: power
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.gauge; title: "Power profile"
-      detail: root.profile === "power-saver" ? "Saver" : root.profile === "performance" ? "Performance" : "Balanced"
+      detail: root.profile === "" ? "Unavailable" : root.profile === "power-saver" ? "Saver" : root.profile === "performance" ? "Performance" : "Balanced"
       onTriggered: root.act("profile", root.profiles[(root.profiles.indexOf(root.profile) + 1) % 3])
     }
     Action {
       id: light
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.brightness; title: "Brightness"
-      detail: Math.round((root.sys.brightness || 0) * 100) + "%"
+      detail: root.sys.brightness === undefined ? "Unavailable" : Math.round(root.sys.brightness * 100) + "%"
       onTriggered: root.requestedFocus(brightness)
     }
     Action {

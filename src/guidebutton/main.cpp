@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
                    [&application, toggleCommand](const QString& node, const QString& name) {
                      qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)")
                                               .arg(node, name);
-                     toggleGameMode(toggleCommand, &application);
+                     toggleGameMode(toggleCommand + QStringLiteral(" --guide-device ") + node, &application);
                    });
   listener.start();
   return application.exec();

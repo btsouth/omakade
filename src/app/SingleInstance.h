@@ -23,7 +23,8 @@ signals:
   void playRequested(const QString& launchKey);
   void rescanRequested(const QString& source);
   void gameModeRequested(bool enter);
-  void gameModeToggleRequested();
+  void gameModeToggleRequested(const QString& node);
+  void guideToggleRequested(const QString& node);
   void gameModeDesktopRequested();
   void quitRequested();
   void trackingStorageFailed();

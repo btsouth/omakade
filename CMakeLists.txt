@@ -134,6 +134,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade-guide-button PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_library(omakade_guide_runtime STATIC
+  src/guide/GuidePayload.cpp src/guide/GuidePayload.h
+  src/guide/GuideInput.cpp src/guide/GuideInput.h
+  src/guide/GuidePause.cpp src/guide/GuidePause.h
+)
+target_include_directories(omakade_guide_runtime PUBLIC src)
+target_link_libraries(omakade_guide_runtime PUBLIC omakade_guide omakade_tracking)
+qt_add_executable(omakade-guide-guard src/guide/guard.cpp)
+target_link_libraries(omakade-guide-guard PRIVATE omakade_guide_runtime)
+
 add_library(omakade_core STATIC
   src/backup/BackupArchive.cpp
   src/backup/BackupArchive.h
@@ -306,6 +316,8 @@ add_library(omakade_core STATIC
   src/gamemode/GameModeDesktop.h
   src/gamemode/GameModeGuideButton.cpp
   src/gamemode/GameModeGuideButton.h
+  src/guide/InGameGuide.cpp
+  src/guide/InGameGuide.h
   src/gamemode/GameModeOverlay.cpp
   src/gamemode/GameModeOverlay.h
   src/gamemode/GameModePorts.h
@@ -321,6 +333,7 @@ add_library(omakade_core STATIC
 
 target_include_directories(omakade_core PUBLIC src)
 target_link_libraries(omakade_core PUBLIC
+  omakade_guide_runtime
   omakade_tracking
   LayerShellQt::Interface
   Qt6::Quick
@@ -464,7 +477,7 @@ install(TARGETS omakade
   BUNDLE DESTINATION .
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(TARGETS omakade-sessiond omakade-guide-button
+install(TARGETS omakade-sessiond omakade-guide-button omakade-guide-guard
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(FILES resources/sessiond-profiles.json

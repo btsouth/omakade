@@ -1226,3 +1226,12 @@ add_test(NAME omakade_guide_button_list COMMAND omakade-guide-button --list
   --dev-dir=${CMAKE_CURRENT_BINARY_DIR} --sys-dir=${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(omakade_guide_button_list PROPERTIES TIMEOUT 10
   PASS_REGULAR_EXPRESSION "No controllers with a Guide or Home button are connected")
+
+qt_add_executable(omakade_in_game_guide_tests InGameGuideTests.cpp)
+target_link_libraries(omakade_in_game_guide_tests PRIVATE omakade_guide_runtime Qt6::Test Qt6::Qml)
+target_compile_definitions(omakade_in_game_guide_tests PRIVATE
+  OMAKADE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  OMAKADE_GUIDE_GUARD="$<TARGET_FILE:omakade-guide-guard>")
+add_dependencies(omakade_in_game_guide_tests omakade-guide-guard)
+add_test(NAME omakade_in_game_guide_tests COMMAND omakade_in_game_guide_tests)
+set_tests_properties(omakade_in_game_guide_tests PROPERTIES TIMEOUT 30)

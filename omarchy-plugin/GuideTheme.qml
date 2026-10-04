@@ -21,24 +21,34 @@ QtObject {
   readonly property int radius: Style.cornerRadius
   readonly property int innerRadius: Math.max(0, Style.cornerRadius - s(4))
 
+  signal themeRequested(var theme)
+  property var roles: ({foreground: Color.foreground, background: Color.background,
+                        accent: Color.accent, urgent: Color.urgent})
+  property var nextPalette: ({})
   property var palette: ({})
+  function applyTheme(theme) { root.roles = theme.roles; root.palette = theme.palette }
+  property Timer themeTimer: Timer {
+    interval: 40
+    onTriggered: root.themeRequested({roles: {foreground: Color.foreground, background: Color.background,
+      accent: Color.accent, urgent: Color.urgent}, palette: root.nextPalette})
+  }
 
-  readonly property color foreground: Color.foreground
-  readonly property color background: Color.background
-  readonly property color accent: Color.accent
-  readonly property color urgent: Color.urgent
+  readonly property color foreground: roles.foreground
+  readonly property color background: roles.background
+  readonly property color accent: roles.accent
+  readonly property color urgent: roles.urgent
   readonly property color accentInk: Contrast.inkAt(Contrast.hex(accent), Contrast.hex(foreground), Contrast.hex(background), 4.6)
   readonly property color bannerInk: Contrast.bannerInk(contrastTheme)
   readonly property real bannerScrim: Contrast.bannerAlpha(contrastTheme)
-  readonly property color dim: Qt.darker(Color.foreground, 1.4)
-  readonly property color base: pick("darker_background", Qt.darker(Color.background, 1.3))
+  readonly property color dim: Qt.darker(roles.foreground, 1.4)
+  readonly property color base: pick("darker_background", Qt.darker(roles.background, 1.3))
   readonly property bool light: String(palette.mode || "") === "light"
-    || Contrast.luminance(Contrast.hex(Color.background)) > 0.4
+    || Contrast.luminance(Contrast.hex(roles.background)) > 0.4
 
-  readonly property color green: pick("green", Color.accent)
-  readonly property color red: pick("red", Color.urgent)
-  readonly property color blue: pick("blue", Color.accent)
-  readonly property color yellow: pick("yellow", Color.accent)
+  readonly property color green: pick("green", roles.accent)
+  readonly property color red: pick("red", roles.urgent)
+  readonly property color blue: pick("blue", roles.accent)
+  readonly property color yellow: pick("yellow", roles.accent)
 
   readonly property var contrastTheme: ({
     foreground: Contrast.hex(foreground), background: Contrast.hex(background),
@@ -69,7 +79,8 @@ QtObject {
       var m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*"([^"]*)"/)
       if (m) out[m[1]] = m[2]
     })
-    palette = out
+    nextPalette = out
+    themeTimer.restart()
   }
 
   property FileView colorsFile: FileView {
@@ -86,7 +97,10 @@ QtObject {
   // Re-read when the shell applies new colours as well.
   property Connections colorWatch: Connections {
     target: Color
-    function onBackgroundChanged() { root.colorsFile.reload() }
+    function onBackgroundChanged() { root.colorsFile.reload(); root.themeTimer.restart() }
+    function onForegroundChanged() { root.themeTimer.restart() }
+    function onAccentChanged() { root.themeTimer.restart() }
+    function onUrgentChanged() { root.themeTimer.restart() }
   }
 
   // Nerd Font glyphs (Material Design set), shared by every page.

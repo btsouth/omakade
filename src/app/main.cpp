@@ -48,6 +48,7 @@
 #include <QQmlProperty>
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeOverlay.h"
+#include "guide/InGameGuide.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
@@ -765,6 +766,8 @@ int main(int argc, char* argv[]) {
   // `--game-mode-toggle` does whichever applies, which is what a key binding wants.
   const bool gameModeToggleRequest =
       application.arguments().contains(QStringLiteral("--game-mode-toggle"));
+  const bool guideToggleRequest = application.arguments().contains(QStringLiteral("--guide-toggle"));
+  const QString guideDevice = optionValue(application.arguments(), QStringLiteral("--guide-device"));
   bool gameModeRequest = application.arguments().contains(QStringLiteral("--game-mode"));
   bool gameModeExitRequest = application.arguments().contains(QStringLiteral("--game-mode-exit"));
   if (optionSupplied(application.arguments(), QStringLiteral("--render-screenshot")) &&
@@ -873,8 +876,9 @@ int main(int argc, char* argv[]) {
     qCritical() << "No running Game Mode session to return from.";
     return EXIT_FAILURE;
   }
+  if (guideToggleRequest && SingleInstance::sendCommand({}, "guide toggle " + guideDevice.toUtf8())) return EXIT_SUCCESS;
   if (gameModeToggleRequest) {
-    if (SingleInstance::sendCommand({}, "game-mode toggle")) {
+    if (SingleInstance::sendCommand({}, "game-mode toggle " + guideDevice.toUtf8())) {
       return EXIT_SUCCESS;
     }
     // With no window running, a record left by an interrupted session means Game Mode is
@@ -1819,6 +1823,9 @@ int main(int argc, char* argv[]) {
       isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy);
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
+  InGameGuide inGameGuide(playSessionStore.get(), &unifiedGames, &gameMode, &gameModeCompositor,
+                          !isolatedTest && onOmarchy);
+  inGameGuide.setInjectedInputEnabled(application.arguments().contains(QStringLiteral("--guide-input-test")));
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
   engine.rootContext()->setContextProperty("Stats", &stats);
@@ -1998,6 +2005,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
+  engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeShortcut"), &gameModeShortcut);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeGuideButton"),
                                            &gameModeGuideButton);
@@ -6882,13 +6890,20 @@ int main(int argc, char* argv[]) {
   QObject::connect(&singleInstance, &SingleInstance::gameModeDesktopRequested, &gameMode,
                    &GameModeSession::park);
   QObject::connect(&singleInstance, &SingleInstance::gameModeToggleRequested, &gameMode,
-                   [&gameMode, rootWindow] {
+                   [&gameMode, &inGameGuide, rootWindow](const QString& node) {
+                     if (inGameGuide.opened() || inGameGuide.hasGame()) { inGameGuide.toggle(node); return; }
                      // The shortcut parks or resumes the complete library session.
                      if (rootWindow == nullptr ||
                          !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) {
                        gameMode.toggle();
                      }
                    });
+  QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
+                   [&inGameGuide](const QString& node) { inGameGuide.toggle(node); });
+  QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow] {
+    if (rootWindow) { rootWindow->show(); rootWindow->requestActivate(); }
+  });
+  if (guideToggleRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice); });
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {
     const auto windowStateBeforePreparation =

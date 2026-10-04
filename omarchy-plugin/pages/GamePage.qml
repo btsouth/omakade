@@ -8,6 +8,7 @@ PageRhythm {
   signal act(string name, var arg)
 
   readonly property var game: d.game || {}
+  readonly property bool hasGame: !!d.game
   readonly property bool steam: game.kind === "steam"
   readonly property bool emulator: game.kind === "emulator"
   readonly property var ach: game.achievements || null
@@ -24,6 +25,7 @@ PageRhythm {
 
   Item {
     id: banner
+    visible: root.hasGame
     width: parent.width; height: root.heroMinimum + root.heroExtra
     clip: true
     // Focus the crop on the moon and market, clear of the left-hand windows.
@@ -55,7 +57,7 @@ PageRhythm {
         Label { g: root.g; role: "caps"; color: root.g.bannerInk; text: root.game.source || ""; anchors.verticalCenter: parent.verticalCenter }
       }
       Label { g: root.g; role: "display"; color: root.g.bannerInk; font.pixelSize: root.g.f(30); text: root.game.title || ""; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2 }
-      Label { g: root.g; role: "small"; color: root.g.bannerInk; text: root.duration(root.game.sessionMinutes) + " this session · " + root.duration(root.game.totalMinutes) + " total"; width: parent.width }
+      Label { g: root.g; role: "small"; color: root.g.bannerInk; text: [root.game.sessionMinutes !== undefined ? root.duration(root.game.sessionMinutes) + " this session" : "", root.game.totalMinutes !== undefined ? root.duration(root.game.totalMinutes) + " total" : ""].filter(function(x) { return x !== "" }).join(" · "); width: parent.width }
     }
   }
 
@@ -63,13 +65,14 @@ PageRhythm {
     id: resume
     g: root.g; width: parent.width
     variant: "primary"; icon: root.g.icon.play
-    title: "Resume"
-    detail: root.game.pauseWhileOpen ? "Paused while the guide is open" : "Back to " + (root.game.title || "the game")
+    title: root.hasGame ? "Resume" : "Continue playing"
+    detail: root.game.paused !== undefined ? (root.game.paused ? "Paused while the guide is open" : "Back to " + (root.game.title || "the game")) : root.game.pauseWhileOpen ? "Paused while the guide is open" : "Back to " + (root.game.title || "the game")
     hintFamily: root.family; hintButton: "b"
     onTriggered: root.act("resume", null)
   }
 
   Row {
+    visible: root.hasGame
     width: parent.width; spacing: root.g.s(10)
     Action {
       id: extra
@@ -82,6 +85,7 @@ PageRhythm {
     }
     Action {
       id: notes
+      visible: root.game.notes !== undefined || root.game.note !== undefined
       g: root.g; width: (parent.width - parent.spacing * 2) / 3
       variant: "tile"; height: root.g.s(116); icon: root.g.icon.notes
       title: "Notes"; detail: (root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) + ((root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) === 1 ? " note" : " notes")
@@ -92,7 +96,7 @@ PageRhythm {
       g: root.g; width: (parent.width - parent.spacing * 2) / 3
       variant: "tile"; height: root.g.s(116); icon: root.g.icon.pausedGame
       selected: !!root.game.pauseWhileOpen
-      title: "Pause"; detail: root.game.pauseWhileOpen ? "On" : "Off"
+      title: "Pause"; detail: root.game.paused !== undefined ? (root.game.paused ? "Paused while the guide is open" : "Back to " + (root.game.title || "the game")) : root.game.pauseWhileOpen ? "On" : "Off"
       onTriggered: root.act("pause-while-open", !root.game.pauseWhileOpen)
     }
   }
@@ -130,6 +134,7 @@ PageRhythm {
 
   bottomBlock: Action {
     id: quit
+    visible: root.hasGame
     g: root.g; width: parent.width; height: root.g.s(54)
     icon: root.g.icon.power; danger: true
     title: "Quit game"; trailing: "Asks first"

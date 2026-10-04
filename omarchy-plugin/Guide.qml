@@ -9,6 +9,7 @@ import qs.Ui
 import "components"
 import "pages"
 import "Contrast.js" as Contrast
+import "GuideProtocol.js" as Protocol
 
 // The in-game guide: a panel over the running game with everything you would
 // otherwise leave the game for. The panel slides in from the left over a frozen,
@@ -21,6 +22,13 @@ Item {
   id: root
 
   property bool opened: false
+  property bool opening: false
+  property bool fixtureMode: false
+  property string outputName: ""
+  property var backend: null
+  property var backendQueue: []
+  property var themeFrame: null
+  property bool themeBusy: false
   property var model: ({})
   property string family: "keyboard"
   property int tab: 0
@@ -29,7 +37,59 @@ Item {
   property int confirmIndex: 0
   property var toastData: null
 
-  GuideTheme { id: g }
+  GuideTheme {
+    id: g
+    onThemeRequested: function(theme) {
+      if (!root.opened || Style.reduceMotion) { g.applyTheme(theme); return }
+      root.themeBusy = true
+      panel.grabToImage(function(result) {
+        root.themeFrame = result
+        previousTheme.source = result.url
+        previousTheme.opacity = 1
+        g.applyTheme(theme)
+        themeFade.restart()
+      })
+    }
+  }
+  Socket {
+    id: service
+    path: root.backend ? root.backend.socket : ""
+    connected: !!root.backend
+    onConnectedChanged: {
+      if (connected) {
+        root.backendQueue.forEach(function(message) { service.write(message) })
+        service.flush()
+        root.backendQueue = []
+      } else if (root.backend && root.opened) {
+        root.backend = null
+        root.model = ({})
+        root.close()
+      }
+    }
+  }
+  function notify(name, value) {
+    if (!root.backend) return
+    var message = JSON.stringify({version: 1, token: root.backend.token, action: name, value: value}) + "\n"
+    if (service.connected) { service.write(message); service.flush() }
+    else root.backendQueue.push(message)
+  }
+  function update(json) {
+    var p = Protocol.parse(json)
+    if (!p) return "invalid"
+    if (root.backend && p.backend && root.backend.token !== p.backend.token) return "stale"
+    root.fixtureMode = false
+    fixtureFile.path = ""
+    root.model = p.data
+    root.family = p.pad
+    root.outputName = p.output
+    return "ok"
+  }
+  function state(unused) {
+    return JSON.stringify({opened: root.opened, opening: root.opening,
+      token: root.backend ? root.backend.token : "", output: window.screen ? window.screen.name : "",
+      tab: root.tabs[root.tab].key, cursor: root.cursorOf(), pad: root.family,
+      data: root.model, captured: frame.hasContent, themeBusy: root.themeBusy})
+  }
 
   readonly property var tabs: [
     { key: "game", title: "Game", icon: g.icon.game },
@@ -47,28 +107,64 @@ Item {
   function open(payloadJson) {
     var p = {}
     try { p = JSON.parse(payloadJson || "{}") || {} } catch (e) { p = {} }
+    if (p.version !== undefined) {
+      if (!Protocol.parse(payloadJson)) { console.warn("omakade.guide: invalid payload"); return }
+      root.backend = p.backend || null
+      root.update(payloadJson)
+    } else if (!p.fixture && !root.opened) {
+      root.backend = null
+      root.fixtureMode = false
+      root.model = ({})
+      root.outputName = ""
+      root.family = "keyboard"
+    }
     if (p.scale) g.scale = Number(p.scale)
     if (p.pad) root.family = p.pad
-    if (p.fixture) fixtureFile.path = p.fixture
+    if (p.fixture) { root.backend = null; root.fixtureMode = true; fixtureFile.path = p.fixture }
     if (p.tab !== undefined) root.setTab(p.tab)
     root.confirmingQuit = !!p.confirm
     root.confirmIndex = 0
     if (p.toast) root.showToast(p.toast)
     if (p.audit) console.log("GUIDE_AUDIT " + JSON.stringify({ theme: p.audit, colors: g.contrastTheme, audit: Contrast.audit(g.contrastTheme), glyphs: root.glyphAudit(), pairings: Contrast.pairings(g.contrastTheme) }))
-    if (root.opened) return
+    if (root.opened || root.opening) return
     // A fresh open lands on Resume, so A then B never surprises anyone.
     if (p.tab === undefined) { root.tab = 0; root.cursors = root.cursors.map(function() { return [0, 0] }) }
-    frame.captureFrame()
-    openDelay.restart()
+    if (!root.fixtureMode && !root.model.game && p.tab === undefined) root.tab = 5
+    window.targetScreen = root.gameScreen()
+    root.opening = true
+    // Reset the source so hasContent belongs to this capture, not a previous open.
+    frame.captureSource = null
+    Qt.callLater(function() {
+      if (!root.opening) return
+      frame.captureSource = window.targetScreen
+      frame.captureFrame()
+      captureDeadline.restart()
+    })
   }
 
+  function gameScreen() {
+    for (var i = 0; i < Quickshell.screens.length; i++)
+      if (Quickshell.screens[i].name === root.outputName) return Quickshell.screens[i]
+    return window.focusedScreen() || window.targetScreen || Quickshell.screens[0] || null
+  }
+  function captured() {
+    if (!root.opening) return
+    captureDeadline.stop()
+    root.opening = false
+    root.opened = true
+    root.notify("opened", null)
+  }
   function close() {
+    root.notify("closed", null)
+    root.opening = false
+    captureDeadline.stop()
     root.opened = false
     root.confirmingQuit = false
   }
 
   // The frozen frame has to be taken before the guide covers the screen.
-  Timer { id: openDelay; interval: 16; onTriggered: root.opened = true }
+  // On an unsupported capture protocol, open with the approved theme scrim instead.
+  Timer { id: captureDeadline; interval: 750; onTriggered: root.captured() }
 
   // Face-button letters on their discs, for the contrast table.
   function glyphAudit() {
@@ -94,6 +190,7 @@ Item {
     id: fixtureFile
     path: ""
     onLoaded: {
+      if (!root.fixtureMode) return
       // "@/" in a fixture is the folder above the fixture's own, where the preview art lives.
       var base = String(path).replace(/\/[^\/]*\/[^\/]*$/, "/")
       try { root.model = JSON.parse(text().replace(/"@\//g, '"' + base)) } catch (e) { console.warn("omakade.guide: bad fixture", e) }
@@ -120,6 +217,12 @@ Item {
   // fixture so every control can be seen working.
   function act(name, arg) {
     var title = (root.model.game || {}).title || "the game"
+    if (!root.fixtureMode && name !== "resume" && name !== "quit") {
+      if (name === "pause-while-open" || name === "desktop" || name === "library") root.notify(name, arg)
+      else if (liveSystem.act(name, arg)) return
+      else root.showToast({ title: "Not available yet", detail: "This control is coming in a later update" })
+      return
+    }
     switch (name) {
     case "resume": root.close(); break
     case "quit": root.confirmingQuit = true; root.confirmIndex = 0; break
@@ -197,7 +300,7 @@ Item {
     case "b":
       if (root.confirmingQuit) { root.confirmingQuit = false; root.updateRing() } else root.close()
       break
-    case "guide": root.close(); break
+    case "guide": case "start": root.close(); break
     case "lb": if (!root.confirmingQuit) setTab(root.tab - 1); break
     case "rb": if (!root.confirmingQuit) setTab(root.tab + 1); break
     case "y": root.act("screenshot"); break
@@ -270,7 +373,7 @@ Item {
     function close(): void { root.close() }
     function input(action: string): string { return root.input(action) }
     function tab(name: string): void { root.setTab(name) }
-    function ready(): string { return root.opened && panel.opacity === 1 && !layoutTimer.running && !openDelay.running ? "ready" : "waiting" }
+    function ready(): string { return root.opened && panel.opacity === 1 && !layoutTimer.running && !root.opening && !root.themeBusy ? "ready" : "waiting" }
     function toast(json: string): void { root.showToast(JSON.parse(json)) }
   }
 
@@ -279,20 +382,23 @@ Item {
   OverlayWindow {
     id: window
     shown: root.opened
+    // Override OverlayWindow's focus-following handler; the payload owns the target.
+    onShownChanged: if (shown) targetScreen = root.gameScreen()
     WlrLayershell.namespace: "omakade-guide"
 
     // The frame under the guide, captured once as it opens.
     ScreencopyView {
       id: frame
       anchors.fill: parent
-      captureSource: window.screen
+      captureSource: null
+      onHasContentChanged: if (hasContent && root.opening) Qt.callLater(root.captured)
       live: false
       visible: false
     }
     MultiEffect {
       anchors.fill: parent
       source: frame
-      visible: !!(root.model.game || {}).pauseWhileOpen
+      visible: frame.hasContent && !!(root.model.game || {}).pauseWhileOpen
       saturation: -0.7
       scale: 0.985
       opacity: root.opened ? 1 : 0
@@ -340,6 +446,8 @@ Item {
       target: window
       function onShownChanged() { if (window.shown) keys.forceActiveFocus() }
     }
+
+    LiveSystem { id: liveSystem; active: root.opened && !root.fixtureMode }
 
     // ---------------------------------------------------- panel
 
@@ -472,7 +580,7 @@ Item {
         StatusStrip {
           id: status
           g: g
-          status: root.model.status || {}
+          status: root.fixtureMode ? root.model.status || {} : liveSystem.status
           anchors.left: parent.left; anchors.right: parent.right
           anchors.top: parent.top; anchors.topMargin: g.s(12)
         }
@@ -514,7 +622,7 @@ Item {
             PerformancePage { id: performancePage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 2; onAct: (n, a) => root.act(n, a) }
             AudioPage { id: audioPage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 3; onAct: (n, a) => root.act(n, a) }
             ControllersPage { id: controllersPage; g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 4; onAct: (n, a) => root.act(n, a) }
-            SystemPage { id: systemPage; onRequestedFocus: (item) => root.focusControl(item); g: g; d: root.model; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 5; onAct: (n, a) => root.act(n, a) }
+            SystemPage { id: systemPage; onRequestedFocus: (item) => root.focusControl(item); g: g; d: root.fixtureMode ? root.model : {system: liveSystem.system, performance: {profile: liveSystem.profile}}; family: root.family; width: parent.width; availableHeight: scroller.height - g.s(8); visible: root.tab === 5; onAct: (n, a) => root.act(n, a) }
           }
         }
 
@@ -563,7 +671,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: g.s(10)
             Action { id: confirmCancel; g: g; variant: "tile"; width: g.s(150); height: g.s(52); title: "Keep playing"; onTriggered: root.input("b") }
-            Action { id: confirmQuit; g: g; variant: "tile"; width: g.s(150); height: g.s(52); title: "Quit"; danger: true; onTriggered: { root.confirmingQuit = false; root.close(); console.log("GUIDE_ACT quit-confirmed") } }
+            Action { id: confirmQuit; g: g; variant: "tile"; width: g.s(150); height: g.s(52); title: "Quit"; danger: true; onTriggered: { root.confirmingQuit = false; root.notify("quit-confirmed", null); root.close(); console.log("GUIDE_ACT quit-confirmed") } }
           }
         }
       }
@@ -588,6 +696,19 @@ Item {
           border.color: Util.alpha(g.accent, 0.25)
         }
       }
+    }
+
+    Image {
+      id: previousTheme
+      x: panel.x; y: panel.y; width: panel.width; height: panel.height
+      opacity: 0
+      visible: opacity > 0
+    }
+    NumberAnimation {
+      id: themeFade
+      target: previousTheme; property: "opacity"; from: 1; to: 0
+      duration: Style.reduceMotion ? 0 : 500
+      onFinished: { root.themeBusy = false; root.themeFrame = null; previousTheme.source = "" }
     }
 
     Toast {
