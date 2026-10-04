@@ -84,6 +84,7 @@ PageRhythm {
       width: parent.width; spacing: root.g.s(6)
       Action {
         id: library
+        visible: root.d.libraryAvailable !== false
         g: root.g; width: parent.width; height: root.g.s(58)
         icon: root.g.icon.library; title: "Game library"; detail: "The game keeps running"; chevron: true
         onTriggered: root.act("library", null)

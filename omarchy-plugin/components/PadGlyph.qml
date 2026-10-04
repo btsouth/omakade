@@ -23,7 +23,7 @@ Item {
   readonly property var nintendoLetter: ({ a: "B", b: "A", x: "Y", y: "X" })
   readonly property var keyLabel: ({ a: "Enter", b: "Esc", x: "X", y: "Y", lb: "Q", rb: "E", guide: "G", dpad: "←↑→↓" })
 
-  readonly property string bumperText: family === "playstation" ? (button === "lb" ? "L1" : "R1")
+  readonly property string bumperText: (family === "playstation" || family === "deck") ? (button === "lb" ? "L1" : "R1")
     : family === "nintendo" ? (button === "lb" ? "L" : "R") : (button === "lb" ? "LB" : "RB")
 
   readonly property color faceColor: xboxColor[button] || g.track

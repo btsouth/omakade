@@ -171,3 +171,6 @@ For input latency, run `tools/guide-i2/latency.py` inside the box. Native
 return trip. `OMAKADE_GUIDE_LEGACY_INPUT=1` selects the old per-input shell spawn
 only in that test mode. `OMAKADE_GUIDE_TEST_UNGRABBABLE=1` injects a refused pad
 access in the same opted-in mode; it does not claim physical-device acceptance.
+
+The generic Game library tile appears only when Omakade is installed. Steam Deck
+bumper hints use L1/R1; other pad families keep their printed labels.

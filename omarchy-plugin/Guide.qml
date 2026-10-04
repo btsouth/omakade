@@ -44,6 +44,7 @@ Item {
   property bool settingsLoaded: false
   readonly property var liveData: root.fixtureMode ? root.model : Object.assign({}, root.model, {
     capture: liveCapture.captureData, audio: liveMedia.audio, controllers: liveMedia.pads,
+    libraryAvailable: !!root.backend || !!liveCapture.files.omakadeInstalled,
     window: root.genericWindow, prompts: root.preferences.prompts,
     system: Object.assign({}, liveSystem.system, {couch: root.preferences.couch}),
     performance: Object.assign({setupHint: "Install MangoHud to see frame timing"}, root.model.performance || {}, {stats: root.stats, profile: liveSystem.profile, refresh: Math.round(root.monitor.refreshRate || 60)})

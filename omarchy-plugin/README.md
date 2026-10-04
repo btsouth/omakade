@@ -73,3 +73,6 @@ The replay process itself is never restarted automatically after shell restart.
 
 The fixture preview remains separate from live state. Its example capture files,
 FPS and devices are for rendering only.
+
+The generic Game library tile appears only when Omakade is installed. Steam Deck
+bumper hints use L1/R1; other pad families keep their printed labels.

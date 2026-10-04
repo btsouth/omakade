@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
 
 home = Path.home()
@@ -90,7 +91,7 @@ def scan():
             pads.append(dict(name=name, id=identity, node=str(node), family=family, identifiable=bool(effects & (1 << 0x50)) and os.access(node, os.W_OK)))
         except OSError:
             pass
-    return dict(shots=str(shots), videos=str(videos), recent=recent, pads=pads, settingsPath=str(state / 'settings.json'))
+    return dict(omakadeInstalled=bool(shutil.which("omakade")), shots=str(shots), videos=str(videos), recent=recent, pads=pads, settingsPath=str(state / 'settings.json'))
 
 def stats():
     ticks = list(map(int, Path('/proc/stat').read_text().splitlines()[0].split()[1:]))
