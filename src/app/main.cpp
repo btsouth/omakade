@@ -6903,8 +6903,13 @@ int main(int argc, char* argv[]) {
                    });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
                    [&inGameGuide](const QString& node) { inGameGuide.toggle(node); });
-  QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow] {
-    if (rootWindow) { rootWindow->show(); rootWindow->requestActivate(); }
+  QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow, &gameModeCompositor, &application] {
+    if (!rootWindow) return;
+    rootWindow->show(); rootWindow->requestActivate();
+    QTimer::singleShot(150, &application, [&gameModeCompositor] {
+      const auto window = gameModeCompositor.windowForPid(QCoreApplication::applicationPid());
+      if (window.valid()) gameModeCompositor.focusWindow(window.address);
+    });
   });
   if (coldGuideRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice); });
   if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
