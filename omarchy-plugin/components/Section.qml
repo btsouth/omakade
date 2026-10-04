@@ -4,6 +4,4 @@ import QtQuick
 Label {
   role: "caps"
   leftPadding: g.s(10)
-  topPadding: g.s(10)
-  bottomPadding: g.s(2)
 }

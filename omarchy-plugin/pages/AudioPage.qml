@@ -1,11 +1,9 @@
 import QtQuick
 import "../components"
 
-Column {
+PageRhythm {
   id: root
-  required property var g
   required property var d
-  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
 
@@ -23,10 +21,13 @@ Column {
     return r
   }
 
-  spacing: g.rhythm(root, 18)
+  hero: mediaHero
+  heroMinimum: g.s(128) + progress.implicitHeight + transport.height + g.s(52)
+  heroMaximum: heroMinimum + g.s(72)
 
   // Now playing: whatever MPRIS player is running.
   Rectangle {
+    id: mediaHero
     visible: !!root.media
     width: parent.width
     height: mediaColumn.height + root.g.s(28)
@@ -42,7 +43,7 @@ Column {
       Row {
         width: parent.width
         spacing: root.g.s(14)
-        Picture { id: art; g: root.g; width: root.g.s(128); height: width; source: root.media ? root.media.art || "" : "" }
+        Picture { id: art; g: root.g; width: root.g.s(128) + root.heroExtra; height: width; source: root.media ? root.media.art || "" : "" }
         Column {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - art.width - parent.spacing
@@ -53,6 +54,7 @@ Column {
         }
       }
       Meter {
+        id: progress
         g: root.g; width: parent.width
         label: root.media ? root.media.position : ""
         value: root.media ? root.media.length : ""
@@ -60,6 +62,8 @@ Column {
         fill: root.g.foreground
       }
       Row {
+        id: transport
+        width: childrenRect.width
         spacing: root.g.s(16); anchors.horizontalCenter: parent.horizontalCenter
         Repeater {
           id: transportRepeater
@@ -91,30 +95,33 @@ Column {
     onMoved: function(v) { root.act("volume", v) }
   }
 
-  Section { g: root.g; text: "Output"; width: parent.width }
   Column {
-    width: parent.width
-    spacing: root.g.s(6)
-    Repeater {
-      id: outputRepeater
-      onItemAdded: (i, item) => root.outputItems = root.g.withItem(root.outputItems, i, item)
-      onItemRemoved: (i, item) => root.outputItems = root.g.withItem(root.outputItems, i, null)
-      model: root.outputs
-      delegate: Action {
-        required property var modelData
-        g: root.g; width: root.width
-        icon: modelData.kind === "tv" ? root.g.icon.tv : modelData.kind === "headset" || /headset/i.test(modelData.name) ? root.g.icon.headset : root.g.icon.speaker
-        height: root.g.s(58)
-        selected: !!modelData.current
-        title: modelData.name
-        detail: modelData.detail || ""
-        trailing: modelData.current ? "\u{f012c}" : ""
-        onTriggered: root.act("output", modelData.name)
+    width: parent.width; spacing: root.g.s(8)
+    Section { g: root.g; text: "Output"; width: parent.width }
+    Column {
+      width: parent.width
+      spacing: root.g.s(6)
+      Repeater {
+        id: outputRepeater
+        onItemAdded: (i, item) => root.outputItems = root.g.withItem(root.outputItems, i, item)
+        onItemRemoved: (i, item) => root.outputItems = root.g.withItem(root.outputItems, i, null)
+        model: root.outputs
+        delegate: Action {
+          required property var modelData
+          g: root.g; width: root.width
+          icon: modelData.kind === "tv" ? root.g.icon.tv : modelData.kind === "headset" || /headset/i.test(modelData.name) ? root.g.icon.headset : root.g.icon.speaker
+          height: root.g.s(58)
+          selected: !!modelData.current
+          title: modelData.name
+          detail: modelData.detail || ""
+          trailing: modelData.current ? "\u{f012c}" : ""
+          onTriggered: root.act("output", modelData.name)
+        }
       }
     }
   }
 
-  ToggleRow {
+  bottomBlock: ToggleRow {
     id: mic
     g: root.g; width: parent.width
     icon: root.audio.micMuted ? root.g.icon.micOff : root.g.icon.mic

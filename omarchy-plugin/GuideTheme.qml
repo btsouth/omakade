@@ -28,6 +28,8 @@ QtObject {
   readonly property color accent: Color.accent
   readonly property color urgent: Color.urgent
   readonly property color accentInk: Contrast.inkAt(Contrast.hex(accent), Contrast.hex(foreground), Contrast.hex(background), 4.6)
+  readonly property color bannerInk: Contrast.bannerInk(contrastTheme)
+  readonly property real bannerScrim: Contrast.bannerAlpha(contrastTheme)
   readonly property color dim: Qt.darker(Color.foreground, 1.4)
   readonly property color base: pick("darker_background", Qt.darker(Color.background, 1.3))
   readonly property bool light: String(palette.mode || "") === "light"
@@ -54,14 +56,6 @@ QtObject {
   function withItem(items, index, item) {
     var copy = items.slice(); copy[index] = item
     return copy
-  }
-
-  function rhythm(container, minimum) {
-    var items = container.children, total = 0, count = 0
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].visible && items[i].height > 0) { total += items[i].height; count++ }
-    }
-    return Math.max(s(minimum), (container.availableHeight - total) / Math.max(1, count - 1))
   }
 
   function pick(key, fallback) {

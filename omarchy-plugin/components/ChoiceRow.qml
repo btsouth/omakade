@@ -30,7 +30,7 @@ Item {
   Rectangle {
     id: group
     width: parent.width; height: root.g.s(40)
-    anchors.top: head.bottom; anchors.topMargin: root.g.s(10)
+    anchors.top: head.bottom; anchors.topMargin: root.g.s(8)
     radius: root.g.innerRadius
     color: root.g.well
     border.width: 1; border.color: root.g.line

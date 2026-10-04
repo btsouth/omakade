@@ -241,7 +241,7 @@ Item {
         scroller.contentY = Math.min(scroller.contentHeight - scroller.height, inPage.y + item.height + margin - scroller.height)
     }
     var p = item.mapToItem(panel, 0, 0)
-    var pad = g.s(item.ringPad !== undefined ? item.ringPad : 3)
+    var pad = g.s(Math.max(8, item.ringPad || 0))
     ring.radius = item.radius !== undefined && item.radius > 0 ? item.radius + pad : g.radius
     ring.x = p.x - pad; ring.y = p.y - pad
     ring.width = item.width + pad * 2; ring.height = item.height + pad * 2

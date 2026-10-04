@@ -10,6 +10,7 @@
 // itself sits below that minimum.
 
 var glassBase = 0.6;
+var bannerMinimumScrim = 0.78;
 
 function rgb(c) {
     if (typeof c === "string") return [1, 3, 5].map(function(i) { return parseInt(c.slice(i, i + 2), 16) / 255; });
@@ -129,6 +130,24 @@ function chromeAlpha(t, a, maximum, selectedRoles, beneath) {
     return 0;
 }
 
+function bannerInk(t) {
+    return luminance(t.foreground) >= luminance(t.background) ? t.foreground : t.background;
+}
+
+// Most themes need only 0.78. Preserve the body floor for darker light ink
+// (for example Gruvbox) against a white pixel of game art, including rounding.
+function bannerAlpha(t) {
+    var ink = bannerInk(t), floor = floorFor(t, roles(t)[0]);
+    for (var i = Math.round(bannerMinimumScrim * 100); i <= 100; i++) {
+        if (["#000000", "#ffffff"].every(function(frame) {
+            return [-1, 0, 1].every(function(step) {
+                return contrast(ink, quantized(over("#000000", i / 100, frame), step)) >= floor;
+            });
+        })) return i / 100;
+    }
+    return 1;
+}
+
 function pairings(t) {
     var a = alpha(t), rs = roles(t);
     var well = chromeAlpha(t, a, luminance(t.background) > 0.4 ? 0.06 : 0.05, rs);
@@ -151,8 +170,14 @@ function pairings(t) {
     check("switch-off-knob", t.dim, wells, floorFor(t, rs[1]));
     check("segment-selected-text", ink, [t.accent], 4.5);
     check("segment-unselected-text", t.dim, wells, floorFor(t, rs[1]));
-    check("banner-body", t.foreground, surfaces, floorFor(t, rs[0]));
-    check("banner-muted", t.dim, surfaces, floorFor(t, rs[1]));
+    var banner = bannerInk(t);
+    var bannerFrames = ["#000000", "#ffffff"].map(function(frame) { return over("#000000", bannerAlpha(t), frame); });
+    check("banner-body", banner, bannerFrames, floorFor(t, rs[0]));
+    check("banner-muted", banner, bannerFrames, floorFor(t, rs[1]));
+    check("banner-source-glyph", banner, bannerFrames, floorFor(t, rs[2]));
+    check("controller-battery-low-text", t.urgent, [t.background], Math.min(7, 0.9 * contrast(t.urgent, t.background)));
+    check("controller-battery-low-meter", t.urgent, [over(t.foreground, track, t.background)], floorFor(t, rs[3]));
+    rs.forEach(function(r) { check("controller-low-card-" + r[0], r[1], [t.background], floorFor(t, r)); });
     check("danger-body", t.foreground, wells, floorFor(t, rs[0]));
     check("danger-indicator", t.urgent, wells, floorFor(t, rs[3]));
     check("primary-play-glyph", ink, [t.accent], 3);

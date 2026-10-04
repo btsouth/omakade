@@ -1,11 +1,9 @@
 import QtQuick
 import "../components"
 
-Column {
+PageRhythm {
   id: root
-  required property var g
   required property var d
-  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
   signal requestedFocus(var item)
@@ -14,7 +12,6 @@ Column {
   readonly property var profiles: ["power-saver", "balanced", "performance"]
   readonly property string profile: (d.performance || {}).profile || "balanced"
   property var rows: [[wifi, bluetooth], [dnd, power], [light, suspend], [brightness], [library], [desktop]]
-  spacing: g.rhythm(root, 20)
 
   Grid {
     width: parent.width; columns: 2
@@ -31,7 +28,7 @@ Column {
       id: bluetooth
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.bluetooth; title: "Bluetooth"
-      detail: root.sys.bluetooth ? "On · Controller & headset" : "Off"
+      detail: root.sys.bluetooth ? "On · 2 devices" : "Off"
       selected: !!root.sys.bluetooth
       onTriggered: root.act("bluetooth", !root.sys.bluetooth)
     }
@@ -39,7 +36,7 @@ Column {
       id: dnd
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.dnd; title: "Do not disturb"
-      detail: root.sys.dnd ? "On · Notifications held" : "Off"
+      detail: root.sys.dnd ? "On" : "Off"
       selected: !!root.sys.dnd
       onTriggered: root.act("dnd", !root.sys.dnd)
     }
@@ -61,7 +58,7 @@ Column {
       id: suspend
       g: root.g; width: (root.width - root.g.s(12)) / 2
       variant: "tile"; icon: root.g.icon.sleep; title: "Suspend"
-      detail: "Wake where you left off"
+      detail: "Sleep now"
       onTriggered: root.act("suspend", null)
     }
   }
@@ -73,17 +70,23 @@ Column {
     value: root.sys.brightness || 0
     onMoved: function(v) { root.act("brightness", v) }
   }
-  Section { g: root.g; text: "Leave the game"; width: parent.width }
-  Action {
-    id: library
-    g: root.g; width: parent.width; height: root.g.s(58)
-    icon: root.g.icon.library; title: "Game library"; detail: "The game keeps running"; chevron: true
-    onTriggered: root.act("library", null)
-  }
-  Action {
-    id: desktop
-    g: root.g; width: parent.width; height: root.g.s(58)
-    icon: root.g.icon.desktop; title: "Return to desktop"; detail: "Come back with the Guide button"; chevron: true
-    onTriggered: root.act("desktop", null)
+  bottomBlock: Column {
+    width: parent.width; spacing: root.g.s(8)
+    Section { g: root.g; text: "Leave the game"; width: parent.width }
+    Column {
+      width: parent.width; spacing: root.g.s(6)
+      Action {
+        id: library
+        g: root.g; width: parent.width; height: root.g.s(58)
+        icon: root.g.icon.library; title: "Game library"; detail: "The game keeps running"; chevron: true
+        onTriggered: root.act("library", null)
+      }
+      Action {
+        id: desktop
+        g: root.g; width: parent.width; height: root.g.s(58)
+        icon: root.g.icon.desktop; title: "Return to desktop"; detail: "Come back with the Guide button"; chevron: true
+        onTriggered: root.act("desktop", null)
+      }
+    }
   }
 }

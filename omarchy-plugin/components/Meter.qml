@@ -8,6 +8,7 @@ Item {
   property string value: ""
   property real progress: 0
   property color fill: g.accent
+  property color valueColor: g.foreground
 
   implicitHeight: labels.height + g.s(6) + bar.height
 
@@ -22,7 +23,7 @@ Item {
     g: root.g
     role: "small"
     text: root.value
-    color: root.g.foreground
+    color: root.valueColor
     anchors.right: parent.right
     anchors.verticalCenter: labels.verticalCenter
   }

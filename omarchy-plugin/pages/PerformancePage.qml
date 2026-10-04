@@ -1,11 +1,9 @@
 import QtQuick
 import "../components"
 
-Column {
+PageRhythm {
   id: root
-  required property var g
   required property var d
-  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
 
@@ -13,14 +11,18 @@ Column {
   readonly property bool hooked: !!perf.mangohud
   property var rows: hooked ? [[hud], [limit], [profile]] : [[setup], [profile]]
 
-  spacing: g.rhythm(root, 24)
+  hero: frameHero
+  heroMinimum: fpsRow.height + g.s(180) + graphCaption.height + g.s(12)
+  heroMaximum: heroMinimum + g.s(72)
 
   // Frame rate and frame times, when MangoHud is in the game.
   Column {
+    id: frameHero
     visible: root.hooked
     width: parent.width
     spacing: root.g.s(6)
     Row {
+      id: fpsRow
       spacing: root.g.s(10)
       Label { g: root.g; role: "hero"; font.pixelSize: root.g.f(64); text: String(root.perf.fps || 0) }
       Column {
@@ -31,11 +33,12 @@ Column {
     }
     Sparkline {
       g: root.g
-      width: parent.width; height: root.g.s(180)
+      width: parent.width; height: root.g.s(180) + root.heroExtra
       values: root.perf.frametimes || []
       ceiling: 33.3
     }
     Row {
+      id: graphCaption
       width: parent.width
       Label { g: root.g; role: "caption"; text: "Last 10 seconds"; width: parent.width / 2 }
       Label { g: root.g; role: "caption"; text: "1% low " + (root.perf.low1 || "-") + " fps"; width: parent.width / 2; horizontalAlignment: Text.AlignRight }
@@ -72,9 +75,9 @@ Column {
     }
   }
 
-  Column {
+  bottomBlock: Column {
     width: parent.width
-    spacing: root.g.s(12)
+    spacing: root.g.s(16)
     ChoiceRow {
       id: hud
       visible: root.hooked

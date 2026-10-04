@@ -1,11 +1,9 @@
 import QtQuick
 import "../components"
 
-Column {
+PageRhythm {
   id: root
-  required property var g
   required property var d
-  property real availableHeight: 0
   property string family: "xbox"
   signal act(string name, var arg)
 
@@ -15,12 +13,15 @@ Column {
   property var captureItems: []
   property var rows: [[shot, clip], [record], [buffer], [length], [sound], captureItems, [folder]]
 
-  spacing: g.rhythm(root, 14)
+  hero: captureHero
+  heroMinimum: g.s(148) + captureCaption.height + g.s(8)
+  heroMaximum: heroMinimum + g.s(32)
 
   Column {
+    id: captureHero
     width: parent.width; spacing: root.g.s(8)
-    Picture { g: root.g; width: parent.width; height: root.g.s(148); source: root.cap.lastShot || (root.recent[0] || {}).thumb || "" }
-    Label { g: root.g; role: "caption"; text: "Latest capture · " + ((root.recent[0] || {}).age || "This session"); width: parent.width }
+    Picture { g: root.g; width: parent.width; height: root.g.s(148) + root.heroExtra; source: root.cap.lastShot || (root.recent[0] || {}).thumb || "" }
+    Label { id: captureCaption; g: root.g; role: "caption"; text: "Latest capture · " + ((root.recent[0] || {}).age || "This session"); width: parent.width }
   }
 
   Row {
@@ -84,42 +85,46 @@ Column {
     }
   }
 
-  Section { g: root.g; text: root.session.length ? "Recent · " + root.session.length + " this session" : "Recent"; width: parent.width }
+  Column {
+    width: parent.width; spacing: root.g.s(8)
+    Section { g: root.g; text: root.session.length ? "Recent · " + root.session.length + " this session" : "Recent"; width: parent.width }
 
-  Row {
-    width: parent.width
-    spacing: root.g.s(10)
-    Repeater {
-      id: thumbs
-      onItemAdded: (i, item) => root.captureItems = root.g.withItem(root.captureItems, i, item)
-      onItemRemoved: (i, item) => root.captureItems = root.g.withItem(root.captureItems, i, null)
-      model: root.recent.length
-      delegate: Focusable {
-        required property int index
-        readonly property var item: root.recent[index] || null
-        width: (root.width - root.g.s(20)) / 3
-        height: pic.height + root.g.s(26)
-        onTriggered: root.act("open-capture", item)
-        Picture { id: pic; g: root.g; width: parent.width; height: Math.round(width * 9 / 16); source: parent.item ? parent.item.thumb : "" }
-        Rectangle {
-          visible: !!(parent.item && parent.item.kind === "Clip")
-          anchors.right: pic.right; anchors.bottom: pic.bottom; anchors.margins: root.g.s(6)
-          width: lengthText.implicitWidth + root.g.s(10); height: lengthText.implicitHeight + root.g.s(4)
-          radius: root.g.innerRadius
-          color: root.g.background
-          Label { id: lengthText; g: root.g; role: "caption"; color: root.g.foreground; anchors.centerIn: parent; text: parent.parent.item ? parent.parent.item.length || "" : "" }
-        }
-        Label {
-          g: root.g; role: "small"
-          anchors.top: pic.bottom; anchors.topMargin: root.g.s(6)
-          width: parent.width
-          text: parent.item ? (parent.item.kind === "Screenshot" ? "Shot" : parent.item.kind) + " · " + parent.item.age : ""
+    Row {
+      width: parent.width
+      spacing: root.g.s(10)
+      Repeater {
+        id: thumbs
+        onItemAdded: (i, item) => root.captureItems = root.g.withItem(root.captureItems, i, item)
+        onItemRemoved: (i, item) => root.captureItems = root.g.withItem(root.captureItems, i, null)
+        model: root.recent.length
+        delegate: Focusable {
+          required property int index
+          readonly property var item: root.recent[index] || null
+          width: (root.width - root.g.s(20)) / 3
+          height: pic.height + root.g.s(26)
+          onTriggered: root.act("open-capture", item)
+          Picture { id: pic; g: root.g; width: parent.width; height: Math.round(width * 9 / 16); source: parent.item ? parent.item.thumb : "" }
+          Rectangle {
+            visible: !!(parent.item && parent.item.kind === "Clip")
+            anchors.right: pic.right; anchors.bottom: pic.bottom; anchors.margins: root.g.s(6)
+            width: lengthText.implicitWidth + root.g.s(10); height: lengthText.implicitHeight + root.g.s(4)
+            radius: root.g.innerRadius
+            color: root.g.background
+            Label { id: lengthText; g: root.g; role: "caption"; color: root.g.foreground; anchors.centerIn: parent; text: parent.parent.item ? parent.parent.item.length || "" : "" }
+          }
+          Label {
+            g: root.g; role: "small"
+            anchors.top: pic.bottom; anchors.topMargin: root.g.s(6)
+            width: parent.width
+            text: parent.item ? (parent.item.kind === "Screenshot" ? "Shot" : parent.item.kind) + " · " + parent.item.age : ""
+          }
         }
       }
     }
+
   }
 
-  Action {
+  bottomBlock: Action {
     id: folder
     g: root.g; width: parent.width
     icon: root.g.icon.folder
