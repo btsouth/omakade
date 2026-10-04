@@ -27,9 +27,9 @@ playing and requires a second selection. `--page=tools`, `--focus=3`,
 `--variant=emulator`, `--backdrop=game2.jpg` and `--closed` select preview states.
 
 The glass has a saturated blurred frame, fine grain below the protective tint,
-soft shadow and a one-pixel edge. Translucent channels surround protected text
-zones, so light themes can expose the game without weakening text contrast.
-Focus uses an accent light bar and outline, with no coloured fill behind text.
+soft shadow and a one-pixel edge. A translucent rim surrounds one continuous
+protected text surface, preserving the game without weakening text contrast.
+Focus uses an accent light bar and stronger text, with no row borders or coloured fill.
 
 `Contrast.js` is shared by the preview and audit. It keeps the 0.6 base and the
 original role floors, choosing the clearest tint in 0.01 steps from 0.55 to 1.00.

@@ -172,24 +172,8 @@ FocusScope {
         colors: pal; backdrop: guide.backdrop; alpha: guide.panelAlpha
         radius: guide.radius; scaleFactor: guide.s; rim: 9 * guide.s
         frameWidth: guide.width; frameHeight: guide.height
-        // Frost channels separate the header, action rows and device status. Text never
-        // enters these channels: every label stays inside a full-strength audited zone.
-        zones: {
-            const k = guide.s;
-            const z = [{x: 24*k, y: 24*k, width: 572*k, height: 310*k},
-                       {x: 24*k, y: (guide.game.controllers.length > 1 ? 800 : 820)*k, width: 572*k, height: (guide.game.controllers.length > 1 ? 176 : 156)*k}];
-            const rowHeight = guide.page === "tools" ? 36 : 43;
-            for (let i = 0; i < guide.actions.length; ++i)
-                z.push({x: 24*k, y: (343 + i*rowHeight)*k, width: 572*k, height: (rowHeight - 5)*k});
-            const below = 343 + guide.actions.length*rowHeight + 16;
-            if (guide.confirmingQuit) z.push({x: 24*k, y: below*k, width: 572*k, height: 110*k});
-            else if (guide.page === "tools") z.push({x: 24*k, y: (below - 6)*k, width: 572*k, height: 108*k});
-            else {
-                z.push({x: 24*k, y: (below - 4)*k, width: 572*k, height: 24*k});
-                z.push({x: 24*k, y: (below + 80)*k, width: 572*k, height: 27*k});
-            }
-            return z;
-        }
+        // One continuous protected surface; depth lives in the outside frosted rim.
+        // Every label stays inside the full-strength audited tint.
 
         Item {
             id: content
@@ -231,7 +215,6 @@ FocusScope {
                 }
                 Label { y: 43 * guide.s; text: guide.game.latestAchievement || ""; width: parent.width; elide: Text.ElideRight; color: pal.mutedText; font.pixelSize: 12 * guide.s }
             }
-            Rectangle { y: 264 * guide.s; width: parent.width; height: 1; color: guide.tint(pal.fg, 0.14) }
             Label {
                 y: 282 * guide.s
                 text: guide.confirmingQuit ? "QUIT GAME?" : (guide.page === "home" ? "BACK TO YOUR GAME" : "CONTROLS & MORE")
@@ -287,7 +270,6 @@ FocusScope {
             Column {
                 anchors.bottom: footer.top; anchors.bottomMargin: 22 * guide.s
                 width: parent.width; spacing: 12 * guide.s
-                Rectangle { width: parent.width; height: 1; color: guide.tint(pal.fg, 0.14) }
                 Repeater {
                     model: guide.game.controllers || []
                     delegate: Row {

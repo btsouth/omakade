@@ -17,11 +17,6 @@ Item {
     signal clicked()
     implicitHeight: (compact ? 46 : 52) * s
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-    Rectangle {
-        anchors.fill: parent; radius: row.radius * 0.6
-        color: "transparent"; border.width: row.selected ? 1 : 0
-        border.color: row.tint(row.colors.accent, 0.38)
-    }
     RectangularShadow {
         x: 0; y: 12 * row.s; width: 3 * row.s; height: parent.height - 24 * row.s
         radius: width / 2; blur: 14 * row.s
