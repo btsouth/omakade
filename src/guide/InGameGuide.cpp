@@ -109,15 +109,19 @@ InGameGuide::~InGameGuide() { finishClose(false); if (m_testPadWriter >= 0) ::cl
 
 void InGameGuide::setInjectedInputEnabled(bool enabled) {
   m_injectedInput = enabled;
-  if (enabled && qEnvironmentVariableIsSet("OMAKADE_GUIDE_TEST_UNGRABBABLE"))
-    m_input.setAccess({[] { return QList<GuideListener::Controller>{{"event-test", "test-pad", "Test pad", false}}; },
-        [this](const QString&) {
+  if (enabled && qEnvironmentVariableIsSet("OMAKADE_GUIDE_TEST_UNGRABBABLE")) {
+    GuideInput::Access access;
+    access.scan = [] { return QList<GuideListener::Controller>{{"event-test", "test-pad", "Test pad", false}}; };
+    access.open = [this](const QString&) {
           int pipe[2];
           if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
           if (m_testPadWriter >= 0) ::close(m_testPadWriter);
           m_testPadWriter = pipe[1];
           return pipe[0];
-        }, [](int) { return false; }});
+        };
+    access.grab = [](int) { return false; };
+    m_input.setAccess(std::move(access));
+  }
 }
 
 void InGameGuide::refreshGame() {
