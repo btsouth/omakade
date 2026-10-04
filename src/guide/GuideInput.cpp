@@ -113,14 +113,18 @@ GuideInput::~GuideInput() { release(); }
 
 bool GuideInput::grab(const QString& preferredNode, QString* family, QString* error) {
   release();
+  if (error) error->clear();
   const auto pads = m_access.scan ? m_access.scan() : GuideListener::scan("/dev/input", "/sys/class/input");
   bool preferredFound = preferredNode.isEmpty();
   for (const auto& pad : pads) {
+    if (pad.node == preferredNode) {
+      preferredFound = true;
+      if (family) *family = GuidePayload::padFamily(pad.name);
+    }
     auto device = std::make_unique<Device>();
     device->fd = m_access.open ? m_access.open(pad.node) : ::open(QFile::encodeName("/dev/input/" + pad.node).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (device->fd < 0 || !(m_access.grab ? m_access.grab(device->fd) : ::ioctl(device->fd, EVIOCGRAB, 1) == 0)) {
-      if (error) *error = QStringLiteral("Cannot own %1: %2").arg(pad.node, QString::fromLocal8Bit(strerror(errno)));
-      if (error) *error = pad.name + " may still reach the game";
+      if (error) { if (!error->isEmpty()) *error += "; "; *error += pad.name + " may still reach the game"; }
       continue;
     }
     device->family = GuidePayload::padFamily(pad.name);

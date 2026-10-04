@@ -494,6 +494,9 @@ bool GameLauncher::launchPlannedEmulator(const QVariantMap& i) {
     setError(m_saveBackups->message());
     return false;
   }
+  m_launchIdentity.insert("saveContext", QVariantMap{{"source", p.source}, {"game", p.path}, {"core", p.core},
+      {"flatpak", p.flatpak}, {"id", i.value("appId")}, {"runner", i.value("runner")},
+      {"target", p.source == "RetroArch" ? QString{} : p.path}});
   if (!startTracked(p.command)) {
     setError("Could not start the selected emulator. Check its permissions and installation.");
     return false;

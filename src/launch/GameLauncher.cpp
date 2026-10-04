@@ -346,7 +346,7 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   if (track && (source == "Manual" || isEmulatorSourceName(source)) && !QStandardPaths::findExecutable("mangohud").isEmpty()) {
     const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-mangohud";
     const auto socket = "omakade-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const auto config = directory + '/' + GuideActions::key(m_launchIdentity) + ".conf";
+    const auto config = directory + '/' + socket + ".conf";
     QSettings settings;
     QSaveFile file(config);
     if (QDir().mkpath(directory) && file.open(QIODevice::WriteOnly)) {

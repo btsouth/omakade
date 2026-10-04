@@ -28,18 +28,18 @@ bool signalFd(int fd, int signal) {
 
 GuidePause::~GuidePause() { resume(); }
 
-bool GuidePause::stop(qint64 pid, qint64 start, QString* error) {
+bool GuidePause::stop(qint64 pid, qint64 start, QString* error, const std::function<bool(const QJsonObject&)>& pin) {
   resume();
   if (pid <= 1 || (pid == ::getpid() || pid == ::getppid()) || start <= 0 || !ProcFs::processAlive(pid, start)) {
     if (error) *error = "The game process identity is no longer valid.";
     return false;
   }
-  const auto add = [this, error](qint64 target, qint64 identity) {
+  const auto add = [this, error, &pin](qint64 target, qint64 identity) {
     const int fd = ::syscall(SYS_pidfd_open, target, 0);
     const auto current = process(target);
     // Already stopped processes are not ours to resume.
     if (fd < 0 || current.start != identity || current.state == 'T' || current.state == 't' ||
-        current.state == 'Z' || !signalFd(fd, SIGSTOP)) {
+        current.state == 'Z' || (pin && !pin(QJsonObject{{"pid", target}, {"start", identity}})) || !signalFd(fd, SIGSTOP)) {
       if (fd >= 0) ::close(fd);
       if (error) *error = "The game process tree could not be paused safely.";
       return false;

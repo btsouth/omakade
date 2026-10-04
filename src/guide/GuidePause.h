@@ -2,6 +2,8 @@
 
 #include <QVector>
 #include <QJsonArray>
+#include <QJsonObject>
+#include <functional>
 #include <QString>
 
 // pidfds pin each process through STOP and CONT, including PID reuse and reparenting.
@@ -9,7 +11,8 @@
 class GuidePause final {
 public:
   ~GuidePause();
-  bool stop(qint64 pid, qint64 start, QString* error);
+  bool stop(qint64 pid, qint64 start, QString* error,
+            const std::function<bool(const QJsonObject&)>& pin = {});
   void resume();
   QJsonArray identities() const;
 private:

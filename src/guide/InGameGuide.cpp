@@ -1,5 +1,7 @@
 #include "guide/InGameGuide.h"
 #include "guide/GuidePayload.h"
+#include "saves/SaveLayouts.h"
+#include "saves/SaveSetStore.h"
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeSession.h"
 #include "library/GameRoles.h"
@@ -17,6 +19,7 @@
 #include <QLocalSocket>
 #include <QSettings>
 #include <QSaveFile>
+#include <QElapsedTimer>
 #include <csignal>
 #include <QStandardPaths>
 #include <QUuid>
@@ -110,7 +113,14 @@ void InGameGuide::refreshGame() {
       if (source != "Manual" && !GameLauncher::isEmulatorSourceName(source)) continue;
       if (!m_compositor || !m_compositor->windowForPid(owned.value("pid").toLongLong()).valid()) continue;
       bool present = false;
-      for (const auto& session : sessions) if (session.toMap().value("pid") == owned.value("pid")) present = true;
+      for (auto& value : sessions) {
+        auto session = value.toMap();
+        if (session.value("pid") == owned.value("pid") && session.value("procStart") == owned.value("procStart")) {
+          present = true;
+          for (const auto& key : {"saveContext", "mangoSocket"}) if (owned.contains(key)) session.insert(key, owned.value(key));
+          value = session;
+        }
+      }
       if (!present) sessions.append(owned);
     }
   }
@@ -169,6 +179,7 @@ void InGameGuide::refreshGame() {
   m_session = chosen;
   if (chosen.value("pid") != previous.value("pid") || chosen.value("procStart") != previous.value("procStart")) {
     stopGuard();
+    m_hudVisible = false;
     const auto tags = m_metadata.value("tags").toStringList();
     bool online = false;
     for (const auto& tag : tags) if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
@@ -195,10 +206,16 @@ QJsonObject InGameGuide::payload() const {
     auto game = model.value("game").toObject();
     game.insert("note", GuideActions::notes(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-notes", GuideActions::key(m_session)));
     game.insert("forceReady", m_forceReady);
+    const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
+    const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
+    game.insert("canBackup", !context.isEmpty() && layout.valid());
     model.insert("game", game);
     QSettings settings;
     const bool steam = m_session.value("source") == "Steam";
-    model.insert("performance", QJsonObject{{"mangohud", !steam && !m_session.value("mangoSocket").toString().isEmpty()},
+    QFile sockets("/proc/net/unix");
+    const bool hooked = !steam && !m_session.value("mangoSocket").toString().isEmpty() &&
+        sockets.open(QIODevice::ReadOnly) && sockets.readAll().contains(("@" + m_session.value("mangoSocket").toString() + '\n').toUtf8());
+    model.insert("performance", QJsonObject{{"mangohud", hooked},
         {"hud", settings.value("guide/hud", "off").toString()}, {"limit", settings.value("guide/limit", 0).toInt()},
         {"setupHint", steam ? "Steam launch option: MANGOHUD=1 %command%" : "Install MangoHud, then launch this game again"},
         {"nextLaunch", true}});
@@ -216,15 +233,30 @@ bool InGameGuide::setPaused(bool paused) {
   if (!ProcFs::processAlive(pid, start) || start <= 0) return false;
   m_guard.start(executable("omakade-guide-guard"));
   if (!m_guard.waitForStarted(1500)) return false;
-  const auto request = QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}}).toJson(QJsonDocument::Compact) + '\n';
+  const auto request = QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}, {"recoverable", true}}).toJson(QJsonDocument::Compact) + '\n';
   m_guard.write(request);
   m_guard.waitForBytesWritten(1000);
-  if (!m_guard.waitForReadyRead(1500)) { stopGuard(); return false; }
-  const auto reply = QJsonDocument::fromJson(m_guard.readAllStandardOutput()).object();
-  if (!reply.value("ok").toBool() || !m_resumeTree.adopt(reply.value("stopped").toArray())) {
-    stopGuard();
-    return false;
+  // Pin each identity before acknowledging the guard's SIGSTOP. This also covers
+  // guard death between stopping a process and delivering the final reply.
+  QJsonArray pinned;
+  QByteArray pending;
+  QElapsedTimer deadline; deadline.start();
+  bool ok = false;
+  while (deadline.elapsed() < 2500) {
+    if (!m_guard.bytesAvailable() && !m_guard.waitForReadyRead(qMax(1, 2500 - int(deadline.elapsed())))) break;
+    pending += m_guard.readAllStandardOutput();
+    while (pending.contains('\n')) {
+      const auto end = pending.indexOf('\n');
+      const auto reply = QJsonDocument::fromJson(pending.left(end)).object(); pending.remove(0, end + 1);
+      if (reply.contains("pin")) {
+        pinned.append(reply.value("pin"));
+        if (!m_resumeTree.adopt(pinned)) { stopGuard(); return false; }
+        m_guard.write("pin-ok\n"); m_guard.waitForBytesWritten(200);
+      } else if (reply.contains("ok")) { ok = reply.value("ok").toBool(); break; }
+    }
+    if (ok || m_guard.state() == QProcess::NotRunning) break;
   }
+  if (!ok) { stopGuard(); return false; }
   m_paused = true;
   return true;
 }
@@ -316,6 +348,18 @@ void InGameGuide::message(const QJsonObject& data) {
     close();
     if (action == "desktop" && m_gameMode) m_gameMode->park();
     else emit libraryRequested();
+  } else if (action == "backup" && m_opened && !m_session.value("saveContext").toMap().isEmpty()) {
+    const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
+    const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
+    if (!layout.valid()) { toast("Backup unavailable", layout.error); return; }
+    const bool wasPaused = m_paused;
+    if (!setPaused(true)) { toast("Backup unavailable", "The emulator could not be paused safely"); return; }
+    SaveSetStore store(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-backups", [] { return false; });
+    store.setPolicy(10, 2LL * 1024 * 1024 * 1024);
+    QString error;
+    const bool ok = store.snapshot(context.value("game").toString(), context, layout, &error);
+    if (!wasPaused) stopGuard();
+    toast(ok ? "Saves backed up" : "Backup failed", error);
   } else if (action == "notes-save" && m_opened && !m_session.isEmpty()) {
     const bool ok = GuideActions::saveNotes(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-notes", GuideActions::key(m_session), data.value("value").toString());
     toast(ok ? "Notes saved" : "Notes could not be saved");

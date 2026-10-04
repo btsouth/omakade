@@ -39,7 +39,16 @@ int main(int argc, char** argv) {
       QString error;
       bool ok = true;
       if (request.value("action") == "pause") {
-        ok = paused.stop(request.value("pid").toInteger(), request.value("start").toInteger(), &error);
+        std::function<bool(const QJsonObject&)> pin;
+        if (request.value("recoverable").toBool()) pin = [](const QJsonObject& identity) {
+          const auto report = QJsonDocument(QJsonObject{{"pin", identity}}).toJson(QJsonDocument::Compact) + '\n';
+          if (::write(STDOUT_FILENO, report.constData(), report.size()) != report.size()) return false;
+          pollfd owner{STDIN_FILENO, POLLIN | POLLHUP, 0};
+          if (::poll(&owner, 1, 1500) <= 0) return false;
+          char ack[64]; const auto size = ::read(STDIN_FILENO, ack, sizeof(ack));
+          return size == 7 && QByteArray(ack, size) == "pin-ok\n";
+        };
+        ok = paused.stop(request.value("pid").toInteger(), request.value("start").toInteger(), &error, pin);
       } else if (request.value("action") == "resume") {
         paused.resume();
       } else {
