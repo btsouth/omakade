@@ -16,6 +16,10 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include "guide/GuideActions.h"
+#include <QSaveFile>
+#include <QSettings>
+#include <QUuid>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrlQuery>
@@ -337,9 +341,23 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   if (!workingDirectory.isEmpty()) {
     process.setWorkingDirectory(workingDirectory);
   }
-  if (!environment.isEmpty()) {
-    process.setProcessEnvironment(environment);
+  auto launchEnvironment = environment.isEmpty() ? QProcessEnvironment::systemEnvironment() : environment;
+  const auto source = m_launchIdentity.value("source").toString();
+  if (track && (source == "Manual" || isEmulatorSourceName(source)) && !QStandardPaths::findExecutable("mangohud").isEmpty()) {
+    const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-mangohud";
+    const auto socket = "omakade-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto config = directory + '/' + GuideActions::key(m_launchIdentity) + ".conf";
+    QSettings settings;
+    QSaveFile file(config);
+    if (QDir().mkpath(directory) && file.open(QIODevice::WriteOnly)) {
+      const auto bytes = GuideActions::mangoConfig(socket, settings.value("guide/hud", "off").toString(), settings.value("guide/limit", 0).toInt()).toUtf8();
+      if (file.write(bytes) == bytes.size() && file.commit()) {
+        launchEnvironment = GuideActions::mangoEnvironment(launchEnvironment, true, config);
+        m_launchIdentity.insert("mangoSocket", socket);
+      }
+    }
   }
+  process.setProcessEnvironment(launchEnvironment);
   qint64 pid = 0;
   if (!process.startDetached(&pid)) {
     return false;

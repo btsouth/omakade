@@ -1,6 +1,9 @@
 #pragma once
 
 #include "guide/GuideInput.h"
+#include "guide/GuideActions.h"
+#include <QPointer>
+#include <QLocalSocket>
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QProcess>
@@ -42,6 +45,8 @@ private:
   void shell(const QStringList& arguments, std::function<void(bool, QByteArray)> done = {});
   void runShellCommand();
   void message(const QJsonObject& message);
+  void send(const QJsonObject& message);
+  void toast(const QString& title, const QString& detail = {});
   void finishClose(bool hide);
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
@@ -55,6 +60,10 @@ private:
   QString m_output, m_family = "keyboard", m_token, m_socketPath;
   GuideInput m_input;
   QProcess m_guard;
+  GuideActions::Tree m_resumeTree, m_quitTree;
+  QPointer<QLocalSocket> m_peer;
+  QString m_grabWarning;
+  bool m_forceReady = false, m_hudVisible = false;
   QLocalServer m_server;
   QTimer m_poll;
   struct Command { QStringList arguments; std::function<void(bool, QByteArray)> done; };

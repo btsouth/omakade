@@ -2,6 +2,7 @@
 #include "tracking/ProcFs.h"
 
 #include <QDir>
+#include <QJsonObject>
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
@@ -81,4 +82,10 @@ void GuidePause::resume() {
     ::close(it->fd);
   }
   m_stopped.clear();
+}
+
+QJsonArray GuidePause::identities() const {
+  QJsonArray result;
+  for (const auto& e : m_stopped) result.append(QJsonObject{{"pid", e.pid}, {"start", e.start}});
+  return result;
 }

@@ -138,6 +138,7 @@ add_library(omakade_guide_runtime STATIC
   src/guide/GuidePayload.cpp src/guide/GuidePayload.h
   src/guide/GuideInput.cpp src/guide/GuideInput.h
   src/guide/GuidePause.cpp src/guide/GuidePause.h
+  src/guide/GuideActions.cpp src/guide/GuideActions.h
 )
 target_include_directories(omakade_guide_runtime PUBLIC src)
 target_link_libraries(omakade_guide_runtime PUBLIC omakade_guide omakade_tracking)

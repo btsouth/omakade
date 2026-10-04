@@ -1,4 +1,7 @@
 #include "guide/GuideInput.h"
+#include "guide/GuideActions.h"
+#include <QTemporaryDir>
+#include <sys/eventfd.h>
 #include "guide/GuidePayload.h"
 #include "tracking/ProcFs.h"
 
@@ -23,6 +26,13 @@ private slots:
   void families();
   void guardResumesOnOwnerDeath();
   void guardTreeAndIdentity();
+  void protocolExtension();
+  void mangoBuilding();
+  void notesStorage();
+  void couchScale();
+  void perDeviceGrab();
+  void guardDeathResume();
+  void quitEscalation();
 };
 
 void InGameGuideTests::payloadUnknowns() {
@@ -173,6 +183,82 @@ void InGameGuideTests::guardTreeAndIdentity() {
   QTRY_VERIFY(state(child) != "T");
   ::kill(child, SIGTERM);
   QVERIFY(game.waitForFinished(3000));
+}
+
+
+void InGameGuideTests::protocolExtension() {
+  auto payload = GuidePayload::build({{"name", "Game"}, {"source", "Manual"}}, {}, "DP-2", "xbox", true, false);
+  auto data = payload.value("data").toObject(); auto game = data.value("game").toObject();
+  game.insert("note", "hello"); game.insert("forceReady", true); data.insert("game", game);
+  data.insert("performance", QJsonObject{{"nextLaunch", true}}); payload.insert("data", data);
+  QJsonObject result; QVERIFY(GuidePayload::parse(QJsonDocument(payload).toJson(), &result)); QCOMPARE(result, payload);
+  QFile file(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideProtocol.js")); QVERIFY(file.open(QIODevice::ReadOnly));
+  auto script = QString::fromUtf8(file.readAll()); script.remove(".pragma library"); QJSEngine engine; engine.evaluate(script);
+  QVERIFY(!engine.globalObject().property("parse").call({QString::fromUtf8(QJsonDocument(payload).toJson())}).isNull());
+}
+void InGameGuideTests::mangoBuilding() {
+  QProcessEnvironment base; base.insert("KEEP", "yes");
+  QCOMPARE(GuideActions::mangoEnvironment(base, false, "/tmp/c"), base);
+  const auto env = GuideActions::mangoEnvironment(base, true, "/tmp/c");
+  QCOMPARE(env.value("MANGOHUD"), "1"); QCOMPARE(env.value("MANGOHUD_CONFIGFILE"), "/tmp/c"); QCOMPARE(env.value("KEEP"), "yes");
+  for (const auto& level : {"off", "fps", "frametime", "full"}) {
+    const auto config = GuideActions::mangoConfig("omakade-test", level, 60);
+    QVERIFY(config.startsWith("no_display\ncontrol=omakade-test\nfps_limit=60\n"));
+    if (QString(level) == "full") QVERIFY(config.contains("full\n"));
+    if (QString(level) == "frametime") QVERIFY(config.contains("frame_timing=1"));
+  }
+  QCOMPARE(GuideActions::mangoVisibilityCommand(false, true), QByteArray(":hud;"));
+  QCOMPARE(GuideActions::mangoVisibilityCommand(true, false), QByteArray(":hud;"));
+  QVERIFY(GuideActions::mangoVisibilityCommand(true, true).isEmpty());
+}
+void InGameGuideTests::notesStorage() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  const auto a = GuideActions::key({{"source", "Manual"}, {"path", "../game"}});
+  const auto b = GuideActions::key({{"source", "Steam"}, {"path", "../game"}});
+  QVERIFY(a != b); QVERIFY(!a.contains('/'));
+  QVERIFY(GuideActions::saveNotes(directory.path(), a, "A note 🕹\nSecond line"));
+  QCOMPARE(GuideActions::notes(directory.path(), a), QString("A note 🕹\nSecond line"));
+  QVERIFY(GuideActions::notes(directory.path(), b).isEmpty());
+  QVERIFY(!GuideActions::saveNotes(directory.path(), a, QString(8193, 'a')));
+  QVERIFY(GuideActions::saveNotes(directory.path(), a, "")); QVERIFY(GuideActions::notes(directory.path(), a).isEmpty());
+}
+void InGameGuideTests::couchScale() {
+  QFile file(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideSettings.js")); QVERIFY(file.open(QIODevice::ReadOnly));
+  auto script = QString::fromUtf8(file.readAll()); script.remove(".pragma library"); QJSEngine engine; QVERIFY(!engine.evaluate(script).isError());
+  auto scale = engine.globalObject().property("couchScale");
+  QCOMPARE(scale.call({"auto", 800}).toNumber(), 1.5); QCOMPARE(scale.call({"auto", 801}).toNumber(), 1.5);
+  QCOMPARE(scale.call({"auto", 200}).toNumber(), 1.25); QCOMPARE(scale.call({"auto", 199}).toNumber(), 1.25);
+  QCOMPARE(scale.call({"auto", 201}).toNumber(), 1.0); QCOMPARE(scale.call({"auto", 0}).toNumber(), 1.0);
+  QCOMPARE(scale.call({"2", 100}).toNumber(), 2.0);
+}
+void InGameGuideTests::perDeviceGrab() {
+  GuideInput input; int opens = 0;
+  input.setAccess({[] { return QList<GuideListener::Controller>{{"event0", "a", "Busy pad", false}, {"event1", "b", "Xbox pad", false}}; },
+    [&opens](const QString&) { return opens++ == 0 ? -1 : ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC); }, [](int) { return true; }});
+  QString family, warning;
+  QVERIFY(input.grab("event0", &family, &warning)); QCOMPARE(input.grabbedCount(), size_t(1));
+  QVERIFY(warning.contains("Busy pad may still reach the game"));
+  input.release(); QCOMPARE(input.grabbedCount(), size_t(0));
+}
+void InGameGuideTests::guardDeathResume() {
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QProcess guard; guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD)); QVERIFY(guard.waitForStarted());
+  guard.write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", game.processId()}, {"start", start}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(guard.waitForReadyRead(3000)); const auto response = QJsonDocument::fromJson(guard.readAllStandardOutput()).object();
+  QVERIFY(response.value("ok").toBool()); GuideActions::Tree recovery; QVERIFY(recovery.adopt(response.value("stopped").toArray()));
+  guard.kill(); QVERIFY(guard.waitForFinished()); recovery.signal(SIGCONT);
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  QTRY_VERIFY_WITH_TIMEOUT([&] { stat.seek(0); auto bytes = stat.readAll(); return bytes.mid(bytes.lastIndexOf(')') + 2, 1) != "T"; }(), 3000);
+  game.terminate(); QVERIFY(game.waitForFinished());
+}
+void InGameGuideTests::quitEscalation() {
+  QProcess game; game.start("python3", {"-u", "-c", "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready'); time.sleep(30)"});
+  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  GuideActions::Tree tree; QVERIFY(!tree.pin(game.processId(), start + 1)); QVERIFY(tree.pin(game.processId(), start));
+  tree.signal(SIGTERM); QVERIFY(!game.waitForFinished(100)); QVERIFY(tree.alive());
+  tree.signal(SIGKILL); QVERIFY(game.waitForFinished()); QVERIFY(!tree.alive());
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

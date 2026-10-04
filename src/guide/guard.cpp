@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
       } else {
         ok = false;
       }
-      const auto reply = QJsonDocument(QJsonObject{{"ok", ok}, {"error", error}}).toJson(QJsonDocument::Compact) + '\n';
+      const auto reply = QJsonDocument(QJsonObject{{"ok", ok}, {"error", error}, {"stopped", paused.identities()}}).toJson(QJsonDocument::Compact) + '\n';
       if (::write(STDOUT_FILENO, reply.constData(), reply.size()) < 0) return 1;
     }
   }
