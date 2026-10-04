@@ -1,27 +1,37 @@
+pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
+import "Contrast.js" as Contrast
 
-// The in-game guide. Opened with the controller's Guide button over a running game:
-// a frosted still of the game, the game's card, quick actions and the session's status.
-// Every color comes from the Omarchy theme and cross-fades when the theme changes.
+// Standalone design prototype. All actions below change fixture state only.
 FocusScope {
     id: guide
-
     property var theme
     property var game: ({})
     property url backdrop
     property bool shown: false
+    property int current: 0
+    property string page: "home"
     property real volume: 0.72
+    property int performance: 1
+    property int frameLimit: 1
+    property int output: 0
+    property int display: 0
+    property bool micMuted: true
+    property bool playing: true
+    property string note: "Take the ferry after sunset."
+    property bool editingNote: false
+    property string noteDraft: ""
+    property int noteCursor: 0
+    readonly property var noteKeys: "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat(["Space", "⌫", "Save", "Cancel"])
+    property bool confirmingQuit: false
+    property string notice: ""
     property string clock: "21:47"
     property string date: "Sunday, October 4"
-
     signal actionTriggered(string action)
     signal closeRequested()
-
     readonly property real s: height / 1080
     readonly property real radius: Math.max(0, theme ? theme.cornerRadius : 0) * s
-
-    // Theme colors, animated so a theme switch cross-fades instead of snapping.
+    // Theme colours update together; Preview cross-fades the complete old render.
     QtObject {
         id: pal
         property color bg: guide.theme.background
@@ -36,736 +46,320 @@ FocusScope {
         property color red: guide.theme.red
         property color green: guide.theme.green
         property color yellow: guide.theme.yellow
-        Behavior on bg { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on darkBg { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on darkerBg { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on lighterBg { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on selection { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on accent { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on fg { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on brightFg { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on mutedText { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on red { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on green { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-        Behavior on yellow { ColorAnimation { duration: 450; easing.type: Easing.InOutQuad } }
     }
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-    // ---- Legibility ---------------------------------------------------------------------
-    // Glass is the blurred game, dimmed toward the theme's darkest color (the base), under a
-    // tint of the theme's background. The tint is as clear as the theme allows: the least
-    // opaque one at which, over a black frame and a white one alike, body text keeps 7:1 (or
-    // 90% of its contrast on the theme's own background), muted text 4.5:1 (or 85%) and the
-    // accent 3:1 (or 85%).
-    readonly property real glassBase: 0.6
-    function luminance(c) {
-        const f = v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
-        return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
-    }
-    function contrast(a, b) {
-        const x = luminance(a), y = luminance(b)
-        return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
-    }
-    function over(c, alpha, base) {
-        return Qt.rgba(c.r * alpha + base.r * (1 - alpha), c.g * alpha + base.g * (1 - alpha),
-                       c.b * alpha + base.b * (1 - alpha), 1)
-    }
-    function glassAlpha(t) {
-        if (!t) return 1
-        const roles = [[t.foreground, 7, 0.9], [t.brightForeground, 7, 0.9],
-                       [t.mutedText, 4.5, 0.85], [t.accent, 3, 0.85]]
-        const bases = [over(t.darkerBackground, glassBase, Qt.rgba(0, 0, 0, 1)),
-                       over(t.darkerBackground, glassBase, Qt.rgba(1, 1, 1, 1))]
-        for (let a = 0.55; a < 1.0; a += 0.01) {
-            let ok = true
-            for (const [text, floor, share] of roles) {
-                const target = Math.min(floor, share * contrast(text, t.background))
-                for (const base of bases)
-                    if (contrast(text, over(t.background, a, base)) < target) ok = false
-            }
-            if (ok) return a
-        }
-        return 1
-    }
-    property real panelAlpha: glassAlpha(theme)
-    Behavior on panelAlpha { NumberAnimation { duration: 450; easing.type: Easing.InOutQuad } }
-    Component.onCompleted: console.log("glass", theme.name, glassAlpha(theme).toFixed(2))
 
+    readonly property color dimColor: theme.mode === "light" ? pal.fg : pal.darkerBg
+    readonly property real panelAlpha: Contrast.alpha(theme.t)
+    readonly property var levels: ["Off", "FPS", "FPS + frame time", "Full"]
+    readonly property var limits: ["Off", "60 fps", "90 fps", "120 fps"]
+    readonly property var displays: ["Living room TV", "Desk monitor"]
+    readonly property var outputs: [game.output || "Living room TV", "Headphones", "Speakers"]
     readonly property var actions: {
-        const g = guide.game || {}
+        if (confirmingQuit) return [
+            {id: "cancel", label: "Keep playing", icon: "play", detail: ""},
+            {id: "confirm", label: "Quit " + game.title, icon: "power", detail: "Confirm"}];
+        if (page === "tools") return [
+            {id: "performance", label: "Performance", icon: "stats", detail: levels[performance]},
+            {id: "limit", label: "Frame limit", icon: "stats", detail: limits[frameLimit]},
+            {id: "output", label: "Sound output", icon: "volume", detail: outputs[output]},
+            {id: "display", label: "Display", icon: "desktop", detail: displays[display]},
+            {id: "volume", label: "Output volume", icon: "volume", detail: Math.round(volume * 100) + "%"},
+            {id: "mic", label: "Microphone", icon: "mic", detail: micMuted ? "Muted" : "On"},
+            {id: "notes", label: "Game notes", icon: "notes", detail: "Edit"},
+            {id: "music", label: playing ? "Pause music" : "Play music", icon: playing ? "pause" : "play", detail: ""},
+            {id: "skip", label: "Next track", icon: "next", detail: ""},
+            {id: "back", label: "Back to guide", icon: "back", detail: ""}];
         const list = [
-            { id: "resume", label: "Resume", icon: "play", hint: "" },
-            { id: "desktop", label: "Return to desktop", icon: "desktop", hint: "" },
-            { id: "replay", label: "Save last 30 seconds", icon: "replay", hint: "Instant replay", live: true },
-            { id: "screenshot", label: "Take screenshot", icon: "camera", hint: "" }
-        ]
-        if (g.steam) list.push({ id: "steam", label: "Steam overlay", icon: "layers", hint: "Shift + Tab" })
-        if (g.saveBackup) list.push({ id: "backup", label: "Back up save", icon: "save", hint: g.lastBackup || "" })
-        list.push({ id: "library", label: "Open library", icon: "library", hint: "" })
-        list.push({ id: "quit", label: "Quit game", icon: "power", hint: "", danger: true })
-        return list
+            {id: "resume", label: "Resume", icon: "play", detail: ""},
+            {id: "replay", label: "Save last 30 seconds", icon: "replay", detail: ""},
+            {id: "screenshot", label: "Take screenshot", icon: "camera", detail: ""},
+            {id: "tools", label: "Controls & more", icon: "sliders", detail: "→"}];
+        if (game.steam) list.push({id: "steam", label: "Steam overlay", icon: "layers", detail: "Shift + Tab"});
+        if (game.saveBackup) list.push({id: "backup", label: "Back up save", icon: "save", detail: game.lastBackup});
+        list.push({id: "library", label: "Open library", icon: "library", detail: ""});
+        list.push({id: "desktop", label: "Return to desktop", icon: "desktop", detail: ""});
+        list.push({id: "quit", label: "Quit game…", icon: "power", detail: ""});
+        return list;
     }
-    property int current: 0
-    readonly property int rowCount: actions.length + 1 // the volume row follows the actions
-
-    function move(step) { current = Math.max(0, Math.min(rowCount - 1, current + step)) }
+    readonly property int rowCount: actions.length + (page === "home" && !confirmingQuit ? 3 : 0)
+    function move(step) { current = (current + step + rowCount) % rowCount }
+    function back() {
+        if (editingNote) { editingNote = false; forceActiveFocus(); return }
+        if (confirmingQuit) { confirmingQuit = false; current = actions.length - 1; return }
+        if (page !== "home") { page = "home"; current = 3; return }
+        closeRequested()
+    }
+    function adjust(step) {
+        const id = (actions[current] || {}).id;
+        if (id === "performance") performance = (performance + step + levels.length) % levels.length;
+        else if (id === "limit") frameLimit = (frameLimit + step + limits.length) % limits.length;
+        else if (id === "output") output = (output + step + outputs.length) % outputs.length;
+        else if (id === "display") display = (display + step + displays.length) % displays.length;
+        else if (id === "volume") volume = Math.max(0, Math.min(1, volume + step * 0.05));
+        else if (id === "mic") micMuted = !micMuted;
+        else if (id === "music") playing = !playing;
+    }
+    function notify(message) { notice = message; noticeTimer.restart() }
     function activate() {
-        if (current >= actions.length) return
-        const a = actions[current]
-        if (a.id === "replay") toast.show("Clip saved", (guide.game.title || "Game") + " · last 30 seconds")
-        else if (a.id === "screenshot") toast.show("Screenshot saved", "~/Pictures/" + (guide.game.slug || "game") + "-2147.png")
-        else if (a.id === "backup") toast.show("Save backed up", guide.game.title || "")
-        guide.actionTriggered(a.id)
+        const id = (actions[current] || {}).id;
+        if (!id) { notify(current === actions.length + 1 ? "30-second clip selected" : "Screenshot selected"); return }
+        if (id === "resume") { closeRequested(); return }
+        if (id === "tools") { page = "tools"; current = 0 }
+        else if (id === "back" || id === "cancel") back();
+        else if (id === "quit") { confirmingQuit = true; current = 0 }
+        else if (id === "confirm") { notify("Quit confirmed · preview only"); back() }
+        else if (id === "replay") notify("Clip saved · last 30 seconds");
+        else if (id === "screenshot") notify("Screenshot saved");
+        else if (id === "backup") notify("Save backed up");
+        else if (id === "notes") { noteDraft = note; noteCursor = 0; editingNote = true }
+        else if (id === "skip") notify("Next track · preview only");
+        else if (["performance", "limit", "output", "display", "volume", "mic", "music"].indexOf(id) >= 0) adjust(1);
+        else notify(actions[current].label + " · preview only");
+        actionTriggered(id)
     }
-
     Keys.onPressed: event => {
-        if (event.key === Qt.Key_Down) { move(1); event.accepted = true }
-        else if (event.key === Qt.Key_Up) { move(-1); event.accepted = true }
-        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) { activate(); event.accepted = true }
-        else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Backspace) { guide.closeRequested(); event.accepted = true }
-        else if (current === actions.length && (event.key === Qt.Key_Left || event.key === Qt.Key_Right)) {
-            guide.volume = Math.max(0, Math.min(1, guide.volume + (event.key === Qt.Key_Right ? 0.05 : -0.05)))
-            event.accepted = true
+        if (!shown) return;
+        if (editingNote) {
+            if (event.key === Qt.Key_Down) noteCursor = (noteCursor + 6) % noteKeys.length;
+            else if (event.key === Qt.Key_Up) noteCursor = (noteCursor + noteKeys.length - 6) % noteKeys.length;
+            else if (event.key === Qt.Key_Left) noteCursor = (noteCursor + noteKeys.length - 1) % noteKeys.length;
+            else if (event.key === Qt.Key_Right) noteCursor = (noteCursor + 1) % noteKeys.length;
+            else if ([Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) {
+                const key = noteKeys[noteCursor];
+                if (key === "Save") { note = noteDraft; editingNote = false; notify("Note saved · preview only") }
+                else if (key === "Cancel") editingNote = false;
+                else if (key === "⌫") noteDraft = noteDraft.slice(0, -1);
+                else if (noteDraft.length < 180) noteDraft += key === "Space" ? " " : key.toLowerCase();
+            } else if (event.key === Qt.Key_Escape) editingNote = false;
+            else return;
+            event.accepted = true; return;
         }
+        if (event.key === Qt.Key_Down) move(1);
+        else if (event.key === Qt.Key_Up) move(-1);
+        else if (event.key === Qt.Key_Left) adjust(-1);
+        else if (event.key === Qt.Key_Right) adjust(1);
+        else if ([Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space].indexOf(event.key) >= 0) activate();
+        else if ([Qt.Key_Escape, Qt.Key_Backspace].indexOf(event.key) >= 0) back();
+        else return;
+        event.accepted = true;
+        console.log("FOCUS", page, current + 1, (actions[current] || {}).id || "capture", performance, frameLimit, output, volume, micMuted)
     }
 
-    // ---- Backdrop: the game, frosted and tinted toward the theme --------------------------
+    // A gentle dim retains the scene; stronger, saturated frost stays inside the glass.
     Item {
-        id: backdropLayer
-        anchors.fill: parent
-        opacity: guide.shown ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-
-        Image {
-            id: still
-            anchors.fill: parent
-            source: guide.backdrop
-            fillMode: Image.PreserveAspectCrop
-            visible: false
-        }
-        MultiEffect {
-            anchors.fill: parent
-            source: still
-            blurEnabled: true
-            blur: 0.55
-            blurMax: 48
-            saturation: -0.15
-            brightness: -0.04
-        }
-        Rectangle { anchors.fill: parent; color: guide.tint(pal.darkerBg, 0.30) }
+        anchors.fill: parent; opacity: guide.shown ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 240 } }
+        Rectangle { anchors.fill: parent; color: guide.tint(guide.dimColor, 0.22) }
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: guide.tint(pal.darkerBg, 0.78) }
-                GradientStop { position: 0.45; color: guide.tint(pal.darkerBg, 0.35) }
-                GradientStop { position: 1.0; color: guide.tint(pal.darkerBg, 0.0) }
+                GradientStop { position: 0; color: guide.tint(guide.dimColor, 0.3) }
+                GradientStop { position: 0.55; color: guide.tint(guide.dimColor, 0) }
+                GradientStop { position: 1; color: guide.tint(guide.dimColor, 0.05) }
             }
         }
     }
-
-    // ---- Clock ------------------------------------------------------------------------
-    Item {
-        id: clockChip
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: 40 * guide.s
-        width: clockColumn.width + 56 * guide.s
-        height: clockColumn.height + 36 * guide.s
-        opacity: guide.shown ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-
-        RectangularShadow {
-            anchors.fill: parent
-            radius: guide.radius
-            blur: 40 * guide.s
-            offset.y: 12 * guide.s
-            color: Qt.rgba(0, 0, 0, 0.35)
-        }
-        Rectangle { id: clockMask; anchors.fill: parent; radius: guide.radius; visible: false; layer.enabled: true }
-        Item {
-            anchors.fill: parent
-            clip: true
-            layer.enabled: guide.radius > 0
-            layer.effect: MultiEffect { maskEnabled: true; maskSource: clockMask; maskThresholdMin: 0.5; maskSpreadAtMin: 0.5 }
-            Image {
-                id: clockUnder
-                source: guide.backdrop
-                x: -clockChip.x; y: -clockChip.y
-                width: guide.width; height: guide.height
-                fillMode: Image.PreserveAspectCrop
-                visible: false
-            }
-            MultiEffect {
-                source: clockUnder
-                x: clockUnder.x; y: clockUnder.y; width: clockUnder.width; height: clockUnder.height
-                blurEnabled: true; blur: 1.0; blurMax: 64; saturation: 0.25
-            }
-            Rectangle { anchors.fill: parent; color: guide.tint(pal.darkerBg, guide.glassBase) }
-            Rectangle { anchors.fill: parent; color: guide.tint(pal.bg, guide.panelAlpha) }
-        }
-        Rectangle {
-            anchors.fill: parent
-            radius: guide.radius
-            color: "transparent"
-            border.width: Math.max(1, guide.s)
-            border.color: guide.tint(pal.brightFg, guide.theme.mode === "light" ? 0.22 : 0.12)
-        }
-        Column {
-            id: clockColumn
-            anchors.centerIn: parent
-            spacing: 2 * guide.s
-            Text {
-                anchors.right: parent.right
-                text: guide.clock
-                color: pal.brightFg
-                font.family: guide.theme.fontFamily
-                font.pixelSize: 56 * guide.s
-                font.weight: Font.Light
-            }
-            Text {
-                anchors.right: parent.right
-                text: guide.date
-                color: pal.fg
-                font.family: guide.theme.fontFamily
-                font.pixelSize: 16 * guide.s
-            }
-        }
-    }
-
-    // ---- Panel ------------------------------------------------------------------------
-    Item {
-        id: panelShell
-        width: 600 * guide.s
-        height: parent.height - 2 * y
-        x: guide.shown ? 40 * guide.s : 0
-        y: 40 * guide.s
-        opacity: guide.shown ? 1 : 0
-        Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-
-        RectangularShadow {
-            anchors.fill: parent
-            radius: guide.radius
-            blur: 64 * guide.s
-            offset.y: 20 * guide.s
-            color: Qt.rgba(0, 0, 0, 0.45)
-        }
-        Rectangle { id: panelMask; anchors.fill: parent; radius: guide.radius; visible: false; layer.enabled: true }
-
-    Item {
+    GlassSurface {
         id: panel
-        anchors.fill: parent
-        clip: true
-        layer.enabled: guide.radius > 0
-        layer.effect: MultiEffect { maskEnabled: true; maskSource: panelMask; maskThresholdMin: 0.5; maskSpreadAtMin: 0.5 }
-
-        // Glass: the frame behind the panel, heavily blurred, with the game's art washed in at
-        // the top, all under one theme tint that keeps the text legible.
-        Image {
-            id: panelUnder
-            source: guide.backdrop
-            x: -panelShell.x; y: -panelShell.y
-            width: guide.width; height: guide.height
-            fillMode: Image.PreserveAspectCrop
-            visible: false
-        }
-        MultiEffect {
-            source: panelUnder
-            x: panelUnder.x; y: panelUnder.y; width: panelUnder.width; height: panelUnder.height
-            blurEnabled: true; blur: 1.0; blurMax: 64; saturation: 0.3
-        }
-        Item {
-            id: hero
-            anchors { left: parent.left; right: parent.right; top: parent.top }
-            height: 360 * guide.s
-            clip: true
-            Image {
-                id: heroArt
-                anchors.fill: parent
-                source: guide.game.art || guide.backdrop
-                fillMode: Image.PreserveAspectCrop
-                visible: false
+        x: guide.shown ? 40 * guide.s : -width
+        y: 40 * guide.s; width: 620 * guide.s; height: guide.height - 80 * guide.s
+        opacity: guide.shown ? 1 : 0
+        Behavior on x { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 220 } }
+        colors: pal; backdrop: guide.backdrop; alpha: guide.panelAlpha
+        radius: guide.radius; scaleFactor: guide.s; rim: 9 * guide.s
+        frameWidth: guide.width; frameHeight: guide.height
+        // Frost channels separate the header, action rows and device status. Text never
+        // enters these channels: every label stays inside a full-strength audited zone.
+        zones: {
+            const k = guide.s;
+            const z = [{x: 24*k, y: 24*k, width: 572*k, height: 310*k},
+                       {x: 24*k, y: (guide.game.controllers.length > 1 ? 800 : 820)*k, width: 572*k, height: (guide.game.controllers.length > 1 ? 176 : 156)*k}];
+            const rowHeight = guide.page === "tools" ? 36 : 43;
+            for (let i = 0; i < guide.actions.length; ++i)
+                z.push({x: 24*k, y: (343 + i*rowHeight)*k, width: 572*k, height: (rowHeight - 5)*k});
+            const below = 343 + guide.actions.length*rowHeight + 16;
+            if (guide.confirmingQuit) z.push({x: 24*k, y: below*k, width: 572*k, height: 110*k});
+            else if (guide.page === "tools") z.push({x: 24*k, y: (below - 6)*k, width: 572*k, height: 108*k});
+            else {
+                z.push({x: 24*k, y: (below - 4)*k, width: 572*k, height: 24*k});
+                z.push({x: 24*k, y: (below + 80)*k, width: 572*k, height: 27*k});
             }
-            Rectangle {
-                id: heroFade
-                anchors.fill: parent
-                visible: false
-                layer.enabled: true
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "white" }
-                    GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, 0.6) }
-                    GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0) }
-                }
-            }
-            MultiEffect {
-                anchors.fill: parent
-                source: heroArt
-                blurEnabled: true; blur: 0.7; blurMax: 40
-                saturation: 0.25
-                maskEnabled: true
-                maskSource: heroFade
-                maskSpreadAtMin: 1.0
-            }
-        }
-        Rectangle { anchors.fill: parent; color: guide.tint(pal.darkerBg, guide.glassBase) }
-        Rectangle { anchors.fill: parent; color: guide.tint(pal.bg, guide.panelAlpha) }
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; top: parent.top }
-            height: 3 * guide.s
-            color: pal.accent
+            return z;
         }
 
         Item {
             id: content
-            anchors.fill: parent
-            anchors.margins: 36 * guide.s
-            anchors.topMargin: 40 * guide.s
-
-            Text {
-                id: brand
-                text: "OMAKADE"
-                color: pal.mutedText
-                font.family: guide.theme.fontFamily
-                font.pixelSize: 13 * guide.s
-                font.letterSpacing: 4 * guide.s
+            anchors.fill: parent; anchors.margins: 38 * guide.s
+            component Label: Text {
+                color: pal.fg; font.family: guide.theme.fontFamily; font.pixelSize: 16 * guide.s
             }
-            Text {
-                anchors.right: parent.right
-                anchors.verticalCenter: brand.verticalCenter
-                text: guide.theme.name
-                color: pal.mutedText
-                font.family: guide.theme.fontFamily
-                font.pixelSize: 13 * guide.s
+            Label {
+                id: brand; text: "OMAKADE  /  GUIDE"; color: pal.mutedText
+                font.pixelSize: 12 * guide.s; font.letterSpacing: 2 * guide.s
             }
-
-            // Game card
+            Label {
+                anchors.right: parent.right; text: guide.theme.name
+                color: pal.mutedText; font.pixelSize: 12 * guide.s
+            }
             Item {
-                id: header
-                anchors { left: parent.left; right: parent.right; top: brand.bottom; topMargin: 24 * guide.s }
-                height: 150 * guide.s
-
-                Item {
-                    id: coverBox
-                    width: 112 * guide.s
-                    height: 150 * guide.s
-                    Image {
-                        id: cover
-                        anchors.fill: parent
-                        source: guide.game.cover || ""
-                        fillMode: Image.PreserveAspectCrop
-                        visible: false
-                    }
-                    Rectangle {
-                        id: coverMask
-                        anchors.fill: parent
-                        radius: guide.radius * 0.6
-                        visible: false
-                        layer.enabled: true
-                    }
-                    MultiEffect {
-                        anchors.fill: parent
-                        source: cover
-                        maskEnabled: true
-                        maskSource: coverMask
-                    }
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: guide.radius * 0.6
-                        color: "transparent"
-                        border.width: Math.max(1, guide.s)
-                        border.color: guide.tint(pal.brightFg, 0.12)
-                    }
+                id: header; y: 40 * guide.s; width: parent.width; height: 120 * guide.s
+                Image {
+                    id: cover; width: 100 * guide.s; height: parent.height
+                    source: guide.game.cover || ""; fillMode: Image.PreserveAspectCrop
                 }
-
                 Column {
-                    anchors { left: coverBox.right; leftMargin: 24 * guide.s; right: parent.right; verticalCenter: parent.verticalCenter }
-                    spacing: 8 * guide.s
-
-                    Rectangle {
-                        width: sourceText.implicitWidth + 16 * guide.s
-                        height: sourceText.implicitHeight + 8 * guide.s
-                        radius: guide.radius * 0.4
-                        color: guide.tint(pal.accent, 0.14)
-                        border.width: Math.max(1, guide.s)
-                        border.color: guide.tint(pal.accent, 0.55)
-                        Text {
-                            id: sourceText
-                            anchors.centerIn: parent
-                            text: (guide.game.source || "").toUpperCase()
-                            color: pal.accent
-                            font.family: guide.theme.fontFamily
-                            font.pixelSize: 11 * guide.s
-                            font.letterSpacing: 2 * guide.s
-                            font.weight: Font.DemiBold
-                        }
-                    }
-                    Text {
-                        width: parent.width
-                        text: guide.game.title || ""
-                        color: pal.brightFg
-                        font.family: guide.theme.fontFamily
-                        font.pixelSize: 32 * guide.s
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        text: "Playing for " + (guide.game.session || "")
-                        color: pal.fg
-                        font.family: guide.theme.fontFamily
-                        font.pixelSize: 16 * guide.s
-                    }
-                    Text {
-                        text: (guide.game.total || "") + " total"
-                        color: pal.mutedText
-                        font.family: guide.theme.fontFamily
-                        font.pixelSize: 14 * guide.s
-                    }
+                    x: 122 * guide.s; width: parent.width - x; anchors.verticalCenter: parent.verticalCenter
+                    spacing: 10 * guide.s
+                    Label { text: (guide.game.source || "").toUpperCase(); color: pal.accent; font.pixelSize: 11 * guide.s; font.letterSpacing: 2 * guide.s }
+                    Label { text: guide.game.title || ""; width: parent.width; elide: Text.ElideRight; color: pal.brightFg; font.pixelSize: 30 * guide.s; font.weight: Font.DemiBold }
+                    Label { text: "Session  " + guide.game.session; font.pixelSize: 15 * guide.s }
+                    Label { text: guide.game.total + " total"; color: pal.mutedText; font.pixelSize: 13 * guide.s }
                 }
             }
-
-            // Achievements
             Item {
-                id: achievements
-                visible: !!guide.game.achievementsTotal
-                anchors { left: parent.left; right: parent.right; top: header.bottom; topMargin: 24 * guide.s }
-                height: visible ? 64 * guide.s : 0
-
-                GuideIcon {
-                    id: trophy
-                    name: "trophy"
-                    color: pal.yellow
-                    width: 22 * guide.s; height: width
-                    stroke: 1.8
-                }
-                Text {
-                    anchors { left: trophy.right; leftMargin: 12 * guide.s; verticalCenter: trophy.verticalCenter }
-                    text: (guide.game.achievementsUnlocked || 0) + " of " + (guide.game.achievementsTotal || 0) + " achievements"
-                    color: pal.fg
-                    font.family: guide.theme.fontFamily
-                    font.pixelSize: 15 * guide.s
-                }
-                Text {
-                    anchors { right: parent.right; verticalCenter: trophy.verticalCenter }
-                    text: Math.round(100 * (guide.game.achievementsUnlocked || 0) / Math.max(1, guide.game.achievementsTotal || 1)) + "%"
-                    color: pal.mutedText
-                    font.family: guide.theme.fontFamily
-                    font.pixelSize: 14 * guide.s
-                }
+                id: achievements; y: 180 * guide.s; width: parent.width; height: 66 * guide.s
+                GuideIcon { name: "trophy"; width: 18 * guide.s; height: width; color: pal.accent }
+                Label { x: 30 * guide.s; text: guide.game.achievementsUnlocked + " / " + guide.game.achievementsTotal + " achievements"; font.pixelSize: 14 * guide.s }
+                Label { anchors.right: parent.right; text: Math.round(100 * guide.game.achievementsUnlocked / guide.game.achievementsTotal) + "%"; color: pal.mutedText; font.pixelSize: 13 * guide.s }
                 Rectangle {
-                    id: track
-                    anchors { left: parent.left; right: parent.right; top: trophy.bottom; topMargin: 12 * guide.s }
-                    height: 5 * guide.s
-                    radius: height / 2
-                    color: guide.tint(pal.lighterBg, 0.9)
-                    Rectangle {
-                        height: parent.height
-                        radius: parent.radius
-                        width: guide.shown ? parent.width * (guide.game.achievementsUnlocked || 0) / Math.max(1, guide.game.achievementsTotal || 1) : 0
-                        Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
-                        color: pal.accent
-                    }
+                    y: 30 * guide.s; width: parent.width; height: 3 * guide.s; color: guide.tint(pal.fg, 0.14)
+                    Rectangle { height: parent.height; width: parent.width * guide.game.achievementsUnlocked / guide.game.achievementsTotal; color: pal.accent }
                 }
-                Text {
-                    anchors { left: parent.left; right: parent.right; top: track.bottom; topMargin: 10 * guide.s }
-                    text: guide.game.latestAchievement ? "Latest: " + guide.game.latestAchievement : ""
-                    color: pal.mutedText
-                    font.family: guide.theme.fontFamily
-                    font.pixelSize: 13 * guide.s
-                    elide: Text.ElideRight
-                }
+                Label { y: 43 * guide.s; text: guide.game.latestAchievement || ""; width: parent.width; elide: Text.ElideRight; color: pal.mutedText; font.pixelSize: 12 * guide.s }
             }
-
-            // Actions
-            Item {
-                id: list
-                anchors { left: parent.left; right: parent.right; top: achievements.bottom; topMargin: 26 * guide.s }
-                height: guide.actions.length * rowHeight
-                readonly property real rowHeight: 52 * guide.s
-
-                Rectangle {
-                    id: highlight
-                    visible: guide.current < guide.actions.length
-                    width: parent.width + 24 * guide.s
-                    x: -12 * guide.s
-                    height: list.rowHeight
-                    y: Math.min(guide.current, guide.actions.length - 1) * list.rowHeight
-                    Behavior on y { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
-                    radius: guide.radius * 0.6
-                    color: guide.tint(pal.selection, 0.85)
-                    Rectangle {
-                        width: 3 * guide.s
-                        height: parent.height - 18 * guide.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        x: 0
-                        radius: width / 2
-                        color: (guide.actions[guide.current] || {}).danger ? pal.red : pal.accent
-                    }
-                }
-
+            Rectangle { y: 264 * guide.s; width: parent.width; height: 1; color: guide.tint(pal.fg, 0.14) }
+            Label {
+                y: 282 * guide.s
+                text: guide.confirmingQuit ? "QUIT GAME?" : (guide.page === "home" ? "BACK TO YOUR GAME" : "CONTROLS & MORE")
+                color: pal.mutedText; font.pixelSize: 11 * guide.s; font.letterSpacing: 1.8 * guide.s
+            }
+            Column {
+                id: rows; y: 305 * guide.s; width: parent.width
                 Repeater {
                     model: guide.actions
-                    delegate: Item {
+                    delegate: GuideRow {
                         required property var modelData
                         required property int index
-                        readonly property bool focused: guide.current === index
-                        width: list.width
-                        height: list.rowHeight
-                        y: index * list.rowHeight
-                        opacity: guide.shown ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-
-                        GuideIcon {
-                            id: rowIcon
-                            anchors { left: parent.left; leftMargin: 6 * guide.s; verticalCenter: parent.verticalCenter }
-                            width: 22 * guide.s; height: width
-                            name: modelData.icon
-                            color: modelData.danger ? pal.red : (parent.focused ? pal.brightFg : pal.fg)
-                        }
-                        Text {
-                            anchors { left: rowIcon.right; leftMargin: 18 * guide.s; verticalCenter: parent.verticalCenter }
-                            text: modelData.label
-                            color: modelData.danger ? pal.red : (parent.focused ? pal.brightFg : pal.fg)
-                            font.family: guide.theme.fontFamily
-                            font.pixelSize: 18 * guide.s
-                            font.weight: parent.focused ? Font.DemiBold : Font.Normal
-                        }
-                        Row {
-                            anchors { right: parent.right; rightMargin: 4 * guide.s; verticalCenter: parent.verticalCenter }
-                            spacing: 8 * guide.s
-                            Rectangle {
-                                visible: !!modelData.live
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 8 * guide.s; height: width; radius: width / 2
-                                color: pal.red
-                                SequentialAnimation on opacity {
-                                    loops: Animation.Infinite
-                                    running: !!modelData.live && guide.shown
-                                    NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
-                                    NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
-                                }
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.hint
-                                color: pal.mutedText
-                                font.family: guide.theme.fontFamily
-                                font.pixelSize: 13 * guide.s
-                            }
-                        }
+                        width: rows.width; height: (guide.page === "tools" ? 36 : 43) * guide.s
+                        compact: guide.page === "tools"; s: guide.s; radius: guide.radius
+                        colors: pal; family: guide.theme.fontFamily
+                        label: modelData.label; detail: modelData.detail; icon: modelData.icon
+                        order: index + 1; selected: guide.current === index
+                        onClicked: { guide.current = index; guide.activate() }
                     }
                 }
             }
-
-            // Status: controllers and sound
-            Column {
-                id: status
-                anchors { left: parent.left; right: parent.right; bottom: footer.top; bottomMargin: 24 * guide.s }
-                spacing: 14 * guide.s
-
-                Rectangle { width: parent.width; height: Math.max(1, guide.s); color: guide.tint(pal.lighterBg, 0.9) }
-
+            Item {
+                id: captures; y: rows.y + rows.height + 16 * guide.s
+                width: parent.width; height: 100 * guide.s
+                visible: guide.page === "home" && !guide.confirmingQuit
+                Label { text: "RECENT CAPTURES"; color: pal.mutedText; font.pixelSize: 11 * guide.s; font.letterSpacing: 1.8 * guide.s }
                 Row {
-                    width: status.width
-                    height: 24 * guide.s
-                    spacing: 28 * guide.s
+                    y: 26 * guide.s; spacing: 12 * guide.s
                     Repeater {
-                        model: guide.game.controllers || []
-                        delegate: Row {
-                            required property var modelData
-                            spacing: 10 * guide.s
-                            height: 24 * guide.s
-                            GuideIcon {
-                                name: "gamepad"
-                                color: pal.fg
-                                width: 22 * guide.s; height: width
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.name
-                                color: pal.fg
-                                font.family: guide.theme.fontFamily
-                                font.pixelSize: 14 * guide.s
-                            }
-                            Row {
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2 * guide.s
-                                Repeater {
-                                    model: 4
-                                    Rectangle {
-                                        required property int index
-                                        width: 6 * guide.s; height: 12 * guide.s
-                                        radius: 1.5 * guide.s
-                                        readonly property real level: modelData.battery
-                                        color: index < Math.ceil(level * 4)
-                                               ? (level <= 0.25 ? pal.red : level <= 0.5 ? pal.yellow : pal.green)
-                                               : guide.tint(pal.lighterBg, 0.9)
-                                    }
-                                }
-                            }
+                        model: ["Screenshot · 2m", "Clip · 30s", "Screenshot · 18m"]
+                        delegate: Item {
+                            id: capture
+                            required property string modelData
+                            required property int index
+                            width: (captures.width - 24 * guide.s) / 3; height: 92 * guide.s
+                            Image { width: parent.width; height: 50 * guide.s; source: capture.index === 1 ? "game2.jpg" : guide.backdrop; fillMode: Image.PreserveAspectCrop; clip: true }
+                            Rectangle { width: parent.width; height: 50 * guide.s; color: "transparent"; border.width: guide.current === guide.actions.length + capture.index ? 2 : 0; border.color: pal.accent }
+                            Label { y: 56 * guide.s; text: (guide.actions.length + capture.index + 1) + "  " + capture.modelData; font.pixelSize: 10 * guide.s; color: pal.mutedText }
+                            MouseArea { anchors.fill: parent; onClicked: { guide.current = guide.actions.length + capture.index; guide.activate() } }
                         }
-                    }
-                }
-
-                Item {
-                    id: volumeRow
-                    readonly property bool focused: guide.current === guide.actions.length
-                    width: status.width
-                    height: 48 * guide.s
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.leftMargin: -12 * guide.s
-                        anchors.rightMargin: -12 * guide.s
-                        radius: guide.radius * 0.6
-                        color: guide.tint(pal.selection, 0.85)
-                        opacity: volumeRow.focused ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 150 } }
-                    }
-                    GuideIcon {
-                        id: volIcon
-                        name: "volume"
-                        color: volumeRow.focused ? pal.brightFg : pal.fg
-                        width: 22 * guide.s; height: width
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                    Text {
-                        id: outputLabel
-                        anchors { left: volIcon.right; leftMargin: 14 * guide.s; verticalCenter: parent.verticalCenter }
-                        text: guide.game.output || "Speakers"
-                        color: volumeRow.focused ? pal.brightFg : pal.fg
-                        font.family: guide.theme.fontFamily
-                        font.pixelSize: 15 * guide.s
-                        width: 150 * guide.s
-                        elide: Text.ElideRight
-                    }
-                    Rectangle {
-                        id: volTrack
-                        anchors { left: outputLabel.right; leftMargin: 16 * guide.s; right: volValue.left; rightMargin: 16 * guide.s; verticalCenter: parent.verticalCenter }
-                        height: 5 * guide.s
-                        radius: height / 2
-                        color: guide.tint(pal.lighterBg, 0.9)
-                        Rectangle {
-                            width: parent.width * guide.volume
-                            height: parent.height
-                            radius: parent.radius
-                            color: pal.accent
-                            Behavior on width { NumberAnimation { duration: 120 } }
-                        }
-                        Rectangle {
-                            x: parent.width * guide.volume - width / 2
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: (volumeRow.focused ? 16 : 12) * guide.s
-                            height: width
-                            radius: width / 2
-                            color: pal.brightFg
-                            Behavior on x { NumberAnimation { duration: 120 } }
-                            Behavior on width { NumberAnimation { duration: 150 } }
-                        }
-                    }
-                    Text {
-                        id: volValue
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                        text: Math.round(guide.volume * 100) + "%"
-                        color: pal.mutedText
-                        font.family: guide.theme.fontFamily
-                        font.pixelSize: 14 * guide.s
-                        width: 44 * guide.s
-                        horizontalAlignment: Text.AlignRight
                     }
                 }
             }
-
-            // Button hints
-            Row {
-                id: footer
-                anchors { left: parent.left; bottom: parent.bottom }
-                spacing: 28 * guide.s
+            Item {
+                y: rows.y + rows.height + 16 * guide.s; width: parent.width; height: 130 * guide.s
+                visible: guide.page === "tools" && !guide.confirmingQuit
+                Label { text: "NOW PLAYING"; color: pal.mutedText; font.pixelSize: 11 * guide.s; font.letterSpacing: 1.8 * guide.s }
+                Label { y: 25 * guide.s; text: "Night Drive"; color: pal.brightFg; font.pixelSize: 18 * guide.s }
+                Label { y: 48 * guide.s; text: "Chromatic Coast · " + (guide.playing ? "Playing" : "Paused"); color: pal.mutedText; font.pixelSize: 12 * guide.s }
+                Label { y: 76 * guide.s; width: parent.width; text: "Note: " + guide.note; elide: Text.ElideRight; color: pal.mutedText; font.pixelSize: 12 * guide.s }
+            }
+            Label { y: rows.y + rows.height + 26 * guide.s; visible: guide.confirmingQuit; text: "Your game will close. B keeps it running."; width: parent.width; wrapMode: Text.WordWrap }
+            Column {
+                anchors.bottom: footer.top; anchors.bottomMargin: 22 * guide.s
+                width: parent.width; spacing: 12 * guide.s
+                Rectangle { width: parent.width; height: 1; color: guide.tint(pal.fg, 0.14) }
                 Repeater {
-                    model: [
-                        { glyph: "A", label: "Select" },
-                        { glyph: "B", label: "Back" },
-                        { glyph: "", icon: "home", label: "Close" }
-                    ]
+                    model: guide.game.controllers || []
                     delegate: Row {
+                        id: controller
                         required property var modelData
-                        spacing: 10 * guide.s
-                        Rectangle {
-                            width: 26 * guide.s; height: width; radius: width / 2
-                            color: "transparent"
-                            border.width: Math.max(1, 1.5 * guide.s)
-                            border.color: pal.fg
-                            Text {
-                                visible: modelData.glyph !== ""
-                                anchors.centerIn: parent
-                                text: modelData.glyph
-                                color: pal.fg
-                                font.family: guide.theme.fontFamily
-                                font.pixelSize: 13 * guide.s
-                                font.weight: Font.DemiBold
-                            }
-                            GuideIcon {
-                                visible: !!modelData.icon
-                                anchors.centerIn: parent
-                                width: 15 * guide.s; height: width
-                                name: modelData.icon || ""
-                                color: pal.fg
-                                stroke: 2.2
-                            }
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label
-                            color: pal.mutedText
-                            font.family: guide.theme.fontFamily
-                            font.pixelSize: 14 * guide.s
-                        }
+                        width: parent.width; spacing: 12 * guide.s
+                        GuideIcon { name: "gamepad"; color: pal.fg; width: 20 * guide.s; height: width }
+                        Label { text: controller.modelData.name; font.pixelSize: 12 * guide.s; color: pal.mutedText }
+                        Label { text: Math.round(controller.modelData.battery * 100) + "%"; font.pixelSize: 12 * guide.s }
                     }
+                }
+                Label { text: "♪  " + guide.outputs[guide.output] + "  ·  " + Math.round(guide.volume * 100) + "%" + "  ·  Mic " + (guide.micMuted ? "muted" : "on"); font.pixelSize: 12 * guide.s; color: pal.mutedText }
+                Label { text: "Display  ·  " + guide.displays[guide.display]; font.pixelSize: 12 * guide.s; color: pal.mutedText }
+            }
+            Row {
+                id: footer; anchors.bottom: parent.bottom; spacing: 20 * guide.s
+                Repeater {
+                    model: ["↕ Move", "A Select", "B Back", "⌂ Close"]
+                    delegate: Label { required property string modelData; text: modelData; font.pixelSize: 12 * guide.s; color: pal.fg }
                 }
             }
         }
     }
-        Rectangle {
-            anchors.fill: parent
-            radius: guide.radius
-            color: "transparent"
-            border.width: Math.max(1, guide.s)
-            border.color: guide.tint(pal.brightFg, guide.theme.mode === "light" ? 0.22 : 0.12)
-        }
-    }
-
-    // ---- Toast --------------------------------------------------------------------------
-    Rectangle {
-        id: toast
-        property string title: ""
-        property string detail: ""
-        function show(t, d) { title = t; detail = d; toastTimer.restart(); visibleState = true }
-        property bool visibleState: false
-        anchors.right: parent.right
-        anchors.rightMargin: 64 * guide.s
-        y: parent.height - height - (visibleState ? 64 : 32) * guide.s
-        opacity: visibleState ? 1 : 0
-        Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-        Behavior on opacity { NumberAnimation { duration: 220 } }
-        width: 420 * guide.s
-        height: 76 * guide.s
-        radius: guide.radius
-        color: guide.tint(pal.bg, 0.95)
-        border.width: Math.max(1, guide.s)
-        border.color: guide.tint(pal.accent, 0.6)
-        Timer { id: toastTimer; interval: 2600; onTriggered: toast.visibleState = false }
-        Rectangle {
-            id: toastBadge
-            anchors { left: parent.left; leftMargin: 18 * guide.s; verticalCenter: parent.verticalCenter }
-            width: 36 * guide.s; height: width; radius: width / 2
-            color: guide.tint(pal.green, 0.18)
-            GuideIcon { anchors.centerIn: parent; width: 20 * guide.s; height: width; name: "check"; color: pal.green; stroke: 2.2 }
-        }
+    GlassSurface {
+        x: guide.width - width - 40 * guide.s; y: 40 * guide.s
+        width: 286 * guide.s; height: 132 * guide.s
+        colors: pal; backdrop: guide.backdrop; alpha: guide.panelAlpha
+        radius: guide.radius; scaleFactor: guide.s; frameWidth: guide.width; frameHeight: guide.height
+        visible: guide.shown
         Column {
-            anchors { left: toastBadge.right; leftMargin: 16 * guide.s; right: parent.right; rightMargin: 16 * guide.s; verticalCenter: parent.verticalCenter }
-            spacing: 4 * guide.s
-            Text { text: toast.title; color: pal.brightFg; font.family: guide.theme.fontFamily; font.pixelSize: 16 * guide.s; font.weight: Font.DemiBold }
-            Text { width: parent.width; text: toast.detail; color: pal.mutedText; font.family: guide.theme.fontFamily; font.pixelSize: 13 * guide.s; elide: Text.ElideRight }
+            anchors.centerIn: parent; spacing: 4 * guide.s
+            Text { anchors.right: parent.right; text: guide.clock; color: pal.brightFg; font.family: guide.theme.fontFamily; font.pixelSize: 50 * guide.s; font.weight: Font.Light }
+            Text { text: guide.date; color: pal.fg; font.family: guide.theme.fontFamily; font.pixelSize: 13 * guide.s }
         }
     }
+    GlassSurface {
+        x: panel.x + panel.width + 24 * guide.s; y: 360 * guide.s
+        width: 570 * guide.s; height: 420 * guide.s
+        visible: guide.editingNote && guide.shown
+        colors: pal; backdrop: guide.backdrop; alpha: guide.panelAlpha
+        radius: guide.radius; scaleFactor: guide.s; frameWidth: guide.width; frameHeight: guide.height
+        Column {
+            anchors.fill: parent; anchors.margins: 30 * guide.s; spacing: 20 * guide.s
+            Text { text: "GAME NOTES"; color: pal.accent; font.family: guide.theme.fontFamily; font.pixelSize: 14 * guide.s }
+            Text {
+                width: parent.width; height: 74 * guide.s
+                text: guide.noteDraft + "▏"; color: pal.fg
+                font.family: guide.theme.fontFamily; font.pixelSize: 16 * guide.s; wrapMode: Text.Wrap
+            }
+            Grid {
+                columns: 6; spacing: 6 * guide.s; width: parent.width
+                Repeater {
+                    model: guide.noteKeys
+                    delegate: Rectangle {
+                        required property string modelData
+                        required property int index
+                        width: 79 * guide.s; height: 36 * guide.s; radius: guide.radius * 0.5
+                        color: "transparent"; border.width: guide.noteCursor === index ? 2 : 1
+                        border.color: guide.tint(pal.accent, guide.noteCursor === index ? 1 : 0.2)
+                        Text { anchors.centerIn: parent; text: parent.modelData; color: pal.fg; font.family: guide.theme.fontFamily; font.pixelSize: 12 * guide.s }
+                    }
+                }
+            }
+            Text { text: "D-pad Move   A Type   B Cancel"; color: pal.mutedText; font.family: guide.theme.fontFamily; font.pixelSize: 13 * guide.s }
+        }
+    }
+    GlassSurface {
+        x: guide.width - width - 40 * guide.s; y: guide.height - height - 40 * guide.s
+        width: 430 * guide.s; height: 82 * guide.s; visible: guide.shown && guide.notice !== ""
+        colors: pal; backdrop: guide.backdrop; alpha: guide.panelAlpha
+        radius: guide.radius; scaleFactor: guide.s; frameWidth: guide.width; frameHeight: guide.height
+        Text { anchors.centerIn: parent; text: guide.notice; color: pal.fg; font.family: guide.theme.fontFamily; font.pixelSize: 16 * guide.s }
+    }
+    Timer { id: noticeTimer; interval: 2600; onTriggered: guide.notice = "" }
 }

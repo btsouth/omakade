@@ -5,12 +5,19 @@ import QtQuick.Shapes
 Item {
     id: icon
     property string name: ""
-    property color color: "white"
+    property color color
     property real stroke: 1.8
     implicitWidth: 24
     implicitHeight: 24
 
     readonly property var paths: ({
+        "stats": "M4 20V12 M10 20V4 M16 20V9 M22 20H2",
+        "mic": "M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8",
+        "notes": "M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5",
+        "pause": "M8 5v14 M16 5v14",
+        "next": "M5 5l10 7-10 7z M19 5v14",
+        "back": "M14 5l-7 7 7 7 M7 12h14",
+        "sliders": "M3 6h18 M3 12h18 M3 18h18 M8 3v6 M16 9v6 M9 15v6",
         "play": "M8 5.5 L18.5 12 L8 18.5 Z",
         "desktop": "M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M9 20h6 M12 16v4",
         "replay": "M4 12a8 8 0 1 0 2.4-5.7 M4 4.5v4h4 M12 8.2v4l2.6 2.4",
