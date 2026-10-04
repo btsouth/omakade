@@ -2027,7 +2027,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("CouchModeRequested"),
                                            startInCouchMode);
   engine.rootContext()->setContextProperty(QStringLiteral("ColdGameModeRequested"),
-                                           gameModeRequest);
+                                           gameModeRequest || coldGuideRequest);
   engine.rootContext()->setContextProperty(
       QStringLiteral("CouchLibraryViewOverride"),
       renderOverlay.startsWith(QStringLiteral("couch-grid")) ? QStringLiteral("grid") : QString{});
@@ -2102,7 +2102,7 @@ int main(int argc, char* argv[]) {
                        QCoreApplication::sendEvent(target, &release);
                      });
   }
-  if (rootWindow != nullptr && startInCouchMode && !gameModeRequest && !renderMode && (!navigationTest || startupNavigationTest) && !smokeTest) {
+  if (rootWindow != nullptr && startInCouchMode && !gameModeRequest && !coldGuideRequest && !renderMode && (!navigationTest || startupNavigationTest) && !smokeTest) {
     // Couch mode fills the chosen display. Sunshine selects its configured output first.
     const QList<QScreen*> screens = QGuiApplication::screens();
     QStringList screenNames;
@@ -2119,7 +2119,7 @@ int main(int argc, char* argv[]) {
     }
     rootWindow->showFullScreen();
   }
-  if (rootWindow != nullptr && !gameModeRequest && !renderMode && (!navigationTest || startupNavigationTest)) {
+  if (rootWindow != nullptr && !gameModeRequest && !coldGuideRequest && !renderMode && (!navigationTest || startupNavigationTest)) {
     const auto activateWindow = [rootWindow, &gameMode] {
       if (gameMode.hasSession() || gameMode.busy()) return;
       rootWindow->requestActivate();
@@ -6907,6 +6907,7 @@ int main(int argc, char* argv[]) {
     if (rootWindow) { rootWindow->show(); rootWindow->requestActivate(); }
   });
   if (coldGuideRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice); });
+  if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {
     const auto windowStateBeforePreparation =
