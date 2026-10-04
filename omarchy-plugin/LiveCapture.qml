@@ -33,6 +33,7 @@ Item {
   }
   Process {
     id: recording
+    onRunningChanged: if (running) startedTimer.restart()
     stderr: StdioCollector { onStreamFinished: root.recordError = text.slice(-700) }
     onExited: function(code, status) {
       var path = root.recordingFile
@@ -47,11 +48,17 @@ Item {
     stdout: SplitParser {
       onRead: function(line) {
         if (!line.trim()) return
-        root.refresh()
-        root.toast({title: "Replay saved", detail: line.trim()})
+        runner.run(["test", "-s", line.trim()], function(ok) {
+          if (ok) { root.refresh(); root.toast({title: "Replay saved", detail: line.trim()}) }
+        })
       }
     }
     onExited: function(code, status) { if (code !== 0 || status !== 0) root.toast({title: "Replay unavailable", detail: root.replayError || "The capture backend is unavailable"}) }
+  }
+  Timer {
+    id: startedTimer
+    interval: 500
+    onTriggered: if (recording.running) runner.run(["test", "-s", root.recordingFile], function(ok) { if (ok && recording.running) root.toast({title: "Recording started"}) })
   }
   function act(name, value) {
     if (name === "record") {

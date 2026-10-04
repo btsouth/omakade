@@ -283,6 +283,9 @@ Item {
         return
       }
       if (liveMedia.act(name, arg) || liveCapture.act(name, arg) || liveSystem.act(name, arg)) return
+      if (name === "identify" && arg) {
+        liveSystem.run(["python3", liveCapture.helper, "identify", arg], function(ok) { root.showToast({title: ok ? "Controller identified" : "Controller could not be identified"}) }); return
+      }
       if (name === "pair") { root.close(); liveSystem.run(["omarchy-shell", "shell", "summon", "omarchy.bluetooth"]); return }
       if (root.backend && ["pause-while-open", "backup", "desktop", "library", "steam-overlay", "hud", "limit", "enable-mangohud"].indexOf(name) >= 0) { root.notify(name, arg); return }
       if (name === "desktop") { root.close(); liveSystem.hypr('hl.dsp.focus({workspace="empty"})', ["workspace", "empty"]); return }

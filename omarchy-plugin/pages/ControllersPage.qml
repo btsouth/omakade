@@ -36,7 +36,7 @@ PageRhythm {
         readonly property bool low: modelData.battery !== undefined && modelData.battery <= 20
         width: root.width
         height: root.g.s(index === 0 ? 164 : 114) + (index === 0 ? root.heroExtra : 0)
-        onTriggered: if (modelData.identifiable !== false) root.act("identify", modelData.name)
+        onTriggered: if (modelData.identifiable !== false) root.act("identify", modelData.node || modelData.name)
 
         Rectangle {
           anchors.fill: parent; radius: root.g.radius
@@ -70,8 +70,8 @@ PageRhythm {
             Meter {
               g: root.g; width: parent.width - root.g.s(26)
               label: "Battery"
-              value: pad.modelData.battery === undefined ? "Wired" : pad.modelData.battery + "%"
-              progress: pad.modelData.battery === undefined ? 1 : pad.modelData.battery / 100
+              value: pad.modelData.battery === undefined ? "Unreported" : pad.modelData.battery + "%"
+              progress: pad.modelData.battery === undefined ? 0 : pad.modelData.battery / 100
               fill: pad.low ? root.g.urgent : root.g.foreground
               valueColor: pad.low ? root.g.urgent : root.g.foreground
             }

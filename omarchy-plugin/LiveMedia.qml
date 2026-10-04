@@ -26,16 +26,17 @@ Item {
       length: player.length > 0 ? Math.floor(player.length / 60) + ":" + String(Math.floor(player.length % 60)).padStart(2, "0") : ""} : null
   })
   PwObjectTracker { objects: Pipewire.nodes.values.filter(n => n.audio && !n.isStream) }
-  readonly property var poweredPads: UPower.devices.values.filter(d => d.ready && !d.isLaptopBattery && /controller|gamepad|joystick|xbox|dual|switch|steam/i.test(d.model + " " + d.nativePath)).map(d => ({name: d.model || "Controller", battery: Math.round(d.percentage * 100), identifiable: false, family: /dual|sony/i.test(d.model) ? "playstation" : /switch|nintendo/i.test(d.model) ? "nintendo" : /xbox/i.test(d.model) ? "xbox" : "generic"}))
+  readonly property var poweredPads: UPower.devices.values.filter(d => d.ready && !d.isLaptopBattery && /controller|gamepad|joystick|xbox|dual|switch|steam/i.test(d.model + " " + d.nativePath)).map(d => ({id: d.nativePath, name: d.model || "Controller", battery: Math.round(d.percentage * 100), identifiable: false, family: /dual|sony/i.test(d.model) ? "playstation" : /switch|nintendo/i.test(d.model) ? "nintendo" : /xbox/i.test(d.model) ? "xbox" : "generic"}))
   readonly property var pads: devices.map(function(pad) {
-    var powered = root.poweredPads.find(d => d.name === pad.name)
-    return Object.assign({}, pad, powered || {})
+    var candidates = root.poweredPads.filter(d => d.name === pad.name)
+    var powered = candidates.length === 1 && root.devices.filter(d => d.name === pad.name).length === 1 ? candidates[0] : null
+    return Object.assign({}, pad, powered ? {battery: powered.battery} : {})
   }).concat(root.poweredPads.filter(d => !root.devices.some(p => p.name === d.name)))
   readonly property var battery: UPower.displayDevice && UPower.displayDevice.ready && UPower.displayDevice.isLaptopBattery ? {percent: Math.round(UPower.displayDevice.percentage * 100), charging: UPower.displayDevice.state === UPowerDeviceState.Charging} : null
   onPadsChanged: {
     pads.forEach(function(pad) {
       [20, 10].forEach(function(level) {
-        var key = pad.name + ":" + level
+        var key = (pad.id || pad.name) + ":" + level
         if (pad.battery !== undefined && pad.battery <= level && !root.warned[key]) {
           root.warned[key] = true
           root.toast({title: pad.name + " battery low", detail: pad.battery + "% remaining"})

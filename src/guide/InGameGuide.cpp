@@ -187,6 +187,7 @@ void InGameGuide::refreshGame() {
   if (chosen.value("pid") != previous.value("pid") || chosen.value("procStart") != previous.value("procStart")) {
     stopGuard();
     m_hudVisible = false;
+    m_mango.abort();
     const auto tags = m_metadata.value("tags").toStringList();
     bool online = false;
     for (const auto& tag : tags) if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
@@ -373,9 +374,11 @@ void InGameGuide::message(const QJsonObject& data) {
   } else if (action == "steam-overlay" && m_opened && m_session.value("source") == "Steam") {
     if (!m_compositor) return;
     const auto window = m_compositor->windowForPid(m_session.value("pid").toLongLong());
+    const auto game = m_session;
     close();
-    if (window.valid()) QTimer::singleShot(250, this, [this, window] {
-      if (m_opened || m_opening) return;
+    if (window.valid()) QTimer::singleShot(250, this, [this, window, game] {
+      if (m_opened || m_opening || !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong()) ||
+          m_compositor->windowForPid(game.value("pid").toLongLong()).address != window.address) return;
       m_compositor->focusWindow(window.address);
       const auto expression = QStringLiteral("hl.dsp.send_shortcut({mods=\"SHIFT\",key=\"TAB\",window=\"address:%1\"})").arg(window.address);
       QProcess::startDetached("hyprctl", {"dispatch", expression});
@@ -405,10 +408,13 @@ void InGameGuide::message(const QJsonObject& data) {
       settings.setValue("guide/hud", level);
       const auto command = GuideActions::mangoVisibilityCommand(m_hudVisible, level != "off");
       if (!command.isEmpty() && !m_session.value("mangoSocket").toString().isEmpty()) {
-        QLocalSocket socket;
-        socket.setSocketOptions(QLocalSocket::AbstractNamespaceOption);
-        socket.connectToServer(m_session.value("mangoSocket").toString());
-        if (socket.waitForConnected(200)) { socket.write(command); socket.waitForBytesWritten(200); m_hudVisible = level != "off"; }
+        if (m_mango.state() != QLocalSocket::ConnectedState) {
+          m_mango.abort();
+          m_mango.setSocketOptions(QLocalSocket::AbstractNamespaceOption);
+          m_mango.connectToServer(m_session.value("mangoSocket").toString());
+          m_mango.waitForConnected(200);
+        }
+        if (m_mango.state() == QLocalSocket::ConnectedState && m_mango.write(command) == command.size() && m_mango.waitForBytesWritten(200)) m_hudVisible = level != "off";
         else toast("MangoHud control unavailable");
       }
     } else {

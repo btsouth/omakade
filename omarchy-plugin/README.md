@@ -62,8 +62,8 @@ microphone mute. MPRIS supplies artwork and playback controls. UPower supplies
 battery readings; controller identity without a battery comes from sysfs. Missing
 readings stay absent. Low battery alerts fire once at 20% and once at 10% for each
 controller per shell session. Closed-guide alerts use desktop notifications and
-respect DND. Identification is hidden because the generic services provide no
-verified rumble or LED control. Pair opens Omarchy's Bluetooth panel.
+respect DND. Identification uploads a short Linux force-feedback rumble only when the pad
+advertises FF_RUMBLE and its evdev node is writable. Other pads hide that action. Pair opens Omarchy's Bluetooth panel.
 
 Couch scale adds Auto, 1x, 1.25x, 1.5x and 2x to the shell's size tokens. Auto uses
 the game's output physical width: at least 800 mm selects 1.5x, at most 200 mm

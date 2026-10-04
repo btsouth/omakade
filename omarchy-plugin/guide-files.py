@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Generic capture paths and read-only metrics. No Omakade dependency."""
 import configparser
+import ctypes
+import fcntl
+import struct
+import time
 import datetime
 import json
 import os
@@ -77,7 +81,13 @@ def scan():
             seen.add(identity)
             name = (device / 'name').read_text().strip()
             family = 'playstation' if re.search('dual|sony|playstation', name, re.I) else 'nintendo' if re.search('nintendo|switch|joy-con', name, re.I) else 'deck' if re.search('steam', name, re.I) else 'xbox' if re.search('xbox|x-box|xinput|microsoft', name, re.I) else 'generic'
-            pads.append(dict(name=name, id=identity, family=family, identifiable=False))
+            node = Path('/dev/input') / event.name
+            try:
+                chunks = (device / 'capabilities/ff').read_text().split()
+                effects = sum(int(word, 16) << (64 * i) for i, word in enumerate(reversed(chunks)))
+            except OSError:
+                effects = 0
+            pads.append(dict(name=name, id=identity, node=str(node), family=family, identifiable=bool(effects & (1 << 0x50)) and os.access(node, os.W_OK)))
         except OSError:
             pass
     return dict(shots=str(shots), videos=str(videos), recent=recent, pads=pads, settingsPath=str(state / 'settings.json'))
@@ -126,7 +136,39 @@ def stats():
                     pass
     return result
 
-if sys.argv[1] == 'screenshot':
+def identify(path):
+    # Native Linux input.h layout, including pointer alignment on 32/64 bit hosts.
+    class Envelope(ctypes.Structure):
+        _fields_ = [('attack_length', ctypes.c_ushort), ('attack_level', ctypes.c_ushort), ('fade_length', ctypes.c_ushort), ('fade_level', ctypes.c_ushort)]
+    class Periodic(ctypes.Structure):
+        _fields_ = [('waveform', ctypes.c_ushort), ('period', ctypes.c_ushort), ('magnitude', ctypes.c_short), ('offset', ctypes.c_short), ('phase', ctypes.c_ushort), ('envelope', Envelope), ('custom_len', ctypes.c_uint), ('custom_data', ctypes.c_void_p)]
+    class Rumble(ctypes.Structure):
+        _fields_ = [('strong', ctypes.c_ushort), ('weak', ctypes.c_ushort)]
+    class EffectData(ctypes.Union):
+        _fields_ = [('periodic', Periodic), ('rumble', Rumble)]
+    class Effect(ctypes.Structure):
+        _fields_ = [('type', ctypes.c_ushort), ('id', ctypes.c_short), ('direction', ctypes.c_ushort), ('trigger_button', ctypes.c_ushort), ('trigger_interval', ctypes.c_ushort), ('length', ctypes.c_ushort), ('delay', ctypes.c_ushort), ('effect', EffectData)]
+    if not re.fullmatch(r'/dev/input/event[0-9]+', path):
+        raise ValueError('Invalid controller node')
+    effect = Effect()
+    effect.type, effect.id, effect.length = 0x50, -1, 500
+    effect.effect.rumble.strong = 0x7000
+    effect.effect.rumble.weak = 0x7000
+    fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+    try:
+        payload = bytearray(bytes(effect))
+        fcntl.ioctl(fd, (1 << 30) | (ctypes.sizeof(Effect) << 16) | (ord('E') << 8) | 0x80, payload, True)
+        effect_id = Effect.from_buffer_copy(payload).id
+        os.write(fd, struct.pack('llHHi', 0, 0, 0x15, effect_id, 1))
+        time.sleep(.55)
+    finally:
+        # Closing the uploader fd removes its effect, even on errors or process exit.
+        os.close(fd)
+    print('identified')
+
+if sys.argv[1] == 'identify':
+    identify(sys.argv[2])
+elif sys.argv[1] == 'screenshot':
     print(screenshot())
 elif sys.argv[1] == 'stats':
     print(json.dumps(stats()))

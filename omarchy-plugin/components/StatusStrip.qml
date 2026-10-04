@@ -39,7 +39,7 @@ Item {
         id: captureStatus
         anchors.centerIn: parent; spacing: root.g.s(6)
         Rectangle { width: root.g.s(6); height: width; radius: width / 2; color: root.g.urgent; anchors.verticalCenter: parent.verticalCenter }
-        Label { g: root.g; role: "caps"; color: root.g.foreground; text: root.status.recording ? "REC" + (root.status.recordingTime ? " " + root.status.recordingTime : "") : "REPLAY"; anchors.verticalCenter: parent.verticalCenter }
+        Label { g: root.g; role: "caps"; color: root.g.foreground; text: root.status.recording ? "REC" + (root.status.recordingTime ? " " + root.status.recordingTime : "") + (root.status.replay && root.status.replay.on ? " · REPLAY" : "") : "REPLAY"; anchors.verticalCenter: parent.verticalCenter }
       }
     }
     Label {
