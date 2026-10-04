@@ -12,13 +12,13 @@ PageRhythm {
   property var rows: hooked ? [[hud], [limit], [profile]] : [[setup], [profile]]
 
   hero: frameHero
-  heroMinimum: fpsRow.height + g.s(180) + graphCaption.height + g.s(12)
+  heroMinimum: root.perf.fps === undefined ? 0 : fpsRow.height + g.s(180) + graphCaption.height + g.s(12)
   heroMaximum: heroMinimum + g.s(72)
 
   // Frame rate and frame times, when MangoHud is in the game.
   Column {
     id: frameHero
-    visible: root.hooked
+    visible: root.hooked && root.perf.fps !== undefined
     width: parent.width
     spacing: root.g.s(6)
     Row {
@@ -83,6 +83,7 @@ PageRhythm {
       visible: root.hooked
       g: root.g; width: parent.width
       label: "On-screen overlay"
+      detail: root.perf.nextLaunch ? "Visibility changes now. Detail applies next launch." : ""
       options: [{ value: "off", label: "Off" }, { value: "fps", label: "FPS" }, { value: "frametime", label: "+ Time" }, { value: "full", label: "Full" }]
       value: root.perf.hud || "off"
       onChosen: function(v) { root.act("hud", v) }
@@ -92,8 +93,8 @@ PageRhythm {
       visible: root.hooked
       g: root.g; width: parent.width
       label: "Frame limit"
-      detail: root.perf.refresh ? "Display " + root.perf.refresh + " Hz" : ""
-      options: [{ value: "0", label: "Off" }, { value: "30", label: "30" }, { value: "40", label: "40" }, { value: "60", label: "60" }, { value: "120", label: "120" }]
+      detail: root.perf.nextLaunch ? "Applies next launch" : ""
+      options: [{ value: "0", label: "Off" }, { value: "30", label: "30" }, { value: "40", label: "40" }, { value: "60", label: "60" }, { value: "120", label: "120" }, {value: String(root.perf.refresh || 60), label: "Display"}]
       value: String(root.perf.limit || 0)
       onChosen: function(v) { root.act("limit", Number(v)) }
     }

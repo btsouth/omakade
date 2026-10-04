@@ -76,7 +76,8 @@ PageRhythm {
     width: parent.width; spacing: root.g.s(10)
     Action {
       id: extra
-      g: root.g; width: (parent.width - parent.spacing * (notes.visible ? 2 : 1)) / (notes.visible ? 3 : 2)
+      visible: !root.emulator || !!root.game.canBackup
+      g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
       variant: "tile"; height: root.g.s(116)
       icon: root.emulator ? root.g.icon.save : root.steam ? root.g.icon.steam : root.g.icon.desktop
       title: root.emulator ? "Saves" : root.steam ? "Steam" : "Desktop"
@@ -86,14 +87,14 @@ PageRhythm {
     Action {
       id: notes
       visible: root.game.notes !== undefined || root.game.note !== undefined
-      g: root.g; width: (parent.width - parent.spacing * (notes.visible ? 2 : 1)) / (notes.visible ? 3 : 2)
+      g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
       variant: "tile"; height: root.g.s(116); icon: root.g.icon.notes
-      title: "Notes"; detail: (root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) + ((root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) === 1 ? " note" : " notes")
+      title: "Notes"; detail: root.game.note !== undefined ? (root.game.note ? "Saved" : "Add a note") : (root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) + ((root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) === 1 ? " note" : " notes")
       onTriggered: root.act("notes", null)
     }
     Action {
       id: pause
-      g: root.g; width: (parent.width - parent.spacing * (notes.visible ? 2 : 1)) / (notes.visible ? 3 : 2)
+      g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
       variant: "tile"; height: root.g.s(116); icon: root.g.icon.pausedGame
       selected: !!root.game.pauseWhileOpen
       title: "Pause"; detail: root.game.pauseWhileOpen ? "On" : "Off"
@@ -134,10 +135,10 @@ PageRhythm {
 
   bottomBlock: Action {
     id: quit
-    visible: root.hasGame
+    visible: root.hasGame || !!root.d.window.address
     g: root.g; width: parent.width; height: root.g.s(54)
     icon: root.g.icon.power; danger: true
-    title: "Quit game"; trailing: "Asks first"
+    title: root.game.forceReady ? "Force quit game" : "Quit game"; trailing: "Asks first"
     onTriggered: root.act("quit", null)
   }
 }

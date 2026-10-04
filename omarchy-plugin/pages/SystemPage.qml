@@ -11,7 +11,7 @@ PageRhythm {
   readonly property var sys: d.system || {}
   readonly property var profiles: ["power-saver", "balanced", "performance"]
   readonly property string profile: (d.performance || {}).profile || ""
-  property var rows: [[wifi, bluetooth], [dnd, power], [light, suspend], [brightness], [library], [desktop]]
+  property var rows: [[wifi, bluetooth], [dnd, power], [light, suspend], [brightness], [couch], [library], [desktop]]
 
   Grid {
     width: parent.width; columns: 2
@@ -69,6 +69,13 @@ PageRhythm {
     icon: root.g.icon.brightness; title: "Display brightness"
     value: root.sys.brightness || 0
     onMoved: function(v) { root.act("brightness", v) }
+  }
+  ChoiceRow {
+    id: couch
+    g: root.g; width: parent.width; label: "Couch scale"
+    options: [{value: "auto", label: "Auto"}, {value: "1", label: "1x"}, {value: "1.25", label: "1.25x"}, {value: "1.5", label: "1.5x"}, {value: "2", label: "2x"}]
+    value: root.sys.couch || "auto"
+    onChosen: v => root.act("couch-scale", v)
   }
   bottomBlock: Column {
     width: parent.width; spacing: root.g.s(8)

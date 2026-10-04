@@ -54,7 +54,7 @@ PageRhythm {
       g: root.g; width: parent.width
       icon: root.g.icon.record
       title: root.cap.recording ? "Stop recording" : "Record a clip"
-      detail: root.cap.recording ? "Recording for " + root.cap.recordingTime : "Game and sound, until you stop"
+      detail: root.cap.recording ? "Recording until you stop" : "Game and sound, until you stop"
       trailing: root.cap.recording ? "" : "Off"
       onTriggered: root.act("record", null)
     }
@@ -71,7 +71,7 @@ PageRhythm {
       id: length
       g: root.g; width: parent.width
       label: "Replay length"
-      options: [{ value: "15", label: "15 s" }, { value: "30", label: "30 s" }, { value: "60", label: "1 min" }, { value: "120", label: "2 min" }]
+      options: [{ value: "30", label: "30 s" }, { value: "60", label: "1 min" }, { value: "120", label: "2 min" }]
       value: String(root.cap.replaySeconds || 30)
       onChosen: function(v) { root.act("replay-length", Number(v)) }
     }
@@ -128,7 +128,7 @@ PageRhythm {
     id: folder
     g: root.g; width: parent.width
     icon: root.g.icon.folder
-    title: "All captures"
+    title: "Recording folder"
     detail: root.cap.folder || "~/Pictures"
     chevron: true
     onTriggered: root.act("open-folder", null)

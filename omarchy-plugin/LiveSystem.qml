@@ -4,6 +4,7 @@ import Quickshell.Io
 // Generic guide controls work even without Omakade. Failed reads stay unknown.
 Item {
   id: root
+  signal failure(string title)
   property bool active: false
   property var system: ({})
   property string profile: ""
@@ -53,7 +54,7 @@ Item {
     case "suspend": command = ["systemctl", "suspend"]; break
     default: return false
     }
-    run(command, function(ok) { root.refresh() })
+    run(command, function(ok) { if (!ok) root.failure("The setting could not be changed"); root.refresh() })
     return true
   }
 }

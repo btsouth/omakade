@@ -12,12 +12,14 @@ PageRhythm {
   readonly property var outputs: audio.outputs || []
   property var transportItems: []
   property var outputItems: []
+  property var inputItems: []
   property var rows: {
     var r = []
     if (media) r.push(transportItems)
     r.push([volume])
     for (var i = 0; i < outputItems.length; i++) r.push([outputItems[i]])
     r.push([mic])
+    inputItems.forEach(i => r.push([i]))
     return r
   }
 
@@ -115,12 +117,28 @@ PageRhythm {
           title: modelData.name
           detail: modelData.detail || ""
           trailing: modelData.current ? "\u{f012c}" : ""
-          onTriggered: root.act("output", modelData.name)
+          onTriggered: root.act("output", modelData.id === undefined ? modelData.name : modelData.id)
         }
       }
     }
   }
 
+  Column {
+    width: parent.width
+    spacing: root.g.s(6)
+    visible: (root.audio.inputs || []).length > 0
+    Section { g: root.g; text: "Input"; width: parent.width }
+    Repeater {
+      model: root.audio.inputs || []
+      onItemAdded: (i, item) => root.inputItems = root.g.withItem(root.inputItems, i, item)
+      onItemRemoved: (i, item) => root.inputItems = root.g.withItem(root.inputItems, i, null)
+      delegate: Action {
+        required property var modelData
+        g: root.g; width: root.width; height: root.g.s(58); title: modelData.name; selected: !!modelData.current
+        onTriggered: root.act("input-device", modelData.id)
+      }
+    }
+  }
   bottomBlock: ToggleRow {
     id: mic
     g: root.g; width: parent.width
