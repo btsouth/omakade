@@ -74,7 +74,13 @@ def scan():
             device = event / 'device'
             chunks = (device / 'capabilities/key').read_text().split()
             bits = sum(int(word, 16) << (64 * i) for i, word in enumerate(reversed(chunks)))
-            if not any(bits & (1 << code) for code in (0x130, 0x120)):
+            chunks = (device / 'capabilities/abs').read_text().split()
+            axes = sum(int(word, 16) << (64 * i) for i, word in enumerate(reversed(chunks)))
+            # Same rule as the guide button: pad buttons and a stick or hat, but no letter keys.
+            # Virtual keyboards from streaming tools declare every key code, gamepad buttons included.
+            if not any(bits & (1 << code) for code in (0x130, 0x120)) or bits & (1 << 30):
+                continue
+            if not any(axes & (1 << code) for code in (0x00, 0x01, 0x03, 0x04, 0x10)):
                 continue
             identity = str(device.resolve())
             if identity in seen:

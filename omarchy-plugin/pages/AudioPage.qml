@@ -142,10 +142,12 @@ PageRhythm {
   bottomBlock: ToggleRow {
     id: mic
     g: root.g; width: parent.width
-    icon: root.audio.micMuted ? root.g.icon.micOff : root.g.icon.mic
+    // micMuted is undefined when there is no microphone at all.
+    readonly property bool present: root.audio.micMuted !== undefined
+    icon: present && !root.audio.micMuted ? root.g.icon.mic : root.g.icon.micOff
     title: "Microphone"
-    detail: (root.audio.micMuted ? "Muted · " : "On · ") + (root.audio.micName || "")
-    checked: !root.audio.micMuted
-    onToggled: function(v) { root.act("mic", v) }
+    detail: !present ? "No microphone" : (root.audio.micMuted ? "Muted · " : "On · ") + (root.audio.micName || "")
+    checked: present && !root.audio.micMuted
+    onToggled: function(v) { if (present) root.act("mic", v) }
   }
 }
