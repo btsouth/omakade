@@ -32,3 +32,4 @@ public report; they contain personal library data and may contain private paths
 or account identifiers. The startup recovery screen offers retry or undo before
 the library opens. A completed restore can be reversed by previewing its saved
 recovery archive as a new restore, which also previews changes made since then.
+
