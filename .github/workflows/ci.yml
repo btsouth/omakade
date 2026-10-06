@@ -23,7 +23,57 @@ env:
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
 jobs:
+  changes:
+    name: Detect docs-only changes
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    outputs:
+      docs-only: ${{ steps.diff.outputs.docs-only }}
+    steps:
+      - name: Check changed files
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Markdown is installed as-is and never compiled or tested. Renames
+          # and deletions still build because install rules list the files.
+          docs_only=false
+          if [ "$EVENT" = pull_request ]; then
+            files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | "\(.status)\t\(.filename)"')
+            if [ -n "$files" ]; then
+              docs_only=true
+              while IFS=$'\t' read -r status file; do
+                case "$status:$file" in
+                  modified:*.md | added:*.md) ;;
+                  *) docs_only=false ;;
+                esac
+              done <<< "$files"
+            fi
+          fi
+          echo "docs-only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "Docs-only change: $docs_only"
+
+  docs-only:
+    # Reports the required build check names for Markdown-only pull requests.
+    name: Build and test (${{ matrix.arch }})
+    needs: changes
+    if: needs.changes.outputs.docs-only == 'true'
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Skip build
+        run: echo "Only Markdown changed, so the build and tests are skipped."
+
   build-and-test:
+    needs: changes
+    # Still builds if change detection fails.
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     timeout-minutes: 30
     name: Build and test (${{ matrix.arch }})
     strategy:
