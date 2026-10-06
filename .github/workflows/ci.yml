@@ -97,8 +97,8 @@ jobs:
           pkgconf python qt6-base qt6-declarative qt6-imageformats qt6-svg sdl3
           ttf-dejavu wayland wayland-protocols
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Cache compiler outputs
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Restore compiler outputs
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
           key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
@@ -136,6 +136,12 @@ jobs:
       - name: Compiler cache statistics
         if: always()
         run: ccache --show-stats
+      - name: Save compiler outputs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
       - name: Save test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
