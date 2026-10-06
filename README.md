@@ -69,6 +69,11 @@ For ARM64, replace `x86_64` with `aarch64`. Packages are also available under
 [release assets](https://github.com/btsouth/omakade/releases/latest).
 Upgrading preserves your library and settings.
 
+Omakade is also listed in [OmaStore](https://github.com/KitsuneForgering/OmaStore),
+a community app store that installs it into your home directory. That install
+does not set up the `omakade-sessiond` service, so playtime recording stays off
+unless you start it yourself. Use a package above if you want playtime recording.
+
 ## Getting started
 
 Open Omakade from the application launcher or run `omakade`. Installed games
