@@ -1,7 +1,9 @@
 #pragma once
 
 #include "guide/GuideInput.h"
+#include "guide/GuideArt.h"
 #include "guide/GuideActions.h"
+#include <QJsonArray>
 #include <QPointer>
 #include <QLocalSocket>
 #include <QJsonObject>
@@ -33,6 +35,7 @@ public:
   Q_INVOKABLE void close();
   // Only enabled explicitly in isolated acceptance runs, through the authenticated socket.
   void setInjectedInputEnabled(bool enabled);
+  void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
   void changed();
   void libraryRequested();
@@ -60,6 +63,9 @@ private:
   QVariantMap m_session, m_metadata, m_quitSession;
   QString m_output, m_family = "keyboard", m_token, m_socketPath;
   GuideInput m_input;
+  GuideArt m_art;
+  QString m_achievementDatabase;
+  QJsonArray achievementItems(const QString& appId) const;
   int m_testPadWriter = -1;
   QProcess m_guard;
   QLocalSocket m_mango;

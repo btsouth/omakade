@@ -2,6 +2,9 @@
 #include "guide/GuideActions.h"
 #include "guide/InGameGuide.h"
 #include <QTemporaryDir>
+#include <QDir>
+#include <QImage>
+#include <QUrl>
 #include <fcntl.h>
 #include "tracking/PlaySessionStore.h"
 #include "guide/GuidePayload.h"
@@ -20,6 +23,8 @@
 class InGameGuideTests final : public QObject {
   Q_OBJECT
 private slots:
+  void steamArtSelection();
+  void steamArtRejections();
   void payloadUnknowns();
   void payloadRoundTrip();
   void pluginParser();
@@ -41,6 +46,54 @@ private slots:
   void failedPinRetainsRecovery();
   void quitKeepsItsOriginalGame();
 };
+
+void InGameGuideTests::steamArtSelection() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  const auto cache = directory.path() + "/268910/";
+  QVERIFY(QDir().mkpath(cache));
+  QImage hero(1920, 620, QImage::Format_RGB32); hero.fill(Qt::blue);
+  QImage logo(400, 200, QImage::Format_ARGB32); logo.fill(Qt::transparent);
+  QVERIFY(hero.save(cache + "library_hero.jpg")); QVERIFY(logo.save(cache + "logo.png"));
+  auto build = [&](const QVariantMap& metadata) {
+    return GuidePayload::build({{"source", "Steam"}, {"name", "Cuphead"}}, metadata,
+        "DP-2", "xbox", false, false, directory.path()).value("data").toObject().value("game").toObject();
+  };
+  for (const auto& path : {QString{}, QString("file:///steam/header.jpg"), QString("/steam/header.jpg"), QString("/missing/library_hero.jpg")}) {
+    const auto game = build({{"appId", "268910"}, {"heroPath", path}});
+    QCOMPARE(game.value("banner").toString(), QUrl::fromLocalFile(cache + "library_hero.jpg").toString());
+    QCOMPARE(game.value("logo").toString(), QUrl::fromLocalFile(cache + "logo.png").toString());
+    QVERIFY(!game.contains("bannerKind"));
+  }
+  const auto localHero = directory.path() + "/library_hero.jpg";
+  QVERIFY(hero.save(localHero));
+  const auto local = build({{"appId", "268910"}, {"heroPath", QUrl::fromLocalFile(localHero).toString()}, {"logoPath", "file:///steam/logo.png"}});
+  QCOMPARE(local.value("banner").toString(), QUrl::fromLocalFile(localHero).toString());
+  QCOMPARE(local.value("logo").toString(), QString("file:///steam/logo.png"));
+  QVERIFY(QFile::remove(cache + "library_hero.jpg"));
+  const auto fallback = build({{"appId", "268910"}, {"heroPath", "file:///steam/header.jpg"}});
+  QCOMPARE(fallback.value("banner").toString(), QString("file:///steam/header.jpg"));
+  QCOMPARE(fallback.value("bannerKind").toString(), QString("header"));
+}
+
+void InGameGuideTests::steamArtRejections() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  const auto cache = directory.path() + "/268910/"; QVERIFY(QDir().mkpath(cache));
+  QImage small(460, 215, QImage::Format_RGB32); small.fill(Qt::red);
+  QVERIFY(small.save(cache + "library_hero.jpg"));
+  QFile corrupt(cache + "logo.png"); QVERIFY(corrupt.open(QIODevice::WriteOnly));
+  corrupt.write("not an image"); corrupt.close();
+  auto build = [&](const QString& source, const QString& id) {
+    return GuidePayload::build({{"source", source}, {"name", "Game"}}, {{"appId", id}, {"heroPath", "file:///steam/header.jpg"}},
+        "DP-2", "xbox", false, false, directory.path()).value("data").toObject().value("game").toObject();
+  };
+  const auto invalidArt = build("Steam", "268910");
+  QCOMPARE(invalidArt.value("bannerKind").toString(), QString("header")); QVERIFY(!invalidArt.contains("logo"));
+  QImage wide(1920, 620, QImage::Format_RGB32); wide.fill(Qt::blue); QVERIFY(wide.save(cache + "library_hero.jpg"));
+  for (const auto& source : {QString("Manual"), QString("Heroic"), QString("steam")})
+    QCOMPARE(build(source, "268910").value("banner").toString(), QString("file:///steam/header.jpg"));
+  for (const auto& id : {QString{}, QString("../268910"), QString("268910/"), QString("268910\n"), QString("٢٦٨٩١٠")})
+    QCOMPARE(build("Steam", id).value("banner").toString(), QString("file:///steam/header.jpg"));
+}
 
 void InGameGuideTests::payloadUnknowns() {
   const auto empty = GuidePayload::build({}, {}, "DP-2", "keyboard", true, false);

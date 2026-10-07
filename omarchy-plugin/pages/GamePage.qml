@@ -13,10 +13,11 @@ PageRhythm {
   readonly property bool steam: game.kind === "steam"
   readonly property bool emulator: game.kind === "emulator"
   readonly property var ach: game.achievements || null
-  property var rows: [[resume], [extra, notes, pause], [quit]]
+  property var rows: [[resume], [extra, notes, pause], [achievementsCard], [quit]]
   hero: banner
-  heroMinimum: g.s(222)
-  heroMaximum: g.s(292)
+  // Hero art keeps its own shape; without it the banner is a compact cover header.
+  heroMinimum: banner.wide ? Math.round(width / 2.5) : g.s(150)
+  heroMaximum: heroMinimum
 
   function duration(m) {
     if (m === undefined) return ""
@@ -28,88 +29,93 @@ PageRhythm {
     id: banner
     visible: root.hasGame
     width: parent.width; height: root.heroMinimum + root.heroExtra
-    clip: true
-    readonly property string art: root.game.banner || (root.d.capture || {}).lastShot || root.game.cover || ""
-    // A wide hero is cropped from its centre. A Steam header or a cover has the title
-    // painted in, so it only tints the backdrop and the cover card carries the art.
-    readonly property bool wide: art !== "" && art !== root.game.cover && root.game.bannerKind !== "header"
-    // The logo belongs on hero art; beside a cover it would repeat the title painted there.
-    readonly property bool hasLogo: wide && !!root.game.logo && logo.status !== Image.Error
+    readonly property string art: root.game.banner || ""
+    // Steam's header capsule has the title painted in: never crop it, use the cover header.
+    readonly property bool wide: art !== "" && root.game.bannerKind !== "header" && heroArt.status !== Image.Error
+    readonly property string wash: art || root.game.cover || (root.d.capture || {}).lastShot || ""
+    readonly property string playtime: [root.game.sessionMinutes !== undefined ? root.duration(root.game.sessionMinutes) + " this session" : "",
+      root.game.totalMinutes !== undefined ? root.duration(root.game.totalMinutes) + " played" : ""].filter(function(x) { return x !== "" }).join("  ·  ")
 
-    // The same art, blurred and dimmed, fills the banner whatever its shape.
-    Image {
-      id: backdrop
-      anchors.fill: parent
-      source: banner.art
-      fillMode: Image.PreserveAspectCrop
-      asynchronous: true
-      // Decoded tiny so painted-in titles melt into colour instead of ghosting.
-      sourceSize.width: 24
-      visible: false
-    }
+    // The wash: the art decoded tiny and blurred, so any shape fills the banner.
+    Image { id: washImage; anchors.fill: parent; source: banner.wide ? "" : banner.wash; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 24; visible: false }
+    Rectangle { id: bannerMask; anchors.fill: parent; radius: root.g.radius; visible: false; layer.enabled: true }
+    Rectangle { anchors.fill: parent; radius: root.g.radius; color: root.g.well; visible: !banner.wide }
     MultiEffect {
-      anchors.fill: parent
-      source: backdrop
-      visible: backdrop.status === Image.Ready
+      anchors.fill: parent; source: washImage
+      visible: !banner.wide && washImage.status === Image.Ready
       autoPaddingEnabled: false
-      blurEnabled: true; blur: 1; blurMax: 64
-      brightness: -0.2; saturation: 0.1
+      blurEnabled: true; blur: 1; blurMax: 64; brightness: -0.28; saturation: 0.05
+      maskEnabled: true; maskSource: bannerMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0
     }
-    Image {
-      anchors.fill: parent
-      visible: banner.wide
-      source: banner.wide ? banner.art : ""
-      fillMode: Image.PreserveAspectCrop
-      asynchronous: true
-      sourceSize.width: width * 2
-    }
-    // Without a wide hero the cover stands beside the title, as on the library shelf.
     Picture {
-      id: coverCard
+      id: heroArt
       g: root.g
-      z: 1
-      visible: !banner.wide && !!root.game.cover
-      anchors.right: parent.right; anchors.rightMargin: root.g.s(16)
-      anchors.verticalCenter: parent.verticalCenter
-      height: parent.height - root.g.s(32); width: Math.round(height * 2 / 3)
-      source: visible ? root.game.cover : ""
-      layer.enabled: visible
-      layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.8; shadowOpacity: 0.6; shadowVerticalOffset: root.g.s(4) }
+      anchors.fill: parent
+      radius: root.g.radius
+      visible: banner.wide
+      source: banner.art !== "" && root.game.bannerKind !== "header" ? banner.art : ""
     }
     Rectangle {
       anchors.fill: parent
+      visible: banner.wide
+      radius: root.g.radius
       gradient: Gradient {
-        GradientStop { position: banner.wide ? 0.55 : 0; color: banner.wide ? "transparent" : Qt.rgba(0, 0, 0, root.g.bannerScrim * 0.5) }
-        GradientStop { position: Math.max(0.55, (bannerInfo.y - root.g.s(4)) / banner.height); color: Qt.rgba(0, 0, 0, root.g.bannerScrim) }
-        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, root.g.bannerScrim) }
+        GradientStop { position: 0.35; color: "transparent" }
+        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, Math.max(0.72, root.g.bannerScrim)) }
       }
     }
+    Rectangle { anchors.fill: parent; radius: root.g.radius; color: "transparent"; border.width: 1; border.color: root.g.line }
+
+    // Hero: the game's logo over its art, like the library's details page.
     Column {
-      id: bannerInfo
-      anchors.left: parent.left; anchors.right: parent.right
-      anchors.bottom: parent.bottom; anchors.bottomMargin: root.g.s(14)
-      anchors.leftMargin: root.g.s(14)
-      anchors.rightMargin: coverCard.visible ? coverCard.width + root.g.s(30) : root.g.s(14)
-      spacing: root.g.s(5)
+      visible: banner.wide
+      anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+      anchors.margins: root.g.s(16)
+      spacing: root.g.s(8)
+      Image {
+        id: heroLogo
+        readonly property bool shown: !!root.game.logo && status !== Image.Error
+        visible: shown
+        width: Math.min(parent.width * 0.62, root.g.s(300)); height: visible ? Math.min(root.g.s(76), banner.height * 0.42) : 0
+        source: root.game.logo || ""
+        fillMode: Image.PreserveAspectFit
+        horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignBottom
+        asynchronous: true
+        sourceSize.height: root.g.s(76) * 2
+        layer.enabled: shown
+        layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.7; shadowOpacity: 0.7; shadowVerticalOffset: root.g.s(2) }
+      }
+      Label { g: root.g; role: "display"; color: root.g.bannerInk; font.pixelSize: root.g.f(28); text: root.game.title || ""; width: parent.width; elide: Text.ElideRight; visible: !heroLogo.shown }
+      Row {
+        spacing: root.g.s(8)
+        Glyph { g: root.g; name: root.steam ? root.g.icon.steam : root.g.icon.game; size: root.g.f(13); color: root.g.bannerInk; anchors.verticalCenter: parent.verticalCenter }
+        Label { g: root.g; role: "small"; color: root.g.bannerInk; text: [root.game.source || "", banner.playtime].filter(function(x) { return x !== "" }).join("  ·  "); anchors.verticalCenter: parent.verticalCenter }
+      }
+    }
+
+    // Cover header: the boxart beside the title when there is no hero art.
+    Picture {
+      id: coverArt
+      g: root.g
+      visible: !banner.wide && !!root.game.cover
+      x: root.g.s(14); anchors.verticalCenter: parent.verticalCenter
+      height: parent.height - root.g.s(28); width: Math.round(height * 2 / 3)
+      source: visible ? root.game.cover : ""
+    }
+    Column {
+      visible: !banner.wide
+      anchors.left: coverArt.visible ? coverArt.right : parent.left
+      anchors.leftMargin: root.g.s(16)
+      anchors.right: parent.right; anchors.rightMargin: root.g.s(16)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: root.g.s(6)
       Row {
         spacing: root.g.s(6)
         Glyph { g: root.g; name: root.steam ? root.g.icon.steam : root.g.icon.game; size: root.g.f(13); color: root.g.bannerInk; anchors.verticalCenter: parent.verticalCenter }
         Label { g: root.g; role: "caps"; color: root.g.bannerInk; text: root.game.source || ""; anchors.verticalCenter: parent.verticalCenter }
       }
-      Image {
-        id: logo
-        visible: banner.hasLogo
-        width: parent.width * 0.72; height: visible ? root.g.s(84) : 0
-        source: root.game.logo || ""
-        fillMode: Image.PreserveAspectFit
-        horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignBottom
-        asynchronous: true
-        sourceSize.height: root.g.s(84) * 2
-        layer.enabled: visible
-        layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.6; shadowOpacity: 0.55; shadowVerticalOffset: root.g.s(2) }
-      }
-      Label { g: root.g; role: "display"; color: root.g.bannerInk; font.pixelSize: root.g.f(30); text: root.game.title || ""; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; visible: !banner.hasLogo }
-      Label { g: root.g; role: "small"; color: root.g.bannerInk; text: [root.game.sessionMinutes !== undefined ? root.duration(root.game.sessionMinutes) + " this session" : "", root.game.totalMinutes !== undefined ? root.duration(root.game.totalMinutes) + " total" : ""].filter(function(x) { return x !== "" }).map(function(x) { return x.replace(/ /g, "\u00a0") }).join(" · "); width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2 }
+      Label { g: root.g; role: "display"; color: root.g.bannerInk; font.pixelSize: root.g.f(28); text: root.game.title || ""; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+      Label { g: root.g; role: "small"; color: root.g.bannerInk; text: banner.playtime.replace("  ·  ", "\n"); width: parent.width; visible: text !== "" }
     }
   }
 
@@ -130,7 +136,7 @@ PageRhythm {
       id: extra
       visible: !root.emulator || !!root.game.canBackup
       g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
-      variant: "tile"; height: root.g.s(116)
+      variant: "tile"; height: root.g.s(96)
       icon: root.emulator ? root.g.icon.save : root.steam ? root.g.icon.steam : root.g.icon.desktop
       title: root.emulator ? "Saves" : root.steam ? "Steam" : "Desktop"
       detail: root.emulator ? "Back up" : root.steam ? "Overlay" : "Return"
@@ -140,14 +146,14 @@ PageRhythm {
       id: notes
       visible: root.game.notes !== undefined || root.game.note !== undefined
       g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
-      variant: "tile"; height: root.g.s(116); icon: root.g.icon.notes
+      variant: "tile"; height: root.g.s(96); icon: root.g.icon.notes
       title: "Notes"; detail: root.game.note !== undefined ? (root.game.note ? "Saved" : "Add a note") : (root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) + ((root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) === 1 ? " note" : " notes")
       onTriggered: root.act("notes", null)
     }
     Action {
       id: pause
       g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
-      variant: "tile"; height: root.g.s(116); icon: root.g.icon.pausedGame
+      variant: "tile"; height: root.g.s(96); icon: root.g.icon.pausedGame
       selected: !!root.game.pauseWhileOpen
       title: "Pause"; detail: root.game.pauseWhileOpen ? "On" : "Off"
       onTriggered: root.act("pause-while-open", !root.game.pauseWhileOpen)
@@ -155,7 +161,13 @@ PageRhythm {
   }
 
   Rectangle {
+    id: achievementsCard
     visible: !!root.ach
+    property bool cursor: false
+    signal triggered()
+    function activate() { root.act("achievements", null) }
+    function step(d) { return false }
+    readonly property var recent: root.ach && root.ach.items ? root.ach.items.filter(function(a) { return a.unlocked }).slice(0, 3) : []
     width: parent.width; height: achievements.height + root.g.s(28)
     radius: root.g.radius; color: root.g.well
     border.width: 1; border.color: root.g.line
@@ -163,26 +175,39 @@ PageRhythm {
       id: achievements
       x: root.g.s(14); y: root.g.s(14); width: parent.width - root.g.s(28)
       spacing: root.g.s(12)
-      Meter { g: root.g; width: parent.width; label: "Achievements"; value: root.ach ? root.ach.unlocked + " / " + root.ach.total : ""; progress: root.ach && root.ach.total ? root.ach.unlocked / root.ach.total : 0 }
-      Row {
-        width: parent.width; spacing: root.g.s(8)
-        visible: !!(root.ach && root.ach.latest)
-        Glyph { g: root.g; name: root.g.icon.trophy; size: root.g.f(18); color: root.g.accent; anchors.verticalCenter: parent.verticalCenter }
-        Column {
-          width: parent.width - root.g.s(30)
-          Label { g: root.g; role: "body"; width: parent.width; text: root.ach && root.ach.latest ? root.ach.latest.name : "" }
-          Label { g: root.g; role: "caption"; text: root.ach && root.ach.latest ? "Latest unlock · " + root.ach.latest.ago : "" }
+      Item {
+        width: parent.width; height: Math.max(achTitle.height, root.g.s(22))
+        Glyph { id: achIcon; g: root.g; name: root.g.icon.trophy; size: root.g.f(18); color: root.g.accent; anchors.verticalCenter: parent.verticalCenter }
+        Label { id: achTitle; g: root.g; role: "body"; font.bold: true; text: "Achievements"; anchors.left: achIcon.right; anchors.leftMargin: root.g.s(10); anchors.verticalCenter: parent.verticalCenter }
+        Row {
+          anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+          spacing: root.g.s(8)
+          Label { g: root.g; role: "small"; text: root.ach ? root.ach.unlocked + " of " + root.ach.total : ""; anchors.verticalCenter: parent.verticalCenter }
+          Glyph { g: root.g; name: root.g.icon.chevron; size: root.g.f(16); color: root.g.dim; anchors.verticalCenter: parent.verticalCenter; visible: !!(root.ach && root.ach.items && root.ach.items.length) }
         }
       }
-      Meter {
-        visible: !!(root.ach && root.ach.closest)
-        g: root.g; width: parent.width
-        label: root.ach && root.ach.closest ? "Next · " + root.ach.closest.name : ""
-        value: root.ach && root.ach.closest ? root.ach.closest.progressText : ""
-        progress: root.ach && root.ach.closest ? root.ach.closest.progress : 0
-        fill: root.g.foreground
+      Rectangle {
+        width: parent.width; height: Math.max(3, root.g.s(4)); radius: height / 2; color: root.g.track
+        Rectangle { height: parent.height; radius: parent.radius; color: root.g.accent; width: Math.max(height, parent.width * (root.ach && root.ach.total ? root.ach.unlocked / root.ach.total : 0)) }
+      }
+      Repeater {
+        model: achievementsCard.recent
+        delegate: Row {
+          required property var modelData
+          width: achievements.width; spacing: root.g.s(10)
+          Picture { g: root.g; width: root.g.s(34); height: width; radius: root.g.s(6); source: modelData.icon || ""; visible: !!modelData.icon }
+          Rectangle { width: root.g.s(34); height: width; radius: root.g.s(6); color: root.g.track; visible: !modelData.icon
+            Glyph { g: root.g; anchors.centerIn: parent; name: root.g.icon.trophy; size: root.g.f(15); color: root.g.accent } }
+          Column {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - root.g.s(44)
+            Label { g: root.g; role: "body"; width: parent.width; text: modelData.title || ""; elide: Text.ElideRight }
+            Label { g: root.g; role: "caption"; width: parent.width; text: modelData.when || ""; elide: Text.ElideRight; visible: text !== "" }
+          }
+        }
       }
     }
+    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: achievementsCard.activate() }
   }
 
   bottomBlock: Action {

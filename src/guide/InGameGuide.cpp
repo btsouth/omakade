@@ -1,4 +1,5 @@
 #include "guide/InGameGuide.h"
+#include "achievements/AchievementModel.h"
 #include "guide/GuidePayload.h"
 #include "saves/SaveLayouts.h"
 #include "saves/SaveSetStore.h"
@@ -17,6 +18,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocalSocket>
+#include <QUrl>
+#include <QDateTime>
+#include <QLocale>
+#include <QSqlQuery>
+#include <QSqlDatabase>
 #include <QSettings>
 #include <QSaveFile>
 #include <QElapsedTimer>
@@ -106,6 +112,10 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
       shell({"shell", "call", "omakade.guide", "input", QString::fromUtf8(QJsonDocument(QJsonObject{{"action", action}, {"receivedNs", received}}).toJson(QJsonDocument::Compact))});
     else send({{"type", "input"}, {"action", action}, {"receivedNs", received}});
   });
+  connect(&m_art, &GuideArt::ready, this, [this](const QString& appId) {
+    if ((m_opened || m_opening) && GuideArt::appId(m_session.value("source").toString(), m_metadata) == appId)
+      send({{"type", "update"}, {"payload", payload()}});
+  });
   m_poll.setInterval(1000);
   connect(&m_poll, &QTimer::timeout, this, &InGameGuide::poll);
   connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &InGameGuide::close);
@@ -192,13 +202,14 @@ void InGameGuide::refreshGame() {
             : steam.pid > 0 && installation.value("source") == "Steam" &&
               installation.value("appId").toString() == steam.steamAppId;
         if (!match) continue;
-        for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath,
+        for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath, GameRoles::LogoPath,
                                GameRoles::PlaytimeSeconds, GameRoles::AchievementsTotal,
                                GameRoles::AchievementsUnlocked, GameRoles::Tags}) {
           if (role == GameRoles::PlaytimeSeconds && installation.value("source") == "Manual") continue;
           const auto data = index.data(role);
           if (data.isValid()) m_metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), data);
         }
+        m_metadata.insert("appId", installation.value("appId"));
         m_metadata.insert("kind", GameLauncher::isEmulatorSourceName(installation.value("source").toString()) ? "emulator" : "native");
         if (chosen.isEmpty()) {
           chosen = {{"pid", steam.pid}, {"procStart", steam.procStart}, {"source", "Steam"},
@@ -210,6 +221,7 @@ void InGameGuide::refreshGame() {
     }
   }
   m_session = chosen;
+  if (m_enabled) m_art.prefetch(m_session.value("source").toString(), m_metadata);
   if (chosen.value("pid") != previous.value("pid") || chosen.value("procStart") != previous.value("procStart")) {
     stopGuard();
     m_hudVisible = false;
@@ -233,6 +245,42 @@ bool InGameGuide::hasGame() {
   return !m_session.isEmpty();
 }
 
+// The running Steam game's achievements for the guide's list: unlocked newest first, then
+// locked by how common they are. Read-only, so the library's own model is left alone.
+QJsonArray InGameGuide::achievementItems(const QString& appId) const {
+  QJsonArray items;
+  if (appId.isEmpty() || m_achievementDatabase.isEmpty() || !QFileInfo::exists(m_achievementDatabase)) return items;
+  const auto connection = QStringLiteral("omakade-guide-achievements");
+  {
+    auto database = QSqlDatabase::contains(connection) ? QSqlDatabase::database(connection, false)
+                                                       : QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(m_achievementDatabase);
+    database.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY;QSQLITE_BUSY_TIMEOUT=200"));
+    if (!database.isOpen() && !database.open()) return items;
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("SELECT title, description, icon_url, icon_path, unlocked, unlock_time, rarity, hidden "
+                                 "FROM achievements WHERE app_id = ? ORDER BY unlocked DESC, unlock_time DESC, rarity DESC, title LIMIT 300"));
+    query.addBindValue(appId);
+    if (!query.exec()) return items;
+    while (query.next()) {
+      const bool unlocked = query.value(4).toBool();
+      const bool hidden = query.value(7).toBool();
+      QJsonObject item{{"title", query.value(0).toString()}, {"unlocked", unlocked}, {"hidden", hidden},
+                       {"rarity", query.value(6).toDouble()}};
+      // Hidden achievements keep their secret until unlocked.
+      if (unlocked || !hidden) item.insert("description", query.value(1).toString());
+      const auto iconPath = query.value(3).toString();
+      const QUrl iconUrl(query.value(2).toString());
+      if (!iconPath.isEmpty() && QFileInfo::exists(iconPath)) item.insert("icon", QUrl::fromLocalFile(iconPath).toString());
+      else if (AchievementModel::acceptsIconUrl(iconUrl)) item.insert("icon", iconUrl.toString());
+      const auto time = query.value(5).toLongLong();
+      if (unlocked && time > 0) item.insert("when", QLocale().toString(QDateTime::fromSecsSinceEpoch(time).date(), QStringLiteral("d MMM yyyy")));
+      items.append(item);
+    }
+  }
+  return items;
+}
+
 QJsonObject InGameGuide::payload() const {
   auto data = GuidePayload::build(m_session, m_metadata, m_output, m_family, m_pauseWhileOpen, m_paused);
   auto model = data.value("data").toObject();
@@ -243,6 +291,16 @@ QJsonObject InGameGuide::payload() const {
     const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
     const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
     game.insert("canBackup", !context.isEmpty() && layout.valid());
+    const auto items = achievementItems(GuideArt::appId(m_session.value("source").toString(), m_metadata));
+    if (!items.isEmpty()) {
+      auto achievements = game.value("achievements").toObject();
+      int unlocked = 0;
+      for (const auto& item : items) unlocked += item.toObject().value("unlocked").toBool() ? 1 : 0;
+      achievements.insert("total", achievements.value("total").toInt(int(items.size())));
+      achievements.insert("unlocked", achievements.value("unlocked").toInt(unlocked));
+      achievements.insert("items", items);
+      game.insert("achievements", achievements);
+    }
     model.insert("game", game);
     QSettings settings;
     const bool steam = m_session.value("source") == "Steam";
@@ -251,7 +309,8 @@ QJsonObject InGameGuide::payload() const {
         sockets.open(QIODevice::ReadOnly) && sockets.readAll().contains(("@" + m_session.value("mangoSocket").toString() + '\n').toUtf8());
     model.insert("performance", QJsonObject{{"mangohud", hooked},
         {"hud", settings.value("guide/hud", "off").toString()}, {"limit", settings.value("guide/limit", 0).toInt()},
-        {"setupHint", steam ? "Steam launch option: MANGOHUD=1 %command%" : "Install MangoHud, then launch this game again"},
+        {"setupHint", QStandardPaths::findExecutable("mangohud").isEmpty() ? "Install the mangohud package to see frame rate"
+                      : steam ? "Steam launch option: MANGOHUD=1 %command%" : "Launch this game again from Omakade"},
         {"nextLaunch", true}});
   }
   data.insert("data", model);
@@ -444,7 +503,11 @@ void InGameGuide::message(const QJsonObject& data) {
       toast("Game is still running", "Force quit is now available");
     });
   } else if ((action == "hud" || action == "limit" || action == "enable-mangohud") && m_opened) {
-    if (action == "enable-mangohud") { toast("MangoHud setup", m_session.value("source") == "Steam" ? "Steam launch option: MANGOHUD=1 %command%" : "Install MangoHud, then launch this game again"); return; }
+    if (action == "enable-mangohud") {
+      toast("MangoHud setup", QStandardPaths::findExecutable("mangohud").isEmpty() ? "Install it with: sudo pacman -S mangohud"
+            : m_session.value("source") == "Steam" ? "Add MANGOHUD=1 %command% to the game's Steam launch options" : "Launch the game again from Omakade");
+      return;
+    }
     QSettings settings;
     if (action == "hud") {
       const auto level = data.value("value").toString();

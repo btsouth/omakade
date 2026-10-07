@@ -17,13 +17,9 @@ PageRhythm {
     return r
   }
 
-  hero: padSection
-  heroMinimum: root.pads.length ? g.s(164) + Math.max(0, root.pads.length - 1) * (g.s(114) + g.s(16)) : 0
-  heroMaximum: heroMinimum + g.s(72)
-
   Column {
     id: padSection
-    width: parent.width; spacing: root.g.s(16)
+    width: parent.width; spacing: root.g.s(10)
     Repeater {
       id: padRepeater
       onItemAdded: (i, item) => root.padItems = root.g.withItem(root.padItems, i, item)
@@ -33,63 +29,77 @@ PageRhythm {
         id: pad
         required property var modelData
         required property int index
-        readonly property bool low: modelData.battery !== undefined && modelData.battery <= 20
+        readonly property bool hasBattery: modelData.battery !== undefined && modelData.battery !== null
+        readonly property bool low: hasBattery && modelData.battery <= 20
+        readonly property string link: modelData.connection
+          || (/bluetooth|:0005:/i.test(modelData.id || "") ? "Bluetooth" : /\/usb\d/.test(modelData.id || "") ? "Wired" : "")
         width: root.width
-        height: root.g.s(index === 0 ? 164 : 114) + (index === 0 ? root.heroExtra : 0)
+        height: root.g.s(hasBattery ? 104 : 88)
         onTriggered: if (modelData.identifiable !== false) root.act("identify", modelData.node || modelData.name)
 
         Rectangle {
           anchors.fill: parent; radius: root.g.radius
-          color: pad.low ? root.g.background : root.g.well
-          border.width: Math.max(1, root.g.s(1)); border.color: root.g.line
+          color: root.g.well
+          border.width: Math.max(1, root.g.s(1)); border.color: pad.low ? root.g.urgent : root.g.line
         }
-        Glyph {
+        Rectangle {
           id: padIcon
-          g: root.g
-          x: root.g.s(16); anchors.verticalCenter: parent.verticalCenter
-          width: root.g.s(pad.index === 0 ? 86 : 46)
-          size: root.g.f(pad.index === 0 ? 76 : 34)
-          name: pad.modelData.family === "playstation" ? root.g.icon.playstation
-            : pad.modelData.family === "nintendo" ? root.g.icon.nintendo : root.g.icon.controllers
+          x: root.g.s(14); anchors.verticalCenter: parent.verticalCenter
+          width: root.g.s(56); height: width; radius: width / 2
+          color: root.g.track
+          Glyph {
+            g: root.g; anchors.centerIn: parent
+            size: root.g.f(30)
+            name: pad.modelData.family === "playstation" ? root.g.icon.playstation
+              : pad.modelData.family === "nintendo" ? root.g.icon.nintendo : root.g.icon.controllers
+          }
         }
         Column {
           anchors.left: padIcon.right; anchors.leftMargin: root.g.s(14)
-          anchors.right: parent.right; anchors.rightMargin: root.g.s(16)
+          anchors.right: identify.visible ? identify.left : parent.right; anchors.rightMargin: root.g.s(14)
           anchors.verticalCenter: parent.verticalCenter
           spacing: root.g.s(4)
-          Label { g: root.g; role: "caps"; width: parent.width; text: "Player " + (pad.index + 1) }
-          Label { g: root.g; role: "title"; text: pad.modelData.name; width: parent.width }
-          Label { g: root.g; role: "small"; text: pad.modelData.connection || ""; width: parent.width }
-          Row {
-            width: parent.width; spacing: root.g.s(8)
-            Glyph {
-              g: root.g; name: root.g.icon.battery; size: root.g.f(18)
+          Label { g: root.g; role: "caps"; width: parent.width; text: ["Player " + (pad.index + 1), pad.link].filter(function(x) { return x !== "" }).join("  ·  ") }
+          Label { g: root.g; role: "body"; font.bold: true; text: pad.modelData.name; width: parent.width; elide: Text.ElideRight }
+          Item {
+            visible: pad.hasBattery
+            width: parent.width; height: root.g.s(18)
+            Glyph { id: batteryIcon; g: root.g; name: root.g.icon.battery; size: root.g.f(15); color: pad.low ? root.g.urgent : root.g.dim; anchors.verticalCenter: parent.verticalCenter }
+            Rectangle {
+              anchors.left: batteryIcon.right; anchors.leftMargin: root.g.s(8)
+              anchors.right: batteryText.left; anchors.rightMargin: root.g.s(10)
               anchors.verticalCenter: parent.verticalCenter
-              color: pad.low ? root.g.urgent : root.g.foreground
+              height: Math.max(3, root.g.s(4)); radius: height / 2; color: root.g.track
+              Rectangle { height: parent.height; radius: parent.radius; color: pad.low ? root.g.urgent : root.g.foreground; width: Math.max(height, parent.width * (pad.hasBattery ? pad.modelData.battery / 100 : 0)) }
             }
-            Meter {
-              g: root.g; width: parent.width - root.g.s(26)
-              label: "Battery"
-              value: pad.modelData.battery === undefined ? "Unreported" : pad.modelData.battery + "%"
-              progress: pad.modelData.battery === undefined ? 0 : pad.modelData.battery / 100
-              fill: pad.low ? root.g.urgent : root.g.foreground
-              valueColor: pad.low ? root.g.urgent : root.g.foreground
-            }
+            Label { id: batteryText; g: root.g; role: "small"; text: pad.hasBattery ? pad.modelData.battery + "%" : ""; color: pad.low ? root.g.urgent : root.g.foreground; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter }
           }
         }
+        Row {
+          id: identify
+          visible: pad.modelData.identifiable !== false
+          anchors.right: parent.right; anchors.rightMargin: root.g.s(16)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: root.g.s(8)
+          PadGlyph { g: root.g; family: root.family; button: "a"; size: root.g.f(18); anchors.verticalCenter: parent.verticalCenter }
+          Label { g: root.g; role: "small"; text: "Rumble"; anchors.verticalCenter: parent.verticalCenter }
+        }
+      }
+    }
+    Rectangle {
+      visible: root.pads.length === 0
+      width: parent.width; height: root.g.s(120)
+      radius: root.g.radius; color: "transparent"
+      border.width: 1; border.color: root.g.line
+      Column {
+        anchors.centerIn: parent; spacing: root.g.s(8)
+        Glyph { g: root.g; name: root.g.icon.controllers; size: root.g.f(30); color: root.g.dim; anchors.horizontalCenter: parent.horizontalCenter }
+        Label { g: root.g; role: "small"; text: "No controllers connected"; anchors.horizontalCenter: parent.horizontalCenter }
       }
     }
   }
 
-  Label {
-    visible: root.pads.some(p => p.identifiable !== false)
-    g: root.g; role: "small"
-    leftPadding: root.g.s(10)
-    width: parent.width; wrapMode: Text.WordWrap
-    text: "Press A on a controller to make it rumble."
-  }
-
-  bottomBlock: Column {
+  Column {
     width: parent.width; spacing: root.g.s(16)
     Action {
       id: pair

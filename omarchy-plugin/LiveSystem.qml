@@ -8,6 +8,8 @@ Item {
   property bool active: false
   property var system: ({})
   property string profile: ""
+  property string backlightDevice: ""
+  // system.brightness is a fraction from 0 to 1, or undefined when no backlight is available.
   readonly property var status: ({wifi: root.system.wifi, bluetooth: root.system.bluetooth, dnd: root.system.dnd})
 
   function run(command, done) {
@@ -39,10 +41,10 @@ Item {
     run(["bluetoothctl", "show"], function(ok, value) { if (ok) set("bluetooth", /Powered: yes/.test(value)) })
     run(["omarchy-shell", "notifications", "dndState"], function(ok, value) { if (ok) set("dnd", value === "on") })
     run(["powerprofilesctl", "get"], function(ok, value) { if (ok) root.profile = value })
-    run(["brightnessctl", "-m"], function(ok, value) {
-      if (!ok) return
-      var match = value.match(/,(\d+)%,/)
-      if (match) set("brightness", Number(match[1]) / 100)
+    run(["brightnessctl", "-m", "-c", "backlight"], function(ok, value) {
+      var match = ok ? value.match(/^([^,\n]+),backlight,\d+,(\d+)%,/m) : null
+      root.backlightDevice = match ? match[1] : ""
+      set("brightness", match ? Number(match[2]) / 100 : undefined)
     })
   }
   onActiveChanged: if (active) refresh()
@@ -56,7 +58,9 @@ Item {
     case "profile":
       if (["power-saver", "balanced", "performance"].indexOf(value) < 0) return false
       command = ["powerprofilesctl", "set", value]; break
-    case "brightness": command = ["brightnessctl", "set", Math.round(Math.max(0, Math.min(1, Number(value))) * 100) + "%"]; break
+    case "brightness":
+      if (!root.backlightDevice || !isFinite(Number(value))) return false
+      command = ["brightnessctl", "-c", "backlight", "-d", root.backlightDevice, "set", Math.round(Math.max(0, Math.min(1, Number(value))) * 100) + "%"]; break
     case "suspend": command = ["systemctl", "suspend"]; break
     default: return false
     }

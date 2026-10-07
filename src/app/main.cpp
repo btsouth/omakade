@@ -1826,6 +1826,7 @@ int main(int argc, char* argv[]) {
   InGameGuide inGameGuide(playSessionStore.get(), &unifiedGames, &gameMode, &gameModeCompositor, &launcher,
                           !isolatedTest && onOmarchy);
   inGameGuide.setInjectedInputEnabled(application.arguments().contains(QStringLiteral("--guide-input-test")));
+  inGameGuide.setAchievementDatabase(achievementDatabasePath);
   const bool coldGuideRequest = guideToggleRequest ||
                                 (gameModeToggleRequest && inGameGuide.hasGame());
   if (coldGuideRequest) gameModeRequest = false;

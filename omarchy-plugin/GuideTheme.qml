@@ -135,6 +135,7 @@ QtObject {
     readonly property string micOff: "\u{f036d}"
     readonly property string headset: "\u{f02ce}"
     readonly property string speaker: "\u{f04c3}"
+    readonly property string music: "\u{f075a}"
     readonly property string tv: "\u{f0502}"
     readonly property string brightness: "\u{f00df}"
     readonly property string folder: "\u{f024f}"

@@ -11,8 +11,11 @@ PageRhythm {
   readonly property bool hooked: !!perf.mangohud
   property var rows: hooked ? [[hud], [limit], [profile]] : [[setup], [profile]]
 
-  hero: frameHero
-  heroMinimum: root.perf.fps === undefined ? 0 : fpsRow.height + g.s(180) + graphCaption.height + g.s(12)
+  readonly property var stats: perf.stats || []
+  readonly property int statRows: Math.ceil(stats.length / 2)
+  readonly property real tileHeight: g.s(hooked ? 84 : 112)
+  hero: hooked ? frameHero : null
+  heroMinimum: hooked && root.perf.fps !== undefined ? fpsRow.height + g.s(180) + graphCaption.height + g.s(12) : 0
   heroMaximum: heroMinimum + g.s(72)
 
   // Frame rate and frame times, when MangoHud is in the game.
@@ -56,26 +59,46 @@ PageRhythm {
     onTriggered: root.act("enable-mangohud", null)
   }
 
-  Grid {
+  // Live system load as large tiles; without MangoHud they are the page.
+  Flow {
+    id: statGrid
     width: parent.width
-    columns: 2
-    columnSpacing: root.g.s(18)
-    rowSpacing: root.g.s(14)
+    spacing: root.g.s(10)
     Repeater {
-      model: root.perf.stats || []
-      delegate: Meter {
+      model: root.stats
+      delegate: Rectangle {
         required property var modelData
-        g: root.g
-        width: (root.width - root.g.s(18)) / 2
-        label: modelData.label
-        value: modelData.value
-        progress: modelData.progress
-        fill: modelData.progress > 0.9 ? root.g.urgent : root.g.accent
+        required property int index
+        // Temperatures arrive without a fraction: read the bar from the degrees.
+        readonly property real fraction: modelData.progress > 0 ? modelData.progress
+          : /°C$/.test(modelData.value || "") ? Math.min(1, parseFloat(modelData.value) / 100) : 0
+        readonly property bool hot: fraction > 0.9
+        // An odd last tile spans the row instead of leaving a hole.
+        width: index === root.stats.length - 1 && root.stats.length % 2 ? root.width : (root.width - root.g.s(10)) / 2
+        height: root.tileHeight
+        radius: root.g.radius; color: root.g.well
+        border.width: 1; border.color: root.g.line
+        Column {
+          anchors.fill: parent; anchors.margins: root.g.s(14)
+          spacing: root.g.s(4)
+          Label { g: root.g; role: "caps"; text: modelData.label.replace("temperature", "temp"); width: parent.width; elide: Text.ElideRight }
+          // "20.2 / 31.1 GB" reads as a big "20.2 GB" over "of 31.1 GB".
+          readonly property var parts: String(modelData.value || "").split(" / ")
+          Label { g: root.g; role: "hero"; font.pixelSize: root.g.f(root.hooked ? 22 : 30); text: parent.parts.length === 2 ? parent.parts[0] + " " + parent.parts[1].replace(/^[\d.]+\s*/, "") : modelData.value; color: hot ? root.g.urgent : root.g.foreground; width: parent.width; elide: Text.ElideRight }
+          Label { g: root.g; role: "caption"; visible: parent.parts.length === 2; text: visible ? "of " + parent.parts[1] : ""; width: parent.width }
+        }
+        Rectangle {
+          anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+          anchors.margins: root.g.s(14)
+          height: Math.max(3, root.g.s(4)); radius: height / 2; color: root.g.track
+          Rectangle { height: parent.height; radius: parent.radius; color: hot ? root.g.urgent : root.g.accent; width: Math.max(height, parent.width * parent.parent.fraction)
+            Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } } }
+        }
       }
     }
   }
 
-  bottomBlock: Column {
+  Column {
     width: parent.width
     spacing: root.g.s(16)
     ChoiceRow {

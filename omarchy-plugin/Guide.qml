@@ -35,6 +35,7 @@ Item {
   property int tab: 0
   property var cursors: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
   property bool notesOpen: false
+  property bool achievementsOpen: false
   property string noteDraft: ""
   property bool forceReady: false
   property var genericWindow: ({})
@@ -173,6 +174,7 @@ Item {
     if (p.fixture) { root.backend = null; root.fixtureMode = true; fixtureFile.path = p.fixture }
     if (p.tab !== undefined) root.setTab(p.tab)
     root.notesOpen = false
+    root.achievementsOpen = false
     root.forceReady = false
     root.confirmingQuit = !!p.confirm
     root.confirmIndex = 0
@@ -209,6 +211,7 @@ Item {
   function close() {
     if (root.notesOpen && root.family === "keyboard") root.notify("notes-save", root.noteDraft)
     root.notesOpen = false
+    root.achievementsOpen = false
     root.notify("closed", null)
     root.opening = false
     captureDeadline.stop()
@@ -272,6 +275,7 @@ Item {
   // fixture so every control can be seen working.
   function act(name, arg) {
     var title = (root.model.game || {}).title || "the game"
+    if (name === "achievements") { if ((((root.model.game || {}).achievements || {}).items || []).length) { achList.currentIndex = 0; achList.positionViewAtBeginning(); root.achievementsOpen = true; root.updateRing() } return }
     if (!root.fixtureMode) {
       if (name === "resume") { root.close(); return }
       if (name === "quit") { root.confirmingQuit = true; root.confirmIndex = 0; return }
@@ -381,7 +385,7 @@ Item {
     onLoadFailed: { root.settingsLoaded = true }
   }
 
-  function currentRows() { return root.notesOpen ? [[noteClose]] : root.confirmingQuit ? root.confirmRows : root.rowsOf(root.page) }
+  function currentRows() { return root.achievementsOpen ? [] : root.notesOpen ? [[noteClose]] : root.confirmingQuit ? root.confirmRows : root.rowsOf(root.page) }
   function focusControl(item) {
     var rows = currentRows()
     for (var r = 0; r < rows.length; r++) {
@@ -411,6 +415,16 @@ Item {
       if (root.opening && ["guide", "start", "b"].indexOf(action) >= 0) root.close()
       else if (!root.opening && action === "guide") root.open("{}")
       return "closed"
+    }
+    if (root.achievementsOpen) {
+      // The list scrolls under its own highlight; B returns to the game page.
+      if (action === "up") achList.decrementCurrentIndex()
+      else if (action === "down") achList.incrementCurrentIndex()
+      else if (action === "b") { root.achievementsOpen = false; root.updateRing() }
+      else if (action === "lb" || action === "rb") { root.achievementsOpen = false; setTab(root.tab + (action === "lb" ? -1 : 1)) }
+      else if (action === "guide" || action === "start") root.close()
+      else if (action === "y") root.act("screenshot")
+      return "ok"
     }
     var rows = currentRows(), cur = cursorOf()
     var r = Math.min(cur[0], Math.max(0, rows.length - 1))
@@ -846,6 +860,93 @@ Item {
             }
           }
           Action { id: noteClose; g: g; width: parent.width; title: root.family === "keyboard" ? "Save and return" : "Return"; onTriggered: { if (root.family === "keyboard") root.notify("notes-save", root.noteDraft); root.notesOpen = false; keys.forceActiveFocus() } }
+        }
+      }
+
+      Rectangle {
+        id: achievementsSheet
+        readonly property var ach: (root.model.game || {}).achievements || {}
+        visible: root.achievementsOpen
+        anchors.fill: parent; radius: g.radius; color: g.background
+        MouseArea { anchors.fill: parent; onWheel: function(w) { if (w.angleDelta.y > 0) achList.decrementCurrentIndex(); else achList.incrementCurrentIndex() } }
+        Column {
+          id: achHeader
+          x: rail.width + g.s(22); y: g.s(24)
+          width: parent.width - x - g.s(22); spacing: g.s(10)
+          Item {
+            width: parent.width; height: achHeading.height
+            Label { id: achHeading; g: g; role: "heading"; text: "Achievements"; anchors.left: parent.left }
+            Label { g: g; role: "small"; anchors.right: parent.right; anchors.verticalCenter: achHeading.verticalCenter
+              text: achievementsSheet.ach.total ? achievementsSheet.ach.unlocked + " of " + achievementsSheet.ach.total + "  ·  " + Math.round(100 * achievementsSheet.ach.unlocked / achievementsSheet.ach.total) + "%" : "" }
+          }
+          Label { g: g; role: "small"; text: (root.model.game || {}).title || ""; width: parent.width; elide: Text.ElideRight }
+          Rectangle {
+            width: parent.width; height: Math.max(3, g.s(4)); radius: height / 2; color: g.track
+            Rectangle { height: parent.height; radius: parent.radius; color: g.accent; width: Math.max(height, parent.width * (achievementsSheet.ach.total ? achievementsSheet.ach.unlocked / achievementsSheet.ach.total : 0)) }
+          }
+        }
+        ListView {
+          id: achList
+          readonly property var theme: g
+          x: achHeader.x - g.s(6); width: achHeader.width + g.s(12)
+          anchors.top: achHeader.bottom; anchors.topMargin: g.s(16)
+          anchors.bottom: parent.bottom; anchors.bottomMargin: g.s(64)
+          clip: true; interactive: false
+          spacing: g.s(4)
+          model: achievementsSheet.ach.items || []
+          highlightMoveDuration: Style.duration(140)
+          highlightFollowsCurrentItem: true
+          preferredHighlightBegin: g.s(48); preferredHighlightEnd: height - g.s(96)
+          highlightRangeMode: ListView.ApplyRange
+          highlight: Rectangle { color: "transparent"; radius: g.radius; border.width: Math.max(2, g.s(2)); border.color: g.accent; z: 2 }
+          delegate: Rectangle {
+            id: achRow
+            required property var modelData
+            required property int index
+            // Delegates do not see the guide's ids, so the theme comes through the view.
+            readonly property var t: ListView.view.theme
+            width: achList.width; height: achRow.t.s(70)
+            radius: achRow.t.radius
+            color: modelData.unlocked ? achRow.t.well : "transparent"
+            border.width: modelData.unlocked ? 1 : 0; border.color: achRow.t.line
+            Picture {
+              id: achIconArt
+              g: achRow.t
+              x: achRow.t.s(12); anchors.verticalCenter: parent.verticalCenter
+              width: achRow.t.s(46); height: width; radius: achRow.t.s(8)
+              source: modelData.icon || ""
+              visible: !!modelData.icon
+              opacity: modelData.unlocked ? 1 : 0.35
+            }
+            Rectangle {
+              visible: !modelData.icon
+              x: achRow.t.s(12); anchors.verticalCenter: parent.verticalCenter
+              width: achRow.t.s(46); height: width; radius: achRow.t.s(8); color: achRow.t.track
+              Glyph { g: achRow.t; anchors.centerIn: parent; name: achRow.t.icon.trophy; size: achRow.t.f(20); color: achRow.modelData.unlocked ? achRow.t.accent : achRow.t.dim }
+            }
+            Column {
+              anchors.left: parent.left; anchors.leftMargin: achRow.t.s(72)
+              anchors.right: achWhen.left; anchors.rightMargin: achRow.t.s(10)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: achRow.t.s(2)
+              Label { g: achRow.t; role: "body"; width: parent.width; text: achRow.modelData.title || ""; elide: Text.ElideRight; color: achRow.modelData.unlocked ? achRow.t.foreground : achRow.t.dim }
+              Label { g: achRow.t; role: "caption"; width: parent.width; text: achRow.modelData.description || (achRow.modelData.hidden ? "Hidden achievement" : ""); wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight; visible: text !== "" }
+            }
+            Label {
+              id: achWhen
+              g: achRow.t; role: "caption"
+              anchors.right: parent.right; anchors.rightMargin: achRow.t.s(14); anchors.verticalCenter: parent.verticalCenter
+              horizontalAlignment: Text.AlignRight
+              text: achRow.modelData.unlocked ? (achRow.modelData.when || "Unlocked") : (achRow.modelData.rarity !== undefined && achRow.modelData.rarity > 0 ? Math.round(achRow.modelData.rarity) + "% have it" : "Locked")
+            }
+          }
+        }
+        Row {
+          anchors.right: parent.right; anchors.rightMargin: g.s(22)
+          anchors.bottom: parent.bottom; anchors.bottomMargin: g.s(22)
+          spacing: g.s(8)
+          PadGlyph { g: g; family: root.family; button: "b"; size: g.f(18); anchors.verticalCenter: parent.verticalCenter }
+          Label { g: g; role: "small"; text: "Back"; anchors.verticalCenter: parent.verticalCenter }
         }
       }
 

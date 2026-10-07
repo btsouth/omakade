@@ -7,6 +7,7 @@ Item {
   required property var g
   property string source: ""
   property real radius: g.innerRadius
+  readonly property alias status: image.status
 
   Image {
     id: image

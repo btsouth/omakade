@@ -18,14 +18,14 @@ PageRhythm {
     if (media) r.push(transportItems)
     r.push([volume])
     for (var i = 0; i < outputItems.length; i++) r.push([outputItems[i]])
-    r.push([mic])
     inputItems.forEach(i => r.push([i]))
+    r.push([mic])
     return r
   }
 
   hero: mediaHero
-  heroMinimum: g.s(128) + progress.implicitHeight + transport.height + g.s(52)
-  heroMaximum: heroMinimum + g.s(72)
+  heroMinimum: g.s(84) + progress.implicitHeight + transport.height + g.s(52)
+  heroMaximum: heroMinimum + g.s(44)
 
   // Now playing: whatever MPRIS player is running.
   Rectangle {
@@ -45,14 +45,23 @@ PageRhythm {
       Row {
         width: parent.width
         spacing: root.g.s(14)
-        Picture { id: art; g: root.g; width: root.g.s(128) + root.heroExtra; height: width; source: root.media ? root.media.art || "" : "" }
+        Item {
+          id: art
+          width: root.g.s(84) + root.heroExtra; height: width
+          Picture { g: root.g; anchors.fill: parent; source: root.media ? root.media.art || "" : ""; visible: !!(root.media && root.media.art) }
+          Rectangle {
+            visible: !(root.media && root.media.art)
+            anchors.fill: parent; radius: root.g.innerRadius; color: root.g.track
+            Glyph { g: root.g; anchors.centerIn: parent; name: root.g.icon.music; size: parent.width * 0.4; color: root.g.dim }
+          }
+        }
         Column {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - art.width - parent.spacing
           spacing: root.g.s(2)
           Label { g: root.g; role: "caps"; text: root.media ? root.media.player : "" }
-          Label { g: root.g; role: "heading"; text: root.media ? root.media.title : ""; width: parent.width }
-          Label { g: root.g; role: "small"; text: root.media ? root.media.artist : ""; width: parent.width }
+          Label { g: root.g; role: "heading"; text: root.media ? root.media.title : ""; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+          Label { g: root.g; role: "small"; text: root.media ? root.media.artist || "" : ""; width: parent.width; elide: Text.ElideRight; visible: text !== "" }
         }
       }
       Meter {
@@ -135,6 +144,8 @@ PageRhythm {
       delegate: Action {
         required property var modelData
         g: root.g; width: root.width; height: root.g.s(58); title: modelData.name; selected: !!modelData.current
+        icon: /headset/i.test(modelData.name) ? root.g.icon.headset : root.g.icon.mic
+        trailing: modelData.current ? "\u{f012c}" : ""
         onTriggered: root.act("input-device", modelData.id)
       }
     }

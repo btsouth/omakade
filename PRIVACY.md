@@ -139,6 +139,8 @@ Restoring does not reconnect accounts or launch imported entries.
 
 ## Network requests
 
+When a Steam game is detected, the in-game guide may download missing wide hero artwork and logos from the same Steam CDN (`shared.steamstatic.com`), using only the Steam App ID.
+
 Omakade may request missing covers and achievement icons from Steam's public
 HTTPS artwork hosts, missing Battle.net covers and banners from Lutris's
 public game-art URLs, and missing RetroArch box art from Libretro's public

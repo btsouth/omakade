@@ -1,13 +1,16 @@
 #include "guide/GuidePayload.h"
+#include "guide/GuideArt.h"
 
 #include <QJsonDocument>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QUrl>
 
-QJsonObject GuidePayload::build(const QVariantMap& session, const QVariantMap& metadata,
+QJsonObject GuidePayload::build(const QVariantMap& session, const QVariantMap& originalMetadata,
                                 const QString& output, const QString& pad,
-                                bool pauseWhileOpen, bool paused) {
+                                bool pauseWhileOpen, bool paused, const QString& artCacheRoot) {
+  const auto metadata = GuideArt::select(session.value("source").toString(), originalMetadata,
+      artCacheRoot.isEmpty() ? GuideArt::cacheRoot() : artCacheRoot);
   QJsonObject payload{{"version", kVersion}, {"output", output}, {"pad", pad}};
   QJsonObject data;
   if (!session.isEmpty()) {

@@ -3,6 +3,8 @@
 import configparser
 import ctypes
 import fcntl
+import hashlib
+import math
 import struct
 import time
 import datetime
@@ -11,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 
 home = Path.home()
@@ -58,18 +61,88 @@ def screenshot():
         suffix += 1
     return str(path)
 
+def clip_metadata(path, thumb, thumbnailer, ffmpeg, ffprobe):
+    deadline = time.monotonic() + 3
+
+    def run(command):
+        try:
+            return subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  timeout=max(.01, deadline - time.monotonic()), check=True).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    if not thumb.is_file() or not thumb.stat().st_size:
+        # Publish atomically so overlapping readers never see a partial JPEG.
+        temporary = thumb.with_name(thumb.stem + '.' + str(os.getpid()) + '.jpg')
+        generated = False
+        try:
+            if thumbnailer:
+                for seek in ('00:00:01', '00:00:00'):
+                    result = run([thumbnailer, '-i', str(path), '-o', str(temporary), '-s', '480', '-t', seek, '-c', 'jpeg'])
+                    if result is not None and temporary.is_file() and temporary.stat().st_size:
+                        generated = True
+                        break
+                    if time.monotonic() >= deadline:
+                        break
+            if not generated and ffmpeg and time.monotonic() < deadline:
+                for seek in ('1', '0'):
+                    result = run([ffmpeg, '-nostdin', '-loglevel', 'error', '-y', '-ss', seek,
+                                  '-i', str(path), '-frames:v', '1', '-vf', 'scale=480:-2', str(temporary)])
+                    if result is not None and temporary.is_file() and temporary.stat().st_size:
+                        generated = True
+                        break
+                    if time.monotonic() >= deadline:
+                        break
+            if generated and temporary.is_file() and temporary.stat().st_size:
+                temporary.replace(thumb)
+        finally:
+            temporary.unlink(missing_ok=True)
+    result = dict(thumb=thumb.as_uri() if thumb.is_file() and thumb.stat().st_size else '')
+    known = thumb.with_suffix('.txt')
+    if known.is_file():
+        duration = known.read_text().strip()
+        if duration:
+            result['duration'] = duration
+        return result
+    if ffprobe and time.monotonic() < deadline:
+        output = run([ffprobe, '-v', 'error', '-show_entries', 'format=duration',
+                      '-of', 'default=noprint_wrappers=1:nokey=1', str(path)])
+        try:
+            seconds = float(output)
+            if math.isfinite(seconds) and seconds >= 0:
+                minutes, seconds = divmod(int(seconds), 60)
+                result['duration'] = f'{minutes}:{seconds:02d}'
+                known.write_text(result['duration'])
+        except (TypeError, ValueError):
+            pass
+    return result
+
 def scan():
     files = []
     for folder in (shots, videos):
         files += [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in ('.png', '.jpg', '.mp4', '.mkv')]
     files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     recent = []
+    thumbs = state / 'thumbs'
+    thumbs.mkdir(exist_ok=True)
+    referenced = set()
+    thumbnailer, ffmpeg, ffprobe = (shutil.which(tool) for tool in ('ffmpegthumbnailer', 'ffmpeg', 'ffprobe'))
     for f in files[:12]:
         shot = f.suffix.lower() in ('.png', '.jpg')
-        recent.append(dict(path=str(f), thumb=f.as_uri() if shot else '', kind='Screenshot' if shot else 'Clip', age=datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime('%H:%M')))
+        modified = f.stat()
+        item = dict(path=str(f), thumb=f.as_uri() if shot else '', kind='Screenshot' if shot else 'Clip', age=datetime.datetime.fromtimestamp(modified.st_mtime).strftime('%H:%M'))
+        if not shot:
+            key = hashlib.sha1((str(f.resolve()) + '\0' + str(modified.st_mtime_ns)).encode()).hexdigest()
+            thumb = thumbs / (key + '.jpg')
+            referenced.add(thumb.name)
+            item.update(clip_metadata(f, thumb, thumbnailer, ffmpeg, ffprobe))
+        recent.append(item)
+    for thumb in thumbs.glob('*'):
+        if re.fullmatch(r'[0-9a-f]{40}\.(jpg|txt)', thumb.name) and thumb.with_suffix('.jpg').name not in referenced:
+            thumb.unlink(missing_ok=True)
     pads = []
     seen = set()
-    for event in Path('/sys/class/input').glob('event*'):
+    for event in (Path(os.environ.get('OMAKADE_GUIDE_SYSFS', '/sys')) / 'class/input').glob('event*'):
         try:
             device = event / 'device'
             chunks = (device / 'capabilities/key').read_text().split()
@@ -97,6 +170,10 @@ def scan():
             pads.append(dict(name=name, id=identity, node=str(node), family=family, identifiable=bool(effects & (1 << 0x50)) and os.access(node, os.W_OK)))
         except OSError:
             pass
+    # Steam Input mirrors each pad through uinput (/devices/virtual/input). Bluetooth pads
+    # also live under /devices/virtual (misc/uhid), so only uinput copies are dropped.
+    if any('/devices/virtual/input/' not in pad['id'] for pad in pads):
+        pads = [pad for pad in pads if '/devices/virtual/input/' not in pad['id']]
     return dict(omakadeInstalled=bool(shutil.which("omakade")), shots=str(shots), videos=str(videos), recent=recent, pads=pads, settingsPath=str(state / 'settings.json'))
 
 def stats():

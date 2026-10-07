@@ -9,17 +9,23 @@ Item {
   property bool active: false
   property var settings: ({replaySeconds: 30, sound: "game"})
   property var files: ({})
+  property bool scanning: false
   property string recordingFile: ""
   property string pendingSave: ""
   property string recordError: ""
   property string replayError: ""
   signal toast(var data)
   readonly property var captureData: ({replayOn: replay.running, replaySeconds: settings.replaySeconds, sound: settings.sound,
-    recording: recording.running, folder: files.videos || "", recent: files.recent || []})
+    recording: recording.running, folder: files.videos || "", recent: files.recent || [], lastShot: ((files.recent || [])[0] || {}).thumb || ""})
   readonly property var status: ({recording: recording.running, replay: {on: replay.running, seconds: settings.replaySeconds}})
   readonly property string helper: String(Qt.resolvedUrl("guide-files.py")).replace("file://", "")
   function refresh() {
-    runner.run(["python3", helper, "scan"], function(ok, value) { if (ok) { try { root.files = JSON.parse(value) } catch(e) {} } })
+    if (scanning) return
+    scanning = true
+    runner.run(["python3", helper, "scan"], function(ok, value) {
+      root.scanning = false
+      if (ok) { try { root.files = JSON.parse(value) } catch(e) {} }
+    })
   }
   Component.onCompleted: refresh()
   onActiveChanged: if (active) refresh()

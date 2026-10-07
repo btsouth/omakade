@@ -70,7 +70,7 @@ Item {
     Text {
       visible: root.face && root.family !== "playstation"
       anchors.centerIn: parent
-      text: root.family === "nintendo" ? root.nintendoLetter[root.button] : root.button.toUpperCase()
+      text: root.family === "nintendo" ? (root.nintendoLetter[root.button] || root.button.toUpperCase()) : root.button.toUpperCase()
       color: root.ink
       font.family: root.g.font
       font.pixelSize: Math.round(root.size * 0.6)

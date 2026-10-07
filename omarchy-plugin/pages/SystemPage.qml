@@ -11,7 +11,9 @@ PageRhythm {
   readonly property var sys: d.system || {}
   readonly property var profiles: ["power-saver", "balanced", "performance"]
   readonly property string profile: (d.performance || {}).profile || ""
-  property var rows: [[wifi, bluetooth], [dnd, power], [light, suspend], [brightness], [couch], [library], [desktop]]
+  // brightness is null or undefined without a backlight (desktops): no control then.
+  readonly property bool backlight: sys.brightness !== undefined && sys.brightness !== null
+  property var rows: [[wifi, bluetooth], [dnd, power], [brightness], [couch], [library], [desktop], [suspend]]
 
   Grid {
     width: parent.width; columns: 2
@@ -47,25 +49,12 @@ PageRhythm {
       detail: root.profile === "" ? "Unavailable" : root.profile === "power-saver" ? "Saver" : root.profile === "performance" ? "Performance" : "Balanced"
       onTriggered: root.act("profile", root.profiles[(root.profiles.indexOf(root.profile) + 1) % 3])
     }
-    Action {
-      id: light
-      g: root.g; width: (root.width - root.g.s(12)) / 2
-      variant: "tile"; icon: root.g.icon.brightness; title: "Brightness"
-      detail: root.sys.brightness === undefined ? "Unavailable" : Math.round(root.sys.brightness * 100) + "%"
-      onTriggered: root.requestedFocus(brightness)
-    }
-    Action {
-      id: suspend
-      g: root.g; width: (root.width - root.g.s(12)) / 2
-      variant: "tile"; icon: root.g.icon.sleep; title: "Suspend"
-      detail: "Sleep now"
-      onTriggered: root.act("suspend", null)
-    }
   }
 
   SliderRow {
     id: brightness
     g: root.g; width: parent.width
+    visible: root.backlight
     icon: root.g.icon.brightness; title: "Display brightness"
     value: root.sys.brightness || 0
     onMoved: function(v) { root.act("brightness", v) }
@@ -94,6 +83,12 @@ PageRhythm {
         g: root.g; width: parent.width; height: root.g.s(58)
         icon: root.g.icon.desktop; title: "Return to desktop"; detail: "Come back with the Guide button"; chevron: true
         onTriggered: root.act("desktop", null)
+      }
+      Action {
+        id: suspend
+        g: root.g; width: parent.width; height: root.g.s(58)
+        icon: root.g.icon.sleep; title: "Suspend"; detail: "Sleep now"; chevron: true
+        onTriggered: root.act("suspend", null)
       }
     }
   }
