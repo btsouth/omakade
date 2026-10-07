@@ -62,6 +62,12 @@ void InGameGuideTests::payloadRoundTrip() {
   const auto game = parsed.value("data").toObject().value("game").toObject();
   QCOMPARE(game.value("sessionMinutes").toInteger(), 2);
   QCOMPARE(game.value("totalMinutes").toInteger(), 60);
+  QVERIFY(!game.contains("bannerKind"));
+  const auto steamArt = GuidePayload::build({{"name", "Cuphead"}, {"source", "Steam"}},
+      {{"heroPath", "file:///steam/librarycache/268910/header.jpg"}, {"logoPath", "file:///steam/librarycache/268910/logo.png"}},
+      "DP-2", "xbox", true, true).value("data").toObject().value("game").toObject();
+  QCOMPARE(steamArt.value("bannerKind").toString(), QStringLiteral("header"));
+  QCOMPARE(steamArt.value("logo").toString(), QStringLiteral("file:///steam/librarycache/268910/logo.png"));
   QCOMPARE(game.value("kind").toString(), "steam");
   QVERIFY(!GuidePayload::parse("{}", &parsed));
   auto newer = payload; newer.insert("version", 2);

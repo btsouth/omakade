@@ -1,7 +1,9 @@
 #include "guide/GuidePayload.h"
 
 #include <QJsonDocument>
+#include <QFileInfo>
 #include <QJsonArray>
+#include <QUrl>
 
 QJsonObject GuidePayload::build(const QVariantMap& session, const QVariantMap& metadata,
                                 const QString& output, const QString& pad,
@@ -14,10 +16,15 @@ QJsonObject GuidePayload::build(const QVariantMap& session, const QVariantMap& m
                      {"pauseWhileOpen", pauseWhileOpen}, {"paused", paused}};
     const QString source = session.value("source").toString();
     game.insert("kind", source == "Steam" ? "steam" : metadata.value("kind", "native").toString());
-    for (const auto& pair : {qMakePair("coverPath", "cover"), qMakePair("heroPath", "banner")}) {
+    for (const auto& pair : {qMakePair("coverPath", "cover"), qMakePair("heroPath", "banner"),
+                             qMakePair("logoPath", "logo")}) {
       const QString art = metadata.value(QLatin1String(pair.first)).toString();
       if (!art.isEmpty()) game.insert(QLatin1String(pair.second), art);
     }
+    // Steam's header capsule has the title painted in, so the guide must not crop it.
+    const QString hero = metadata.value("heroPath").toString();
+    if (!hero.isEmpty() && QFileInfo(QUrl(hero).path()).completeBaseName().compare("header", Qt::CaseInsensitive) == 0)
+      game.insert("bannerKind", "header");
     if (session.contains("elapsedSeconds"))
       game.insert("sessionMinutes", session.value("elapsedSeconds").toLongLong() / 60);
     if (metadata.contains("playtimeSeconds") && metadata.value("playtimeSeconds").toLongLong() >= 0)
