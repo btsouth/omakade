@@ -37,7 +37,9 @@ public:
   // Without it the shortcut and controller button keep their Game Mode behavior.
   Q_INVOKABLE bool usable() const { return m_enabled && GuidePlugin::usable(m_pluginPaths); }
   void setPluginPaths(const GuidePlugin::Paths& paths) { m_pluginPaths = paths; }
-  Q_INVOKABLE bool toggle(const QString& node = {});
+  // With fallback, a guide the shell cannot show emits summonFailed so the caller can do
+  // what the shortcut did before the guide.
+  Q_INVOKABLE bool toggle(const QString& node = {}, bool fallback = false);
   Q_INVOKABLE void close();
   // Only enabled explicitly in isolated acceptance runs, through the authenticated socket.
   void setInjectedInputEnabled(bool enabled);

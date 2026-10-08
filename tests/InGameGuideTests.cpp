@@ -598,7 +598,11 @@ void InGameGuideTests::pluginFallsBackWhenSummonFails() {
   InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
   guide.m_enabled = true;
   QSignalSpy failed(&guide, &InGameGuide::summonFailed);
+  // Opened from inside Omakade: no fallback, so Game Mode is left alone.
   QVERIFY(guide.toggle());
+  QTRY_VERIFY(!guide.m_opening);
+  QCOMPARE(failed.count(), 0);
+  QVERIFY(guide.toggle({}, true));
   QTRY_COMPARE(failed.count(), 1);
   qputenv("PATH", originalPath);
   QVERIFY(!guide.opened()); QVERIFY(!guide.m_paused);

@@ -6905,7 +6905,7 @@ int main(int argc, char* argv[]) {
                    &GameModeSession::park);
   QObject::connect(&singleInstance, &SingleInstance::gameModeToggleRequested, &gameMode,
                    [&gameMode, &inGameGuide, rootWindow](const QString& node) {
-                     if (inGameGuide.opened() || (inGameGuide.usable() && inGameGuide.hasGame())) { inGameGuide.toggle(node); return; }
+                     if (inGameGuide.opened() || (inGameGuide.usable() && inGameGuide.hasGame())) { inGameGuide.toggle(node, true); return; }
                      // The shortcut parks or resumes the complete library session.
                      if (rootWindow == nullptr ||
                          !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) {
@@ -6917,7 +6917,7 @@ int main(int argc, char* argv[]) {
     if (rootWindow == nullptr || !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) gameMode.toggle();
   });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
-                   [&inGameGuide](const QString& node) { inGameGuide.toggle(node); });
+                   [&inGameGuide](const QString& node) { inGameGuide.toggle(node, true); });
   QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow, &gameModeCompositor, &application] {
     if (!rootWindow) return;
     rootWindow->show(); rootWindow->requestActivate();
@@ -6926,7 +6926,7 @@ int main(int argc, char* argv[]) {
       if (window.valid()) gameModeCompositor.focusWindow(window.address);
     });
   });
-  if (coldGuideRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice); });
+  if (coldGuideRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice, true); });
   if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {

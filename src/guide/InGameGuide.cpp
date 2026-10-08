@@ -374,7 +374,7 @@ void InGameGuide::stopGuard() {
   if (!m_guard.waitForFinished(2000)) { m_guard.terminate(); m_guard.waitForFinished(1000); }
 }
 
-bool InGameGuide::toggle(const QString& node) {
+bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
   refreshGame();
@@ -399,12 +399,12 @@ bool InGameGuide::toggle(const QString& node) {
   m_poll.start();
   const auto token = m_token;
   shell({"shell", "summon", "omakade.guide", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))},
-        [this, token](bool ok, const QByteArray& reply) {
+        [this, token, fallback](bool ok, const QByteArray& reply) {
           if (token != m_token) return;
           if (!ok || reply.trimmed() == "unknown" || reply.trimmed() == "false" || reply.trimmed() == "error") {
             const bool shown = m_opened;
             finishClose(true);
-            if (!shown) emit summonFailed();
+            if (!shown && fallback) emit summonFailed();
           }
         });
   return true;

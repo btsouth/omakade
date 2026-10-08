@@ -18,7 +18,7 @@ leaving the game.
   pauses the game (on by default; off for games tagged online or multiplayer).
 - Quit shows "Closing" and returns as soon as the game exits. Recorder errors read as
   plain causes, and long toasts wrap.
-- Optional `xdotool` adds a button that opens the Steam overlay.
+- A button opens the Steam overlay; the optional `xdotool` makes it more reliable.
 - A second B press within 300 ms of leaving the achievements list is ignored, so a
   double press does not close the guide.
 
