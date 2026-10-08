@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QThread>
 
 namespace GuidePlugin {
 namespace {
@@ -61,8 +62,15 @@ bool ensure(const Paths& paths) {
   // Enabled once. After that, `omarchy plugin disable omakade.guide` stays disabled.
   bool enabled = usable(paths);
   if (!enabled) {
+    // The shell answers "unknown" until its rescan has seen the new link, which it does
+    // in the background after rescanPlugins returns.
     shellReply(paths, {"shell", "rescanPlugins"});
-    enabled = shellReply(paths, {"shell", "enablePlugin", QString::fromLatin1(kId), "{}"}) == QLatin1String("ok");
+    for (int attempt = 0; attempt < 10 && !enabled; ++attempt) {
+      if (attempt > 0) QThread::msleep(200);
+      const QString reply = shellReply(paths, {"shell", "enablePlugin", QString::fromLatin1(kId), "{}"});
+      if (reply != QLatin1String("unknown") && reply != QLatin1String("ok")) break;
+      enabled = reply == QLatin1String("ok");
+    }
   }
   if (enabled) {
     QDir().mkpath(QFileInfo(paths.markerPath).absolutePath());
