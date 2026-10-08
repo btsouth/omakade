@@ -1,0 +1,11 @@
+kind = "app"
+categories = ["Game"]
+icon = "resources/icons/io.github.tsouth89.Omakade.svg"
+
+[linux.x86_64]
+asset = "omakade-{version}-1-x86_64.pkg.tar.zst"
+exec = "usr/bin/omakade"
+
+[linux.aarch64]
+asset = "omakade-{version}-1-aarch64.pkg.tar.zst"
+exec = "usr/bin/omakade"
