@@ -2,13 +2,9 @@
 #include <QJsonArray>
 #include <QProcessEnvironment>
 #include <QString>
-#include <QVariantMap>
 #include <vector>
 
 namespace GuideActions {
-QString key(const QVariantMap& game);
-QString notes(const QString& directory, const QString& key);
-bool saveNotes(const QString& directory, const QString& key, const QString& text);
 QString mangoConfig(const QString& socket, const QString& level, int limit);
 QProcessEnvironment mangoEnvironment(QProcessEnvironment base, bool installed,
                                      const QString& config);

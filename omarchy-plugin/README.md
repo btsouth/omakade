@@ -45,7 +45,7 @@ keys: `fixture`, `tab`, `pad` (`xbox`, `playstation`, `nintendo`, `deck`,
 ## Live actions
 
 The plugin owns capture, audio, media, battery status and quick settings. It works
-without Omakade. Omakade adds the game card, notes, safe pause and quit, Steam
+without Omakade. Omakade adds the game card, safe pause and quit, Steam
 handoff, known emulator save backups and MangoHud launch setup.
 
 Screenshot saves the frame taken before the guide appeared, on the game's output.

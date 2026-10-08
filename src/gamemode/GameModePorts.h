@@ -31,6 +31,7 @@ struct GameModeWindow {
   QString workspace;
   QString output;
   bool floating = false;
+  bool xwayland = false;
   // Fullscreen or maximized.
   bool fullscreen = false;
   int fullscreenMode = 0;

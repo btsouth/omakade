@@ -13,7 +13,7 @@ PageRhythm {
   readonly property bool steam: game.kind === "steam"
   readonly property bool emulator: game.kind === "emulator"
   readonly property var ach: game.achievements || null
-  property var rows: [[resume], [extra, notes, pause], [achievementsCard], [quit]]
+  property var rows: [[resume], [extra, pause], [achievementsCard], [quit]]
   hero: banner
   // Hero art keeps its own shape; without it the banner is a compact cover header.
   heroMinimum: banner.wide ? Math.round(width / 2.5) : g.s(150)
@@ -135,7 +135,7 @@ PageRhythm {
     Action {
       id: extra
       visible: !root.emulator || !!root.game.canBackup
-      g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
+      g: root.g; width: (parent.width - parent.spacing * (extra.visible ? 1 : 0)) / (extra.visible ? 2 : 1)
       variant: "tile"; height: root.g.s(96)
       icon: root.emulator ? root.g.icon.save : root.steam ? root.g.icon.steam : root.g.icon.desktop
       title: root.emulator ? "Saves" : root.steam ? "Steam" : "Desktop"
@@ -143,16 +143,8 @@ PageRhythm {
       onTriggered: root.act(root.emulator ? "backup" : root.steam ? "steam-overlay" : "desktop", null)
     }
     Action {
-      id: notes
-      visible: root.game.notes !== undefined || root.game.note !== undefined
-      g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
-      variant: "tile"; height: root.g.s(96); icon: root.g.icon.notes
-      title: "Notes"; detail: root.game.note !== undefined ? (root.game.note ? "Saved" : "Add a note") : (root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) + ((root.game.notes ? root.game.notes.length : root.game.note ? 1 : 0) === 1 ? " note" : " notes")
-      onTriggered: root.act("notes", null)
-    }
-    Action {
       id: pause
-      g: root.g; width: (parent.width - parent.spacing * ((notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))) / (1 + (notes.visible ? 1 : 0) + (extra.visible ? 1 : 0))
+      g: root.g; width: (parent.width - parent.spacing * (extra.visible ? 1 : 0)) / (extra.visible ? 2 : 1)
       variant: "tile"; height: root.g.s(96); icon: root.g.icon.pausedGame
       selected: !!root.game.pauseWhileOpen
       title: "Pause"; detail: root.game.pauseWhileOpen ? "On" : "Off"

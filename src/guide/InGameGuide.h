@@ -3,6 +3,7 @@
 #include "guide/GuideInput.h"
 #include "guide/GuideArt.h"
 #include "guide/GuideActions.h"
+#include "gamemode/GameModePorts.h"
 #include <QJsonArray>
 #include <QPointer>
 #include <QLocalSocket>
@@ -66,6 +67,7 @@ private:
   GuideArt m_art;
   QString m_achievementDatabase;
   QJsonArray achievementItems(const QString& appId) const;
+  GameModeWindow gameWindow(const QVariantMap& session) const;
   int m_testPadWriter = -1;
   QProcess m_guard;
   QLocalSocket m_mango;

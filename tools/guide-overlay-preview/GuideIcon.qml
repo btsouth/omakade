@@ -13,7 +13,6 @@ Item {
     readonly property var paths: ({
         "stats": "M4 20V12 M10 20V4 M16 20V9 M22 20H2",
         "mic": "M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8",
-        "notes": "M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5",
         "pause": "M8 5v14 M16 5v14",
         "next": "M5 5l10 7-10 7z M19 5v14",
         "back": "M14 5l-7 7 7 7 M7 12h14",

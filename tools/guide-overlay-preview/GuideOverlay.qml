@@ -19,11 +19,6 @@ FocusScope {
     property int display: 0
     property bool micMuted: true
     property bool playing: true
-    property string note: "Take the ferry after sunset."
-    property bool editingNote: false
-    property string noteDraft: ""
-    property int noteCursor: 0
-    readonly property var noteKeys: "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat(["Space", "⌫", "Save", "Cancel"])
     property bool confirmingQuit: false
     property string notice: ""
     property string clock: "21:47"
@@ -68,7 +63,6 @@ FocusScope {
             {id: "display", label: "Display", icon: "desktop", detail: displays[display]},
             {id: "volume", label: "Output volume", icon: "volume", detail: Math.round(volume * 100) + "%"},
             {id: "mic", label: "Microphone", icon: "mic", detail: micMuted ? "Muted" : "On"},
-            {id: "notes", label: "Game notes", icon: "notes", detail: "Edit"},
             {id: "music", label: playing ? "Pause music" : "Play music", icon: playing ? "pause" : "play", detail: ""},
             {id: "skip", label: "Next track", icon: "next", detail: ""},
             {id: "back", label: "Back to guide", icon: "back", detail: ""}];
@@ -86,7 +80,7 @@ FocusScope {
     }
     readonly property var navigation: {
         if (confirmingQuit) return [0, 1];
-        if (page === "tools") return [0, 1, 2, 3, 4, 5, 7, 8, 6, 9];
+        if (page === "tools") return [0, 1, 2, 3, 4, 5, 6, 7, 8];
         return [0, 1, 2, actions.length, actions.length + 1, actions.length + 2].concat(actions.slice(3).map((a, i) => i + 3));
     }
     function order(index) { return navigation.indexOf(index) + 1 }
@@ -95,7 +89,6 @@ FocusScope {
         current = navigation[(position + step + navigation.length) % navigation.length];
     }
     function back() {
-        if (editingNote) { editingNote = false; forceActiveFocus(); return }
         if (confirmingQuit) { confirmingQuit = false; current = actions.length - 1; return }
         if (page !== "home") { page = "home"; current = 3; return }
         closeRequested()
@@ -106,7 +99,7 @@ FocusScope {
             else if (current >= actions.length) current = actions.length + (current - actions.length + step + 3) % 3;
             return;
         }
-        if (page === "tools" && (current === 7 || current === 8)) { current = step > 0 ? 8 : 7; return }
+        if (page === "tools" && (current === 6 || current === 7)) { current = step > 0 ? 7 : 6; return }
         const id = (actions[current] || {}).id;
         if (id === "performance") performance = (performance + step + levels.length) % levels.length;
         else if (id === "limit") frameLimit = (frameLimit + step + limits.length) % limits.length;
@@ -128,7 +121,6 @@ FocusScope {
         else if (id === "replay") notify("Clip saved · last 30 seconds");
         else if (id === "screenshot") notify("Screenshot saved");
         else if (id === "backup") notify("Save backed up");
-        else if (id === "notes") { noteDraft = note; noteCursor = 0; editingNote = true }
         else if (id === "skip") notify("Next track · preview only");
         else if (id === "music") playing = !playing;
         else if (["performance", "limit", "output", "display", "volume", "mic"].indexOf(id) >= 0) adjust(1);
@@ -137,21 +129,6 @@ FocusScope {
     }
     Keys.onPressed: event => {
         if (!shown) return;
-        if (editingNote) {
-            if (event.key === Qt.Key_Down) noteCursor = (noteCursor + 6) % noteKeys.length;
-            else if (event.key === Qt.Key_Up) noteCursor = (noteCursor + noteKeys.length - 6) % noteKeys.length;
-            else if (event.key === Qt.Key_Left) noteCursor = (noteCursor + noteKeys.length - 1) % noteKeys.length;
-            else if (event.key === Qt.Key_Right) noteCursor = (noteCursor + 1) % noteKeys.length;
-            else if ([Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) {
-                const key = noteKeys[noteCursor];
-                if (key === "Save") { note = noteDraft; editingNote = false; notify("Note saved · preview only") }
-                else if (key === "Cancel") editingNote = false;
-                else if (key === "⌫") noteDraft = noteDraft.slice(0, -1);
-                else if (noteDraft.length < 180) noteDraft += key === "Space" ? " " : key.toLowerCase();
-            } else if (event.key === Qt.Key_Escape) editingNote = false;
-            else return;
-            event.accepted = true; return;
-        }
         if (event.key === Qt.Key_Down) move(1);
         else if (event.key === Qt.Key_Up) move(-1);
         else if (event.key === Qt.Key_Left) adjust(-1);
@@ -344,10 +321,10 @@ FocusScope {
                 Label { x: 20 * guide.s; y: 35 * guide.s; text: "Night Drive"; color: pal.brightFg; font.pixelSize: 20 * guide.s }
                 Label { x: 20 * guide.s; y: 64 * guide.s; text: "Chromatic Coast · " + (guide.playing ? "Playing" : "Paused"); color: pal.mutedText; font.pixelSize: 11 * guide.s }
                 Repeater {
-                    model: [7, 8]
+                    model: [6, 7]
                     delegate: Item {
                         required property int modelData
-                        x: (modelData === 7 ? 276 : 340) * guide.s; y: 29 * guide.s; width: 44 * guide.s; height: 64 * guide.s
+                        x: (modelData === 6 ? 276 : 340) * guide.s; y: 29 * guide.s; width: 44 * guide.s; height: 64 * guide.s
                         Rectangle { width: parent.width; height: 44 * guide.s; radius: guide.radius; color: "transparent"; border.width: guide.current === parent.modelData ? 2 : 1; border.color: guide.tint(pal.accent, guide.current === parent.modelData ? 1 : 0.25) }
                         GuideIcon { anchors.horizontalCenter: parent.horizontalCenter; y: 11 * guide.s; width: 22 * guide.s; height: width; name: (guide.actions[parent.modelData] || {}).icon || "play"; color: pal.fg }
                         Label { anchors.horizontalCenter: parent.horizontalCenter; y: 50 * guide.s; text: guide.order(parent.modelData); color: pal.mutedText; font.pixelSize: 10 * guide.s }
@@ -355,19 +332,13 @@ FocusScope {
                     }
                 }
             }
-            Tile {
-                x: 446 * guide.s; y: 746 * guide.s; width: 224 * guide.s; height: 108 * guide.s
-                label: "Game notes"; detail: guide.note; icon: "notes"
-                order: guide.order(6); selected: guide.current === 6
-                onClicked: { guide.current = 6; guide.activate() }
-            }
             Surface {
                 x: 30 * guide.s; y: 864 * guide.s; width: 640 * guide.s; height: 40 * guide.s
                 GuideRow {
                     x: 20 * guide.s; width: 600 * guide.s; height: parent.height; s: guide.s; compact: true
                     colors: pal; family: guide.theme.fontFamily; label: "Back to guide"; icon: "back"
-                    order: guide.order(9); selected: guide.current === 9
-                    onClicked: { guide.current = 9; guide.activate() }
+                    order: guide.order(8); selected: guide.current === 8
+                    onClicked: { guide.current = 8; guide.activate() }
                 }
             }
         }
@@ -446,37 +417,6 @@ FocusScope {
             anchors.centerIn: parent; spacing: 4 * guide.s
             Text { anchors.right: parent.right; text: guide.clock; color: pal.brightFg; font.family: guide.theme.fontFamily; font.pixelSize: 44 * guide.s; font.weight: Font.Light }
             Text { text: guide.date; color: pal.fg; font.family: guide.theme.fontFamily; font.pixelSize: 13 * guide.s }
-        }
-    }
-    GlassSurface {
-        x: panel.x + panel.width + 24 * guide.s; y: 394 * guide.s
-        width: 570 * guide.s; height: 420 * guide.s
-        visible: guide.editingNote && guide.shown
-        colors: pal; backdrop: guide.backdrop; alpha: guide.panelAlpha
-        radius: guide.radius; scaleFactor: guide.s; frameWidth: guide.width; frameHeight: guide.height
-        Column {
-            anchors.fill: parent; anchors.margins: 30 * guide.s; spacing: 20 * guide.s
-            Text { text: "GAME NOTES"; color: pal.accent; font.family: guide.theme.fontFamily; font.pixelSize: 14 * guide.s }
-            Text {
-                width: parent.width; height: 74 * guide.s
-                text: guide.noteDraft + "▏"; color: pal.fg
-                font.family: guide.theme.fontFamily; font.pixelSize: 16 * guide.s; wrapMode: Text.Wrap
-            }
-            Grid {
-                columns: 6; spacing: 6 * guide.s; width: parent.width
-                Repeater {
-                    model: guide.noteKeys
-                    delegate: Rectangle {
-                        required property string modelData
-                        required property int index
-                        width: 79 * guide.s; height: 36 * guide.s; radius: guide.radius * 0.5
-                        color: "transparent"; border.width: guide.noteCursor === index ? 2 : 1
-                        border.color: guide.tint(pal.accent, guide.noteCursor === index ? 1 : 0.2)
-                        Text { anchors.centerIn: parent; text: parent.modelData; color: pal.fg; font.family: guide.theme.fontFamily; font.pixelSize: 12 * guide.s }
-                    }
-                }
-            }
-            Text { text: "D-pad Move   A Type   B Cancel"; color: pal.mutedText; font.family: guide.theme.fontFamily; font.pixelSize: 13 * guide.s }
         }
     }
     GlassSurface {

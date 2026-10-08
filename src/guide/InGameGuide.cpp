@@ -23,6 +23,9 @@
 #include <QLocale>
 #include <QSqlQuery>
 #include <QSqlDatabase>
+#include <QJsonObject>
+#include <functional>
+#include <memory>
 #include <QSettings>
 #include <QSaveFile>
 #include <QElapsedTimer>
@@ -96,7 +99,6 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
       });
     }
   });
-  connect(&m_input, &GuideInput::lost, this, &InGameGuide::close);
   connect(&m_input, &GuideInput::action, this, [this](const QString& action, const QString& family) {
     if (!m_opened && !m_opening) return;
     if (m_opening) {
@@ -234,7 +236,7 @@ void InGameGuide::refreshGame() {
   }
   m_output = m_gameMode ? m_gameMode->sessionOutputName() : QString{};
   if (!chosen.isEmpty() && m_compositor) {
-    const auto window = m_compositor->windowForPid(chosen.value("pid").toLongLong());
+    const auto window = gameWindow(chosen);
     if (!window.output.isEmpty()) m_output = window.output;
   }
 }
@@ -281,12 +283,22 @@ QJsonArray InGameGuide::achievementItems(const QString& appId) const {
   return items;
 }
 
+// The game's window: by its process, or for Steam games by the steam_app_<id> class.
+GameModeWindow InGameGuide::gameWindow(const QVariantMap& session) const {
+  if (!m_compositor) return {};
+  auto window = m_compositor->windowForPid(session.value("pid").toLongLong());
+  if (!window.valid() && session.value("source") == "Steam") {
+    const auto appId = GuideArt::appId("Steam", {{"appId", session.value("path")}});
+    if (!appId.isEmpty()) window = m_compositor->windowForClass("steam_app_" + appId);
+  }
+  return window;
+}
+
 QJsonObject InGameGuide::payload() const {
   auto data = GuidePayload::build(m_session, m_metadata, m_output, m_family, m_pauseWhileOpen, m_paused);
   auto model = data.value("data").toObject();
   if (!m_session.isEmpty()) {
     auto game = model.value("game").toObject();
-    game.insert("note", GuideActions::notes(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-notes", GuideActions::key(m_session)));
     game.insert("forceReady", m_forceReady);
     const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
     const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
@@ -369,8 +381,8 @@ bool InGameGuide::toggle(const QString& node) {
   m_restoreFocus = true;
   if (!m_session.isEmpty() && m_compositor &&
       ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) {
-    const auto gameWindow = m_compositor->windowForPid(m_session.value("pid").toLongLong());
-    if (gameWindow.valid()) m_compositor->focusWindow(gameWindow.address);
+    const auto window = gameWindow(m_session);
+    if (window.valid()) m_compositor->focusWindow(window.address);
   }
   m_token = QUuid::createUuid().toString(QUuid::WithoutBraces);
   m_family = node.isEmpty() ? "keyboard" : "generic";
@@ -412,7 +424,7 @@ void InGameGuide::finishClose(bool hide) {
     QTimer::singleShot(100, this, [this, game] {
       if (m_opened || m_opening || !m_compositor || (m_gameMode && m_gameMode->parked()) ||
           !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong())) return;
-      const auto window = m_compositor->windowForPid(game.value("pid").toLongLong());
+      const auto window = gameWindow(game);
       if (window.valid()) m_compositor->focusWindow(window.address);
     });
   }
@@ -464,21 +476,44 @@ void InGameGuide::message(const QJsonObject& data) {
     const bool ok = store.snapshot(context.value("game").toString(), context, layout, &error);
     if (!wasPaused) stopGuard();
     toast(ok ? "Saves backed up" : "Backup failed", error);
-  } else if (action == "notes-save" && m_opened && !m_session.isEmpty()) {
-    const bool ok = GuideActions::saveNotes(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-notes", GuideActions::key(m_session), data.value("value").toString());
-    toast(ok ? "Notes saved" : "Notes could not be saved");
   } else if (action == "steam-overlay" && m_opened && m_session.value("source") == "Steam") {
     if (!m_compositor) return;
-    const auto window = m_compositor->windowForPid(m_session.value("pid").toLongLong());
+    const auto window = gameWindow(m_session);
     const auto game = m_session;
     close();
-    if (window.valid()) QTimer::singleShot(250, this, [this, window, game] {
+    if (!window.valid()) { toast("Steam overlay unavailable", "Press Shift+Tab in the game"); return; }
+    // The overlay hook in the game reads X11 key events, so it needs a real Shift press,
+    // not Tab with a Shift flag. Wait until the resumed game holds focus, then send it once.
+    auto attempts = std::make_shared<int>(0);
+    auto send = std::make_shared<std::function<void()>>();
+    *send = [this, window, game, attempts, send] {
       if (m_opened || m_opening || !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong()) ||
-          m_compositor->windowForPid(game.value("pid").toLongLong()).address != window.address) return;
+          gameWindow(game).address != window.address) return;
       m_compositor->focusWindow(window.address);
-      const auto expression = QStringLiteral("hl.dsp.send_shortcut({mods=\"SHIFT\",key=\"TAB\",window=\"address:%1\"})").arg(window.address);
-      QProcess::startDetached("hyprctl", {"dispatch", expression});
-    });
+      QByteArray active;
+      QProcess probe; probe.start("hyprctl", {"-j", "activewindow"}); probe.waitForFinished(500);
+      active = probe.readAllStandardOutput();
+      if (QJsonDocument::fromJson(active).object().value("address").toString() != window.address) {
+        if (++*attempts < 8) QTimer::singleShot(100, this, *send);
+        else toast("Steam overlay unavailable", "Press Shift+Tab in the game");
+        return;
+      }
+      const auto xdotool = QStandardPaths::findExecutable("xdotool");
+      if (!xdotool.isEmpty() && window.xwayland) {
+        // XTEST into the game's XWayland server: the same events a keyboard makes.
+        QProcess::startDetached(xdotool, {"key", "--delay", "60", "shift+Tab"});
+        return;
+      }
+      const auto target = QStringLiteral("address:%1").arg(window.address);
+      const QStringList steps{
+        QStringLiteral("hl.dsp.send_key_state({mods=\"\",key=\"Shift_L\",state=\"down\",window=\"%1\"})").arg(target),
+        QStringLiteral("hl.dsp.send_key_state({mods=\"SHIFT\",key=\"Tab\",state=\"down\",window=\"%1\"})").arg(target),
+        QStringLiteral("hl.dsp.send_key_state({mods=\"SHIFT\",key=\"Tab\",state=\"up\",window=\"%1\"})").arg(target),
+        QStringLiteral("hl.dsp.send_key_state({mods=\"\",key=\"Shift_L\",state=\"up\",window=\"%1\"})").arg(target)};
+      for (int i = 0; i < steps.size(); ++i)
+        QTimer::singleShot(i * 40, this, [step = steps[i]] { QProcess::startDetached("hyprctl", {"dispatch", step}); });
+    };
+    QTimer::singleShot(250, this, *send);
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();
     if (action == "force-quit") {

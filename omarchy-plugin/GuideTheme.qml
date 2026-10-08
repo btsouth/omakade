@@ -118,7 +118,6 @@ QtObject {
     readonly property string replay: "\u{f02da}"
     readonly property string record: "\u{f044b}"
     readonly property string steam: "\u{f04d3}"
-    readonly property string notes: "\u{f082e}"
     readonly property string power: "\u{f0425}"
     readonly property string sleep: "\u{f0904}"
     readonly property string trophy: "\u{f0538}"

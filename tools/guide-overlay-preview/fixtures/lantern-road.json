@@ -4,7 +4,6 @@
               "wifi": true, "bluetooth": true, "dnd": true, "battery": { "percent": 82, "charging": false } },
   "game": { "title": "Lantern Road", "source": "Steam", "kind": "steam", "cover": "@/cover.jpg",
             "sessionMinutes": 42, "totalMinutes": 1880, "pauseWhileOpen": true,
-            "note": "Take the ferry after sunset",
             "achievements": { "unlocked": 23, "total": 63, "latest": { "name": "Night Market Regular", "ago": "12 min ago" }, "closest": { "name": "Ferryman", "description": "Cross the bay at night", "progressText": "4 / 5", "progress": 0.8 } } },
   "capture": { "replayOn": true, "replaySeconds": 30, "recording": false, "folder": "~/Pictures/Screenshots",
                "lastShot": "@/game.jpg",

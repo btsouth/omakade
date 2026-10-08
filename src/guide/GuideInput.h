@@ -3,6 +3,7 @@
 #include <QHash>
 #include "guidebutton/GuideListener.h"
 #include <functional>
+#include <QFileSystemWatcher>
 #include <QObject>
 #include <QSet>
 #include <QStringList>
@@ -32,6 +33,8 @@ public:
   ~GuideInput() override;
   bool grab(const QString& preferredNode, QString* family, QString* error);
   void release();
+  // Grab controllers that appeared since grab(); the /dev/input watcher calls this.
+  void rescan();
   void inject(int type, int code, int value);
   bool identify(const QString& node, QString* error);
   struct Access {
@@ -49,11 +52,17 @@ public:
   size_t grabbedCount() const;
 signals:
   void action(const QString& action, const QString& family);
-  void lost();
 private:
   struct Device;
   Access m_access;
+  bool attach(const GuideListener::Controller& pad, QStringList* warnings);
+  void drop(const QString& node);
+  QList<GuideListener::Controller> scan() const;
   void read(Device& device);
+  // Steam Input deletes and recreates its virtual pads while a game runs: pads that
+  // appear while the guide is open are grabbed too, or the game would see them.
+  QFileSystemWatcher m_watcher;
+  QTimer m_rescan;
   std::vector<std::unique_ptr<Device>> m_devices;
   GuideInputMap m_injected;
   QTimer m_repeat;

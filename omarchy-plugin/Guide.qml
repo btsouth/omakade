@@ -34,9 +34,7 @@ Item {
   property string family: "keyboard"
   property int tab: 0
   property var cursors: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
-  property bool notesOpen: false
   property bool achievementsOpen: false
-  property string noteDraft: ""
   property bool forceReady: false
   property var genericWindow: ({})
   property var preferences: Settings.settings({})
@@ -173,7 +171,6 @@ Item {
     if (p.pad) root.family = p.pad
     if (p.fixture) { root.backend = null; root.fixtureMode = true; fixtureFile.path = p.fixture }
     if (p.tab !== undefined) root.setTab(p.tab)
-    root.notesOpen = false
     root.achievementsOpen = false
     root.forceReady = false
     root.confirmingQuit = !!p.confirm
@@ -209,8 +206,6 @@ Item {
     root.notify("opened", null)
   }
   function close() {
-    if (root.notesOpen && root.family === "keyboard") root.notify("notes-save", root.noteDraft)
-    root.notesOpen = false
     root.achievementsOpen = false
     root.notify("closed", null)
     root.opening = false
@@ -279,7 +274,6 @@ Item {
     if (!root.fixtureMode) {
       if (name === "resume") { root.close(); return }
       if (name === "quit") { root.confirmingQuit = true; root.confirmIndex = 0; return }
-      if (name === "notes") { root.noteDraft = (root.model.game || {}).note || ""; root.notesOpen = true; Qt.callLater(function() { if (root.family === "keyboard") noteEdit.forceActiveFocus() }); return }
       if (name === "screenshot") { root.saveScreenshot(); return }
       if (["replay-length", "capture-sound", "couch-scale", "prompts"].indexOf(name) >= 0) {
         var key = {"replay-length": "replaySeconds", "capture-sound": "sound", "couch-scale": "couch", "prompts": "prompts"}[name]
@@ -385,7 +379,7 @@ Item {
     onLoadFailed: { root.settingsLoaded = true }
   }
 
-  function currentRows() { return root.achievementsOpen ? [] : root.notesOpen ? [[noteClose]] : root.confirmingQuit ? root.confirmRows : root.rowsOf(root.page) }
+  function currentRows() { return root.achievementsOpen ? [] : root.confirmingQuit ? root.confirmRows : root.rowsOf(root.page) }
   function focusControl(item) {
     var rows = currentRows()
     for (var r = 0; r < rows.length; r++) {
@@ -441,7 +435,7 @@ Item {
       break
     case "a": if (root.focused) root.focused.activate(); break
     case "b":
-      if (root.notesOpen) { root.notesOpen = false; keys.forceActiveFocus() } else if (root.confirmingQuit) { root.confirmingQuit = false; root.updateRing() } else root.close()
+      if (root.confirmingQuit) { root.confirmingQuit = false; root.updateRing() } else root.close()
       break
     case "guide": case "start": root.close(); break
     case "lb": if (!root.confirmingQuit) setTab(root.tab - 1); break
@@ -825,41 +819,6 @@ Item {
             Action { id: confirmCancel; g: g; variant: "tile"; width: g.s(150); height: g.s(52); title: "Keep playing"; onTriggered: root.input("b") }
             Action { id: confirmQuit; g: g; variant: "tile"; width: g.s(150); height: g.s(52); title: root.forceReady || (root.model.game || {}).forceReady ? "Force quit" : "Quit"; danger: true; onTriggered: root.quitGame() }
           }
-        }
-      }
-
-      Rectangle {
-        visible: root.notesOpen
-        anchors.fill: parent; radius: g.radius; color: g.background
-        MouseArea { anchors.fill: parent }
-        Column {
-          x: rail.width + g.s(22); y: g.s(24)
-          width: parent.width - x - g.s(22); spacing: g.s(16)
-          Label { g: g; role: "heading"; text: "Notes"; width: parent.width }
-          Label { g: g; role: "small"; text: root.family === "keyboard" ? "Ctrl+S saves. Escape returns to the game page." : "Edit with a keyboard"; width: parent.width; wrapMode: Text.WordWrap }
-          Rectangle {
-            width: parent.width; height: panel.height - g.s(230)
-            color: g.well; border.color: g.line; border.width: 1; radius: g.innerRadius
-            Flickable {
-              anchors.fill: parent; anchors.margins: g.s(14); clip: true
-              contentWidth: width; contentHeight: Math.max(height, noteEdit.contentHeight)
-              TextEdit {
-                id: noteEdit
-                width: parent.width; height: Math.max(parent.height, contentHeight)
-                text: root.noteDraft; onTextChanged: if (activeFocus) root.noteDraft = text
-                color: g.foreground; selectionColor: g.accent; selectedTextColor: g.accentInk
-                font.family: g.font; font.pixelSize: g.f(16)
-                textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap
-                readOnly: root.family !== "keyboard"; selectByMouse: !readOnly
-                Keys.onPressed: function(e) {
-                  root.useKeyboard()
-                  if (e.key === Qt.Key_Escape) { root.notify("notes-save", root.noteDraft); root.notesOpen = false; keys.forceActiveFocus(); e.accepted = true }
-                  else if (e.key === Qt.Key_S && (e.modifiers & Qt.ControlModifier)) { root.notify("notes-save", root.noteDraft); e.accepted = true }
-                }
-              }
-            }
-          }
-          Action { id: noteClose; g: g; width: parent.width; title: root.family === "keyboard" ? "Save and return" : "Return"; onTriggered: { if (root.family === "keyboard") root.notify("notes-save", root.noteDraft); root.notesOpen = false; keys.forceActiveFocus() } }
         }
       }
 

@@ -1,7 +1,7 @@
 # In-game guide design preview
 
 This is a standalone QML prototype. It does not load Omakade, control a game,
-change audio, capture the desktop, or write game notes to disk. Session, capture,
+change audio, capture the desktop, or write to disk. Session, capture,
 controller and music data are fixtures. Integration follows design acceptance.
 
 Run every preview and export inside omabox. Use the active desktop's font and
@@ -24,7 +24,7 @@ The small numbers show focus order. Up/down follows the visual order through
 actions and captures. Left/right moves between capture actions, thumbnails and
 music transport controls.
 A opens Controls & more; left/right or A changes its settings. B returns to the
-main page. Notes has a D-pad keyboard, Save and Cancel. Quit defaults to Keep
+main page. Quit defaults to Keep
 playing and requires a second selection. `--page=tools`, `--focus=3`,
 `--variant=emulator`, `--backdrop=game2.jpg` and `--closed` select preview states.
 

@@ -1,33 +1,14 @@
 #include "guide/GuideActions.h"
 #include "tracking/ProcFs.h"
-#include <QCryptographicHash>
-#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonObject>
-#include <QSaveFile>
 #include <QSet>
 #include <csignal>
 #include <sys/syscall.h>
 #include <unistd.h>
 
 namespace GuideActions {
-QString key(const QVariantMap& game) {
-  if (game.isEmpty()) return {};
-  const auto identity = game.value("source").toString().toUtf8() + '\0' + game.value("path", game.value("appId")).toString().toUtf8();
-  return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex());
-}
-QString notes(const QString& directory, const QString& key) {
-  if (key.isEmpty()) return {};
-  QFile file(directory + '/' + key + ".txt");
-  return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.read(8192)) : QString{};
-}
-bool saveNotes(const QString& directory, const QString& key, const QString& text) {
-  if (key.isEmpty() || text.toUtf8().size() > 8192 || !QDir().mkpath(directory)) return false;
-  QSaveFile file(directory + '/' + key + ".txt");
-  const auto bytes = text.toUtf8();
-  return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit();
-}
 QString mangoConfig(const QString& socket, const QString& level, int limit) {
   QString config = "no_display\ncontrol=" + socket + "\nfps_limit=" + QString::number(qMax(0, limit)) + '\n';
   if (level == "full") config += "full\n";

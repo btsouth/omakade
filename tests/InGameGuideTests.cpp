@@ -3,6 +3,7 @@
 #include "guide/InGameGuide.h"
 #include <QTemporaryDir>
 #include <QDir>
+#include <QHash>
 #include <QImage>
 #include <QUrl>
 #include <fcntl.h>
@@ -35,9 +36,9 @@ private slots:
   void guardTreeAndIdentity();
   void protocolExtension();
   void mangoBuilding();
-  void notesStorage();
   void couchScale();
   void perDeviceGrab();
+  void padsChangingWhileOpen();
   void identifyOnGrabbedDevice();
   void trackedQuit();
   void guardDeathResume();
@@ -102,7 +103,6 @@ void InGameGuideTests::payloadUnknowns() {
   QVERIFY(!game.contains("totalMinutes"));
   QVERIFY(!game.contains("sessionMinutes"));
   QVERIFY(!game.contains("achievements"));
-  QVERIFY(!game.contains("notes"));
 }
 
 void InGameGuideTests::payloadRoundTrip() {
@@ -255,7 +255,7 @@ void InGameGuideTests::guardTreeAndIdentity() {
 void InGameGuideTests::protocolExtension() {
   auto payload = GuidePayload::build({{"name", "Game"}, {"source", "Manual"}}, {}, "DP-2", "xbox", true, false);
   auto data = payload.value("data").toObject(); auto game = data.value("game").toObject();
-  game.insert("note", "hello"); game.insert("forceReady", true); data.insert("game", game);
+  game.insert("forceReady", true); data.insert("game", game);
   data.insert("performance", QJsonObject{{"nextLaunch", true}}); payload.insert("data", data);
   QJsonObject result; QVERIFY(GuidePayload::parse(QJsonDocument(payload).toJson(), &result)); QCOMPARE(result, payload);
   QFile file(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideProtocol.js")); QVERIFY(file.open(QIODevice::ReadOnly));
@@ -277,17 +277,6 @@ void InGameGuideTests::mangoBuilding() {
   QCOMPARE(GuideActions::mangoVisibilityCommand(false, true), QByteArray(":hud;"));
   QCOMPARE(GuideActions::mangoVisibilityCommand(true, false), QByteArray(":hud;"));
   QVERIFY(GuideActions::mangoVisibilityCommand(true, true).isEmpty());
-}
-void InGameGuideTests::notesStorage() {
-  QTemporaryDir directory; QVERIFY(directory.isValid());
-  const auto a = GuideActions::key({{"source", "Manual"}, {"path", "../game"}});
-  const auto b = GuideActions::key({{"source", "Steam"}, {"path", "../game"}});
-  QVERIFY(a != b); QVERIFY(!a.contains('/'));
-  QVERIFY(GuideActions::saveNotes(directory.path(), a, "A note 🕹\nSecond line"));
-  QCOMPARE(GuideActions::notes(directory.path(), a), QString("A note 🕹\nSecond line"));
-  QVERIFY(GuideActions::notes(directory.path(), b).isEmpty());
-  QVERIFY(!GuideActions::saveNotes(directory.path(), a, QString(8193, 'a')));
-  QVERIFY(GuideActions::saveNotes(directory.path(), a, "")); QVERIFY(GuideActions::notes(directory.path(), a).isEmpty());
 }
 void InGameGuideTests::couchScale() {
   QFile file(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideSettings.js")); QVERIFY(file.open(QIODevice::ReadOnly));
@@ -331,6 +320,46 @@ void InGameGuideTests::perDeviceGrab() {
   QVERIFY(warning.contains("Unavailable pad could not be opened"));
   QVERIFY(warning.contains("controller that opened the guide disconnected"));
   input.release(); ::close(writer); QCOMPARE(ungrabs, 2);
+}
+
+void InGameGuideTests::padsChangingWhileOpen() {
+  // Steam Input replaces its virtual pad while a game runs; the replacement must be held
+  // too, and losing a pad must not close the guide.
+  GuideInput input;
+  QList<GuideListener::Controller> pads{{"event15", "a", "Microsoft X-Box 360 pad", false}};
+  QHash<QString, int> writers;
+  int grabs = 0;
+  GuideInput::Access access;
+  access.scan = [&pads] { return pads; };
+  access.open = [&writers](const QString& node) {
+    int pipe[2];
+    if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+    writers.insert(node, pipe[1]);
+    return pipe[0];
+  };
+  access.grab = [&grabs](int) { ++grabs; return true; };
+  access.ungrab = [](int) {};
+  input.setAccess(access);
+  QString family, warning;
+  QSignalSpy actions(&input, &GuideInput::action);
+  QVERIFY(input.grab("event15", &family, &warning));
+  QCOMPARE(input.deviceCount(), size_t(1));
+  pads.append({"event16", "b", "Microsoft X-Box 360 pad 0", true});
+  input.rescan();
+  QCOMPARE(input.deviceCount(), size_t(2)); QCOMPARE(input.grabbedCount(), size_t(2)); QCOMPARE(grabs, 2);
+  input.rescan();
+  QCOMPARE(input.deviceCount(), size_t(2));
+  input_event event{}; event.type = EV_KEY; event.code = BTN_SOUTH; event.value = 1;
+  QCOMPARE(::write(writers.value("event16"), &event, sizeof(event)), ssize_t(sizeof(event)));
+  QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "a");
+  pads.removeLast();
+  ::close(writers.take("event16"));
+  QTRY_COMPARE(input.deviceCount(), size_t(1));
+  event.code = BTN_EAST;
+  QCOMPARE(::write(writers.value("event15"), &event, sizeof(event)), ssize_t(sizeof(event)));
+  QTRY_COMPARE(actions.size(), 2); QCOMPARE(actions.last().first().toString(), "b");
+  input.release();
+  for (const int fd : writers) ::close(fd);
 }
 
 void InGameGuideTests::identifyOnGrabbedDevice() {

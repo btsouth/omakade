@@ -133,6 +133,7 @@ GameModeWindow HyprlandGameModeCompositor::parseWindow(const QByteArray& clients
     window.floating = client.value(QLatin1String("floating")).toBool();
     window.fullscreenMode = client.value(QLatin1String("fullscreen")).toInt();
     window.fullscreenClient = client.value(QLatin1String("fullscreenClient")).toInt();
+    window.xwayland = client.value(QLatin1String("xwayland")).toBool();
     window.fullscreen = window.fullscreenMode != 0;
     window.workspace = workspaceSelector(client.value(QLatin1String("workspace")).toObject());
     const int monitor = client.value(QLatin1String("monitor")).toInt(-1);
@@ -258,6 +259,25 @@ GameModeWindow HyprlandGameModeCompositor::windowForPid(qint64 pid) {
     return {};
   }
   return parseWindow(clients, outputs(), pid);
+}
+
+GameModeWindow HyprlandGameModeCompositor::windowForClass(const QString& windowClass) {
+  QByteArray clients;
+  if (windowClass.isEmpty() ||
+      !run(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")}, &clients)) {
+    return {};
+  }
+  for (const QJsonValue& value : QJsonDocument::fromJson(clients).array()) {
+    const QJsonObject client = value.toObject();
+    if (client.value(QLatin1String("class")).toString() != windowClass ||
+        !client.value(QLatin1String("mapped")).toBool()) {
+      continue;
+    }
+    const qint64 pid = client.value(QLatin1String("pid")).toVariant().toLongLong();
+    const GameModeWindow window = parseWindow(clients, outputs(), pid);
+    if (window.valid()) return window;
+  }
+  return {};
 }
 
 int HyprlandGameModeCompositor::otherWindowsOn(const QString& workspace, qint64 pid) {

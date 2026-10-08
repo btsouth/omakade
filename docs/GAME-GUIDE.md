@@ -31,7 +31,7 @@ app IDs supply game identity. Launcher-backed data does not require play-session
 recording. Launcher processes are never expanded to guess which game to pause.
 The guide uses the game's actual window monitor, falling back to the Game Mode output.
 Opening makes that game accessible, and closing restores its focus after the overlay
-parks. Unknown playtime, achievements, art and notes remain absent.
+parks. Unknown playtime, achievements and art remain absent.
 
 Pause defaults on. A library tag `online` or `multiplayer` defaults it off; the guide's
 Pause control saves a per-game override. Games without a verified process start time
@@ -88,7 +88,7 @@ readers ignore the added optional fields. Shell lifecycle commands remain serial
 heartbeat releases ownership if the shell disappears or opens a different payload.
 
 The fixture payload (`fixture`, `tab`, `pad`, `scale`, `audit`) remains supported by
-preview tooling. A generic summon with `{}` clears game and notes and opens System,
+preview tooling. A generic summon with `{}` clears the game and opens System,
 with a real clock and independent quick settings. Generic capture, audio, media, batteries and quick settings stay plugin-owned.
 Game controls are absent without a known game; unknown hardware values stay absent.
 
@@ -98,11 +98,6 @@ with the theme scrim. Theme changes snapshot the complete previous panel and fad
 out over the new panel in 180 ms; reduced motion applies the new theme immediately.
 
 ## Game actions
-
-Notes use one local text file per source and game identity under Omakade's data
-folder, in `guide-notes`. A keyboard edits the text, Ctrl+S saves, and Escape
-returns. Controllers see read-only notes with an Edit with a keyboard hint. There
-is no on-screen keyboard. Notes are limited to 8 KiB and writes are atomic.
 
 Quit resumes first, then sends SIGTERM to the game's pinned process tree. After
 five seconds, a surviving tree enables explicit Force quit with SIGKILL. The guide
@@ -167,7 +162,7 @@ used by the evdev reader, without claiming that a box has real controller device
 
 Native tests cover payload and plugin parser agreement, unknown data, button mapping,
 axis calibration/hysteresis, family selection, process-tree pause, identity refusal,
-pipe-loss and guard-death resume, per-device grabs, notes storage, quit escalation,
+pipe-loss and guard-death resume, per-device grabs, quit escalation,
 MangoHud configuration and Auto couch-scale boundaries. A box covers shell IPC, capture, navigation, themes, process
 signals and compositor focus. Physical evdev grabs, hidraw/Steam Input leak paths and
 multiple physical monitors remain hardware checks.
