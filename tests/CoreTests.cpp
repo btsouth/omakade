@@ -1081,6 +1081,8 @@ private slots:
   void heroicOwnedLibrariesImportWithoutInstalledInventories();
   void heroicOwnedAvailabilityPersistsAndTracksUninstall();
   void heroicOwnedCacheFailuresKeepPreviousLibrary();
+  void heroicEmptyStoreCachesDoNotBlockInstalledGogGames();
+  void heroicEmptyStoreCachesPreserveOwnedGames();
   void heroicOwnedDuplicateRootsPreferInstalled();
   void heroicInstalledColumnMigratesExistingDatabase();
   void gogScannerImportsLooseInstallsAndConfinesLaunchTasks();
@@ -3606,7 +3608,10 @@ void CoreTests::heroicOwnedCacheFailuresKeepPreviousLibrary() {
   HeroicGameModel model(directory.filePath("library.sqlite3"));
   model.refreshFromRoots({root});
   QCOMPARE(model.rowCount(), 1);
-  for (const QByteArray bad : {QByteArray("not json"), QByteArray("{}"),
+  for (const QByteArray bad : {QByteArray("not json"), QByteArray("[]"),
+                             QByteArray(R"({"library":null})"),
+                             QByteArray(R"({"library":{}})"),
+                             QByteArray(R"({"unexpected":true})"),
                              QByteArray(R"({"library":[{"title":"Missing ID"}]})"),
                              QByteArray(R"({"library":[{"app_name":"../escape","title":"Unsafe ID"}]})")}) {
     writeFile(cache, bad);
@@ -3624,6 +3629,71 @@ void CoreTests::heroicOwnedCacheFailuresKeepPreviousLibrary() {
   writeFile(other + "/store_cache/legendary_library.json", R"({"library":[]})");
   model.refreshFromRoots({other});
   QCOMPARE(model.rowCount(), 1); // Missing original config root is not proof ownership vanished.
+}
+
+void CoreTests::heroicEmptyStoreCachesDoNotBlockInstalledGogGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.filePath("heroic");
+  const QString gamePath = directory.filePath("shared/GOG Galaxy/Games/Cyberpunk 2077");
+  const QString db = directory.filePath("library.sqlite3");
+  writeFile(root + "/store_cache/legendary_library.json", "{}");
+  writeFile(root + "/store_cache/nile_library.json", "{}");
+  writeFile(root + "/gog_store/installed.json",
+            R"({"installed":[{"appName":"1423049311","install_path":")" +
+                gamePath.toUtf8() + R"(","is_dlc":false,"platform":"windows"}]})");
+  writeFile(gamePath + "/goggame-1423049311.info",
+            R"({"name":"Cyberpunk 2077","playTasks":[{"isPrimary":true,"type":"FileTask","path":"bin/x64/Cyberpunk2077.exe"}]})");
+  writeFile(gamePath + "/bin/x64/Cyberpunk2077.exe", "game");
+
+  const auto result = HeroicScanner::scan({root});
+  QVERIFY(!result.incomplete);
+  QVERIFY(result.warnings.isEmpty());
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.first().runner, QStringLiteral("gog"));
+
+  HeroicGameModel model(db);
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.index(0).data(GameRoles::AppId).toString(), QStringLiteral("1423049311"));
+  QCOMPARE(model.index(0).data(GameRoles::Source).toString(), QStringLiteral("Heroic"));
+  QCOMPARE(model.index(0).data(GameRoles::InstallPath).toString(), gamePath);
+  QVERIFY(model.index(0).data(GameRoles::Installed).toBool());
+  HeroicGameModel reloaded(db);
+  QCOMPARE(reloaded.rowCount(), 1);
+  QCOMPARE(reloaded.index(0).data(GameRoles::InstallPath).toString(), gamePath);
+  QVERIFY(reloaded.index(0).data(GameRoles::Installed).toBool());
+}
+
+void CoreTests::heroicEmptyStoreCachesPreserveOwnedGames() {
+  // An uninitialized cache is not proof ownership vanished, unlike an explicit empty array.
+  for (const QString& filename : {QStringLiteral("legendary_library.json"),
+                                  QStringLiteral("nile_library.json"),
+                                  QStringLiteral("gog_library.json")}) {
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString root = directory.filePath("heroic");
+    const QString cache = root + "/store_cache/" + filename;
+    const QByteArray field = filename == "gog_library.json" ? "games" : "library";
+    writeFile(cache, "{\"" + field + R"(":[{"app_name":"123","title":"Owned"}]})");
+    HeroicGameModel model(directory.filePath("library.sqlite3"));
+    model.refreshFromRoots({root});
+    QCOMPARE(model.rowCount(), 1);
+    model.toggleFavorite(0);
+
+    writeFile(cache, "{}");
+    const auto result = HeroicScanner::scan({root});
+    QVERIFY(!result.incomplete);
+    QVERIFY(result.warnings.isEmpty());
+    model.refreshFromRoots({root});
+    QCOMPARE(model.rowCount(), 1);
+    QVERIFY(!model.index(0).data(GameRoles::Installed).toBool());
+    QVERIFY(model.index(0).data(GameRoles::Favorite).toBool());
+
+    writeFile(cache, "{\"" + field + "\":[]}");
+    model.refreshFromRoots({root});
+    QCOMPARE(model.rowCount(), 0);
+  }
 }
 
 void CoreTests::heroicOwnedDuplicateRootsPreferInstalled() {
