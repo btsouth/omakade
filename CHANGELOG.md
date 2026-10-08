@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.16.0
+
+An in-game guide for Omarchy: press Super + Ctrl + G or the controller Home button
+over a running game to pause it, check achievements, capture and adjust sound without
+leaving the game.
+
+- The guide is an Omarchy shell plugin (`omakade.guide`, in the repository's
+  `omarchy-plugin` folder) that follows your theme. Omakade supplies game detection,
+  controller input and pause state. Without the plugin, Game Mode keeps its existing controls.
+- Pages for the game (resume, pause, quit, return to the desktop, library), captures
+  (screenshot, clip, replay buffer, recent captures with a preview), performance,
+  sound, controllers and system toggles. LB and RB switch pages; B, Start, Guide and
+  Escape close it.
+- Achievements list for Steam games, with icons, progress and recent unlocks.
+- While open, the guide holds your controllers so presses do not reach the game, and
+  pauses the game (on by default; off for games tagged online or multiplayer).
+- Quit shows "Closing" and returns as soon as the game exits. Recorder errors read as
+  plain causes, and long toasts wrap.
+- Optional `xdotool` adds a button that opens the Steam overlay.
+- A second B press within 300 ms of leaving the achievements list is ignored, so a
+  double press does not close the guide.
+
+[Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.0) ·
+[Guide documentation](https://github.com/btsouth/omakade/blob/v1.16.0/docs/GAME-GUIDE.md)
+
 ## 1.15.0
 
 Press the Xbox, PlayStation or Home button to start Game Mode, return to the desktop

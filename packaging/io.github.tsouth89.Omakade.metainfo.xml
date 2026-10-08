@@ -26,6 +26,12 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.16.0" date="2026-10-07">
+      <description>
+        <p>Adds an in-game guide for Omarchy, opened with Super + Ctrl + G or the controller Home button: pause the game, see achievements, capture screenshots and clips, switch sound, and quit or return to the desktop.</p>
+        <p>The guide is an optional Omarchy shell plugin that follows your theme. Without it, Game Mode keeps its existing controls.</p>
+      </description>
+    </release>
     <release version="1.15.0" date="2026-10-04">
       <description>
         <p>Adds an optional Controller Home button setting: the Xbox, PlayStation or Home button on any controller starts Game Mode, returns to the desktop and resumes, like the keyboard shortcut.</p>
