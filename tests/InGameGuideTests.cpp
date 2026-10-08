@@ -588,23 +588,28 @@ void InGameGuideTests::pluginKeepsUserCopyAndWaitsForShell() {
 }
 
 void InGameGuideTests::pluginFallsBackWhenSummonFails() {
-  PluginFixture fixture; fixture.fakeShell("unknown", false);
-  QFile script(fixture.root.path() + "/bin-omarchy-shell");
+  PluginFixture fixture; fixture.fakeShell("ok", true);
   QDir().mkpath(fixture.root.path() + "/bin");
-  QFile::copy(fixture.paths.shellProgram, fixture.root.path() + "/bin/omarchy-shell");
-  QFile::setPermissions(fixture.root.path() + "/bin/omarchy-shell", QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
-  qputenv("PATH", (fixture.root.path() + "/bin:" + qEnvironmentVariable("PATH")).toUtf8());
+  QFile shell(fixture.root.path() + "/bin/omarchy-shell");
+  QVERIFY(shell.open(QIODevice::WriteOnly)); shell.write("#!/bin/sh\necho unknown\n"); shell.close();
+  QFile::setPermissions(shell.fileName(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+  const QByteArray originalPath = qgetenv("PATH");
+  qputenv("PATH", (fixture.root.path() + "/bin:" + originalPath).toUtf8());
   InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
   guide.m_enabled = true;
   QSignalSpy failed(&guide, &InGameGuide::summonFailed);
   QVERIFY(guide.toggle());
   QTRY_COMPARE(failed.count(), 1);
+  qputenv("PATH", originalPath);
   QVERIFY(!guide.opened()); QVERIFY(!guide.m_paused);
   // No plugin, no guide: the shortcut keeps its Game Mode behavior.
   QVERIFY(!guide.usable());
   guide.setPluginPaths(fixture.paths);
   QVERIFY(!guide.usable());
-  QVERIFY(GuidePlugin::ensure(fixture.paths) == false);
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QVERIFY(guide.usable());
+  guide.m_enabled = false;
+  QVERIFY(!guide.usable());
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

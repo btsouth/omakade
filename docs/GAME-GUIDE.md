@@ -2,8 +2,21 @@
 
 The guide is the `omakade.guide` Omarchy shell overlay in `omarchy-plugin/`.
 Omakade owns game discovery, controller input and pause state. The shell renders the
-approved D2 interface. Install and enable the plugin before using the native guide.
-On other desktops, Omakade retains its existing Game Mode controls.
+approved D2 interface. On other desktops, and wherever the plugin is not enabled,
+Omakade keeps its existing Game Mode controls.
+
+## Setup
+
+Nothing to install. The package ships the plugin in `/usr/share/omakade/omarchy-plugin`.
+The first time Omakade runs on Omarchy it links that folder into
+`~/.config/omarchy/plugins/omakade.guide` and enables it, so package upgrades update the
+plugin in place. If Omarchy's shell is not running at that moment, the next launch tries
+again. Omakade never replaces a plugin folder or link you put there yourself.
+
+To turn the guide off, run `omarchy plugin disable omakade.guide`; the shortcut and Home
+button go back to Game Mode. `omarchy plugin enable omakade.guide` turns it back on.
+When running from a source build, link `omarchy-plugin/` to
+`~/.config/omarchy/plugins/omakade.guide` yourself and enable it the same way.
 
 While a known game runs, the existing Super + Ctrl + G shortcut and the controller
 Home button open or close the guide. With no game, the shortcut keeps its existing

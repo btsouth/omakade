@@ -6,9 +6,9 @@ An in-game guide for Omarchy: press Super + Ctrl + G or the controller Home butt
 over a running game to pause it, check achievements, capture and adjust sound without
 leaving the game.
 
-- The guide is an Omarchy shell plugin (`omakade.guide`, in the repository's
-  `omarchy-plugin` folder) that follows your theme. Omakade supplies game detection,
-  controller input and pause state. Without the plugin, Game Mode keeps its existing controls.
+- Nothing extra to install: the package includes the guide and Omakade turns it on the
+  first time it runs on Omarchy. It follows your theme. To turn it off, run
+  `omarchy plugin disable omakade.guide`; Game Mode then keeps its existing controls.
 - Pages for the game (resume, pause, quit, return to the desktop, library), captures
   (screenshot, clip, replay buffer, recent captures with a preview), performance,
   sound, controllers and system toggles. LB and RB switch pages; B, Start, Guide and

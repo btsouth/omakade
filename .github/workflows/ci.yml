@@ -128,6 +128,9 @@ jobs:
           test -f stage/usr/share/applications/io.github.tsouth89.Omakade.desktop
           test -f stage/usr/share/metainfo/io.github.tsouth89.Omakade.metainfo.xml
           test -f stage/usr/share/omakade/skills/omakade-tv-gaming/SKILL.md
+          test -f stage/usr/share/omakade/omarchy-plugin/manifest.json
+          test -f stage/usr/share/omakade/omarchy-plugin/Guide.qml
+          test ! -e stage/usr/share/omakade/omarchy-plugin/__pycache__
           test -f stage/usr/share/omakade/skills/omakade-tv-gaming/references/session.md
           test -x stage/usr/share/omakade/skills/omakade-tv-gaming/scripts/omakade-tv-game.py
           stage/usr/share/omakade/skills/omakade-tv-gaming/scripts/omakade-tv-game.py --help
