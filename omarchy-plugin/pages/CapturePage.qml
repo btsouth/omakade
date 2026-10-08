@@ -73,7 +73,7 @@ PageRhythm {
 
   Column {
     width: parent.width
-    spacing: 0
+    spacing: root.g.s(8)
     Action {
       id: record
       g: root.g; width: parent.width
@@ -148,7 +148,7 @@ PageRhythm {
             g: root.g; role: "small"
             anchors.top: pic.bottom; anchors.topMargin: root.g.s(6)
             width: parent.width
-            text: parent.item ? (parent.item.kind === "Screenshot" ? "Screenshot" : parent.item.kind) + " · " + parent.item.age : ""
+            text: parent.item ? parent.item.age : ""
             elide: Text.ElideRight
           }
         }

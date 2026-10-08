@@ -35,6 +35,12 @@ Item {
   property int tab: 0
   property var cursors: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]
   property bool achievementsOpen: false
+  // Quit was confirmed and the game is being asked to close.
+  property bool quitting: false
+  // A capture opened from the Capture page, shown inside the guide.
+  property var previewItem: null
+  // B that backs out of a sheet must not also close the guide when it bounces or repeats.
+  property double sheetClosedAt: 0
   property bool forceReady: false
   property var genericWindow: ({})
   property var preferences: Settings.settings({})
@@ -172,6 +178,8 @@ Item {
     if (p.fixture) { root.backend = null; root.fixtureMode = true; fixtureFile.path = p.fixture }
     if (p.tab !== undefined) root.setTab(p.tab)
     root.achievementsOpen = false
+    root.previewItem = null
+    root.quitting = false
     root.forceReady = false
     root.confirmingQuit = !!p.confirm
     root.confirmIndex = 0
@@ -206,7 +214,10 @@ Item {
     root.notify("opened", null)
   }
   function close() {
+    if (root.opened) { console.log("GUIDE_CLOSE"); console.trace() }
     root.achievementsOpen = false
+    root.previewItem = null
+    root.quitting = false
     root.notify("closed", null)
     root.opening = false
     captureDeadline.stop()
@@ -270,7 +281,9 @@ Item {
   // fixture so every control can be seen working.
   function act(name, arg) {
     var title = (root.model.game || {}).title || "the game"
-    if (name === "achievements") { if ((((root.model.game || {}).achievements || {}).items || []).length) { achList.currentIndex = 0; achList.positionViewAtBeginning(); root.achievementsOpen = true; root.updateRing() } return }
+    if (name === "open-capture") { if (arg && arg.path) { root.previewRow = 0; root.previewItem = arg; Qt.callLater(root.updateRing) } return }
+    if (name === "open-folder") { var folder = (liveCapture.captureData || {}).folder; root.close(); if (folder) liveSystem.run(["xdg-open", folder]); return }
+    if (name === "achievements") { if ((((root.model.game || {}).achievements || {}).items || []).length) { achList.kept = 0; achList.currentIndex = 0; achList.positionViewAtBeginning(); root.achievementsOpen = true; root.updateRing() } return }
     if (!root.fixtureMode) {
       if (name === "resume") { root.close(); return }
       if (name === "quit") { root.confirmingQuit = true; root.confirmIndex = 0; return }
@@ -348,7 +361,7 @@ Item {
   }
   function quitGame() {
     if (root.fixtureMode) { root.close(); return }
-    if (root.backend) { root.notify(root.forceReady || (root.model.game || {}).forceReady ? "force-quit" : "quit-confirmed", null); return }
+    if (root.backend) { var force = root.forceReady || (root.model.game || {}).forceReady; root.quitting = !force; root.notify(force ? "force-quit" : "quit-confirmed", null); return }
     var window = root.genericWindow
     if (!window.address) { root.close(); return }
     if (root.forceReady) {
@@ -379,7 +392,7 @@ Item {
     onLoadFailed: { root.settingsLoaded = true }
   }
 
-  function currentRows() { return root.achievementsOpen ? [] : root.confirmingQuit ? root.confirmRows : root.rowsOf(root.page) }
+  function currentRows() { return root.achievementsOpen ? [] : root.previewItem ? [[previewOpen], [previewFolder]] : root.confirmingQuit ? (root.quitting && !(root.model.game || {}).forceReady ? [] : root.confirmRows) : root.rowsOf(root.page) }
   function focusControl(item) {
     var rows = currentRows()
     for (var r = 0; r < rows.length; r++) {
@@ -387,9 +400,10 @@ Item {
       if (c >= 0) { setCursor(r, c); return }
     }
   }
-  function cursorOf() { return root.confirmingQuit ? [0, root.confirmIndex] : root.cursors[root.tab] }
+  function cursorOf() { return root.confirmingQuit ? [0, root.confirmIndex] : root.previewItem ? [root.previewRow, 0] : root.cursors[root.tab] }
+  property int previewRow: 0
   function setCursor(r, c) {
-    if (root.confirmingQuit) { root.confirmIndex = c } else {
+    if (root.previewItem) { root.previewRow = r } else if (root.confirmingQuit) { root.confirmIndex = c } else {
       var copy = root.cursors.slice(); copy[root.tab] = [r, c]; root.cursors = copy
     }
     root.updateRing()
@@ -410,11 +424,12 @@ Item {
       else if (!root.opening && action === "guide") root.open("{}")
       return "closed"
     }
+    console.log("GUIDE_INPUT " + action + (root.achievementsOpen ? " achievements" : ""))
     if (root.achievementsOpen) {
       // The list scrolls under its own highlight; B returns to the game page.
       if (action === "up") achList.decrementCurrentIndex()
       else if (action === "down") achList.incrementCurrentIndex()
-      else if (action === "b") { root.achievementsOpen = false; root.updateRing() }
+      else if (action === "b") { root.achievementsOpen = false; root.sheetClosedAt = Date.now(); root.updateRing() }
       else if (action === "lb" || action === "rb") { root.achievementsOpen = false; setTab(root.tab + (action === "lb" ? -1 : 1)) }
       else if (action === "guide" || action === "start") root.close()
       else if (action === "y") root.act("screenshot")
@@ -435,11 +450,13 @@ Item {
       break
     case "a": if (root.focused) root.focused.activate(); break
     case "b":
-      if (root.confirmingQuit) { root.confirmingQuit = false; root.updateRing() } else root.close()
+      if (root.previewItem) { root.previewItem = null; root.sheetClosedAt = Date.now(); root.updateRing() }
+      else if (root.confirmingQuit) { root.confirmingQuit = false; root.updateRing() }
+      else if (Date.now() - root.sheetClosedAt > 300) root.close()
       break
     case "guide": case "start": root.close(); break
-    case "lb": if (!root.confirmingQuit) setTab(root.tab - 1); break
-    case "rb": if (!root.confirmingQuit) setTab(root.tab + 1); break
+    case "lb": if (!root.confirmingQuit) { root.previewItem = null; setTab(root.tab - 1) } break
+    case "rb": if (!root.confirmingQuit) { root.previewItem = null; setTab(root.tab + 1) } break
     case "y": root.act("screenshot"); break
     case "x": root.act("save-replay"); break
     }
@@ -472,7 +489,7 @@ Item {
     var item = root.focused
     if (!item || !root.opened) { ring.visible = false; return }
     // Keep the focused control on screen.
-    if (!root.confirmingQuit) {
+    if (!root.confirmingQuit && !root.previewItem) {
       var inPage = item.mapToItem(scroller.contentItem, 0, 0)
       var margin = g.s(16)
       if (scroller.contentHeight <= scroller.height + g.s(8)) scroller.contentY = 0
@@ -806,14 +823,19 @@ Item {
           width: parent.width - g.s(96)
           spacing: g.s(10)
           Glyph { g: g; name: g.icon.power; size: g.f(30); color: g.urgent; anchors.horizontalCenter: parent.horizontalCenter }
-          Label { g: g; role: "heading"; text: "Quit " + ((root.model.game || {}).title || "the game") + "?"; width: parent.width; horizontalAlignment: Text.AlignHCenter }
+          readonly property bool waiting: root.quitting && !(root.model.game || {}).forceReady
+          Label { g: g; role: "heading"; width: parent.width; horizontalAlignment: Text.AlignHCenter
+            text: (parent.waiting ? "Closing " : "Quit ") + ((root.model.game || {}).title || "the game") + (parent.waiting ? "…" : "?") }
           Label {
             g: g; role: "small"; width: parent.width; horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: root.fixtureMode ? "Progress since your last save is lost. If it does not close, you can force it." : "Progress since your last save may be lost. Omakade asks the game to close."
+            text: parent.waiting ? "Waiting for the game to exit. Force quit appears if it does not."
+              : (root.model.game || {}).forceReady ? "The game did not close. Force quit ends it now; unsaved progress is lost."
+              : root.fixtureMode ? "Progress since your last save is lost. If it does not close, you can force it." : "Progress since your last save may be lost. Omakade asks the game to close."
           }
           Item { width: 1; height: g.s(10) }
           Row {
+            visible: !parent.waiting
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: g.s(10)
             Action { id: confirmCancel; g: g; variant: "tile"; width: g.s(150); height: g.s(52); title: "Keep playing"; onTriggered: root.input("b") }
@@ -847,6 +869,10 @@ Item {
         ListView {
           id: achList
           readonly property var theme: g
+          // A payload update replaces the list; keep the player's place in it.
+          property int kept: 0
+          onCurrentIndexChanged: if (count > 0) kept = currentIndex
+          onModelChanged: if (root.achievementsOpen) Qt.callLater(function() { achList.currentIndex = Math.min(achList.kept, achList.count - 1); achList.positionViewAtIndex(achList.currentIndex, ListView.Contain) })
           x: achHeader.x - g.s(6); width: achHeader.width + g.s(12)
           anchors.top: achHeader.bottom; anchors.topMargin: g.s(16)
           anchors.bottom: parent.bottom; anchors.bottomMargin: g.s(64)
@@ -874,11 +900,11 @@ Item {
               x: achRow.t.s(12); anchors.verticalCenter: parent.verticalCenter
               width: achRow.t.s(46); height: width; radius: achRow.t.s(8)
               source: modelData.icon || ""
-              visible: !!modelData.icon
+              visible: !!modelData.icon && status !== Image.Error
               opacity: modelData.unlocked ? 1 : 0.35
             }
             Rectangle {
-              visible: !modelData.icon
+              visible: !achIconArt.visible
               x: achRow.t.s(12); anchors.verticalCenter: parent.verticalCenter
               width: achRow.t.s(46); height: width; radius: achRow.t.s(8); color: achRow.t.track
               Glyph { g: achRow.t; anchors.centerIn: parent; name: achRow.t.icon.trophy; size: achRow.t.f(20); color: achRow.modelData.unlocked ? achRow.t.accent : achRow.t.dim }
@@ -897,6 +923,73 @@ Item {
               anchors.right: parent.right; anchors.rightMargin: achRow.t.s(14); anchors.verticalCenter: parent.verticalCenter
               horizontalAlignment: Text.AlignRight
               text: achRow.modelData.unlocked ? (achRow.modelData.when || "Unlocked") : (achRow.modelData.rarity !== undefined && achRow.modelData.rarity > 0 ? Math.round(achRow.modelData.rarity) + "% have it" : "Locked")
+            }
+          }
+        }
+        Row {
+          anchors.right: parent.right; anchors.rightMargin: g.s(22)
+          anchors.bottom: parent.bottom; anchors.bottomMargin: g.s(22)
+          spacing: g.s(8)
+          PadGlyph { g: g; family: root.family; button: "b"; size: g.f(18); anchors.verticalCenter: parent.verticalCenter }
+          Label { g: g; role: "small"; text: "Back"; anchors.verticalCenter: parent.verticalCenter }
+        }
+      }
+
+      Rectangle {
+        id: previewSheet
+        readonly property var item: root.previewItem || {}
+        readonly property bool clip: item.kind === "Clip"
+        visible: !!root.previewItem
+        anchors.fill: parent; radius: g.radius; color: g.background
+        MouseArea { anchors.fill: parent }
+        Column {
+          x: rail.width + g.s(22); y: g.s(24)
+          width: parent.width - x - g.s(22); spacing: g.s(14)
+          Item {
+            width: parent.width; height: previewHeading.height
+            Label { id: previewHeading; g: g; role: "heading"; text: previewSheet.clip ? "Clip" : "Screenshot"; anchors.left: parent.left }
+            Label { g: g; role: "small"; text: previewSheet.item.age || ""; anchors.right: parent.right; anchors.verticalCenter: previewHeading.verticalCenter }
+          }
+          Rectangle {
+            width: parent.width; height: Math.round(width * 9 / 16)
+            radius: g.innerRadius; color: g.well; border.width: 1; border.color: g.line; clip: true
+            Image {
+              anchors.fill: parent; anchors.margins: 1
+              source: previewSheet.clip ? (previewSheet.item.thumb || "") : (previewSheet.item.path ? "file://" + previewSheet.item.path : "")
+              fillMode: Image.PreserveAspectFit; asynchronous: true
+              sourceSize.width: width * 2
+            }
+            Rectangle {
+              visible: previewSheet.clip
+              anchors.centerIn: parent
+              width: g.s(56); height: width; radius: width / 2
+              color: Qt.rgba(0, 0, 0, 0.55); border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.5)
+              Glyph { g: g; anchors.centerIn: parent; anchors.horizontalCenterOffset: g.s(2); name: g.icon.play; size: g.f(24); color: "white" }
+            }
+            Rectangle {
+              visible: previewSheet.clip && !!previewSheet.item.duration
+              anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: g.s(10)
+              width: previewDuration.implicitWidth + g.s(12); height: previewDuration.implicitHeight + g.s(6)
+              radius: g.innerRadius; color: g.background
+              Label { id: previewDuration; g: g; role: "small"; color: g.foreground; anchors.centerIn: parent; text: previewSheet.item.duration || "" }
+            }
+          }
+          Label { g: g; role: "caption"; width: parent.width; elide: Text.ElideMiddle; text: (previewSheet.item.path || "").split("/").pop() }
+          Column {
+            width: parent.width; spacing: g.s(6)
+            Action {
+              id: previewOpen
+              g: g; width: parent.width; height: g.s(58)
+              icon: previewSheet.clip ? g.icon.play : g.icon.capture
+              title: previewSheet.clip ? "Play clip" : "Open screenshot"
+              detail: "Leaves the guide"; chevron: true
+              onTriggered: { var path = previewSheet.item.path; root.close(); liveSystem.run(["xdg-open", path]) }
+            }
+            Action {
+              id: previewFolder
+              g: g; width: parent.width; height: g.s(58)
+              icon: g.icon.folder; title: "Show in folder"; detail: "Leaves the guide"; chevron: true
+              onTriggered: { var path = previewSheet.item.path || ""; root.close(); liveSystem.run(["xdg-open", path.substring(0, path.lastIndexOf("/"))]) }
             }
           }
         }

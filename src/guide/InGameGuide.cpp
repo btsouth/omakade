@@ -530,13 +530,18 @@ void InGameGuide::message(const QJsonObject& data) {
     const bool stopped = m_sessions && m_sessions->stopSession(pid, m_quitSession.value("procStart").toLongLong());
     m_quitTree.signal(SIGTERM, stopped ? pid : -1);
     const auto token = m_token;
-    QTimer::singleShot(5000, this, [this, token] {
+    // Close as soon as the game is gone; after five seconds offer force quit instead.
+    auto waited = std::make_shared<int>(0);
+    auto check = std::make_shared<std::function<void()>>();
+    *check = [this, token, waited, check] {
       if (token != m_token) return;
       if (!m_quitTree.alive()) { close(); return; }
+      if (++*waited < 25) { QTimer::singleShot(200, this, *check); return; }
       m_forceReady = true;
       send({{"type", "update"}, {"payload", payload()}});
       toast("Game is still running", "Force quit is now available");
-    });
+    };
+    QTimer::singleShot(200, this, *check);
   } else if ((action == "hud" || action == "limit" || action == "enable-mangohud") && m_opened) {
     if (action == "enable-mangohud") {
       toast("MangoHud setup", QStandardPaths::findExecutable("mangohud").isEmpty() ? "Install it with: sudo pacman -S mangohud"

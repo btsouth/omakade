@@ -14,7 +14,7 @@ BorderSurface {
   property string image: ""
 
   width: g.s(360)
-  height: g.s(72)
+  height: Math.max(g.s(72), toastText.implicitHeight + g.s(24))
   radius: g.radius
   color: Color.popups.background
   borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
@@ -45,11 +45,12 @@ BorderSurface {
       Glyph { visible: root.image === ""; g: root.g; anchors.centerIn: parent; name: root.icon; size: root.g.f(22); color: root.g.accent }
     }
     Column {
+      id: toastText
       anchors.verticalCenter: parent.verticalCenter
       width: parent.width - x
       spacing: root.g.s(2)
       Label { g: root.g; role: "title"; text: root.title; width: parent.width }
-      Label { g: root.g; role: "small"; text: root.detail; width: parent.width }
+      Label { g: root.g; role: "small"; text: root.detail; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight; visible: text !== "" }
     }
   }
 }

@@ -116,7 +116,7 @@ QtObject {
     readonly property string next: "\u{f04ad}"
     readonly property string previous: "\u{f04ae}"
     readonly property string replay: "\u{f02da}"
-    readonly property string record: "\u{f044b}"
+    readonly property string record: "\u{f044a}"
     readonly property string steam: "\u{f04d3}"
     readonly property string power: "\u{f0425}"
     readonly property string sleep: "\u{f0904}"

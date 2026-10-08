@@ -69,9 +69,13 @@ snapshots with `omarchy-shell shell call omakade.guide update JSON` while open:
       "kind": "steam",
       "cover": "file:///path/to/cover.jpg",
       "banner": "file:///path/to/hero.jpg",
+      "bannerKind": "header",
+      "logo": "file:///path/to/logo.png",
       "sessionMinutes": 12,
       "totalMinutes": 180,
-      "achievements": {"unlocked": 3, "total": 20},
+      "achievements": {"unlocked": 3, "total": 20, "items": [
+        {"title": "First win", "description": "Win a match", "unlocked": true,
+         "when": "28 Apr 2024", "icon": "https://...", "rarity": 41.2, "hidden": false}]},
       "pauseWhileOpen": true,
       "paused": true
     }
@@ -79,7 +83,12 @@ snapshots with `omarchy-shell shell call omakade.guide update JSON` while open:
 }
 ```
 
-Optional unknown fields are omitted. Without a game `data` is empty. Families are
+Optional unknown fields are omitted. Without a game `data` is empty. `bannerKind`
+`header` marks Steam's header capsule, which has the title painted in: the guide shows
+the cover beside the title instead of cropping it. For Steam games without local hero
+art Omakade caches `library_hero.jpg` and `logo.png` from Steam's CDN. Achievement
+`items` come read-only from Omakade's library for the running Steam game, unlocked
+newest first; hidden ones keep their description until unlocked. Families are
 `keyboard`, `xbox`, `playstation`, `nintendo`, `deck`, or `generic`. The local socket is
 user-only and receives newline-delimited `{version:1, token, action, value}` messages
 for opened, closed and native actions. The socket also carries optional newline-delimited input, update and toast messages

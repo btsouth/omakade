@@ -33,8 +33,8 @@ PageRhythm {
     // Steam's header capsule has the title painted in: never crop it, use the cover header.
     readonly property bool wide: art !== "" && root.game.bannerKind !== "header" && heroArt.status !== Image.Error
     readonly property string wash: art || root.game.cover || (root.d.capture || {}).lastShot || ""
-    readonly property string playtime: [root.game.sessionMinutes !== undefined ? root.duration(root.game.sessionMinutes) + " this session" : "",
-      root.game.totalMinutes !== undefined ? root.duration(root.game.totalMinutes) + " played" : ""].filter(function(x) { return x !== "" }).join("  ·  ")
+    readonly property string playtime: [root.game.sessionMinutes > 0 ? root.duration(root.game.sessionMinutes) + " this session" : "",
+      root.game.totalMinutes > 0 ? root.duration(root.game.totalMinutes) + " played" : ""].filter(function(x) { return x !== "" }).join("  ·  ")
 
     // The wash: the art decoded tiny and blurred, so any shape fills the banner.
     Image { id: washImage; anchors.fill: parent; source: banner.wide ? "" : banner.wash; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 24; visible: false }
@@ -159,7 +159,8 @@ PageRhythm {
     signal triggered()
     function activate() { root.act("achievements", null) }
     function step(d) { return false }
-    readonly property var recent: root.ach && root.ach.items ? root.ach.items.filter(function(a) { return a.unlocked }).slice(0, 3) : []
+    // Tall screens have room for more of the latest unlocks.
+    readonly property var recent: root.ach && root.ach.items ? root.ach.items.filter(function(a) { return a.unlocked }).slice(0, root.availableHeight > root.g.s(860) ? 5 : 3) : []
     width: parent.width; height: achievements.height + root.g.s(28)
     radius: root.g.radius; color: root.g.well
     border.width: 1; border.color: root.g.line
@@ -187,8 +188,8 @@ PageRhythm {
         delegate: Row {
           required property var modelData
           width: achievements.width; spacing: root.g.s(10)
-          Picture { g: root.g; width: root.g.s(34); height: width; radius: root.g.s(6); source: modelData.icon || ""; visible: !!modelData.icon }
-          Rectangle { width: root.g.s(34); height: width; radius: root.g.s(6); color: root.g.track; visible: !modelData.icon
+          Picture { id: recentIcon; g: root.g; width: root.g.s(34); height: width; radius: root.g.s(6); source: modelData.icon || ""; visible: !!modelData.icon && status !== Image.Error }
+          Rectangle { width: root.g.s(34); height: width; radius: root.g.s(6); color: root.g.track; visible: !recentIcon.visible
             Glyph { g: root.g; anchors.centerIn: parent; name: root.g.icon.trophy; size: root.g.f(15); color: root.g.accent } }
           Column {
             anchors.verticalCenter: parent.verticalCenter

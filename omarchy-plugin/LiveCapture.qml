@@ -43,7 +43,7 @@ Item {
     stderr: StdioCollector { onStreamFinished: root.recordError = text.slice(-700) }
     onExited: function(code, status) {
       var path = root.recordingFile
-      if (status !== 0 || code !== 0) root.toast({title: "Recording failed", detail: root.recordError || "The capture backend is unavailable"})
+      if (status !== 0 || code !== 0) root.toast({title: "Recording failed", detail: root.reason(root.recordError)})
       else runner.run(["test", "-s", path], function(ok) { root.toast({title: ok ? "Recording saved" : "Recording produced no file"}) })
       root.refresh()
     }
@@ -55,16 +55,26 @@ Item {
       onRead: function(line) {
         if (!line.trim()) return
         runner.run(["test", "-s", line.trim()], function(ok) {
-          if (ok) { root.refresh(); root.toast({title: "Replay saved", detail: line.trim()}) }
+          if (ok) { root.refresh(); root.toast({title: "Replay saved", detail: line.trim().split("/").pop()}) }
         })
       }
     }
-    onExited: function(code, status) { if (code !== 0 || status !== 0) root.toast({title: "Replay unavailable", detail: root.replayError || "The capture backend is unavailable"}) }
+    onExited: function(code, status) { if (code !== 0 || status !== 0) root.toast({title: "Replay unavailable", detail: root.reason(root.replayError)}) }
   }
   Timer {
     id: startedTimer
     interval: 500
     onTriggered: if (recording.running) runner.run(["test", "-s", root.recordingFile], function(ok) { if (ok && recording.running) root.toast({title: "Recording started"}) })
+  }
+  // gpu-screen-recorder's stderr, said the way a player needs it.
+  function reason(error) {
+    var text = String(error || "")
+    if (/no default audio output/i.test(text)) return "No sound output is available. Set Sound in captures to None, or connect speakers."
+    if (/no default audio input|default_input/i.test(text)) return "No microphone is available. Set Sound in captures to Game."
+    if (/vaapi|vulkan|nvenc|encoder|egl|drm/i.test(text)) return "The graphics card's video encoder is unavailable."
+    if (/No such file|not found|ENOENT/i.test(text)) return "Install gpu-screen-recorder to record clips."
+    var line = text.split("\n").map(function(l) { return l.replace(/^gsr (error|warning):\s*/i, "").trim() }).filter(function(l) { return l !== "" })[0] || ""
+    return line ? (line.charAt(0).toUpperCase() + line.slice(1)).slice(0, 110) : "The capture backend is unavailable"
   }
   function act(name, value) {
     if (name === "record") {

@@ -107,6 +107,7 @@ PageRhythm {
   }
 
   Column {
+    visible: root.outputs.length > 0
     width: parent.width; spacing: root.g.s(8)
     Section { g: root.g; text: "Output"; width: parent.width }
     Column {
