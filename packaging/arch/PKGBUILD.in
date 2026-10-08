@@ -7,7 +7,8 @@ url='https://btsouth.github.io/omakade/'
 license=('GPL-3.0-or-later' 'CC-BY-SA-3.0')
 depends=('glib2' 'hicolor-icon-theme' 'layer-shell-qt' 'libsecret' 'libzip' 'openssl' 'python' 'qt6-base' 'qt6-declarative' 'qt6-imageformats' 'qt6-svg' 'qt6-wayland' 'sdl3' 'wayland' 'zstd')
 optdepends=('libpulse: switch Game Mode sound outputs with pactl'
-            'umu-launcher: launch Windows GOG and Proton Battle.net games')
+            'umu-launcher: launch Windows GOG and Proton Battle.net games'
+            'xdotool: open the Steam overlay from the in-game guide')
 makedepends=('cmake' 'ninja' 'pkgconf' 'wayland-protocols')
 options=('!debug')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/btsouth/omakade/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
