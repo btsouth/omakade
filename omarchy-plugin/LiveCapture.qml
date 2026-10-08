@@ -27,7 +27,6 @@ Item {
       if (ok) { try { root.files = JSON.parse(value) } catch(e) {} }
     })
   }
-  Component.onCompleted: refresh()
   onActiveChanged: if (active) refresh()
   Timer { interval: 3000; running: root.active || replay.running || recording.running; repeat: true; onTriggered: root.refresh() }
   function command(replayMode) {

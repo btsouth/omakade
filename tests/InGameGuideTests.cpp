@@ -1,5 +1,6 @@
 #include "guide/GuideInput.h"
 #include "guide/GuideActions.h"
+#include "guide/GuidePlugin.h"
 #include "guide/InGameGuide.h"
 #include <QTemporaryDir>
 #include <QDir>
@@ -46,6 +47,9 @@ private slots:
   void guardDiesDuringPause();
   void failedPinRetainsRecovery();
   void quitKeepsItsOriginalGame();
+  void pluginLinksAndEnablesOnce();
+  void pluginKeepsUserCopyAndWaitsForShell();
+  void pluginFallsBackWhenSummonFails();
 };
 
 void InGameGuideTests::steamArtSelection() {
@@ -498,6 +502,109 @@ void InGameGuideTests::quitKeepsItsOriginalGame() {
   guide.message({{"action", "force-quit"}});
   QVERIFY(game.waitForFinished()); QVERIFY(other.state() == QProcess::Running);
   other.terminate(); QVERIFY(other.waitForFinished());
+}
+
+namespace {
+struct PluginFixture {
+  QTemporaryDir root;
+  GuidePlugin::Paths paths;
+  QString log;
+  PluginFixture() {
+    const QString base = root.path();
+    QDir().mkpath(base + "/bundled");
+    QFile manifest(base + "/bundled/manifest.json");
+    if (manifest.open(QIODevice::WriteOnly)) manifest.write(R"({"id":"omakade.guide"})");
+    paths.pluginsDir = base + "/config/omarchy/plugins";
+    paths.shellConfig = base + "/config/omarchy/shell.json";
+    paths.bundledDir = base + "/bundled";
+    paths.markerPath = base + "/state/omakade/guide-plugin-enabled";
+    paths.shellProgram = base + "/omarchy-shell";
+    log = base + "/shell.log";
+    QDir().mkpath(base + "/config/omarchy");
+  }
+  // A shell that records its arguments and answers enablePlugin with `reply` ("" = not running).
+  void fakeShell(const QString& reply, bool writeConfig) {
+    QFile script(paths.shellProgram);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QString body = "#!/bin/sh\necho \"$@\" >> '" + log + "'\n";
+    if (reply.isEmpty()) body += "exit 1\n";
+    else {
+      if (writeConfig) body += "[ \"$2\" = enablePlugin ] && echo '{\"plugins\":[{\"id\":\"omakade.guide\"}]}' > '" + paths.shellConfig + "'\n";
+      body += "[ \"$2\" = enablePlugin ] && echo " + reply + "\n[ \"$2\" = rescanPlugins ] && echo ok\nexit 0\n";
+    }
+    script.write(body.toUtf8()); script.close();
+    QFile::setPermissions(paths.shellProgram, QFile::permissions(paths.shellProgram) | QFile::ExeOwner);
+  }
+  QStringList calls() const { QFile f(log); return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList{}; }
+};
+}  // namespace
+
+void InGameGuideTests::pluginLinksAndEnablesOnce() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  QVERIFY(!GuidePlugin::usable(fixture.paths));
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  const QString link = fixture.paths.pluginsDir + "/omakade.guide";
+  QVERIFY(QFileInfo(link).isSymLink());
+  QCOMPARE(QFileInfo(link).symLinkTarget(), fixture.paths.bundledDir);
+  QVERIFY(GuidePlugin::usable(fixture.paths));
+  QVERIFY(QFileInfo::exists(fixture.paths.markerPath));
+  QCOMPARE(fixture.calls(), (QStringList{"shell rescanPlugins", "shell enablePlugin omakade.guide {}"}));
+  // A later launch asks the shell nothing, and a plugin the user disabled stays disabled.
+  QVERIFY(QFile::remove(fixture.paths.shellConfig));
+  QVERIFY(!GuidePlugin::ensure(fixture.paths));
+  QVERIFY(!GuidePlugin::usable(fixture.paths));
+  QCOMPARE(fixture.calls().size(), 2);
+}
+
+void InGameGuideTests::pluginKeepsUserCopyAndWaitsForShell() {
+  PluginFixture own; own.fakeShell("ok", true);
+  QVERIFY(QDir().mkpath(own.paths.pluginsDir + "/omakade.guide"));
+  QFile mine(own.paths.pluginsDir + "/omakade.guide/manifest.json");
+  QVERIFY(mine.open(QIODevice::WriteOnly)); mine.write("{}"); mine.close();
+  QVERIFY(GuidePlugin::ensure(own.paths));
+  QVERIFY(!QFileInfo(own.paths.pluginsDir + "/omakade.guide").isSymLink());
+  PluginFixture dangling; dangling.fakeShell("ok", true);
+  QVERIFY(QDir().mkpath(dangling.paths.pluginsDir));
+  QVERIFY(QFile::link(dangling.root.path() + "/gone", dangling.paths.pluginsDir + "/omakade.guide"));
+  QVERIFY(!GuidePlugin::ensure(dangling.paths));
+  QCOMPARE(QFileInfo(dangling.paths.pluginsDir + "/omakade.guide").symLinkTarget(), dangling.root.path() + "/gone");
+  // The shell is not running: the plugin is linked but nothing is marked, so the next launch retries.
+  PluginFixture down; down.fakeShell("", false);
+  QVERIFY(!GuidePlugin::ensure(down.paths));
+  QVERIFY(QFileInfo(down.paths.pluginsDir + "/omakade.guide").isSymLink());
+  QVERIFY(!QFileInfo::exists(down.paths.markerPath));
+  down.fakeShell("ok", true);
+  QVERIFY(GuidePlugin::ensure(down.paths));
+  QVERIFY(QFileInfo::exists(down.paths.markerPath));
+  // The shell does not know the plugin: no marker either.
+  PluginFixture unknown; unknown.fakeShell("unknown", false);
+  QVERIFY(!GuidePlugin::ensure(unknown.paths));
+  QVERIFY(!QFileInfo::exists(unknown.paths.markerPath));
+  // No bundled copy (a source build): nothing is linked.
+  PluginFixture source; source.fakeShell("ok", true);
+  source.paths.bundledDir = source.root.path() + "/missing";
+  QVERIFY(!GuidePlugin::ensure(source.paths));
+  QVERIFY(!QFileInfo(source.paths.pluginsDir + "/omakade.guide").isSymLink());
+}
+
+void InGameGuideTests::pluginFallsBackWhenSummonFails() {
+  PluginFixture fixture; fixture.fakeShell("unknown", false);
+  QFile script(fixture.root.path() + "/bin-omarchy-shell");
+  QDir().mkpath(fixture.root.path() + "/bin");
+  QFile::copy(fixture.paths.shellProgram, fixture.root.path() + "/bin/omarchy-shell");
+  QFile::setPermissions(fixture.root.path() + "/bin/omarchy-shell", QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+  qputenv("PATH", (fixture.root.path() + "/bin:" + qEnvironmentVariable("PATH")).toUtf8());
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_enabled = true;
+  QSignalSpy failed(&guide, &InGameGuide::summonFailed);
+  QVERIFY(guide.toggle());
+  QTRY_COMPARE(failed.count(), 1);
+  QVERIFY(!guide.opened()); QVERIFY(!guide.m_paused);
+  // No plugin, no guide: the shortcut keeps its Game Mode behavior.
+  QVERIFY(!guide.usable());
+  guide.setPluginPaths(fixture.paths);
+  QVERIFY(!guide.usable());
+  QVERIFY(GuidePlugin::ensure(fixture.paths) == false);
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

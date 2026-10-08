@@ -913,7 +913,7 @@ ApplicationWindow {
 
     function openGameModeControls() {
         root.diagnosticsOpen = false
-        if (InGameGuide.available && InGameGuide.toggle()) return
+        if (InGameGuide.usable() && InGameGuide.toggle()) return
         if (root.showGameModeOverlay())
             return
         if (gameModeControlsLoader.item) gameModeControlsLoader.item.openControls()

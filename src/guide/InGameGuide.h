@@ -4,6 +4,7 @@
 #include "guide/GuideArt.h"
 #include "guide/GuideActions.h"
 #include "gamemode/GameModePorts.h"
+#include "guide/GuidePlugin.h"
 #include <QJsonArray>
 #include <QPointer>
 #include <QLocalSocket>
@@ -32,6 +33,10 @@ public:
   bool opened() const { return m_opened; }
   bool available() const { return m_enabled; }
   bool hasGame();
+  // The guide plugin is installed and enabled, so opening the guide can show something.
+  // Without it the shortcut and controller button keep their Game Mode behavior.
+  Q_INVOKABLE bool usable() const { return m_enabled && GuidePlugin::usable(m_pluginPaths); }
+  void setPluginPaths(const GuidePlugin::Paths& paths) { m_pluginPaths = paths; }
   Q_INVOKABLE bool toggle(const QString& node = {});
   Q_INVOKABLE void close();
   // Only enabled explicitly in isolated acceptance runs, through the authenticated socket.
@@ -40,6 +45,8 @@ public:
 signals:
   void changed();
   void libraryRequested();
+  // The shell could not show the guide. The game is already resumed and the pads released.
+  void summonFailed();
 private:
   friend class InGameGuideTests;
   void refreshGame();
@@ -74,6 +81,7 @@ private:
   GuideActions::Tree m_resumeTree, m_quitTree;
   QPointer<QLocalSocket> m_peer;
   QString m_grabWarning;
+  GuidePlugin::Paths m_pluginPaths;
   bool m_forceReady = false, m_hudVisible = false;
   QLocalServer m_server;
   QTimer m_poll;

@@ -48,6 +48,7 @@
 #include <QQmlProperty>
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeOverlay.h"
+#include "guide/GuidePlugin.h"
 #include "guide/InGameGuide.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/GameModeGuideButton.h"
@@ -1827,8 +1828,17 @@ int main(int argc, char* argv[]) {
                           !isolatedTest && onOmarchy);
   inGameGuide.setInjectedInputEnabled(application.arguments().contains(QStringLiteral("--guide-input-test")));
   inGameGuide.setAchievementDatabase(achievementDatabasePath);
+  if (inGameGuide.available()) {
+    const auto guidePluginPaths = GuidePlugin::defaultPaths(
+        configRoot,
+        QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)),
+        QCoreApplication::applicationDirPath());
+    inGameGuide.setPluginPaths(guidePluginPaths);
+    GuidePlugin::ensure(guidePluginPaths);
+  }
+  // Without the guide plugin the shortcut keeps its Game Mode behavior.
   const bool coldGuideRequest = guideToggleRequest ||
-                                (gameModeToggleRequest && inGameGuide.hasGame());
+                                (gameModeToggleRequest && inGameGuide.usable() && inGameGuide.hasGame());
   if (coldGuideRequest) gameModeRequest = false;
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
@@ -6895,13 +6905,17 @@ int main(int argc, char* argv[]) {
                    &GameModeSession::park);
   QObject::connect(&singleInstance, &SingleInstance::gameModeToggleRequested, &gameMode,
                    [&gameMode, &inGameGuide, rootWindow](const QString& node) {
-                     if (inGameGuide.opened() || inGameGuide.hasGame()) { inGameGuide.toggle(node); return; }
+                     if (inGameGuide.opened() || (inGameGuide.usable() && inGameGuide.hasGame())) { inGameGuide.toggle(node); return; }
                      // The shortcut parks or resumes the complete library session.
                      if (rootWindow == nullptr ||
                          !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) {
                        gameMode.toggle();
                      }
                    });
+  // The shell was unreachable when the guide was requested: do what the shortcut did before the guide.
+  QObject::connect(&inGameGuide, &InGameGuide::summonFailed, &gameMode, [&gameMode, rootWindow] {
+    if (rootWindow == nullptr || !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) gameMode.toggle();
+  });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
                    [&inGameGuide](const QString& node) { inGameGuide.toggle(node); });
   QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow, &gameModeCompositor, &application] {

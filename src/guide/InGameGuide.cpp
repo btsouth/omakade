@@ -401,7 +401,11 @@ bool InGameGuide::toggle(const QString& node) {
   shell({"shell", "summon", "omakade.guide", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))},
         [this, token](bool ok, const QByteArray& reply) {
           if (token != m_token) return;
-          if (!ok || reply.trimmed() == "unknown" || reply.trimmed() == "false" || reply.trimmed() == "error") finishClose(true);
+          if (!ok || reply.trimmed() == "unknown" || reply.trimmed() == "false" || reply.trimmed() == "error") {
+            const bool shown = m_opened;
+            finishClose(true);
+            if (!shown) emit summonFailed();
+          }
         });
   return true;
 }

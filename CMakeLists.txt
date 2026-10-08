@@ -318,6 +318,8 @@ add_library(omakade_core STATIC
   src/gamemode/GameModeDesktop.h
   src/gamemode/GameModeGuideButton.cpp
   src/gamemode/GameModeGuideButton.h
+  src/guide/GuidePlugin.cpp
+  src/guide/GuidePlugin.h
   src/guide/InGameGuide.cpp
   src/guide/InGameGuide.h
   src/gamemode/GameModeOverlay.cpp
@@ -506,6 +508,15 @@ install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
 install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md SECURITY.md RELEASING.md
   CHANGELOG.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
+)
+# The in-game guide shell plugin. Omakade links it into each user's Omarchy plugin folder
+# on first run, so package upgrades update it in place.
+install(DIRECTORY omarchy-plugin/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/omarchy-plugin
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "README.md" EXCLUDE
+  PATTERN "*.py" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 install(DIRECTORY skills/omakade-tv-gaming
   DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/skills
