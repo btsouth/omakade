@@ -55,13 +55,21 @@ void GuideInputMap::setAxis(int code, int minimum, int maximum, int flat) {
   m_axes.insert(code, {minimum, maximum, flat, 0});
 }
 
-void GuideInputMap::setController(const QString& name, const QString& driver) {
+void GuideInputMap::setController(const QString& name, const QString& driver, quint16 vendor, quint16 product) {
   const auto family = GuidePayload::padFamily(name);
+  const auto backend = driver.startsWith("hid-") ? driver.mid(4) : driver;
+  const bool microsoftXbox = vendor == 0x045e && (family == "xbox" ||
+      product == 0x02e0 || product == 0x02fd || product == 0x0b05 ||
+      product == 0x0b13 || product == 0x0b20 || product == 0x0b22);
+  // hid-microsoft leaves Xbox button usages to hid-input, as does hid-generic:
+  // usage 4 (X) becomes BTN_GAMEPAD + 3 = BTN_X; usage 5 (Y) becomes BTN_Y.
+  // xpad and xpadneo explicitly use the same legacy label codes.
+  // This is device identity dependent; generic HID pads remain positional.
   // xpad, xpadneo and hid-steam retain BTN_X/BTN_Y's old label meanings.
   // hid-playstation and hid-nintendo use BTN_WEST/BTN_NORTH by position.
   // Steam's Xbox mirror has no hardware driver, so use its advertised family.
-  m_labelCodes = driver == "xpad" || driver == "hid-xpadneo" || driver == "xpadneo" ||
-      driver == "hid-steam" || driver == "steam" ||
+  m_labelCodes = backend == "xpad" || backend == "xpadneo" || backend == "steam" ||
+      (microsoftXbox && (backend == "microsoft" || backend == "generic")) ||
       (driver.isEmpty() && (family == "xbox" || family == "deck"));
 }
 
@@ -221,7 +229,7 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   }
   device->ungrab = m_access.ungrab ? m_access.ungrab : [](int fd) { ::ioctl(fd, EVIOCGRAB, 0); };
   device->family = GuidePayload::padFamily(pad.name);
-  device->mapping.setController(pad.name, pad.driver);
+  device->mapping.setController(pad.name, pad.driver, pad.vendor, pad.product);
   const int clock = CLOCK_MONOTONIC;
   device->monotonic = ::ioctl(device->fd, EVIOCSCLOCKID, &clock) == 0;
   device->attachedAt = clockMs(device->monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME);

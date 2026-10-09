@@ -112,8 +112,10 @@ QList<GuideListener::Controller> GuideListener::scan(const QString& devDir,
         .node = node,
         .id = id,
         .name = readLine(device + QStringLiteral("/name")),
-        .virtualDevice = id.contains(QStringLiteral("/devices/virtual/")),
+        .virtualDevice = id.contains(QStringLiteral("/devices/virtual/input/")),
         .driver = driver,
+        .vendor = readLine(device + QStringLiteral("/id/vendor")).toUShort(nullptr, 16),
+        .product = readLine(device + QStringLiteral("/id/product")).toUShort(nullptr, 16),
     });
   }
   return controllers;
