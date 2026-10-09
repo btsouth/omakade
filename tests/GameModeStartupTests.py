@@ -3,6 +3,7 @@
 import fcntl
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -41,7 +42,7 @@ class GameModeStartupTests(unittest.TestCase):
         (root / "runtime").mkdir(mode=0o700)
         tools = root / "tools"
         tools.mkdir()
-        for name in ("hyprctl", "pactl", "omarchy-shell"):
+        for name in ("hyprctl", "pactl", "omarchy-shell", "systemctl"):
             stub = tools / name
             stub.write_text("#!/bin/sh\nexit 1\n")
             stub.chmod(0o755)
@@ -52,6 +53,30 @@ class GameModeStartupTests(unittest.TestCase):
         self.log = open(root / "app.log", "w+")
         self.primary = None
         self.game = None
+        # The shortcut now asks the resident service before entering the legacy
+        # library session. Keep that real IPC route in these fallback tests;
+        # the absent plugin must preserve every ownership assertion below.
+        self.resident = subprocess.Popen(
+            [str(Path(BINARY).with_name("omakade-sessiond")), "--guide-only"],
+            env=self.env, stdout=self.log, stderr=subprocess.STDOUT,
+        )
+        endpoint = str(root / "runtime" / f"omakade-guide-control-{os.getuid()}")
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            try:
+                with socket.socket(socket.AF_UNIX) as channel:
+                    channel.settimeout(0.5)
+                    channel.connect(endpoint)
+                    channel.sendall(b'{"action":"status"}\n')
+                    if json.loads(channel.recv(65536)).get("ready"):
+                        break
+            except (OSError, ValueError):
+                pass
+            if self.resident.poll() is not None:
+                self.fail("Resident guide exited during fixture startup")
+            time.sleep(0.02)
+        else:
+            self.fail("Resident guide did not prepare the fallback fixture")
 
     def tearDown(self):
         if self.primary is not None and self.primary.poll() is None:
@@ -64,6 +89,8 @@ class GameModeStartupTests(unittest.TestCase):
         if self.game is not None and self.game.poll() is None:
             self.game.terminate()
             self.game.wait(timeout=5)
+        self.resident.terminate()
+        self.resident.wait(timeout=5)
         self.log.close()
         self.directory.cleanup()
 

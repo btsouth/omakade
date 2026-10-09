@@ -9528,10 +9528,11 @@ void CoreTests::aNewGameInTheSameProcessDoesNotInheritThePendingStop() {
   QVERIFY(standIn.waitForStarted(5000));
   const qint64 pid = standIn.processId();
   qint64 procStart = -1;
-  for (const auto& process : ProcFs::listProcesses()) {
-    if (process.pid == pid) procStart = process.procStart;
-  }
-  QVERIFY(procStart > 0);
+  QTRY_VERIFY(([&] {
+    for (const auto& process : ProcFs::listProcesses())
+      if (process.pid == pid) procStart = process.procStart;
+    return procStart > 0;
+  })());
   {
     QSqlDatabase database;
     QVERIFY(SessionDatabase::open(database, path, connection));
