@@ -495,6 +495,9 @@ install(FILES resources/sessiond-profiles.json
 install(FILES packaging/omakade-sessiond.service packaging/omakade-guide-button.service
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user
 )
+# Start the resident service with the desktop even before the library is opened.
+install(CODE "file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/systemd/user/graphical-session.target.wants\")
+file(CREATE_LINK \"../omakade-sessiond.service\" \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/systemd/user/graphical-session.target.wants/omakade-sessiond.service\" SYMBOLIC)")
 install(FILES packaging/io.github.tsouth89.Omakade.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )

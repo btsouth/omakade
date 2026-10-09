@@ -458,7 +458,11 @@ void InGameGuide::message(const QJsonObject& data) {
       input_event raw{};
       raw.type = event.value("type").toInt(); raw.code = event.value("code").toInt(); raw.value = event.value("value").toInt();
       ::write(m_testPadWriter, &raw, sizeof(raw));
-    } else m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
+      if (raw.type != EV_SYN) { input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT; ::write(m_testPadWriter, &syn, sizeof(syn)); }
+    } else {
+      m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
+      if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
+    }
   } else if (action == "identify" && m_opened) {
     QString error;
     const bool ok = m_input.identify(data.value("value").toString(), &error);

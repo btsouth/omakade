@@ -7,6 +7,7 @@
 #include <QLocalSocket>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QProcess>
 #include <unistd.h>
 #include <memory>
 
@@ -45,9 +46,19 @@ QString GuideClient::routeShortcut(const QString& node) {
   QEventLoop loop;
   QString result;
   QElapsedTimer elapsed; elapsed.start();
-  request({{"action", "shortcut"}, {"node", node}}, &loop,
-          [&loop, &result](const QString& reply, const QJsonObject&) { result = reply; loop.quit(); });
-  loop.exec();
+  const auto send = [&] {
+    request({{"action", "shortcut"}, {"node", node}}, &loop,
+            [&loop, &result](const QString& reply, const QJsonObject&) { result = reply; loop.quit(); });
+    loop.exec();
+  };
+  send();
+  if (result == "unavailable") {
+    // Login normally starts the unit. Recover an inactive unit without ever starting GUI.
+    QProcess start;
+    start.start("systemctl", {"--user", "start", "omakade-sessiond.service"});
+    if (!start.waitForFinished(2000)) { start.kill(); start.waitForFinished(); }
+    if (start.exitStatus() == QProcess::NormalExit && start.exitCode() == 0) send();
+  }
   qInfo("Guide timing: shortcut IPC elapsed_ms=%lld result=%s", elapsed.elapsed(), qPrintable(result));
   return result;
 }

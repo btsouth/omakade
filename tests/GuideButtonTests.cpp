@@ -358,6 +358,7 @@ private slots:
     FakeNode steam = input.add(QStringLiteral("event4"), QStringLiteral("pad 0"), kXpadKeys, true);
     GuideListener listener(input.devDir(), input.sysDir());
     QSignalSpy pressed(&listener, &GuideListener::pressed);
+    QSignalSpy preparing(&listener, &GuideListener::preparing);
     listener.start();
     QTest::qWait(int(kArmed) + 100);
 
@@ -368,6 +369,8 @@ private slots:
     pad.press(BTN_SOUTH, 0);
     pad.press(BTN_MODE, 1);
     steam.press(BTN_MODE, 1);
+    QTRY_COMPARE(preparing.size(), 2);
+    QCOMPARE(pressed.size(), 0);
     pad.press(BTN_MODE, 0);
     steam.press(BTN_MODE, 0);
     QTRY_COMPARE(pressed.size(), 1);

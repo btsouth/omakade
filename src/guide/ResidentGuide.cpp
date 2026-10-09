@@ -90,13 +90,18 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
     for (const auto& value : clients) if (value.toObject().value("pid").toInteger() == session.value("pid").toLongLong()) { result.session = session; break; }
     if (!result.session.isEmpty()) break;
   }
+  if (result.metadata.isEmpty()) result.metadata = result.session.value("metadata").toMap();
+  if (!result.session.isEmpty() && !result.session.contains("path"))
+    result.session.insert("path", result.session.value("source") == "Steam" ? result.session.value("appId") : result.session.value("installPath"));
   for (const auto& value : clients) {
     const auto client = value.toObject();
     if (client.value("pid").toInteger() != result.session.value("pid").toLongLong()) continue;
     result.window.address = client.value("address").toString();
     const int monitor = client.value("monitor").toInt(-1);
     for (const auto& value : monitors) if (value.toObject().value("id").toInt(-2) == monitor) result.output = value.toObject().value("name").toString();
-    result.window.output = result.output; break;
+    result.window.output = result.output;
+    if (!result.session.isEmpty() && result.session.value("name").toString().isEmpty()) result.session.insert("name", client.value("title").toString());
+    break;
   }
   return result;
 }
@@ -181,8 +186,9 @@ void ResidentGuide::refresh() {
         m_guide.setSnapshot(result.session, result.metadata, result.output, result.window);
         emit snapshotReady();
         // This is the only provisioning path. Never mutate a plugin directory mid-game.
-        if (!m_provisioned && result.session.isEmpty()) {
-          m_provisioned = true;
+        const bool provision = !m_provisioned && result.session.isEmpty();
+        m_provisioned = true;
+        if (provision) {
           GuidePlugin::ensureAsync(GuidePlugin::defaultPaths(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
             QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation), QCoreApplication::applicationDirPath()), this);
         }

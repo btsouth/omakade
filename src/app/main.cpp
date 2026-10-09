@@ -1845,10 +1845,33 @@ int main(int argc, char* argv[]) {
   // service retains exact process identities and resolves compositor data asynchronously.
   QTimer guideSnapshotTimer;
   guideSnapshotTimer.setInterval(1000);
-  QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, [&inGameGuide, &launcher] {
-    inGameGuide.publish(launcher.trackedGames());
-  });
-  if (!isolatedTest && onOmarchy) guideSnapshotTimer.start();
+  const auto publishGuideGames = [&inGameGuide, &launcher, &unifiedGames] {
+    auto sessions = launcher.trackedGames();
+    for (auto& value : sessions) {
+      auto session = value.toMap();
+      QVariantMap metadata;
+      for (int row = 0; row < unifiedGames.rowCount(); ++row) {
+        for (const auto& installationValue : unifiedGames.installations(row)) {
+          const auto installation = installationValue.toMap();
+          if (installation.value("source") != session.value("source") || installation.value("appId") != session.value("appId")) continue;
+          const auto index = unifiedGames.index(row);
+          for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath, GameRoles::LogoPath, GameRoles::Tags})
+            metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), index.data(role));
+          metadata.insert("appId", installation.value("appId"));
+          break;
+        }
+        if (!metadata.isEmpty()) break;
+      }
+      session.insert("metadata", metadata); value = session;
+    }
+    inGameGuide.publish(sessions);
+  };
+  QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, publishGuideGames);
+  if (!isolatedTest && onOmarchy) {
+    guideSnapshotTimer.start();
+    QProcess::startDetached("systemctl", {"--user", "start", "omakade-sessiond.service"});
+    QObject::connect(&launcher, &GameLauncher::gameRunningChanged, &inGameGuide, publishGuideGames);
+  }
   const bool coldGuideRequest = false;
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
