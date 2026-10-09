@@ -13,8 +13,8 @@ appears while a replay buffer runs. The header shows session time, the clock,
 controller batteries reported by UPower, and available performance readings.
 Unknown readings stay absent.
 
-Return to desktop parks the game and follows its pause preference. Home restores the game and
-opens the guide while it is still paused; B or Resume starts it again. A managed
+Return to desktop parks the game and follows its pause preference. Home restores
+the game and opens the guide with the same preference; B or Resume returns to play. A managed
 Game Mode session uses the same park and resume path as the Game Mode button.
 Games launched outside Game Mode retain their verified window and pause guard.
 Game library opens Omakade and resumes the game.

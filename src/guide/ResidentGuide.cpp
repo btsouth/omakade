@@ -25,6 +25,11 @@
 #include <chrono>
 
 namespace {
+QJsonArray sessionIdentities(const QJsonArray& sessions) {
+  QJsonArray result;
+  for (const auto& value : sessions) { auto session = value.toObject(); session.remove("elapsedSeconds"); result.append(session); }
+  return result;
+}
 struct Snapshot { QVariantMap session, metadata; QString output; GameModeWindow window; bool locked = false; };
 // Read only the focused process, never the whole environment or a whole-process Steam scan.
 QVariantMap focusedSteam(qint64 pid) {
@@ -263,7 +268,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   } else if (action == "prepare") refresh();
   else if (action == "publish") {
     const auto published = data.value("sessions").toArray();
-    const bool changed = published != m_published;
+    const bool changed = sessionIdentities(published) != sessionIdentities(m_published);
     m_published = published; m_guide.setContext(data.value("context").toObject());
     if (changed || !m_ready) refresh();
   }
@@ -287,7 +292,7 @@ void ResidentGuide::refresh() {
   if (m_refreshing) { m_refreshPending = true; return; }
   m_refreshing = true;
   ++m_refreshGeneration;
-  struct Queries { QJsonObject active; QJsonArray clients, monitors; int left = 3; };
+  struct Queries { QJsonObject active; QJsonArray clients, monitors; int left = 3; bool ok = true; };
   auto queries = std::make_shared<Queries>();
   for (const auto& query : {QString("activewindow"), QString("clients"), QString("monitors")}) {
     auto* process = new QProcess(this);
@@ -296,10 +301,17 @@ void ResidentGuide::refresh() {
       if (*done) return;
       *done = true;
       const auto document = QJsonDocument::fromJson(process->readAllStandardOutput());
+      queries->ok = queries->ok && process->exitStatus() == QProcess::NormalExit && process->exitCode() == 0 && !document.isNull();
       if (query == "activewindow") queries->active = document.object();
       else if (query == "clients") queries->clients = document.array(); else queries->monitors = document.array();
       process->deleteLater();
       if (--queries->left) return;
+      if (!queries->ok) {
+        m_refreshing = false; m_ready = false;
+        emit snapshotReady();
+        if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }
+        return; // Unknown compositor state is never permission to provision mid-game.
+      }
       auto* watcher = new QFutureWatcher<Snapshot>(this);
       connect(watcher, &QFutureWatcher<Snapshot>::finished, this, [this, watcher] {
         const auto result = watcher->result(); watcher->deleteLater(); m_refreshing = false; m_ready = true; m_locked = result.locked;

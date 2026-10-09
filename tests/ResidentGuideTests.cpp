@@ -53,7 +53,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + "'\necho ok\n", true));
   auto env = QProcessEnvironment::systemEnvironment();
   env.remove("HYPRLAND_INSTANCE_SIGNATURE"); env.remove("WAYLAND_DISPLAY");
-  env.insert("PATH", bin + ':' + env.value("PATH")); env.insert("XDG_RUNTIME_DIR", runtime);
+  env.insert("PATH", bin + ':' + env.value("PATH")); env.insert("XDG_RUNTIME_DIR", runtime); env.insert("TMPDIR", runtime);
   env.insert("XDG_CONFIG_HOME", config); env.insert("XDG_DATA_HOME", data); env.insert("XDG_STATE_HOME", root.path() + "/state");
   // Any accidental QGuiApplication path fails. The shortcut must use Qt Core alone.
   env.insert("QT_QPA_PLATFORM", "invalid-platform-for-resident-test");
@@ -70,6 +70,8 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   // A second daemon must fail before either guide socket is removed.
   QProcess second; second.setProcessEnvironment(env); second.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
   QVERIFY(second.waitForFinished()); QCOMPARE(second.exitCode(), 1);
+  const auto marker = root.path() + "/state/omakade/guide-plugin-enabled";
+  QVERIFY(!QFileInfo::exists(marker));
   QProcess shortcut; shortcut.setProcessEnvironment(env);
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"});
   QVERIFY(shortcut.waitForFinished(5000));
@@ -117,6 +119,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   { QSqlQuery clear(database); QVERIFY(clear.exec("UPDATE play_sessions SET ended_at = 1")); }
   eventPeer->write("closewindow>>0x123\n"); eventPeer->flush();
   QTRY_VERIFY(!control("status").value("hasGame").toBool());
+  QTRY_VERIFY(QFileInfo::exists(marker));
   QTest::qWait(100);
   QFile queries(queryLog); QVERIFY(queries.open(QIODevice::ReadOnly)); const auto idleCalls = queries.readAll().count('\n'); queries.close();
   QTest::qWait(1100);
@@ -157,7 +160,8 @@ struct Fixture {
     runtime = root.filePath("runtime"); bin = root.filePath("bin"); config = root.filePath("config"); data = root.filePath("data");
     for (const auto& path : {runtime, bin, config + "/omarchy/plugins/omakade.guide", data + "/omakade"}) QDir().mkpath(path);
     ::chmod(QFile::encodeName(runtime).constData(), 0700);
-    environment.insert("XDG_RUNTIME_DIR", runtime); environment.insert("XDG_CONFIG_HOME", config);
+    environment.insert("XDG_RUNTIME_DIR", runtime); environment.insert("TMPDIR", runtime);
+    environment.insert("QT_FORCE_STDERR_LOGGING", "1"); environment.insert("XDG_CONFIG_HOME", config);
     environment.insert("XDG_DATA_HOME", data); environment.insert("XDG_STATE_HOME", root.filePath("state"));
     environment.insert("PATH", bin + ':' + environment.value("PATH"));
     environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "test"); environment.insert("WAYLAND_DISPLAY", "test");
@@ -229,7 +233,8 @@ void ResidentGuideTests::recordingFailureKeepsGuide() {
   peer.write("{\"action\":\"status\"}\n"); peer.flush(); QVERIFY(peer.waitForReadyRead());
   QCOMPARE(QJsonDocument::fromJson(peer.readAll()).object().value("result").toString(), "handled");
   QTest::qWait(100); QCOMPARE(daemon.state(), QProcess::Running);
-  QVERIFY(daemon.readAllStandardError().contains("could not open the play session database"));
+  QByteArray diagnostic;
+  QTRY_VERIFY(([&] { diagnostic += daemon.readAllStandardError(); return diagnostic.contains("could not open the play session database"); })());
 }
 
 QTEST_GUILESS_MAIN(ResidentGuideTests)
