@@ -14,6 +14,8 @@ public:
   static QString socketPath();
   static void request(const QJsonObject& command, QObject* owner,
                       std::function<void(const QString&, const QJsonObject&)> done = {});
+  static void requestShortcut(const QString& node, QObject* owner,
+                              std::function<void(const QString&, const QJsonObject&)> done);
   // CLI-only, before QGuiApplication exists. Never call on a GUI event loop.
   static QString routeShortcut(const QString& node);
   bool opened() const { return m_opened; }

@@ -1240,7 +1240,9 @@ qt_add_executable(omakade_resident_guide_tests ResidentGuideTests.cpp)
 target_link_libraries(omakade_resident_guide_tests PRIVATE omakade_core Qt6::Test)
 target_compile_definitions(omakade_resident_guide_tests PRIVATE
   OMAKADE_SESSIOND="$<TARGET_FILE:omakade-sessiond>"
-  OMAKADE_APP="$<TARGET_FILE:omakade>")
-add_dependencies(omakade_resident_guide_tests omakade-sessiond omakade)
+  OMAKADE_APP="$<TARGET_FILE:omakade>"
+  OMAKADE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  OMAKADE_GUIDE_BUTTON="$<TARGET_FILE:omakade-guide-button>")
+add_dependencies(omakade_resident_guide_tests omakade-sessiond omakade omakade-guide-button)
 add_test(NAME omakade_resident_guide_tests COMMAND omakade_resident_guide_tests)
 set_tests_properties(omakade_resident_guide_tests PROPERTIES TIMEOUT 30)

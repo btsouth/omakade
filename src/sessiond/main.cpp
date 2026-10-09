@@ -101,6 +101,12 @@ int main(int argc, char* argv[]) {
   QCoreApplication app(argc, argv);
   QCoreApplication::setApplicationName(QStringLiteral("omakade-sessiond"));
 
+  // Own the control endpoint before any thread can listen or unlink it. This also
+  // protects guide-only startup and survives unavailable recording storage.
+  QLockFile instance(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/omakade-sessiond.lock");
+  instance.setStaleLockTime(0);
+  if (!instance.tryLock(0)) { qWarning("omakade-sessiond: already running"); return 1; }
+
   // The recorder uses synchronous procfs/database polls. Keep guide input and IPC on
   // an independent event loop, with no GUI application or library models.
   QThread guideThread;
@@ -117,14 +123,14 @@ int main(int argc, char* argv[]) {
   const QString databasePath = SessionDatabase::defaultDatabasePath();
   if (!QDir().mkpath(QFileInfo(databasePath).absolutePath())) {
     qWarning("omakade-sessiond: could not create the data directory");
-    stopGuide(); return 1;
+    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
   // One owner per database, including manually started copies of the daemon.
   QLockFile owner(databasePath + QStringLiteral(".sessiond.lock"));
   owner.setStaleLockTime(0);
   if (!owner.tryLock(0)) {
     qWarning("omakade-sessiond: recorder already running or its lock is unavailable");
-    stopGuide(); return 1;
+    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
 
   QString profileError;
@@ -137,7 +143,7 @@ int main(int argc, char* argv[]) {
   if (!SessionDatabase::open(database, SessionDatabase::defaultDatabasePath(),
                              QStringLiteral("omakade-sessiond"))) {
     qWarning("omakade-sessiond: could not open the play session database");
-    stopGuide(); return 1;
+    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
 
   ConfigToggle toggle;

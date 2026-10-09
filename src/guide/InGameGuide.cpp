@@ -382,7 +382,7 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (m_opened || m_opening) { close(); return true; }
   if (m_restoring || m_waitingManagedPark) return true;
   if (m_parked) {
-    setPaused(true);
+    if (m_pauseWhileOpen) setPaused(true);
     m_restoreNode = node; m_restoreFallback = fallback; m_restoring = true;
     if (m_managedRetained) emit restoreRequested();
     else restoreWindow([this](bool ok) { restoreComplete(ok); });
@@ -407,6 +407,7 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   m_opening = true;
   m_poll.start();
   const auto token = m_token;
+  QTimer::singleShot(3000, this, [this, token] { if (token == m_token && m_opening) finishClose(true); });
   qInfo("Guide timing: summon dispatched elapsed_ms=%lld", m_summonClock.elapsed());
   shell({"shell", "summon", "omakade.guide", QString::fromUtf8(QJsonDocument(m_lastPayload = payload()).toJson(QJsonDocument::Compact))},
         [this, token, fallback](bool ok, const QByteArray& reply) {
@@ -424,8 +425,10 @@ void InGameGuide::setContext(const QJsonObject& context) {
   m_context = context;
   if (!showing() && !m_session.isEmpty() && context.value("gameModeParked").toBool()) {
     m_parked = true; m_managedRetained = true;
-    // Home from a 1.15 park must keep the restored game paused too.
-    setPaused(true);
+    // A library park never owns a pause guard. Only guide actions pause games.
+  } else if (m_parked && m_managedRetained && !m_restoring && !m_waitingManagedPark &&
+             !context.value("gameModeParked").toBool()) {
+    m_parked = false; m_managedRetained = false; stopGuard();
   }
 }
 
@@ -454,6 +457,7 @@ void InGameGuide::parkNow() {
       if (error == QProcess::FailedToStart) { m_parked = false; stopGuard(); process->deleteLater(); }
     });
     QTimer::singleShot(2500, process, [process] { process->kill(); });
+    process->setProcessEnvironment(m_environment);
     process->start("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"});
   }
 }
@@ -476,12 +480,20 @@ void InGameGuide::restoreWindow(std::function<void(bool)> done) {
   const auto window = m_window;
   auto* watcher = new QFutureWatcher<bool>(this);
   connect(watcher, &QFutureWatcher<bool>::finished, this, [watcher, done] { const bool ok = watcher->result(); watcher->deleteLater(); done(ok); });
-  watcher->setFuture(QtConcurrent::run([game, window] {
+  watcher->setFuture(QtConcurrent::run([game, window, environment = m_environment] {
     if (!window.valid() || !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong())) return false;
-    HyprlandGameModeCompositor compositor;
-    // Address and process must still refer to the same client before restoring it.
-    const auto current = compositor.windowForPid(game.value("pid").toLongLong());
-    return current.address == window.address && compositor.focusWindow(window.address);
+    QProcess query; query.setProcessEnvironment(environment); query.start("hyprctl", {"-j", "clients"});
+    if (!query.waitForFinished(1000)) { query.kill(); query.waitForFinished(); return false; }
+    bool matches = false;
+    for (const auto& value : QJsonDocument::fromJson(query.readAllStandardOutput()).array()) {
+      const auto client = value.toObject();
+      if (client.value("pid").toInteger() == game.value("pid").toLongLong() && client.value("address").toString() == window.address) matches = true;
+    }
+    if (!matches || !HyprlandGameModeCompositor::validAddress(window.address)) return false;
+    QProcess focus; focus.setProcessEnvironment(environment);
+    focus.start("hyprctl", {"dispatch", "focuswindow", "address:" + window.address});
+    if (!focus.waitForFinished(1000)) { focus.kill(); focus.waitForFinished(); return false; }
+    return focus.exitStatus() == QProcess::NormalExit && focus.exitCode() == 0;
   }));
 }
 
@@ -513,10 +525,13 @@ void InGameGuide::finishClose(bool hide, bool retainPause) {
   if (hadGuide && m_restoreFocus && !m_session.isEmpty()) {
     const auto game = m_session;
     QTimer::singleShot(100, this, [this, game] {
-      if (m_opened || m_opening || !m_compositor || (m_gameMode && m_gameMode->parked()) ||
+      if (m_opened || m_opening || (m_gameMode && m_gameMode->parked()) ||
           !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong())) return;
       const auto window = gameWindow(game);
-      if (window.valid()) m_compositor->focusWindow(window.address);
+      if (window.valid()) {
+        if (m_compositor) m_compositor->focusWindow(window.address);
+        else restoreWindow([](bool) {});
+      }
     });
   }
 }
@@ -530,7 +545,7 @@ void InGameGuide::message(const QJsonObject& data) {
   if (action == "opened" && m_opening) { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); send({{"type", "update"}, {"payload", payload()}}); }
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
   else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
-  else if (action == "closed") finishClose(false);
+  else if (action == "closed" || action == "surface-failed") finishClose(false);
   else if (action == "inject" && m_injectedInput && m_opened) {
     const auto event = data.value("value").toObject();
     if (m_testPadWriter >= 0) {
@@ -544,7 +559,8 @@ void InGameGuide::message(const QJsonObject& data) {
     }
   } else if (action == "desktop" && m_opened && !m_session.isEmpty()) {
     m_parking = true;
-    if (!setPaused(true)) { m_parking = false; toast("Return to desktop unavailable", "The game could not be paused"); }
+    if (!m_pauseWhileOpen) { stopGuard(); parkNow(); }
+    else if (!setPaused(true)) { m_parking = false; toast("Return to desktop unavailable", "The game could not be paused"); }
     else if (m_paused) parkNow();
   } else if (action == "library" && m_opened) {
     m_restoreFocus = false; close(); emit libraryRequested();
@@ -646,5 +662,6 @@ void InGameGuide::runShellCommand() {
     if (error == QProcess::FailedToStart) finish(false);
   });
   QTimer::singleShot(2500, process, [process] { process->kill(); });
+  process->setProcessEnvironment(m_environment);
   process->start("omarchy-shell", command.arguments);
 }

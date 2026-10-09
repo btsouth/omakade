@@ -42,25 +42,38 @@ void GuideClient::request(const QJsonObject& command, QObject* owner,
   socket->connectToServer(socketPath());
 }
 
+void GuideClient::requestShortcut(const QString& node, QObject* owner,
+                                  std::function<void(const QString&, const QJsonObject&)> done) {
+  auto* retry = new QTimer(owner);
+  retry->setSingleShot(true);
+  auto clock = std::make_shared<QElapsedTimer>(); clock->start();
+  auto started = std::make_shared<bool>(false);
+  QObject::connect(retry, &QTimer::timeout, owner, [retry, clock, started, node, owner, done] {
+    request({{"action", "shortcut"}, {"node", node}}, owner,
+            [retry, clock, started, done](const QString& result, const QJsonObject& reply) {
+      if ((result != "unavailable" && result != "preparing") || clock->elapsed() >= 1800) {
+        retry->deleteLater(); if (done) done(result, reply); return;
+      }
+      if (!*started) {
+        *started = true;
+        auto* process = new QProcess(retry);
+        QObject::connect(process, &QProcess::finished, process, &QObject::deleteLater);
+        QObject::connect(process, &QProcess::errorOccurred, process, [process] { process->deleteLater(); });
+        QTimer::singleShot(1000, process, [process] { process->kill(); });
+        process->start("systemctl", {"--user", "start", "omakade-sessiond.service"});
+      }
+      retry->start(100);
+    });
+  });
+  retry->start(0);
+}
+
 QString GuideClient::routeShortcut(const QString& node) {
   QEventLoop loop;
   QString result;
   QElapsedTimer elapsed; elapsed.start();
-  const auto send = [&] {
-    QTimer::singleShot(0, &loop, [&] {
-      request({{"action", "shortcut"}, {"node", node}}, &loop,
-              [&loop, &result](const QString& reply, const QJsonObject&) { result = reply; loop.quit(); });
-    });
-    loop.exec();
-  };
-  send();
-  if (result == "unavailable") {
-    // Login normally starts the unit. Recover an inactive unit without ever starting GUI.
-    QProcess start;
-    start.start("systemctl", {"--user", "start", "omakade-sessiond.service"});
-    if (!start.waitForFinished(2000)) { start.kill(); start.waitForFinished(); }
-    if (start.exitStatus() == QProcess::NormalExit && start.exitCode() == 0) send();
-  }
+  requestShortcut(node, &loop, [&loop, &result](const QString& reply, const QJsonObject&) { result = reply; loop.quit(); });
+  loop.exec();
   qInfo("Guide timing: shortcut IPC elapsed_ms=%lld result=%s", elapsed.elapsed(), qPrintable(result));
   return result;
 }
@@ -79,10 +92,11 @@ GuideClient::GuideClient(bool enabled, QObject* parent) : QObject(parent), m_ena
 }
 bool GuideClient::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
-  request({{"action", fallback ? "shortcut" : "toggle"}, {"node", node}}, this,
-          [this, fallback](const QString& result, const QJsonObject&) {
-            if (fallback && result == "fallback") emit summonFailed();
-          });
+  const auto done = [this, fallback](const QString& result, const QJsonObject&) {
+    if (fallback && (result == "fallback" || result == "unavailable" || result == "preparing")) emit summonFailed();
+  };
+  if (fallback) requestShortcut(node, this, done);
+  else request({{"action", "toggle"}, {"node", node}}, this, done);
   return true;
 }
 void GuideClient::close() { if (m_enabled) request({{"action", "close"}}, this); }

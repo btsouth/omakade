@@ -34,6 +34,10 @@ private slots:
   void changedPayloadKeepsStaticData();
   void telemetryRequiresRealFreshReadings();
   void desktopRetainsPauseAndIdentity();
+  void outsideParkAndResume_data();
+  void outsideParkAndResume();
+  void desktopUsesPausePreference();
+  void surfaceFailureResumes();
   void pluginParser();
   void buttons();
   void axes();
@@ -96,6 +100,75 @@ void InGameGuideTests::telemetryRequiresRealFreshReadings() {
   QElapsedTimer clock; clock.start(); QVERIFY(GuideActions::performance({{"kind", "gamescope"}, {"path", fifo}}).isEmpty()); QVERIFY(clock.elapsed() < 50);
 }
 
+namespace {
+char processState(qint64 pid) {
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  if (!stat.open(QIODevice::ReadOnly)) return '?';
+  const auto raw = stat.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).at(0);
+}
+qint64 processStart(qint64 pid) {
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  if (!stat.open(QIODevice::ReadOnly)) return 0;
+  const auto raw = stat.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+}
+}
+
+void InGameGuideTests::outsideParkAndResume_data() {
+  QTest::addColumn<bool>("pause");
+  QTest::newRow("single-player") << true;
+  QTest::newRow("online") << false;
+}
+void InGameGuideTests::outsideParkAndResume() {
+  QFETCH(bool, pause);
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.m_pauseWhileOpen = pause;
+  guide.setContext({{"gameModeParked", true}});
+  QVERIFY(guide.m_parked); QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
+  guide.setContext({{"gameModeParked", false}});
+  QVERIFY(!guide.m_parked); QVERIFY(processState(game.processId()) != 'T');
+  // A guide-owned pause also releases when the user resumes through the library,
+  // including while the plugin is unavailable.
+  guide.m_enabled = false;
+  guide.m_parked = true; guide.m_managedRetained = true;
+  QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
+  guide.setContext({{"gameModeParked", false}});
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_parked); QVERIFY(!guide.m_guard);
+}
+void InGameGuideTests::desktopUsesPausePreference() {
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.m_pauseWhileOpen = false; guide.m_opened = true;
+  guide.setContext({{"gameModeActive", true}});
+  guide.message({{"action", "desktop"}});
+  QVERIFY(guide.m_parked); QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
+  guide.parkComplete(true); guide.m_enabled = true;
+  QSignalSpy restore(&guide, &InGameGuide::restoreRequested);
+  guide.toggle(); QCOMPARE(restore.count(), 1);
+  QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
+  guide.restoreComplete(false); guide.close(); QVERIFY(processState(game.processId()) != 'T');
+}
+void InGameGuideTests::surfaceFailureResumes() {
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.m_opening = true;
+  QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
+  guide.message({{"action", "surface-failed"}});
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.showing()); QVERIFY(!guide.m_guard);
+}
+
 void InGameGuideTests::desktopRetainsPauseAndIdentity() {
   const auto oldPath = qgetenv("PATH");
   qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
@@ -111,14 +184,15 @@ void InGameGuideTests::desktopRetainsPauseAndIdentity() {
   QSignalSpy park(&guide, &InGameGuide::parkRequested), restore(&guide, &InGameGuide::restoreRequested);
   guide.message({{"action", "desktop"}});
   QTRY_VERIFY(guide.m_parked); QCOMPARE(park.count(), 1); QVERIFY(!guide.opened()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
+  QTRY_COMPARE(processState(pid), 'T');
   guide.setSnapshot({{"pid", 123}, {"procStart", 456}}, {}, "OTHER"); QCOMPARE(guide.m_session.value("pid").toLongLong(), pid);
   guide.parkComplete(true);
   guide.m_enabled = true; QVERIFY(guide.toggle()); QCOMPARE(restore.count(), 1); QVERIFY(guide.m_paused);
   guide.restoreComplete(false); QVERIFY(guide.m_parked); QVERIFY(guide.m_paused);
   // A managed park refusal rolls back the retained guard as well.
   guide.m_waitingManagedPark = true; guide.parkComplete(false);
-  QTRY_VERIFY(!guide.m_parked); QTRY_VERIFY(!guide.m_paused);
-  guide.close(); QTRY_VERIFY(!guide.m_paused); QVERIFY(!guide.m_guard); QVERIFY(!guide.m_parked);
+  QTRY_VERIFY(!guide.m_parked); QTRY_VERIFY(!guide.m_paused); QTRY_VERIFY(processState(pid) != 'T');
+  guide.close(); QTRY_VERIFY(!guide.m_paused); QVERIFY(!guide.m_guard); QVERIFY(!guide.m_parked); QTRY_VERIFY(processState(pid) != 'T');
   game.terminate(); QVERIFY(game.waitForFinished());
 }
 

@@ -718,10 +718,8 @@ int main(int argc, char* argv[]) {
     QCoreApplication commandApplication(argc, argv);
     const auto result = GuideClient::routeShortcut(optionValue(rawArguments, "--guide-device"));
     if (result == "handled" || result == "locked") return EXIT_SUCCESS;
-    if (result != "fallback") {
-      qWarning("Resident guide unavailable. Start omakade-sessiond; the library was not opened.");
-      return EXIT_FAILURE;
-    }
+    // Missing/old/masked services retain the 1.15 Game Mode path.
+    if (result != "fallback" && result != "unavailable" && result != "preparing") return EXIT_FAILURE;
     guideFallback = true;
   }
   QElapsedTimer startupTimer;

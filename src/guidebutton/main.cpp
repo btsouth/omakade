@@ -162,11 +162,11 @@ int main(int argc, char* argv[]) {
     qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)").arg(node, name);
     const auto now = qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     qInfo("Guide timing: Home release mono_ns=%lld node=%s", now, qPrintable(node));
-    GuideClient::request({{"action", "shortcut"}, {"node", node}, {"requestNs", QString::number(now)}}, &application,
+    GuideClient::requestShortcut(node, &application,
                         [&application, toggleCommand, node](const QString& result, const QJsonObject&) {
-      if (result == "fallback")
+      if (result == "fallback" || result == "unavailable" || result == "preparing")
         toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback").replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node, &application);
-      else if (result != "handled" && result != "locked") qWarning("Resident guide unavailable; Home did not open the library");
+      else if (result != "handled" && result != "locked") qWarning("Resident guide could not handle Home");
     });
   });
   listener.start();

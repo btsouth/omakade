@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QQueue>
 #include <QElapsedTimer>
 #include <QTimer>
@@ -32,6 +33,7 @@ public:
               HyprlandGameModeCompositor* compositor, GameLauncher* launcher, bool enabled, QObject* parent = nullptr);
   ~InGameGuide() override;
   bool opened() const { return m_opened; }
+  bool parked() const { return m_parked; }
   bool showing() const { return m_opened || m_opening; }
   bool available() const { return m_enabled; }
   bool hasGame();
@@ -48,6 +50,7 @@ public:
   Q_INVOKABLE void close();
   // Only enabled explicitly in isolated acceptance runs, through the authenticated socket.
   void setInjectedInputEnabled(bool enabled);
+  void setDesktopEnvironment(const QProcessEnvironment& environment) { m_environment = environment; }
   void setContext(const QJsonObject& context);
   void restoreComplete(bool ok);
   void parkComplete(bool ok);
@@ -74,6 +77,7 @@ private:
   void finishClose(bool hide, bool retainPause = false);
   void parkNow();
   void restoreWindow(std::function<void(bool)> done);
+  QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   QJsonObject m_context, m_lastPayload;
   bool m_parked = false, m_parking = false, m_restoring = false, m_managedRetained = false;
   bool m_waitingManagedPark = false;

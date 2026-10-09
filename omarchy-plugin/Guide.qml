@@ -265,6 +265,7 @@ Item {
     pointerGate.reset()
     window.targetScreen = root.gameScreen()
     root.opened = true
+    root.sizeAttempts = 0
     root.showSurface()
   }
 
@@ -330,6 +331,7 @@ Item {
   // still has no size is asked again.
 
   property bool surfaceShown: false
+  property int sizeAttempts: 0
 
   function showSurface() {
     // Newer Omarchy maps a fresh window and exposes contentReady. Older shells
@@ -384,6 +386,11 @@ Item {
     interval: 250
     onTriggered: {
       if (!root.opened || root.presented) return
+      if (++root.sizeAttempts >= 8) {
+        root.notify("surface-failed", null)
+        root.close()
+        return
+      }
       root.surfaceShown = false
       Qt.callLater(function() { if (root.opened) root.surfaceShown = true })
     }

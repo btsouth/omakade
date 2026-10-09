@@ -13,7 +13,7 @@ appears while a replay buffer runs. The header shows session time, the clock,
 controller batteries reported by UPower, and available performance readings.
 Unknown readings stay absent.
 
-Return to desktop keeps the game paused and parked. Home restores the game and
+Return to desktop parks the game and follows its pause preference. Home restores the game and
 opens the guide while it is still paused; B or Resume starts it again. A managed
 Game Mode session uses the same park and resume path as the Game Mode button.
 Games launched outside Game Mode retain their verified window and pause guard.
@@ -22,7 +22,8 @@ Game library opens Omakade and resumes the game.
 ## Setup
 
 The package includes `omakade.guide`. Omakade enables it on Omarchy when no game
-is running. `omarchy plugin disable omakade.guide` turns it off and restores the
+is running. If login starts with a game already running, setup waits until the
+next no-game snapshot. `omarchy plugin disable omakade.guide` turns it off and restores the
 existing Game Mode controls. Enable it again with `omarchy plugin enable
 omakade.guide`. Other desktops keep Game Mode.
 
@@ -34,7 +35,9 @@ plugin directory and enable it there.
 
 Pause defaults on; games tagged online or multiplayer default to running.
 Existing per-game pause preferences are respected. The card reports the actual
-pause state. Return to desktop explicitly pauses the game before parking it.
+pause state. Return to desktop follows the same preference, so online games
+keep running. Library-initiated Game Mode parking never adds a guide pause.
+Resuming through Game Mode also releases any pause retained by the guide.
 
 The guide pins verified process identities with pidfds. Its guard stops only the
 processes it owns and resumes them on Resume, normal exit, or backend death.

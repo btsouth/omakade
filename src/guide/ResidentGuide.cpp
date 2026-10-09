@@ -1,5 +1,7 @@
 #include "guide/ResidentGuide.h"
 #include "guide/GuideClient.h"
+#include "guide/GuideEnvironment.h"
+#include "gamemode/GameModeDesktop.h"
 #include "app/SingleInstance.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionDisplay.h"
@@ -17,6 +19,8 @@
 #include <QUuid>
 #include <QtConcurrent>
 #include <memory>
+#include <QMutex>
+#include <QMutexLocker>
 #include <unistd.h>
 #include <chrono>
 
@@ -24,12 +28,17 @@ namespace {
 struct Snapshot { QVariantMap session, metadata; QString output; GameModeWindow window; bool locked = false; };
 // Read only the focused process, never the whole environment or a whole-process Steam scan.
 QVariantMap focusedSteam(qint64 pid) {
+  static QHash<QString, QVariantMap> cache;
   if (pid <= 1 || !ProcFs::processRunning(pid)) return {};
   QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
   if (!stat.open(QIODevice::ReadOnly)) return {};
   const auto raw = stat.readAll(); const auto fields = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ');
   if (fields.size() < 20) return {};
   const auto start = fields[19].toLongLong();
+  const auto key = QString::number(pid) + ":" + QString::number(start);
+  if (cache.contains(key)) return cache.value(key);
+  if (cache.size() >= 64) cache.clear();
+  cache.insert(key, {});
   QFile comm(QStringLiteral("/proc/%1/comm").arg(pid));
   if (!comm.open(QIODevice::ReadOnly)) return {};
   const auto name = comm.readAll().trimmed(); if (name == "steam" || name == "steamwebhelper") return {};
@@ -39,17 +48,30 @@ QVariantMap focusedSteam(qint64 pid) {
   for (const auto& field : environment.read(1024 * 1024).split('\0'))
     if (field.startsWith("SteamAppId=")) id = QString::fromLatin1(field.mid(11));
   if (GuideArt::appId("Steam", {{"appId", id}}).isEmpty() || !ProcFs::processAlive(pid, start)) return {};
-  return {{"pid", pid}, {"procStart", start}, {"source", "Steam"}, {"path", id}};
+  const QVariantMap result{{"pid", pid}, {"procStart", start}, {"source", "Steam"}, {"path", id}};
+  cache.insert(key, result); return result;
 }
 Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJsonArray& monitors,
                   const QJsonArray& published) {
-  Snapshot result;
-  // Lock policy is prepared off the input thread. This scan never happens on a Home press.
+  static QMutex mutex; QMutexLocker lock(&mutex);
+  static QByteArray previousKey;
+  static Snapshot previous;
+  const auto databasePath = SessionDatabase::defaultDatabasePath();
+  const QFileInfo databaseFile(databasePath), wal(databasePath + "-wal");
+  const auto key = QJsonDocument(QJsonObject{{"active", active}, {"clients", clients}, {"monitors", monitors}, {"published", published},
+    {"dbTime", QString::number(databaseFile.lastModified().toMSecsSinceEpoch())}, {"dbSize", QString::number(databaseFile.size())},
+    {"walTime", QString::number(wal.lastModified().toMSecsSinceEpoch())}, {"walSize", QString::number(wal.size())}}).toJson(QJsonDocument::Compact);
+  bool locked = false;
+  // Lock ownership is checked even when the session/database cache is unchanged.
   for (const auto& pid : QDir("/proc").entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
     if (QFileInfo("/proc/" + pid).ownerId() != uint(::getuid())) continue;
     QFile comm("/proc/" + pid + "/comm");
-    if (comm.open(QIODevice::ReadOnly) && QList<QByteArray>{"hyprlock", "swaylock", "gtklock", "waylock"}.contains(comm.readAll().trimmed())) { result.locked = true; break; }
+    if (comm.open(QIODevice::ReadOnly) && QList<QByteArray>{"hyprlock", "swaylock", "gtklock", "waylock"}.contains(comm.readAll().trimmed())) { locked = true; break; }
   }
+  if (key == previousKey && (previous.session.isEmpty() || ProcFs::processAlive(previous.session.value("pid").toLongLong(), previous.session.value("procStart").toLongLong()))) {
+    previous.locked = locked; return previous;
+  }
+  Snapshot result; result.locked = locked;
   auto candidates = published.toVariantList();
   const auto connection = "omakade-guide-snapshot-" + QUuid::createUuid().toString();
   {
@@ -113,9 +135,16 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
     if (!result.session.isEmpty() && result.session.value("name").toString().isEmpty()) result.session.insert("name", client.value("title").toString());
     break;
   }
-  if (!result.session.isEmpty()) result.session.insert("performanceSource", GuideActions::performanceSource(
-      result.session.value("pid").toLongLong(), result.session.value("procStart").toLongLong()));
-  return result;
+  if (!result.session.isEmpty()) {
+    static QHash<QString, QVariantMap> performanceSources;
+    const auto identity = QString::number(result.session.value("pid").toLongLong()) + ":" + QString::number(result.session.value("procStart").toLongLong());
+    if (!performanceSources.contains(identity)) {
+      if (performanceSources.size() >= 64) performanceSources.clear();
+      performanceSources.insert(identity, GuideActions::performanceSource(result.session.value("pid").toLongLong(), result.session.value("procStart").toLongLong()));
+    }
+    result.session.insert("performanceSource", performanceSources.value(identity));
+  }
+  previousKey = key; previous = result; return result;
 }
 }
 
@@ -164,7 +193,7 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
     }
   });
   connect(&m_guide, &InGameGuide::summonFailed, this, &ResidentGuide::fallback);
-  connect(&m_guide, &InGameGuide::libraryRequested, this, [] { QProcess::startDetached("omakade", {}); });
+  connect(&m_guide, &InGameGuide::libraryRequested, this, [this] { launchLibrary(false); });
   const auto libraryCommand = [this](const QByteArray& command) {
     auto* socket = new QLocalSocket(this);
     connect(socket, &QLocalSocket::connected, socket, [socket, command] { socket->write(command); socket->flush(); socket->disconnectFromServer(); });
@@ -175,20 +204,69 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
   };
   connect(&m_guide, &InGameGuide::parkRequested, this, [libraryCommand] { libraryCommand("game-mode desktop"); });
   connect(&m_guide, &InGameGuide::restoreRequested, this, [libraryCommand] { libraryCommand("game-mode enter"); });
-  m_refresh.setInterval(1000); connect(&m_refresh, &QTimer::timeout, this, &ResidentGuide::refresh); m_refresh.start(); refresh();
+  m_refresh.setInterval(5000);
+  connect(&m_refresh, &QTimer::timeout, this, &ResidentGuide::refresh);
+  m_debounce.setSingleShot(true); m_debounce.setInterval(40);
+  connect(&m_debounce, &QTimer::timeout, this, &ResidentGuide::refresh);
+  connect(&m_events, &QLocalSocket::connected, this, [this] { m_reconnect.stop(); refresh(); });
+  connect(&m_events, &QLocalSocket::readyRead, this, [this] {
+    m_eventBuffer += m_events.readAll();
+    if (m_eventBuffer.size() > 65536) m_eventBuffer.clear();
+    while (m_eventBuffer.contains('\n')) {
+      const int end = m_eventBuffer.indexOf('\n');
+      const auto event = m_eventBuffer.left(end).split('>').first(); m_eventBuffer.remove(0, end + 1);
+      if (event.startsWith("activewindow") || event == "openwindow" || event == "closewindow" || event == "fullscreen" ||
+          event.startsWith("workspace") || event.startsWith("monitor") || event.startsWith("lock")) m_debounce.start();
+    }
+  });
+  connect(&m_events, &QLocalSocket::disconnected, this, [this] { m_reconnect.start(); });
+  connect(&m_events, &QLocalSocket::errorOccurred, this, [this] { m_reconnect.start(); });
+  m_reconnect.setInterval(5000);
+  connect(&m_reconnect, &QTimer::timeout, this, &ResidentGuide::connectEvents);
+  connectEvents(); refresh();
 }
 
-void ResidentGuide::fallback() {
-  const auto adjacent = QCoreApplication::applicationDirPath() + "/omakade";
-  QProcess::startDetached(QFileInfo(adjacent).isExecutable() ? adjacent : "omakade", {"--game-mode-fallback"});
+void ResidentGuide::connectEvents() {
+  if (m_resolving || m_events.state() == QLocalSocket::ConnectedState) return;
+  m_resolving = true;
+  auto* watcher = new QFutureWatcher<QProcessEnvironment>(this);
+  connect(watcher, &QFutureWatcher<QProcessEnvironment>::finished, this, [this, watcher] {
+    m_environment = watcher->result(); watcher->deleteLater(); m_resolving = false;
+    m_guide.setDesktopEnvironment(m_environment);
+    const auto signature = m_environment.value("HYPRLAND_INSTANCE_SIGNATURE");
+    if (signature.isEmpty()) { m_reconnect.start(); return; }
+    m_events.abort();
+    m_events.connectToServer(m_environment.value("XDG_RUNTIME_DIR") + "/hypr/" + signature + "/.socket2.sock");
+    refresh();
+  });
+  watcher->setFuture(QtConcurrent::run([environment = m_environment] { return GuideEnvironment::resolve(environment); }));
 }
+
+void ResidentGuide::launchLibrary(bool fallback) {
+  const auto adjacent = QCoreApplication::applicationDirPath() + "/omakade";
+  const auto executable = QFileInfo(adjacent).isExecutable() ? adjacent : QString("omakade");
+  // Hyprland owns the launched library and its descendants, outside sessiond's
+  // service cgroup. A recorder restart must never kill the user's game.
+  const auto command = HyprlandGameModeCompositor::luaString(executable) + (fallback ? " --game-mode-fallback" : "");
+  auto* process = new QProcess(this); process->setProcessEnvironment(m_environment);
+  connect(process, &QProcess::finished, process, &QObject::deleteLater);
+  connect(process, &QProcess::errorOccurred, process, [process] { process->deleteLater(); });
+  QTimer::singleShot(2000, process, [process] { process->kill(); });
+  process->start("hyprctl", {"dispatch", "exec", command});
+}
+void ResidentGuide::fallback() { launchLibrary(true); }
 QJsonObject ResidentGuide::command(const QJsonObject& data) {
   const auto action = data.value("action").toString();
   QJsonObject reply{{"result", "handled"}};
   if (action == "status") {
     reply.insert("opened", m_guide.opened()); reply.insert("usable", m_guide.usable()); reply.insert("hasGame", m_guide.hasGame()); reply.insert("ready", m_ready);
   } else if (action == "prepare") refresh();
-  else if (action == "publish") { m_published = data.value("sessions").toArray(); m_guide.setContext(data.value("context").toObject()); refresh(); }
+  else if (action == "publish") {
+    const auto published = data.value("sessions").toArray();
+    const bool changed = published != m_published;
+    m_published = published; m_guide.setContext(data.value("context").toObject());
+    if (changed || !m_ready) refresh();
+  }
   else if (action == "parked") m_guide.parkComplete(data.value("ok").toBool());
   else if (action == "restored") m_guide.restoreComplete(data.value("ok").toBool());
   else if (action == "close") m_guide.close();
@@ -198,14 +276,15 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
-    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
-    if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
+    if (!m_guide.showing() && !m_guide.parked() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
+    if (action == "toggle" && !m_guide.parked() && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");
   } else reply.insert("result", "unavailable");
   return reply;
 }
 void ResidentGuide::refresh() {
-  if (m_refreshing || m_guide.showing()) return;
+  if (m_guide.showing()) return;
+  if (m_refreshing) { m_refreshPending = true; return; }
   m_refreshing = true;
   ++m_refreshGeneration;
   struct Queries { QJsonObject active; QJsonArray clients, monitors; int left = 3; };
@@ -225,11 +304,13 @@ void ResidentGuide::refresh() {
       connect(watcher, &QFutureWatcher<Snapshot>::finished, this, [this, watcher] {
         const auto result = watcher->result(); watcher->deleteLater(); m_refreshing = false; m_ready = true; m_locked = result.locked;
         m_guide.setSnapshot(result.session, result.metadata, result.output, result.window);
+        if (m_guide.hasGame()) m_refresh.start(); else m_refresh.stop();
         emit snapshotReady();
+        if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }
         // This is the only provisioning path. Never mutate a plugin directory mid-game.
         const bool provision = !m_provisioned && result.session.isEmpty();
-        m_provisioned = true;
         if (provision) {
+          m_provisioned = true;
           GuidePlugin::ensureAsync(GuidePlugin::defaultPaths(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
             QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation), QCoreApplication::applicationDirPath()), this);
         }
@@ -239,6 +320,7 @@ void ResidentGuide::refresh() {
     connect(process, &QProcess::finished, this, [complete] { complete(); });
     connect(process, &QProcess::errorOccurred, this, [complete](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) complete(); });
     QTimer::singleShot(1000, process, [process] { process->kill(); });
+    process->setProcessEnvironment(m_environment);
     process->start("hyprctl", {"-j", query});
   }
 }

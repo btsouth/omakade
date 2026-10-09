@@ -15,7 +15,13 @@ signals:
 private:
   InGameGuide m_guide;
   QLocalServer m_control;
-  QTimer m_refresh;
+  QTimer m_refresh, m_debounce, m_reconnect;
+  QLocalSocket m_events;
+  QByteArray m_eventBuffer;
+  QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
+  bool m_resolving = false, m_refreshPending = false;
+  void connectEvents();
+  void launchLibrary(bool fallback);
   QJsonArray m_published;
   int m_refreshGeneration = 0;
   bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false;

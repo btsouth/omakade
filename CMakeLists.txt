@@ -325,6 +325,7 @@ add_library(omakade_core STATIC
   src/guide/InGameGuide.h
   src/guide/GuideClient.cpp src/guide/GuideClient.h
   src/guide/ResidentGuide.cpp src/guide/ResidentGuide.h
+  src/guide/GuideEnvironment.cpp src/guide/GuideEnvironment.h
   src/gamemode/GameModeOverlay.cpp
   src/gamemode/GameModeOverlay.h
   src/gamemode/GameModePorts.h
