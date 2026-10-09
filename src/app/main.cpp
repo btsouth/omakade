@@ -7848,12 +7848,15 @@ int main(int argc, char* argv[]) {
       // must reveal its own complete scene even when that frame never appeared.
       qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->setOpacity(0);
       showGuideLibrary();
-      QCoreApplication::processEvents();
-      if (!gameMode.parked() || !rootWindow->isVisible() ||
-          !rootWindow->property("couchMode").toBool() ||
-          rootWindow->windowState() != Qt::WindowFullScreen ||
-          !settled([rootWindow] {
-            return qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() == 1;
+      // Library placement now owns its desktop snapshot through the session's
+      // worker handoff. Check the complete presentation after that handoff.
+      if (!settled([&gameMode, &gameModeTestCompositor, rootWindow] {
+            return gameMode.parked() && !gameMode.busy() && rootWindow->isVisible() &&
+                rootWindow->property("couchMode").toBool() &&
+                rootWindow->windowState() == Qt::WindowFullScreen &&
+                gameModeTestCompositor.windowForPid(QCoreApplication::applicationPid()).workspace ==
+                    QStringLiteral("name:omakade-library") &&
+                qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() == 1;
           })) {
         fail(QStringLiteral("Guide library resumed the game or failed to show the retained fullscreen library"));
         return;
