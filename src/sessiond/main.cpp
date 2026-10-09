@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
   // protects guide-only startup and survives unavailable recording storage.
   QLockFile instance(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/omakade-sessiond.lock");
   instance.setStaleLockTime(0);
-  if (!instance.tryLock(0)) { qWarning("omakade-sessiond: already running"); return 1; }
+  if (!instance.tryLock(0)) { qWarning("omakade-sessiond: recorder already running or guide instance lock is unavailable"); return 1; }
 
   // The recorder uses synchronous procfs/database polls. Keep guide input and IPC on
   // an independent event loop, with no GUI application or library models.

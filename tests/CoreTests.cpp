@@ -14546,20 +14546,22 @@ void CoreTests::sessionStoreReportsAndStopsLiveSessions() {
   // real against a live process.
   QProcess game;
   game.start(QStringLiteral("/bin/sh"),
-             {QStringLiteral("-c"), QStringLiteral("trap '' TERM; sleep 20")});
+             {QStringLiteral("-c"), QStringLiteral("trap '' TERM; printf 'ready\\n'; sleep 20")});
   QVERIFY(game.waitForStarted(5000));
+  // The trap must be installed before the test can send SIGTERM. Wait for the
+  // fixture's acknowledgement, then read only its own verified identity.
+  QVERIFY(game.bytesAvailable() > 0 || game.waitForReadyRead(5000));
+  QCOMPARE(game.readAllStandardOutput(), QByteArray("ready\n"));
   const qint64 pid = game.processId();
   QVERIFY(pid > 1);
-  // A single snapshot taken right after start has missed the child on a loaded
-  // CI runner, so poll until it shows up.
-  const auto findProcStart = [pid] {
-    for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
-      if (snapshot.pid == pid) return snapshot.procStart;
-    }
-    return qint64{-1};
-  };
-  qint64 procStart = -1;
-  QTRY_VERIFY_WITH_TIMEOUT((procStart = findProcStart()) >= 0, 5000);
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll();
+  const auto fields = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ');
+  QVERIFY(fields.size() >= 20);
+  const qint64 procStart = fields[19].toLongLong();
+  QVERIFY(procStart > 0);
+  QVERIFY(ProcFs::processAlive(pid, procStart));
 
   const QString gamePath =
       QStringLiteral("/data/Emulation/Games/Xbox/Dante's Inferno (USA)/default.xex");
