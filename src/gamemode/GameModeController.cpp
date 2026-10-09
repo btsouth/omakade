@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -238,18 +239,26 @@ void GameModeController::forget() const {
 
 bool GameModeController::waitFor(const std::function<bool()>& ready, int timeoutMs,
                                  int stepMs) const {
-  for (int waited = 0;; waited += stepMs) {
+  QElapsedTimer elapsed;
+  elapsed.start();
+  int slept = 0;
+  for (;;) {
     if (ready()) {
       return true;
     }
-    if (waited >= timeoutMs) {
+    // Compositor/audio queries take time too, especially when a helper stalls.
+    // Injected sleeps can advance a test's clock without actually blocking.
+    const qint64 remaining = timeoutMs - qMax<qint64>(slept, elapsed.elapsed());
+    if (remaining <= 0) {
       return false;
     }
+    const int delay = static_cast<int>(qMin<qint64>(stepMs, remaining));
     if (m_sleep) {
-      m_sleep(stepMs);
+      m_sleep(delay);
     } else {
-      QThread::msleep(stepMs);
+      QThread::msleep(delay);
     }
+    slept += delay;
   }
 }
 

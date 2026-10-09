@@ -51,6 +51,7 @@ public:
   std::function<void()> beforeGameScan;
   std::function<void()> beforeWindowFocus;
   std::function<void()> beforeWorkspaceCheck;
+  std::function<void()> beforeWindowLookup;
   bool usable = true;
   bool enableFails = false;
   int disableFailuresRemaining = 0;
@@ -122,7 +123,11 @@ public:
     }
     return true;
   }
-  GameModeWindow windowForPid(qint64) override { return windowMapped ? window : GameModeWindow{}; }
+  GameModeWindow windowForPid(qint64) override {
+    if (beforeWindowLookup)
+      beforeWindowLookup();
+    return windowMapped ? window : GameModeWindow{};
+  }
   int otherWindowsOn(const QString& workspace, qint64) override {
     if (beforeWorkspaceCheck)
       beforeWorkspaceCheck();
@@ -1466,6 +1471,27 @@ private slots:
     QCOMPARE(m_compositor.currentFocus.workspace, QStringLiteral("8"));
     QCOMPARE(m_compositor.currentFocus.address, QStringLiteral("0xcafe"));
     QCOMPARE(visibility, (QStringList{"show", "hide", "show", "hide"}));
+  }
+
+  void slowWindowQueriesConsumeHideDeadline() {
+    deskAndTv(true);
+    auto game = controller();
+    game.setTemporaryWindow(true);
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+    int queries = 0;
+    game.setWindowVisibility([&](bool visible) {
+      if (visible) return;
+      m_compositor.beforeWindowLookup = [&] {
+        QTest::qSleep(1000);
+        // An unmap arriving after the three-second deadline must stay pending.
+        if (++queries == 5) m_compositor.windowMapped = false;
+      };
+    });
+    const auto result = game.exit(100);
+    QVERIFY(!result.ok);
+    QVERIFY(result.notes.join(' ').contains("temporary window did not hide"));
+    QVERIFY(game.state().windowPlaced);
+    QVERIFY(QFile::exists(statePath()));
   }
 
   void retainedWarmWindowTradesPlaceholderEachCycle() {

@@ -3,6 +3,7 @@
 import fcntl
 import json
 import os
+import signal
 import socket
 from pathlib import Path
 import subprocess
@@ -73,6 +74,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.resident = subprocess.Popen(
             [str(Path(BINARY).with_name("omakade-sessiond")), "--guide-only"],
             env=resident_env, stdout=self.log, stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
         endpoint = str(root / "runtime" / f"omakade-guide-control-{os.getuid()}")
         deadline = time.monotonic() + 8
@@ -96,28 +98,45 @@ class GameModeStartupTests(unittest.TestCase):
             self.fail("Resident guide did not prepare the fallback fixture")
 
     def tearDown(self):
-        if self.primary is not None and self.primary.poll() is None:
-            self.primary.terminate()
-            try:
-                self.primary.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.primary.kill()
-                self.primary.wait(timeout=5)
-        if self.game is not None and self.game.poll() is None:
-            self.game.terminate()
-            self.game.wait(timeout=5)
-        self.resident.terminate()
-        self.resident.wait(timeout=5)
+        for process in (self.primary, self.game, self.resident):
+            if process is not None:
+                self.stop_process_group(process)
         self.log.close()
-        # Helpers the fixture's fake compositor started can still be finishing a write.
-        for attempt in range(20):
+        self.directory.cleanup()
+
+    def stop_process_group(self, process):
+        # SIGTERM of Qt alone leaves its in-flight QProcess helpers orphaned.
+        # Each fixture-owned process has its own session, including its helpers.
+        def send(sig):
             try:
-                self.directory.cleanup()
-                break
-            except OSError:
-                if attempt == 19:
-                    raise
-                time.sleep(0.1)
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                pass
+
+        def live_members():
+            members = []
+            for stat in Path("/proc").glob("[0-9]*/stat"):
+                try:
+                    fields = stat.read_text().rsplit(")", 1)[1].split()
+                except FileNotFoundError:
+                    continue
+                if int(fields[2]) == process.pid and fields[0] not in ("Z", "X"):
+                    members.append(int(stat.parent.name))
+            return members
+
+        send(signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            send(signal.SIGKILL)
+            process.wait(timeout=5)
+        # The parent may already have exited normally while a helper is running.
+        send(signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while members := live_members():
+            self.assertLess(time.monotonic(), deadline,
+                            f"Fixture process group {process.pid} still running: {members}")
+            time.sleep(0.02)
 
     def wait_for(self, predicate, message):
         deadline = time.monotonic() + 8
@@ -138,6 +157,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.primary = subprocess.Popen(
             [BINARY, "--demo", *arguments], env=self.env,
             stdout=self.log, stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
 
     def command(self, argument):
@@ -172,7 +192,7 @@ class GameModeStartupTests(unittest.TestCase):
         # Real process/start identities through the production procfs adapter;
         # only compositor/audio transport is fake. No desktop services are used.
         if with_game:
-            self.game = subprocess.Popen(["sleep", "120"], env=self.env)
+            self.game = subprocess.Popen(["sleep", "120"], env=self.env, start_new_session=True)
         root = Path(self.directory.name)
         self.fixture = root / "desktop.json"
         self.fixture.write_text(json.dumps({"owner": 0, "game": self.game.pid if self.game else 0,
@@ -283,7 +303,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.phase("parked")
         self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xdd",
                       "Empty park did not restore desktop focus")
-        self.game = subprocess.Popen(["sleep", "120"], env=self.env)
+        self.game = subprocess.Popen(["sleep", "120"], env=self.env, start_new_session=True)
         self.fixture_update(game=self.game.pid, game_open=True)
         self.wait_for(lambda: json.loads(self.fixture.read_text())["mute"],
                       "Delayed game audio was not muted by parked polling")
