@@ -104,7 +104,7 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
     }
     if (m_family != family) {
       m_family = family;
-      shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
+      send({{"type", "update"}, {"payload", payload()}});
     }
     const auto received = QString::number(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     if (m_injectedInput && qEnvironmentVariableIsSet("OMAKADE_GUIDE_LEGACY_INPUT"))
@@ -459,7 +459,7 @@ void InGameGuide::message(const QJsonObject& data) {
     if (!setPaused(m_pauseWhileOpen)) m_pauseWhileOpen = false;
     QSettings preferences("Omakade", "Omakade");
     preferences.setValue("guide/pause/" + preferenceKey(m_session), m_pauseWhileOpen);
-    shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
+    send({{"type", "update"}, {"payload", payload()}});
   } else if (action == "inject" && m_injectedInput && m_opened) {
     const auto event = data.value("value").toObject();
     if (m_testPadWriter >= 0) {
@@ -618,7 +618,7 @@ void InGameGuide::poll() {
         !ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) {
       stopGuard(); m_session.clear(); m_metadata.clear(); m_window = {}; m_achievements = {};
     }
-    shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
+    send({{"type", "update"}, {"payload", payload()}});
   });
 }
 

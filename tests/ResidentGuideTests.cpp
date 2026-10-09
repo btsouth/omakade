@@ -50,7 +50,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   // Any accidental QGuiApplication path fails. The shortcut must use Qt Core alone.
   env.insert("QT_QPA_PLATFORM", "invalid-platform-for-resident-test");
   env.insert("QT_FORCE_STDERR_LOGGING", "1");
-  QProcess daemon; daemon.setProcessEnvironment(env); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
+  QProcess daemon; daemon.setProcessEnvironment(env); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only", "--guide-input-test"});
   QVERIFY(daemon.waitForStarted());
   const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
   QTRY_VERIFY(QFileInfo::exists(runtime + QStringLiteral("/omakade-guide-control-%1").arg(::getuid())));
@@ -73,9 +73,20 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   };
   send("opened");
   QTest::qWait(30);
+  plugin.readAll();
+  plugin.write(QJsonDocument(QJsonObject{{"version", GuidePayload::kVersion}, {"token", backend.value("token")},
+    {"action", "inject"}, {"value", QJsonObject{{"type", 1}, {"code", 0x221}, {"value", 1}}}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(plugin.waitForBytesWritten());
+  QByteArray inputMessages;
+  QTRY_VERIFY(([&] { inputMessages += plugin.readAll(); return inputMessages.contains("\"type\":\"input\""); })());
+  // Family changes and input share a socket so a late shell update cannot reset
+  // the cursor after navigation has already arrived.
+  QVERIFY(inputMessages.indexOf("\"type\":\"update\"") >= 0);
+  QVERIFY(inputMessages.indexOf("\"type\":\"update\"") < inputMessages.indexOf("\"type\":\"input\""));
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--guide-toggle"}); QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
   QTRY_VERIFY(([&] { QFile log(shellLog); return log.open(QIODevice::ReadOnly) && log.readAll().contains("shell hide omakade.guide"); })());
-  QFile log(shellLog); QVERIFY(log.open(QIODevice::ReadOnly)); QVERIFY(!log.readAll().contains("rescanPlugins"));
+  QFile log(shellLog); QVERIFY(log.open(QIODevice::ReadOnly));
+  const auto shellCalls = log.readAll(); QVERIFY(!shellCalls.contains("rescanPlugins")); QVERIFY(!shellCalls.contains("call omakade.guide update"));
   const auto control = [&](const QString& action) {
     QLocalSocket socket; socket.connectToServer(runtime + QStringLiteral("/omakade-guide-control-%1").arg(::getuid()));
     if (!socket.waitForConnected()) return QJsonObject{};
