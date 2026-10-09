@@ -2,28 +2,21 @@
 
 ## 1.16.0
 
-An in-game guide for Omarchy: press Super + Ctrl + G or the controller Home button
-over a running game to pause it, check achievements, capture and adjust sound without
-leaving the game.
+Press Home or Super + Ctrl + G over a running game to open one theme-matched
+Omarchy card. Resume, see achievements, take screenshots and clips, adjust sound
+or quit from the same place.
 
-- Nothing extra to install: the package includes the guide and Omakade turns it on the
-  first time it runs on Omarchy. It follows your theme. To turn it off, run
-  `omarchy plugin disable omakade.guide`; Game Mode then keeps its existing controls.
-- Pages for the game (resume, pause, quit, return to the desktop, library), captures
-  (screenshot, clip, replay buffer, recent captures with a preview), performance,
-  sound, controllers and system toggles. LB and RB switch pages; B, Start, Guide and
-  Escape close it.
-- Achievements list for Steam games, with icons, progress and recent unlocks.
-- While open, the guide holds your controllers so presses do not reach the game, and
-  pauses the game (on by default; off for games tagged online or multiplayer).
-- Quit shows "Closing" and returns as soon as the game exits. Recorder errors read as
-  plain causes, and long toasts wrap.
-- A button opens the Steam overlay; the optional `xdotool` makes it more reliable.
-- A second B press within 300 ms of leaving the achievements list is ignored, so a
-  double press does not close the guide.
+- Return to desktop parks the game while paused. Home brings it back under the
+  guide; B or Resume starts it again. With no game, Home keeps Game Mode.
+- Steam achievements open inside the card, with recent unlocks first.
+- Screenshot and Record clip step aside before capture. Save the last seconds
+  while a replay buffer runs, or switch the sound output.
+- Couch Mode scales the card to read from a sofa. The header shows available
+  controller batteries and performance readings.
+- The guide comes with the package. Disable `omakade.guide` to turn it off.
 
-[Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.0) ·
-[Guide documentation](https://github.com/btsouth/omakade/blob/v1.16.0/docs/GAME-GUIDE.md)
+[Install Omakade](https://github.com/btsouth/omakade#installation) ·
+[Guide documentation](https://github.com/btsouth/omakade/blob/main/docs/GAME-GUIDE.md)
 
 ## 1.15.0
 

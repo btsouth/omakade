@@ -33,13 +33,17 @@ Quit asks in the card's own rows, starting on Keep playing. The header adds
 controller batteries when UPower reports them.
 
 The readings line leaves out what is not available: frame rate and frame time
-come from Omakade when MangoHud reports them, CPU and GPU load and temperature
-from the drivers. Without a game the header says so and Resume and Quit are
+come from an existing game telemetry file through Omakade. CPU and GPU load and
+temperature come from the drivers. Without a game the header says so and Resume and Quit are
 hidden.
 
-A payload `scale` (Omakade's couch mode) multiplies every size and gap of the
+A payload `scale` (1.7 in Omakade's Couch Mode) multiplies every size and gap of the
 card, so it reads from a couch; 1 is exactly the Omarchy menu. Where the scaled
 card would not fit the screen it shrinks only as far as it must.
+
+Return to desktop parks the game while paused. Home restores it under the guide;
+B or Resume then starts it again. With no game, Home and Super + Ctrl + G keep
+Game Mode. Game library opens Omakade.
 
 ## Input
 
@@ -60,7 +64,8 @@ letters, PlayStation symbols, Nintendo's swapped A and B.
 
 Screenshot hides the card for a frame, saves the game's output with grim where
 Omasnap saves screenshots, and reports through an Omarchy notification once the
-file exists. Record clip starts Omarchy's own recorder
+file exists. Screenshot and Record clip wait for a submitted guide-free frame
+and at least 80 ms. Record clip closes the guide, then starts Omarchy's own recorder
 (`omarchy-capture-screenrecording --fullscreen --with-desktop-audio`) and
 resumes the game; Stop recording stops it, and Omarchy's notification follows
 when the clip is saved. Next to a running gpu-screen-recorder replay buffer,
@@ -72,3 +77,7 @@ use (`omarchy-audio-output-sink`), through Quickshell PipeWire.
 ## Rendering
 
 See `tools/guide-overlay-preview/README.md`.
+
+Backend updates use the same version 1 payload shape. With `delta: true`, data is
+a merge patch: absent fields are retained, null removes fields, arrays replace.
+Static art and achievements are kept until their content changes.

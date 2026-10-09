@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -41,6 +42,9 @@ Item {
   property double backAt: 0
   // The card steps aside while a screenshot is taken.
   property bool capturing: false
+  property string captureKind: ""
+  property bool hiddenFrame: false
+  property bool captureDelayPassed: false
   property date now: new Date()
   // Couch scale from the payload (`scale`, set by Omakade in couch mode): one
   // multiplier on every size and gap of the card. 1 is exactly the Omarchy
@@ -271,6 +275,8 @@ Item {
     root.view = "main"
     root.quitting = false
     root.capturing = false
+    root.captureKind = ""
+    shutter.stop()
     root.surfaceShown = false
     card.opacity = 0
     fadeIn.stop()
@@ -518,18 +524,11 @@ Item {
     }
     switch (name) {
     case "screenshot":
-      if (root.capturing) return
-      root.capturing = true
-      // Let the compositor show a frame without the card before the capture.
-      shutter.restart()
+      root.beginCapture("screenshot")
       break
     case "record":
-      var starting = !root.recording
-      if (starting) {
-        // Close the card and scrim, then allow the same guide-free frame as Screenshot.
-        root.close()
-        recordStart.restart()
-      } else capture.toggleRecording()
+      if (!root.recording) root.beginCapture("record")
+      else capture.toggleRecording()
       break
     case "save-replay": capture.saveReplay(); break
     // Omakade parks the game on the desktop, or opens its library, and closes
@@ -550,16 +549,40 @@ Item {
     root.model = copy
   }
 
-  Timer {
-    id: recordStart
-    interval: 80
-    onTriggered: if (!root.opened) capture.toggleRecording()
+  function beginCapture(kind) {
+    if (root.capturing) return
+    root.captureKind = kind
+    root.hiddenFrame = false
+    root.captureDelayPassed = false
+    root.capturing = true
+    shutter.restart()
+  }
+
+  function captureAfterFrame() {
+    if (!root.capturing || !root.hiddenFrame || !root.captureDelayPassed || !root.opened) return
+    var kind = root.captureKind
+    root.captureKind = ""
+    if (kind === "record") {
+      // The mapped surface has already submitted a frame without card or scrim.
+      root.close()
+      capture.toggleRecording()
+    } else capture.screenshot(function() { if (root.captureKind === "") root.capturing = false })
+  }
+
+  Connections {
+    target: surface.Window.window
+    function onFrameSwapped() {
+      if (root.capturing && root.captureKind !== "") {
+        root.hiddenFrame = true
+        root.captureAfterFrame()
+      }
+    }
   }
 
   Timer {
     id: shutter
     interval: 80
-    onTriggered: capture.screenshot(function() { root.capturing = false })
+    onTriggered: { root.captureDelayPassed = true; root.captureAfterFrame() }
   }
 
   function cancelQuit() {

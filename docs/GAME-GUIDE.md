@@ -1,202 +1,110 @@
 # In-game guide
 
-The guide is the `omakade.guide` Omarchy shell overlay in `omarchy-plugin/`.
-Omakade owns game discovery, controller input and pause state. The shell renders the
-guide card. On other desktops, and wherever the plugin is not enabled,
-Omakade keeps its existing Game Mode controls.
+Press the controller Home button or Super + Ctrl + G over a known running game.
+One Omarchy card opens over it, with your theme's colors, type and spacing.
+Resume starts the game again. B or Escape backs out of a list or confirmation
+first, then resumes. With no game, Home and the shortcut keep the existing
+Game Mode behavior.
+
+The card has Resume, Return to desktop, Game library, Screenshot, Record clip,
+Volume and Quit. Steam games with achievement data get an in-card list, with
+recent unlocks first. Sound output cycles available outputs. Save last N seconds
+appears while a replay buffer runs. The header shows session time, the clock,
+controller batteries reported by UPower, and available performance readings.
+Unknown readings stay absent.
+
+Return to desktop keeps the game paused and parked. Home restores the game and
+opens the guide while it is still paused; B or Resume starts it again. A managed
+Game Mode session uses the same park and resume path as the Game Mode button.
+Games launched outside Game Mode retain their verified window and pause guard.
+Game library opens Omakade and resumes the game.
 
 ## Setup
 
-Nothing to install. The package ships the plugin in `/usr/share/omakade/omarchy-plugin`.
-The first time Omakade runs on Omarchy it links that folder into
-`~/.config/omarchy/plugins/omakade.guide` and enables it, so package upgrades update the
-plugin in place. If Omarchy's shell is not running at that moment, the next launch tries
-again. Omakade never replaces a plugin folder or link you put there yourself.
+The package includes `omakade.guide`. Omakade enables it on Omarchy when no game
+is running. `omarchy plugin disable omakade.guide` turns it off and restores the
+existing Game Mode controls. Enable it again with `omarchy plugin enable
+omakade.guide`. Other desktops keep Game Mode.
 
-To turn the guide off, run `omarchy plugin disable omakade.guide`; the shortcut and Home
-button go back to Game Mode. `omarchy plugin enable omakade.guide` turns it back on.
-When running from a source build, link `omarchy-plugin/` to
-`~/.config/omarchy/plugins/omakade.guide` yourself and enable it the same way.
+The resident backend runs in `omakade-sessiond`; Home does not load the library
+GUI. Source builds can link `omarchy-plugin/` into the private test desktop's
+plugin directory and enable it there.
 
-While a known game runs, the existing Super + Ctrl + G shortcut and the controller
-Home button open or close the guide. With no game, the shortcut keeps its existing
-Game Mode start, desktop and resume behavior. In Game Mode, F11 and the controls action use the guide
-on Omarchy. `omakade --guide-toggle` opens it directly, including without a game.
+## Pause and input
 
-A cold shortcut over a recognized running game starts Omakade with the guide,
-without entering the library's Game Mode first.
+Pause defaults on; games tagged online or multiplayer default to running.
+Existing per-game pause preferences are respected. The card reports the actual
+pause state. Return to desktop explicitly pauses the game before parking it.
 
-Guide-button detection still uses `omakade-guide-button` and its short, solitary press
-policy. It forwards the originating event node. While open, Omakade grabs all detected
-Guide-capable controller evdev nodes, including virtual pads, and translates their
-physical button positions, hats and calibrated left stick into guide actions. The
-keyboard uses the same actions. B, Guide and Start close the guide; B first backs out of
-the quit question.
-Grabs are per device. A pad that cannot be grabbed does not block opening; the guide
-keeps reading any pad it can open and warns that the named pad may still reach the game.
-A pad it cannot open is skipped with a warning. A disconnected reader or a dropped input report closes
-and releases every grab. Omakade's SDL navigation remains in the library, while guide
-navigation uses the separate evdev translator.
+The guide pins verified process identities with pidfds. Its guard stops only the
+processes it owns and resumes them on Resume, normal exit, or backend death.
+Parking retains that guard until Home and Resume, or backend exit. A pad that
+cannot be grabbed produces a notification; available readers keep working.
 
-## Game data and pause
+One controller gesture moves one row. Hats, sticks and buttons share a report;
+physical and virtual mirrors are grouped. B, Home and Start require release
+before firing again. Keyboard arrows, Enter, Escape and Y use the same actions.
+Quit asks first, then sends SIGTERM to the pinned tree. A surviving game offers
+Force quit after five seconds.
 
-Recorder sessions from `omakade-sessiond`, direct Omakade launches, and Steam process
-app IDs supply game identity. Launcher-backed data does not require play-session
-recording. Launcher processes are never expanded to guess which game to pause.
-The guide uses the game's actual window monitor, falling back to the Game Mode output.
-Opening makes that game accessible, and closing restores its focus after the overlay
-parks. Unknown playtime, achievements and art remain absent.
+## Capture, sound and scale
 
-Pause defaults on. A library tag `online` or `multiplayer` defaults it off; the guide's
-Pause control saves a per-game override. Games without a verified process start time
-remain running, and the guide reports the actual paused state. Omakade does not infer
-whether an untagged native game is online.
+Screenshot and Record clip hide both the card and scrim and wait for a submitted
+guide-free frame and at least 80 ms. Screenshot then captures the game's output;
+Record clip closes the guide and starts Omarchy's recorder.
+Next to an existing replay buffer the plugin starts its own recording instead.
+Screenshot success is reported only after a file exists. Volume and sound output
+use Omarchy's output selection and PipeWire.
 
-`omakade-guide-guard` pins the game process and its descendants with pidfds, checks
-process start identities, stops parents before descendants, and resumes only processes
-it stopped. Its stdin is owned by Omakade: close, normal exit, a crash or SIGKILL of
-Omakade closes the pipe and sends SIGCONT. Controller grabs belong to Omakade's file
-descriptors and are released by RAII or process death. Processes already stopped by
-another owner are never claimed. Before each stop, the guard reports the identity and waits for Omakade to pin it
-with a pidfd. Omakade watches guard exit and resumes that recorded tree itself,
-including guard death during pause setup.
+Couch Mode sends top-level `scale: 1.7`, matching Omakade's existing couch reading
+scale. The running library window supplies its current mode; without a library
+window the resident service reads `couch_mode_enabled` from `config.toml` at
+startup. Desktop mode sends 1. The card scales its Omarchy sizes and gaps and
+shrinks to fit the output. There is no separate guide scale setting.
 
-EVIOCGRAB only isolates evdev readers. Physical hidraw readers, Steam Input behavior
-and buffered input after SIGCONT still need controller/game hardware acceptance.
-Pausing an online game can disconnect it, so tag it or switch Pause off before use.
+Frame readings come only from an existing source associated with the game:
+MangoHud's explicitly configured `output_folder` CSV for that executable, created
+during the process's lifetime, or a gamescope ancestor's `--stats-path` regular
+file. Only bounded file samples are read. Files older than five seconds, invalid
+values, FIFOs and unavailable sources are omitted. MangoHud provides FPS and
+frame time in milliseconds; gamescope's stats file provides FPS alone. The guide
+does not start logging or infer frame time from FPS. CPU/GPU readings are read
+by the plugin from available drivers.
 
-## IPC v1
+Formats: [MangoHud logging](https://github.com/flightlessmango/MangoHud/blob/master/src/logging.cpp)
+and [gamescope stats](https://github.com/ValveSoftware/gamescope/blob/master/src/steamcompmgr.cpp).
 
-Omakade sends `omarchy-shell shell summon omakade.guide JSON`, then pushes complete data
-snapshots with `omarchy-shell shell call omakade.guide update JSON` while open:
+## IPC
 
-```json
-{
-  "version": 1,
-  "output": "DP-2",
-  "pad": "xbox",
-  "backend": {"socket": "/run/user/1000/omakade-guide-1000", "token": "per-open-token"},
-  "data": {
-    "game": {
-      "title": "A running game",
-      "source": "Steam",
-      "kind": "steam",
-      "cover": "file:///path/to/cover.jpg",
-      "banner": "file:///path/to/hero.jpg",
-      "bannerKind": "header",
-      "logo": "file:///path/to/logo.png",
-      "sessionMinutes": 12,
-      "totalMinutes": 180,
-      "achievements": {"unlocked": 3, "total": 20, "items": [
-        {"title": "First win", "description": "Win a match", "unlocked": true,
-         "when": "28 Apr 2024", "icon": "https://...", "rarity": 41.2, "hidden": false}]},
-      "pauseWhileOpen": true,
-      "paused": true
-    }
-  }
-}
-```
+The initial `omarchy-shell shell summon omakade.guide JSON` payload contains
+version 1, output, pad, scale, backend socket/token and data. Data includes the
+game title, source, pause state, known session time, art, achievements and
+available frame readings. Achievement items contain title, description,
+unlocked, when, icon, rarity and hidden; secret descriptions remain absent until
+unlocked.
 
-Optional unknown fields are omitted. Without a game `data` is empty. `bannerKind`
-`header` marks Steam's header capsule, which has the title painted in: the guide shows
-the cover beside the title instead of cropping it. For Steam games without local hero
-art Omakade caches `library_hero.jpg` and `logo.png` from Steam's CDN. Achievement
-`items` come read-only from Omakade's library for the running Steam game, unlocked
-newest first; hidden ones keep their description until unlocked. Families are
-`keyboard`, `xbox`, `playstation`, `nintendo`, `deck`, or `generic`. The local socket is
-user-only and receives newline-delimited `{version:1, token, action, value}` messages
-for opened, closed and native actions. The socket also carries optional newline-delimited input, update and toast messages
-from Omakade. Input is ordered on that persistent connection. Old v1 payload
-readers ignore the added optional fields. Shell lifecycle commands remain serialized. `input`, `state` and `update` are callable root methods. An open-only
-heartbeat releases ownership if the shell disappears or opens a different payload.
+After opening, newline-delimited socket messages keep the shape
+`{type: "update", payload: {...}}`. `payload.delta: true` marks changed fields in
+`data`: absent fields retain their previous value, null removes a field, arrays
+replace as a whole. Unchanged payloads send nothing. Static achievements and art
+are sent on open and again only when their content changes. The integrated
+plugin merges a delta before validating the complete version 1 data.
 
-The fixture payload (`fixture`, `pad`, `scale`) remains supported by preview tooling. A generic
-summon with `{}` clears the game: the card says no game is running and keeps
-Screenshot, Record clip and Volume, which stay plugin-owned. Resume and Quit are absent
-without a known game; unknown readings stay absent.
+The user-only socket accepts `{version: 1, token, action, value}`. Controller input
+and updates share that ordered connection. Lifecycle commands are serialized;
+an open-only heartbeat closes ownership if the shell disappears. Test event
+injection is available only with `--guide-input-test`.
 
-The card shows as soon as the overlay surface has its full size, with no capture step
-first: the card fades in over 140 ms and closes at once. A summon that lands while the
-previous hide is still shrinking the surface waits for it to park before showing again,
-so the overlay never stays at 1x1. `ready` answers only once the surface has its size
-and the card is fully shown.
+## Verification
 
-## Game actions
+Builds and CTest run on devbox. Run graphical checks in an owned omabox with the
+matching binaries and plugin. `tools/guide-i1/` seeds a private library and a
+fullscreen test game; `tools/guide-i2/latency.py` sends synthetic controller events
+through the native translator. Fixtures in `tools/guide-overlay-preview/` cover
+layout and unavailable states.
 
-Quit resumes first, then sends SIGTERM to the game's pinned process tree. After
-five seconds, a surviving tree enables explicit Force quit with SIGKILL. The guide
-stays open during that grace period. Tracked games also use the play-session store's
-stop path so the library reflects the pending stop. Generic mode uses Hyprland's close-window
-request, then checks the original window and process identity before force quit.
-Library and Desktop resume the game and leave the guide. Steam handoff resumes,
-closes, restores the known window and sends Shift+Tab after 250 ms.
-
-A directly launched emulator retains its actual launch save context. Backup uses
-the existing save-layout resolver and SaveSetStore, pauses the known tree while
-copying, and keeps ten timestamped versions under `guide-backups`. The control
-hides for recorder-only sessions and unresolved layouts. It never guesses paths
-from an emulator name. Existing backup integrity and size limits still apply.
-
-Omakade adds `MANGOHUD=1` only to directly launched Manual games and emulators when
-MangoHud is installed. Each launch has a unique configuration and abstract control
-socket. The HUD always starts hidden. Steam shows the launch option
-`MANGOHUD=1 %command%`; games with no verified control socket show setup guidance.
-The card's readings line shows driver-provided CPU/GPU load and temperature where
-available, and frame rate and frame time only when the payload carries them. It omits
-unavailable readings.
-
-MangoHud's normal Vulkan/OpenGL socket accepts `:hud;` to toggle visibility. It
-supports neither selecting HUD detail nor setting a frame limit. `mangohudctl`
-uses a separate System V protocol for mangoapp and does not control the normal
-injected HUD. Off/FPS/FPS+frametime/Full and Off/30/40/60/120/display-rate choices
-save preferences; visibility changes now when connected, detail and limit apply
-on the next launch, as the UI says. No external FPS route was verified.
-Sources: [socket implementation](https://github.com/flightlessmango/MangoHud/blob/master/src/control.cpp),
-[normal socket client](https://github.com/flightlessmango/MangoHud/blob/master/control/src/control/__init__.py),
-[mangoapp client](https://github.com/flightlessmango/MangoHud/blob/master/src/app/control.c).
-
-Controller identify uses a 500 ms rumble effect on Omakade's existing evdev fd
-while the native guide is open. Generic mode uses the plugin helper. Controllers
-without rumble support report an error. Physical rumble requires hardware testing.
-
-See `omarchy-plugin/README.md` for the card, capture and sound. Those features work
-independently of Omakade.
-
-## Isolated verification
-
-Build and full CTest run on devbox. For graphical acceptance, mount the plugin in an
-omabox and copy the matching devbox binaries into ignored `build/guide-i1/`:
-
-```bash
-omabox up --plugin "$PWD/omarchy-plugin" --net isolated
-omabox run -- python3 tools/guide-i1/seed.py
-omabox run -d -- build/guide-i1/omakade --guide-input-test
-omabox run -d -- /usr/lib/qt6/bin/qml "$PWD/tools/guide-i1/FullscreenGame.qml"
-omabox run -d -- build/guide-i1/omakade-sessiond
-omabox run -- build/guide-i1/omakade --guide-toggle
-omabox wait cmd -- bash -c 'test "$(omarchy-shell omakade.guide ready)" = ready'
-omabox run -- python3 tools/guide-i1/inject.py 311
-```
-
-The seed writes only the box's private library and recorder profile. Enable
-`track_play_sessions = true` there to exercise recorder data, or launch the private
-manual entry through Omakade with recording disabled to exercise launcher data.
-The moving client is truly fullscreen. Raw event injection is explicitly enabled
-by `--guide-input-test`; production sessions reject it. It exercises the same mapping
-used by the evdev reader, without claiming that a box has real controller devices.
-
-Native tests cover payload and plugin parser agreement, unknown data, button mapping,
-axis calibration/hysteresis, family selection, process-tree pause, identity refusal,
-pipe-loss and guard-death resume, per-device grabs, quit escalation,
-MangoHud configuration. A box covers shell IPC, capture, navigation, themes, process
-signals and compositor focus. Physical evdev grabs, hidraw/Steam Input leak paths and
-multiple physical monitors remain hardware checks.
-
-For input latency, run `tools/guide-i2/latency.py` inside the box. Native
-`--guide-input-test` emits receive-to-focus-acknowledgment timing, including the
-return trip. `OMAKADE_GUIDE_LEGACY_INPUT=1` selects the old per-input shell spawn
-only in that test mode. `OMAKADE_GUIDE_TEST_UNGRABBABLE=1` injects a refused pad
-access in the same opted-in mode; it does not claim physical-device acceptance.
-
-The generic Game library tile appears only when Omakade is installed. Steam Deck
-bumper hints use L1/R1; other pad families keep their printed labels.
+Unit tests cover pause ownership and recovery, parked identities, payload deltas,
+real-reading validation, input arbitration, process termination and plugin setup.
+A box covers shell IPC, focus, pause signals, capture exclusion and rendering.
+Physical controller delivery, grabs, hidraw/Steam Input, audio, UPower and actual
+recording encoders require their corresponding devices and services.

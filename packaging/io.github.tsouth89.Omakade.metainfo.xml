@@ -28,8 +28,8 @@
   <releases>
     <release version="1.16.0" date="2026-10-07">
       <description>
-        <p>Adds an in-game guide for Omarchy, opened with Super + Ctrl + G or the controller Home button: pause the game, see achievements, capture screenshots and clips, switch sound, and quit or return to the desktop.</p>
-        <p>The guide comes with the package, turns itself on the first time Omakade runs on Omarchy and follows your theme. Disable the omakade.guide plugin to turn it off.</p>
+        <p>Press Home or Super + Ctrl + G over a running game to open one Omarchy guide card. Resume, see achievements, take screenshots and clips, adjust sound or quit.</p>
+        <p>Return to desktop parks the game while paused. Home brings it back under the guide; Resume starts it again. With no game, Home keeps Game Mode. The card follows your theme and scales in Couch Mode.</p>
       </description>
     </release>
     <release version="1.15.0" date="2026-10-04">
