@@ -1882,7 +1882,7 @@ int main(int argc, char* argv[]) {
   QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, publishGuideGames);
   if (!isolatedTest && onOmarchy) {
     guideSnapshotTimer.start();
-    QProcess::startDetached("systemctl", {"--user", "start", "omakade-sessiond.service"});
+    GuideClient::ensureResident(&inGameGuide);
     QObject::connect(&launcher, &GameLauncher::gameRunningChanged, &inGameGuide, publishGuideGames);
   }
   const bool coldGuideRequest = false;

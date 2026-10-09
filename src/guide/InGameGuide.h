@@ -53,6 +53,7 @@ public:
   void setDesktopEnvironment(const QProcessEnvironment& environment) { m_environment = environment; }
   void setContext(const QJsonObject& context);
   void restoreComplete(bool ok);
+  void libraryUnavailable();
   void parkComplete(bool ok);
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
@@ -101,6 +102,8 @@ private:
   GameModeWindow gameWindow(const QVariantMap& session) const;
   int m_testPadWriter = -1;
   QPointer<QProcess> m_guard;
+  QString m_anrToken;
+  bool m_restoreTookPause = false;
   QJsonArray m_guardPins;
   QElapsedTimer m_summonClock;
   bool m_refreshing = false;

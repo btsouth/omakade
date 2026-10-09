@@ -190,6 +190,13 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
             if (m_refreshGeneration < needed) { QTimer::singleShot(0, this, &ResidentGuide::refresh); return; }
             *replied = true; respond();
           });
+          // End ownership before the client's 2 s deadline. A late snapshot
+          // cannot summon a guide after the caller has selected its fallback.
+          QTimer::singleShot(1500, socket, [socket, replied] {
+            if (*replied) return;
+            *replied = true;
+            socket->write("{\"result\":\"preparing\"}\n"); socket->flush(); socket->disconnectFromServer();
+          });
           refresh();
         } else respond();
       });
@@ -203,8 +210,8 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
     auto* socket = new QLocalSocket(this);
     connect(socket, &QLocalSocket::connected, socket, [socket, command] { socket->write(command); socket->flush(); socket->disconnectFromServer(); });
     connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
-    connect(socket, &QLocalSocket::errorOccurred, this, [this, socket] { m_guide.parkComplete(false); m_guide.restoreComplete(false); socket->deleteLater(); });
-    QTimer::singleShot(2000, socket, [socket] { socket->abort(); socket->deleteLater(); });
+    connect(socket, &QLocalSocket::errorOccurred, this, [this, socket] { m_guide.libraryUnavailable(); socket->deleteLater(); });
+    QTimer::singleShot(2000, socket, [this, socket] { socket->abort(); m_guide.libraryUnavailable(); socket->deleteLater(); });
     socket->connectToServer(SingleInstance::defaultServerName());
   };
   connect(&m_guide, &InGameGuide::parkRequested, this, [libraryCommand] { libraryCommand("game-mode desktop"); });
@@ -330,11 +337,15 @@ void ResidentGuide::refresh() {
         emit snapshotReady();
         if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }
         // This is the only provisioning path. Never mutate a plugin directory mid-game.
-        const bool provision = !m_provisioned && result.session.isEmpty();
+        const bool provision = !m_provisioned && !m_provisioning && result.session.isEmpty();
         if (provision) {
-          m_provisioned = true;
+          m_provisioning = true;
           GuidePlugin::ensureAsync(GuidePlugin::defaultPaths(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
-            QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation), QCoreApplication::applicationDirPath()), this);
+            QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation), QCoreApplication::applicationDirPath()), this, [this](bool ok) {
+              m_provisioned = ok;
+              if (ok) m_provisioning = false;
+              else QTimer::singleShot(5000, this, [this] { m_provisioning = false; refresh(); });
+            });
         }
       });
       watcher->setFuture(QtConcurrent::run([queries, published = m_published] { return snapshot(queries->active, queries->clients, queries->monitors, published); }));

@@ -24,7 +24,7 @@ private:
   void launchLibrary(bool fallback);
   QJsonArray m_published;
   int m_refreshGeneration = 0;
-  bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false;
+  bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false, m_provisioning = false;
   QJsonObject command(const QJsonObject& command);
   void fallback();
 };

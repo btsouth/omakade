@@ -1,4 +1,5 @@
 #include "guide/GuidePause.h"
+#include "guide/GuideAnr.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -21,6 +22,9 @@ int main(int argc, char** argv) {
   ::sigaction(SIGINT, &action, nullptr);
   ::signal(SIGPIPE, SIG_IGN);
   GuidePause paused;
+  QString anrToken;
+  const auto environment = QProcessEnvironment::systemEnvironment();
+  const auto resume = [&] { paused.resume(); GuideAnr::release(anrToken, environment); anrToken.clear(); };
   QByteArray pending;
   while (!interrupted) {
     pollfd input{STDIN_FILENO, POLLIN | POLLHUP, 0};
@@ -39,6 +43,8 @@ int main(int argc, char** argv) {
       QString error;
       bool ok = true;
       if (request.value("action") == "pause") {
+        resume();
+        anrToken = request.value("anrToken").toString();
         std::function<bool(const QJsonObject&)> pin;
         if (request.value("recoverable").toBool()) pin = [](const QJsonObject& identity) {
           const auto report = QJsonDocument(QJsonObject{{"pin", identity}}).toJson(QJsonDocument::Compact) + '\n';
@@ -48,9 +54,12 @@ int main(int argc, char** argv) {
           char ack[64]; const auto size = ::read(STDIN_FILENO, ack, sizeof(ack));
           return size == 7 && QByteArray(ack, size) == "pin-ok\n";
         };
-        ok = paused.stop(request.value("pid").toInteger(), request.value("start").toInteger(), &error, pin);
+        ok = anrToken.isEmpty() || GuideAnr::acquire(anrToken, environment);
+        if (ok) ok = paused.stop(request.value("pid").toInteger(), request.value("start").toInteger(), &error, pin);
+        else error = "Hyprland's unresponsive dialog could not be suppressed safely.";
+        if (!ok) resume();
       } else if (request.value("action") == "resume") {
-        paused.resume();
+        resume();
       } else {
         ok = false;
       }
@@ -59,5 +68,6 @@ int main(int argc, char** argv) {
     }
   }
   // EOF is the ownership boundary, including a crash or SIGKILL of Omakade.
+  resume();
   return 0;
 }

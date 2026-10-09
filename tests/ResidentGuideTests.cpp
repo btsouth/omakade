@@ -22,6 +22,10 @@ private slots:
   void retryWaitsForNewSocket();
   void missingServiceHomeFallback();
   void recordingFailureKeepsGuide();
+  void upgradeAndMergedRequests();
+  void reconnectRefreshesEnvironment();
+  void preparingDeadlineOwnsDecision();
+  void failedProvisionRetries();
 };
 
 void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
@@ -48,7 +52,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   const auto clients = QJsonDocument(QJsonArray{QJsonObject{{"pid", game.processId()}, {"address", "0x123"}, {"monitor", 0}}}).toJson(QJsonDocument::Compact);
   const auto queryLog = root.path() + "/queries";
   QVERIFY(write(bin + "/systemctl", "#!/bin/sh\n[ \"$2\" = show-environment ] || exit 1\necho HYPRLAND_INSTANCE_SIGNATURE=late-test\necho WAYLAND_DISPLAY=wayland-test\n", true));
-  QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\n[ \"$HYPRLAND_INSTANCE_SIGNATURE\" = late-test ] || exit 1\necho \"$@\" >> '" + queryLog.toUtf8() + "'\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\neval) echo ok;;\nesac\n", true));
+  QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\n[ \"$HYPRLAND_INSTANCE_SIGNATURE\" = late-test ] || exit 1\necho \"$@\" >> '" + queryLog.toUtf8() + "'\nif [ \"$1\" = eval ]; then echo ok; exit; fi\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\neval) echo ok;;\nesac\n", true));
   const auto summonFile = root.path() + "/summon.json", shellLog = root.path() + "/shell.log";
   QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + "'\necho ok\n", true));
   auto env = QProcessEnvironment::systemEnvironment();
@@ -276,6 +280,78 @@ void ResidentGuideTests::recordingFailureKeepsGuide() {
   QTest::qWait(100); QCOMPARE(daemon.state(), QProcess::Running);
   QByteArray diagnostic;
   QTRY_VERIFY(([&] { diagnostic += daemon.readAllStandardError(); return diagnostic.contains("could not open the play session database"); })());
+}
+
+
+void ResidentGuideTests::upgradeAndMergedRequests() {
+  Fixture fixture;
+  const auto oldRuntime = qgetenv("XDG_RUNTIME_DIR"), oldPath = qgetenv("PATH"), oldConfig = qgetenv("XDG_CONFIG_HOME");
+  qputenv("XDG_RUNTIME_DIR", fixture.runtime.toUtf8()); qputenv("PATH", fixture.environment.value("PATH").toUtf8());
+  qputenv("XDG_CONFIG_HOME", fixture.config.toUtf8());
+  const auto cleanup = qScopeGuard([&] { qputenv("XDG_RUNTIME_DIR", oldRuntime); qputenv("PATH", oldPath); qputenv("XDG_CONFIG_HOME", oldConfig); });
+  const auto log = fixture.root.filePath("systemctl.log");
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\nexit 0\n", true));
+  const auto wants = fixture.config + "/systemd/user/default.target.wants"; QVERIFY(QDir().mkpath(wants));
+  QVERIFY(QFile::link("/usr/lib/systemd/user/omakade-sessiond.service", wants + "/omakade-sessiond.service"));
+  // An old status protocol is insufficient even when the service is active.
+  QLocalServer server; QVERIFY(server.listen(fixture.endpoint()));
+  connect(&server, &QLocalServer::newConnection, &server, [&] {
+    auto* peer = server.nextPendingConnection();
+    connect(peer, &QLocalSocket::readyRead, peer, [peer] { peer->readAll(); peer->write("{\"result\":\"handled\"}\n"); peer->flush(); });
+  });
+  GuideClient::ensureResident(this);
+  QTRY_VERIFY(([&] { QFile file(log); return file.open(QIODevice::ReadOnly) && file.readAll().contains("try-restart omakade-sessiond.service"); })());
+  QFile file(log); QVERIFY(file.open(QIODevice::ReadOnly)); QVERIFY(file.readAll().contains("reenable omakade-sessiond.service"));
+  server.close(); QLocalServer::removeServer(fixture.endpoint());
+  QString first, merged;
+  GuideClient::requestShortcut({}, this, [&](const QString& reply, const QJsonObject&) { first = reply; });
+  GuideClient::requestShortcut({}, this, [&](const QString& reply, const QJsonObject&) { merged = reply; });
+  QCOMPARE(merged, QString("handled")); QTRY_COMPARE(first, QString("unavailable"));
+}
+
+void ResidentGuideTests::reconnectRefreshesEnvironment() {
+  Fixture fixture;
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho HYPRLAND_INSTANCE_SIGNATURE=new-test\necho WAYLAND_DISPLAY=wayland-new\n", true));
+  auto resolved = GuideEnvironment::resolve(fixture.environment);
+  QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "new-test");
+  QCOMPARE(resolved.value("WAYLAND_DISPLAY"), "wayland-new");
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\nexit 1\n", true));
+  QVERIFY(QDir().mkpath(fixture.runtime + "/hypr/discovered"));
+  QLocalServer events; QVERIFY(events.listen(fixture.runtime + "/hypr/discovered/.socket2.sock"));
+  resolved = GuideEnvironment::resolve(fixture.environment);
+  QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "discovered");
+}
+
+void ResidentGuideTests::preparingDeadlineOwnsDecision() {
+  Fixture fixture;
+  // Two serial reconciliations take 1.9 s. The late second snapshot must not
+  // process the request after the 1.5 s preparing response.
+  QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\nsleep .95\n[ \"$2\" = activewindow ] && echo '{}' || echo '[]'\n", true));
+  const auto shellLog = fixture.root.filePath("shell.log");
+  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho \"$@\" >> '" + shellLog.toUtf8() + "'\necho ok\n", true));
+  QProcess daemon; daemon.setProcessEnvironment(fixture.environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
+  QVERIFY(daemon.waitForStarted()); const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
+  QTRY_VERIFY(QFileInfo::exists(fixture.endpoint()));
+  QLocalSocket socket; socket.connectToServer(fixture.endpoint()); QVERIFY(socket.waitForConnected());
+  QElapsedTimer elapsed; elapsed.start(); socket.write("{\"action\":\"shortcut\"}\n"); socket.flush();
+  QVERIFY(socket.waitForReadyRead(1900));
+  QCOMPARE(QJsonDocument::fromJson(socket.readAll()).object().value("result").toString(), "preparing");
+  QVERIFY(elapsed.elapsed() < 1900);
+  QTest::qWait(1100);
+  QFile log(shellLog); if (log.open(QIODevice::ReadOnly)) QVERIFY(!log.readAll().contains("summon"));
+}
+
+void ResidentGuideTests::failedProvisionRetries() {
+  Fixture fixture;
+  QFile::remove(fixture.config + "/omarchy/shell.json");
+  const auto log = fixture.root.filePath("ensure.log"), ready = fixture.root.filePath("shell-ready");
+  QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\n[ \"$2\" = activewindow ] && echo '{}' || echo '[]'\n", true));
+  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho call >> '" + log.toUtf8() + "'\n[ -f '" + ready.toUtf8() + "' ] && echo ok || echo error\n", true));
+  QProcess daemon; daemon.setProcessEnvironment(fixture.environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
+  QVERIFY(daemon.waitForStarted()); const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
+  QTRY_VERIFY(QFileInfo::exists(log)); QTest::qWait(1800);
+  QVERIFY(writeTestFile(ready, "ready"));
+  QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(fixture.root.filePath("state/omakade/guide-plugin-enabled")), 10000);
 }
 
 QTEST_GUILESS_MAIN(ResidentGuideTests)

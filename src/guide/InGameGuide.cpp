@@ -1,6 +1,7 @@
 #include "guide/InGameGuide.h"
 #include "achievements/AchievementModel.h"
 #include "guide/GuidePayload.h"
+#include "guide/GuideAnr.h"
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeSession.h"
 #include "library/GameRoles.h"
@@ -325,6 +326,8 @@ bool InGameGuide::setPaused(bool paused) {
   const auto pid = m_session.value("pid").toLongLong(), start = m_session.value("procStart").toLongLong();
   if (start <= 0 || !ProcFs::processAlive(pid, start)) return false;
   auto* guard = new QProcess(this); m_guard = guard; m_guardPins = {};
+  m_anrToken = QUuid::createUuid().toString(QUuid::Id128);
+  guard->setProcessEnvironment(m_environment);
   auto pending = std::make_shared<QByteArray>();
   const auto failed = [this, guard] {
     if (m_guard != guard) return;
@@ -332,8 +335,8 @@ bool InGameGuide::setPaused(bool paused) {
     qWarning("Guide: pause unavailable; the game remains running.");
     if (m_opened) send({{"type", "update"}, {"payload", payload()}});
   };
-  connect(guard, &QProcess::started, this, [guard, pid, start] {
-    guard->write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}, {"recoverable", true}}).toJson(QJsonDocument::Compact) + '\n');
+  connect(guard, &QProcess::started, this, [guard, pid, start, token = m_anrToken] {
+    guard->write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}, {"recoverable", true}, {"anrToken", token}}).toJson(QJsonDocument::Compact) + '\n');
   });
   connect(guard, &QProcess::readyReadStandardOutput, this, [this, guard, pending, failed] {
     pending->append(guard->readAllStandardOutput());
@@ -370,6 +373,12 @@ void InGameGuide::stopGuard() {
   m_paused = false;
   m_resumeTree.signal(SIGCONT); m_resumeTree.clear(); m_guardPins = {};
   auto* guard = m_guard.data(); m_guard = nullptr;
+  const auto token = std::exchange(m_anrToken, {});
+  if (!token.isEmpty()) {
+    // Keep compositor IPC off the close/input path. The guard also releases on
+    // EOF; this second, idempotent release covers guard SIGKILL.
+    (void)QtConcurrent::run([token, environment = m_environment] { GuideAnr::release(token, environment); });
+  }
   if (!guard) return;
   // EOF cancels pending pin handshakes and resumes any processes the guard owns.
   guard->closeWriteChannel();
@@ -382,6 +391,7 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (m_opened || m_opening) { close(); return true; }
   if (m_restoring || m_waitingManagedPark) return true;
   if (m_parked) {
+    m_restoreTookPause = !m_guard && !m_paused;
     if (m_pauseWhileOpen) setPaused(true);
     m_restoreNode = node; m_restoreFallback = fallback; m_restoring = true;
     if (m_managedRetained) emit restoreRequested();
@@ -500,10 +510,23 @@ void InGameGuide::restoreWindow(std::function<void(bool)> done) {
 void InGameGuide::restoreComplete(bool ok) {
   if (!m_restoring) return;
   m_restoring = false;
-  if (!ok) { qWarning("Guide: the parked game could not be restored; Home can retry."); return; }
+  if (!ok) {
+    if (m_restoreTookPause) stopGuard();
+    m_restoreTookPause = false;
+    qWarning("Guide: the parked game could not be restored; Home can retry."); return;
+  }
+  m_restoreTookPause = false;
   m_parked = false; m_managedRetained = false;
   // Leave the existing guard attached: only B/Resume resumes the game.
   toggle(m_restoreNode, m_restoreFallback);
+}
+
+void InGameGuide::libraryUnavailable() {
+  m_managedRetained = false;
+  m_context.insert("gameModeParked", false);
+  m_context.insert("gameModeActive", false);
+  parkComplete(false);
+  if (m_restoring) restoreWindow([this](bool ok) { restoreComplete(ok); });
 }
 
 void InGameGuide::close() { finishClose(true); }

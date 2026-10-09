@@ -36,6 +36,7 @@ private slots:
   void desktopRetainsPauseAndIdentity();
   void outsideParkAndResume_data();
   void outsideParkAndResume();
+  void restoreFailureReleasesNewPause();
   void desktopUsesPausePreference();
   void surfaceFailureResumes();
   void openingDeadlineResumes();
@@ -155,6 +156,26 @@ void InGameGuideTests::desktopUsesPausePreference() {
   guide.toggle(); QCOMPARE(restore.count(), 1);
   QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
   guide.restoreComplete(false); guide.close(); QVERIFY(processState(game.processId()) != 'T');
+}
+
+void InGameGuideTests::restoreFailureReleasesNewPause() {
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([&] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.setContext({{"gameModeParked", true}}); guide.m_enabled = true;
+  QVERIFY(guide.toggle()); QTRY_COMPARE(processState(game.processId()), 'T');
+  guide.restoreComplete(false);
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_guard);
+  QVERIFY(guide.toggle()); QTRY_COMPARE(processState(game.processId()), 'T');
+  // No surviving library: fall back to the cached window. With no valid window
+  // this fails safely and the next Home uses the direct path rather than IPC.
+  guide.libraryUnavailable();
+  QTRY_VERIFY(!guide.m_restoring); QTRY_VERIFY(processState(game.processId()) != 'T');
+  QVERIFY(!guide.m_managedRetained); QVERIFY(!guide.m_guard);
 }
 void InGameGuideTests::surfaceFailureResumes() {
   const auto oldPath = qgetenv("PATH");

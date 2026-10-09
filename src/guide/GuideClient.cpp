@@ -8,11 +8,44 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QProcess>
+#include <QFileInfo>
+#include <QLockFile>
 #include <unistd.h>
 #include <memory>
 
 QString GuideClient::socketPath() {
   return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/omakade-guide-control-%1").arg(::getuid());
+}
+
+void GuideClient::ensureResident(QObject* owner) {
+  if (owner->property("guideStarting").toBool()) return;
+  owner->setProperty("guideStarting", true);
+  request({{"action", "status"}}, owner, [owner](const QString& result, const QJsonObject& reply) {
+    const auto run = [owner](const QStringList& arguments, std::function<void(bool)> done) {
+      auto* process = new QProcess(owner);
+      auto completed = std::make_shared<bool>(false);
+      const auto finish = [process, completed, done](bool ok) {
+        if (*completed) return;
+        *completed = true; process->deleteLater(); done(ok);
+      };
+      QObject::connect(process, &QProcess::finished, owner, [finish](int code, QProcess::ExitStatus status) { finish(code == 0 && status == QProcess::NormalExit); });
+      QObject::connect(process, &QProcess::errorOccurred, owner, [finish](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) finish(false); });
+      QTimer::singleShot(1000, process, [process] { process->kill(); });
+      process->start("systemctl", QStringList{"--user"} + arguments);
+    };
+    const auto start = [owner, run, result, reply] {
+      if (result == "handled" && reply.contains("ready")) { owner->setProperty("guideStarting", false); return; }
+      run({"is-active", "--quiet", "omakade-sessiond.service"}, [owner, run](bool active) {
+        run({active ? "try-restart" : "start", "omakade-sessiond.service"}, [owner](bool) { owner->setProperty("guideStarting", false); });
+      });
+    };
+    // Reenable only a previously enabled 1.15 unit. Do not enable a unit the
+    // user disabled or migrate unrelated user-unit links.
+    const auto oldLink = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+                         "/systemd/user/default.target.wants/omakade-sessiond.service";
+    if (QFileInfo(oldLink).isSymLink()) run({"reenable", "omakade-sessiond.service"}, [start](bool) { start(); });
+    else start();
+  });
 }
 
 void GuideClient::request(const QJsonObject& command, QObject* owner,
@@ -44,23 +77,25 @@ void GuideClient::request(const QJsonObject& command, QObject* owner,
 
 void GuideClient::requestShortcut(const QString& node, QObject* owner,
                                   std::function<void(const QString&, const QJsonObject&)> done) {
+  if (owner->property("guideShortcutPending").toBool()) {
+    if (done) done("handled", {});
+    return;
+  }
+  owner->setProperty("guideShortcutPending", true);
   auto* retry = new QTimer(owner);
   retry->setSingleShot(true);
   auto clock = std::make_shared<QElapsedTimer>(); clock->start();
   auto started = std::make_shared<bool>(false);
   QObject::connect(retry, &QTimer::timeout, owner, [retry, clock, started, node, owner, done] {
     request({{"action", "shortcut"}, {"node", node}}, owner,
-            [retry, clock, started, done](const QString& result, const QJsonObject& reply) {
-      if ((result != "unavailable" && result != "preparing") || clock->elapsed() >= 1800) {
+            [retry, clock, started, owner, done](const QString& result, const QJsonObject& reply) {
+      if (result != "unavailable" || clock->elapsed() >= 1800) {
+        owner->setProperty("guideShortcutPending", false);
         retry->deleteLater(); if (done) done(result, reply); return;
       }
       if (!*started) {
         *started = true;
-        auto* process = new QProcess(retry);
-        QObject::connect(process, &QProcess::finished, process, &QObject::deleteLater);
-        QObject::connect(process, &QProcess::errorOccurred, process, [process] { process->deleteLater(); });
-        QTimer::singleShot(1000, process, [process] { process->kill(); });
-        process->start("systemctl", {"--user", "start", "omakade-sessiond.service"});
+        ensureResident(owner);
       }
       retry->start(100);
     });
@@ -69,6 +104,9 @@ void GuideClient::requestShortcut(const QString& node, QObject* owner,
 }
 
 QString GuideClient::routeShortcut(const QString& node) {
+  QLockFile lock(socketPath() + ".shortcut-lock");
+  // Separate keyboard shortcut processes share the same in-flight request.
+  if (!lock.tryLock()) return "handled";
   QEventLoop loop;
   QString result;
   QElapsedTimer elapsed; elapsed.start();
