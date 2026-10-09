@@ -458,9 +458,12 @@ void ResidentGuideTests::gameLaunchCancelsRescan() {
   Fixture fixture;
   QFile::remove(fixture.config + "/omarchy/shell.json");
   const auto log = fixture.root.filePath("shell.log"), clientsFile = fixture.root.filePath("clients.json");
+  // The fake shell answers ping once the launch is published, within the daemon's 500 ms
+  // shell timeout, so the launch lands between ping and rescan even on a loaded machine.
+  const auto flag = fixture.root.filePath("published");
   QVERIFY(writeTestFile(clientsFile, "[]"));
   QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\ncase \"$2\" in\nclients) cat '" + clientsFile.toUtf8() + "';;\nactivewindow) echo '{}';;\n*) echo '[]';;\nesac\n", true));
-  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\n[ \"$2\" = ping ] && { sleep .3; echo ok; exit; }\necho unknown\n", true));
+  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\n[ \"$2\" = ping ] && { for i in $(seq 45); do [ -e '" + flag.toUtf8() + "' ] && break; sleep .01; done; echo ok; exit; }\necho unknown\n", true));
   QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
   const auto cleanupGame = qScopeGuard([&] { game.kill(); game.waitForFinished(); });
   QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
@@ -472,6 +475,7 @@ void ResidentGuideTests::gameLaunchCancelsRescan() {
   QLocalSocket publish; publish.connectToServer(fixture.endpoint()); QVERIFY(publish.waitForConnected());
   publish.write(QJsonDocument(QJsonObject{{"action", "publish"}, {"sessions", QJsonArray{QJsonObject{{"pid", game.processId()}, {"procStart", start}, {"source", "Fixture"}, {"path", "test"}}}}}).toJson(QJsonDocument::Compact) + '\n'); publish.flush();
   QVERIFY(publish.waitForReadyRead());
+  QVERIFY(writeTestFile(flag, ""));
   QTest::qWait(700);
   QFile calls(log); QVERIFY(calls.open(QIODevice::ReadOnly)); QVERIFY(!calls.readAll().contains("rescanPlugins"));
 }

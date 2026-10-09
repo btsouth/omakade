@@ -13,6 +13,12 @@ import unittest
 
 
 BINARY = str(Path(sys.argv.pop(1)).resolve())
+# CTest runs the cases in shards so each stays well inside its timeout: --shard=N/M runs
+# every Mth case in name order, starting at N.
+SHARD = next((arg for arg in sys.argv[1:] if arg.startswith("--shard=")), None)
+if SHARD:
+    sys.argv.remove(SHARD)
+    SHARD_INDEX, SHARD_COUNT = (int(part) for part in SHARD.removeprefix("--shard=").split("/"))
 
 
 class GameModeStartupTests(unittest.TestCase):
@@ -424,6 +430,13 @@ class GameModeStartupTests(unittest.TestCase):
 
     def test_library_only_warm_couch_reopens_same_owner_and_close_cleans_up(self):
         self.assert_library_session_retained(cold=False, couch=True, close=True)
+
+
+def load_tests(loader, tests, pattern):
+    names = loader.getTestCaseNames(GameModeStartupTests)
+    if SHARD:
+        names = names[SHARD_INDEX::SHARD_COUNT]
+    return unittest.TestSuite(GameModeStartupTests(name) for name in names)
 
 
 if __name__ == "__main__":

@@ -588,10 +588,12 @@ set_tests_properties(omakade_game_mode omakade_game_mode_couch PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
-add_test(NAME omakade_game_mode_startup_lifecycle
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/GameModeStartupTests.py
-          $<TARGET_FILE:omakade>)
-set_tests_properties(omakade_game_mode_startup_lifecycle PROPERTIES TIMEOUT 60)
+foreach(shard RANGE 0 1)
+  add_test(NAME omakade_game_mode_startup_lifecycle_${shard}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/GameModeStartupTests.py
+            $<TARGET_FILE:omakade> --shard=${shard}/2)
+  set_tests_properties(omakade_game_mode_startup_lifecycle_${shard} PROPERTIES TIMEOUT 60)
+endforeach()
 
 add_test(NAME omakade_random_selection COMMAND omakade --random-selection-test)
 add_test(NAME omakade_random_selection_couch COMMAND omakade --random-selection-test --couch)
