@@ -17,6 +17,7 @@ private:
   QLocalServer m_control;
   QTimer m_refresh;
   QJsonArray m_published;
+  int m_refreshGeneration = 0;
   bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false;
   QJsonObject command(const QJsonObject& command);
   void fallback();

@@ -32,6 +32,7 @@ public:
               HyprlandGameModeCompositor* compositor, GameLauncher* launcher, bool enabled, QObject* parent = nullptr);
   ~InGameGuide() override;
   bool opened() const { return m_opened; }
+  bool showing() const { return m_opened || m_opening; }
   bool available() const { return m_enabled; }
   bool hasGame();
   void prepare() { refreshGame(); }

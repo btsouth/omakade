@@ -75,6 +75,23 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--guide-toggle"}); QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
   QTRY_VERIFY(([&] { QFile log(shellLog); return log.open(QIODevice::ReadOnly) && log.readAll().contains("shell hide omakade.guide"); })());
   QFile log(shellLog); QVERIFY(log.open(QIODevice::ReadOnly)); QVERIFY(!log.readAll().contains("rescanPlugins"));
+  const auto control = [&](const QString& action) {
+    QLocalSocket socket; socket.connectToServer(runtime + QStringLiteral("/omakade-guide-control-%1").arg(::getuid()));
+    if (!socket.waitForConnected()) return QJsonObject{};
+    socket.write(QJsonDocument(QJsonObject{{"action", action}}).toJson(QJsonDocument::Compact) + '\n');
+    if (!socket.waitForReadyRead()) return QJsonObject{};
+    return QJsonDocument::fromJson(socket.readAll()).object();
+  };
+  // Publish a game immediately after a cached no-game snapshot. A cache miss must
+  // reconcile asynchronously, rather than routing this live game into the library.
+  QVERIFY(SessionDatabase::open(database, databasePath, "resident-test-miss"));
+  { QSqlQuery clear(database); QVERIFY(clear.exec("UPDATE play_sessions SET ended_at = 1")); }
+  QTRY_VERIFY(!control("status").value("hasGame").toBool());
+  QVERIFY(SessionDatabase::beginSession(database, "/games/new.rom", "Dolphin", QDateTime::currentSecsSinceEpoch(), game.processId(), start) > 0);
+  database.close(); database = {}; QSqlDatabase::removeDatabase("resident-test-miss");
+  shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"});
+  QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
+  QCOMPARE(control("close").value("result").toString(), "handled");
   const auto messages = daemon.readAllStandardError();
   QVERIFY(messages.contains("summon dispatched")); QVERIFY(messages.contains("opened elapsed_ms=")); QVERIFY(messages.contains("closed elapsed_ms="));
   // A missing resident endpoint also exits cheaply and never creates a GUI.

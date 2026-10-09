@@ -614,6 +614,10 @@ void InGameGuide::poll() {
       finishClose(true);
       return;
     }
+    if (!m_session.isEmpty() && m_quitSession.isEmpty() &&
+        !ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) {
+      stopGuard(); m_session.clear(); m_metadata.clear(); m_window = {}; m_achievements = {};
+    }
     shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
   });
 }

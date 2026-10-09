@@ -137,8 +137,18 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
         const auto respond = [this, socket, data] {
           socket->write(QJsonDocument(command(data)).toJson(QJsonDocument::Compact) + '\n'); socket->flush(); socket->disconnectFromServer();
         };
-        if (!m_ready && (data.value("action") == "shortcut" || data.value("action") == "toggle")) {
-          connect(this, &ResidentGuide::snapshotReady, socket, respond, Qt::SingleShotConnection);
+        const auto action = data.value("action").toString();
+        const bool reconcile = action == "shortcut" && !m_guide.showing() && !m_guide.hasGame();
+        if ((!m_ready || reconcile) && (action == "shortcut" || action == "toggle")) {
+          // A cache miss is reconciled from queries started after this request. An
+          // already-running stale poll must not turn a newly launched game into GUI fallback.
+          const int needed = m_refreshGeneration + (reconcile ? 1 : 0);
+          auto replied = std::make_shared<bool>(false);
+          connect(this, &ResidentGuide::snapshotReady, socket, [this, respond, needed, replied] {
+            if (*replied) return;
+            if (m_refreshGeneration < needed) { QTimer::singleShot(0, this, &ResidentGuide::refresh); return; }
+            *replied = true; respond();
+          });
           refresh();
         } else respond();
       });
@@ -169,15 +179,16 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
-    if (action == "shortcut" && !m_guide.opened() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
+    if (action == "shortcut" && !m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
     if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");
   } else reply.insert("result", "unavailable");
   return reply;
 }
 void ResidentGuide::refresh() {
-  if (m_refreshing || m_guide.opened()) return;
+  if (m_refreshing || m_guide.showing()) return;
   m_refreshing = true;
+  ++m_refreshGeneration;
   struct Queries { QJsonObject active; QJsonArray clients, monitors; int left = 3; };
   auto queries = std::make_shared<Queries>();
   for (const auto& query : {QString("activewindow"), QString("clients"), QString("monitors")}) {
