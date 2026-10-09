@@ -103,7 +103,10 @@ Item {
   readonly property var cardGrounds: Legibility.grounds(Commons.Color.menu.background)
   readonly property var fillGrounds: Legibility.grounds(Commons.Color.menu.selectedBackground, root.cardGrounds)
   readonly property color quiet: root.solid(Legibility.fade(root.text, root.background, root.cardGrounds, 0.52, 4.6))
-  readonly property color selectedInk: root.solid(Legibility.legibleInk(Commons.Color.menu.selectedText, root.text, root.fillGrounds, 4.6))
+  // A grey selected colour (Solitude's accent) reads as dimmed, not chosen:
+  // there the focus takes the text colour and is drawn by its fill and border.
+  readonly property color selectedTone: Commons.Color.menu.selectedText.hslSaturation < 0.15 ? root.text : Commons.Color.menu.selectedText
+  readonly property color selectedInk: root.solid(Legibility.legibleInk(root.selectedTone, root.text, root.fillGrounds, 4.6))
   readonly property color urgentInk: root.solid(Legibility.legibleInk(Commons.Color.urgent, root.text, root.fillGrounds, 4.6))
   readonly property color recordingInk: root.solid(Legibility.legibleInk(Commons.Color.bar.active, root.text, root.cardGrounds.concat(root.fillGrounds), 3))
   // Where the selected fill alone is too close to the card to see at 3:1, the
