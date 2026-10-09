@@ -20,6 +20,7 @@
 #include <csignal>
 #include <linux/input.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 class InGameGuideTests final : public QObject {
@@ -29,6 +30,9 @@ private slots:
   void steamArtRejections();
   void payloadUnknowns();
   void payloadRoundTrip();
+  void changedPayloadKeepsStaticData();
+  void telemetryRequiresRealFreshReadings();
+  void desktopRetainsPauseAndIdentity();
   void pluginParser();
   void buttons();
   void axes();
@@ -52,6 +56,63 @@ private slots:
   void pluginFallsBackWhenSummonFails();
   void provisioningAndPauseDoNotBlock();
 };
+
+void InGameGuideTests::changedPayloadKeepsStaticData() {
+  QJsonArray items; for (int i = 0; i < 300; ++i) items.append(QJsonObject{{"title", QString::number(i)}});
+  auto before = GuidePayload::build({{"source", "Steam"}, {"name", "Test"}}, {}, "TEST", "xbox", true, false);
+  auto data = before.value("data").toObject(), game = data.value("game").toObject();
+  game.insert("achievements", QJsonObject{{"items", items}}); game.insert("banner", "file:///art.jpg");
+  data.insert("game", game); data.insert("performance", QJsonObject{{"fps", 60}}); before.insert("data", data);
+  auto after = before; game.insert("paused", true); data.insert("game", game); data.remove("performance"); after.insert("data", data);
+  const auto changes = GuidePayload::difference(before, after);
+  QVERIFY(QJsonDocument(changes).toJson(QJsonDocument::Compact).size() < 100);
+  QCOMPARE(changes.value("data").toObject().value("performance"), QJsonValue(QJsonValue::Null));
+  QVERIFY(GuidePayload::difference(after, after).isEmpty());
+  QFile script(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideProtocol.js")); QVERIFY(script.open(QIODevice::ReadOnly));
+  auto text = QString::fromUtf8(script.readAll()); text.remove(".pragma library"); QJSEngine engine; engine.evaluate(text);
+  auto patch = after; patch.insert("delta", true); patch.insert("data", changes.value("data"));
+  const auto updated = engine.globalObject().property("update").call({QString::fromUtf8(QJsonDocument(patch).toJson(QJsonDocument::Compact)),
+      engine.toScriptValue(before.value("data").toObject().toVariantMap())});
+  QVERIFY(!updated.isNull());
+  QCOMPARE(QJsonObject::fromVariantMap(updated.property("data").toVariant().toMap()), after.value("data").toObject());
+}
+
+void InGameGuideTests::telemetryRequiresRealFreshReadings() {
+  QTemporaryDir root; QVERIFY(root.isValid());
+  const auto path = root.filePath("game.csv");
+  const auto write = [&](const QByteArray& bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(bytes); };
+  const QVariantMap source{{"kind", "mangohud"}, {"folder", root.path()}, {"prefix", "game"}};
+  write("os,cpu\nLinux,Test\nfps,frametime,cpu_load\n59.2,16.7,10\n");
+  QCOMPARE(GuideActions::performance(source), (QJsonObject{{"fps", 59.2}, {"frametime", 16.7}}));
+  write("fps,frametime,cpu_load\nnan,-3,10\n"); QVERIFY(GuideActions::performance(source).isEmpty());
+  write("fps,frametime,cpu_load\n59,16,10"); QVERIFY(GuideActions::performance(source).isEmpty());
+  write("fps=58.5\nfocus=123\n");
+  const QVariantMap gamescope{{"kind", "gamescope"}, {"path", path}};
+  QCOMPARE(GuideActions::performance(gamescope), (QJsonObject{{"fps", 58.5}}));
+  QFile old(path); QVERIFY(old.open(QIODevice::ReadOnly)); QVERIFY(old.setFileTime(QDateTime::currentDateTime().addSecs(-10), QFileDevice::FileModificationTime)); old.close();
+  QVERIFY(GuideActions::performance(gamescope).isEmpty());
+  const auto fifo = root.filePath("stats"); QVERIFY(::mkfifo(QFile::encodeName(fifo).constData(), 0600) == 0);
+  QElapsedTimer clock; clock.start(); QVERIFY(GuideActions::performance({{"kind", "gamescope"}, {"path", fifo}}).isEmpty()); QVERIFY(clock.elapsed() < 50);
+}
+
+void InGameGuideTests::desktopRetainsPauseAndIdentity() {
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto pid = game.processId();
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid)); QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong(); QVERIFY(start > 0);
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", pid}, {"procStart", start}, {"source", "Manual"}};
+  guide.setContext({{"gameModeActive", true}, {"scale", 1.7}});
+  guide.m_opened = true; guide.m_token = "test";
+  QSignalSpy park(&guide, &InGameGuide::parkRequested), restore(&guide, &InGameGuide::restoreRequested);
+  guide.message({{"action", "desktop"}});
+  QTRY_VERIFY(guide.m_parked); QCOMPARE(park.count(), 1); QVERIFY(!guide.opened()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
+  guide.setSnapshot({{"pid", 123}, {"procStart", 456}}, {}, "OTHER"); QCOMPARE(guide.m_session.value("pid").toLongLong(), pid);
+  guide.m_enabled = true; QVERIFY(guide.toggle()); QCOMPARE(restore.count(), 1); QVERIFY(guide.m_paused);
+  guide.restoreComplete(false); QVERIFY(guide.m_parked); QVERIFY(guide.m_paused);
+  guide.close(); QTRY_VERIFY(!guide.m_paused); QVERIFY(!guide.m_guard); QVERIFY(!guide.m_parked);
+  game.terminate(); QVERIFY(game.waitForFinished());
+}
 
 void InGameGuideTests::steamArtSelection() {
   QTemporaryDir directory; QVERIFY(directory.isValid());

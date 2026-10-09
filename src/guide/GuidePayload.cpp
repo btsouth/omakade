@@ -69,3 +69,16 @@ QString GuidePayload::padFamily(const QString& name) {
   if (lower.contains("xbox") || lower.contains("x-box") || lower.contains("xinput") || lower.contains("microsoft")) return "xbox";
   return "generic";
 }
+
+QJsonObject GuidePayload::difference(const QJsonObject& before, const QJsonObject& after) {
+  QJsonObject patch;
+  for (auto it = before.begin(); it != before.end(); ++it)
+    if (!after.contains(it.key())) patch.insert(it.key(), QJsonValue::Null);
+  for (auto it = after.begin(); it != after.end(); ++it) {
+    if (before.value(it.key()) == it.value()) continue;
+    if (it.value().isObject() && before.value(it.key()).isObject())
+      patch.insert(it.key(), difference(before.value(it.key()).toObject(), it.value().toObject()));
+    else patch.insert(it.key(), it.value());
+  }
+  return patch;
+}

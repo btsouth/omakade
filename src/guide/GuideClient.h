@@ -22,7 +22,7 @@ public:
   bool hasGame() const { return m_hasGame; }
   Q_INVOKABLE bool toggle(const QString& node = {}, bool fallback = false);
   Q_INVOKABLE void close();
-  void publish(const QVariantList& sessions);
+  void publish(const QVariantList& sessions, const QJsonObject& context = {});
 signals:
   void changed();
   void summonFailed();

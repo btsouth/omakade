@@ -86,6 +86,6 @@ bool GuideClient::toggle(const QString& node, bool fallback) {
   return true;
 }
 void GuideClient::close() { if (m_enabled) request({{"action", "close"}}, this); }
-void GuideClient::publish(const QVariantList& sessions) {
-  if (m_enabled) request({{"action", "publish"}, {"sessions", QJsonArray::fromVariantList(sessions)}}, this);
+void GuideClient::publish(const QVariantList& sessions, const QJsonObject& context) {
+  if (m_enabled) request({{"action", "publish"}, {"sessions", QJsonArray::fromVariantList(sessions)}, {"context", context}}, this);
 }

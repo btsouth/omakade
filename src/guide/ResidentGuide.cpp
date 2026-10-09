@@ -1,5 +1,6 @@
 #include "guide/ResidentGuide.h"
 #include "guide/GuideClient.h"
+#include "app/SingleInstance.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionDisplay.h"
 #include "tracking/ProcFs.h"
@@ -12,6 +13,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QStandardPaths>
+#include <QRegularExpression>
 #include <QUuid>
 #include <QtConcurrent>
 #include <memory>
@@ -111,6 +113,8 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
     if (!result.session.isEmpty() && result.session.value("name").toString().isEmpty()) result.session.insert("name", client.value("title").toString());
     break;
   }
+  if (!result.session.isEmpty()) result.session.insert("performanceSource", GuideActions::performanceSource(
+      result.session.value("pid").toLongLong(), result.session.value("procStart").toLongLong()));
   return result;
 }
 }
@@ -119,6 +123,9 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
   const auto paths = GuidePlugin::defaultPaths(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
       QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation), QCoreApplication::applicationDirPath());
   m_guide.setPluginPaths(paths);
+  QFile config(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/omakade/config.toml");
+  const bool couch = config.open(QIODevice::ReadOnly) && QRegularExpression("(?m)^couch_mode_enabled\\s*=\\s*true\\s*$").match(QString::fromUtf8(config.read(128 * 1024))).hasMatch();
+  m_guide.setContext({{"scale", couch ? 1.7 : 1.0}});
   m_guide.setAchievementDatabase(SessionDatabase::defaultDatabasePath());
   m_guide.setInjectedInputEnabled(QCoreApplication::arguments().contains("--guide-input-test"));
   m_control.setSocketOptions(QLocalServer::UserAccessOption);
@@ -158,6 +165,16 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
   });
   connect(&m_guide, &InGameGuide::summonFailed, this, &ResidentGuide::fallback);
   connect(&m_guide, &InGameGuide::libraryRequested, this, [] { QProcess::startDetached("omakade", {}); });
+  const auto libraryCommand = [this](const QByteArray& command) {
+    auto* socket = new QLocalSocket(this);
+    connect(socket, &QLocalSocket::connected, socket, [socket, command] { socket->write(command); socket->flush(); socket->disconnectFromServer(); });
+    connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+    connect(socket, &QLocalSocket::errorOccurred, this, [this, socket] { m_guide.restoreComplete(false); socket->deleteLater(); });
+    QTimer::singleShot(2000, socket, [socket] { socket->abort(); socket->deleteLater(); });
+    socket->connectToServer(SingleInstance::defaultServerName());
+  };
+  connect(&m_guide, &InGameGuide::parkRequested, this, [libraryCommand] { libraryCommand("game-mode desktop"); });
+  connect(&m_guide, &InGameGuide::restoreRequested, this, [libraryCommand] { libraryCommand("game-mode enter"); });
   m_refresh.setInterval(1000); connect(&m_refresh, &QTimer::timeout, this, &ResidentGuide::refresh); m_refresh.start(); refresh();
 }
 
@@ -171,7 +188,8 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   if (action == "status") {
     reply.insert("opened", m_guide.opened()); reply.insert("usable", m_guide.usable()); reply.insert("hasGame", m_guide.hasGame()); reply.insert("ready", m_ready);
   } else if (action == "prepare") refresh();
-  else if (action == "publish") { m_published = data.value("sessions").toArray(); refresh(); }
+  else if (action == "publish") { m_published = data.value("sessions").toArray(); m_guide.setContext(data.value("context").toObject()); refresh(); }
+  else if (action == "restored") m_guide.restoreComplete(data.value("ok").toBool());
   else if (action == "close") m_guide.close();
   else if (action == "shortcut" || action == "toggle") {
     const auto requested = data.value("requestNs").toString().toLongLong();
@@ -179,7 +197,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
-    if (action == "shortcut" && !m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
+    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
     if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");
   } else reply.insert("result", "unavailable");

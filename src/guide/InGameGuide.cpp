@@ -198,6 +198,8 @@ void InGameGuide::refreshGame() {
 
 void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& metadata,
                               const QString& output, const GameModeWindow& window) {
+  if (m_parked && ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) return;
+  if (m_parked) { m_parked = false; m_managedRetained = false; stopGuard(); }
   if (m_opened || m_opening) return; // Pin the current guide to its original game.
   const bool changedGame = session.value("pid") != m_session.value("pid") || session.value("procStart") != m_session.value("procStart");
   auto nextMetadata = metadata;
@@ -310,8 +312,11 @@ QJsonObject InGameGuide::payload() const {
       game.insert("achievements", achievements);
     }
     model.insert("game", game);
-
+    const auto stats = GuideActions::performance(m_session.value("performanceSource").toMap());
+    if (!stats.isEmpty()) model.insert("performance", stats);
   }
+  const auto scale = m_context.value("scale").toDouble(1);
+  data.insert("scale", scale); // Explicit 1 also clears an earlier couch open.
   data.insert("data", model);
   data.insert("backend", QJsonObject{{"socket", m_socketPath}, {"token", m_token}});
   return data;
@@ -326,7 +331,7 @@ bool InGameGuide::setPaused(bool paused) {
   auto pending = std::make_shared<QByteArray>();
   const auto failed = [this, guard] {
     if (m_guard != guard) return;
-    stopGuard(); m_pauseWhileOpen = false;
+    stopGuard(); m_pauseWhileOpen = false; m_parking = false;
     qWarning("Guide: pause unavailable; the game remains running.");
     if (m_opened) send({{"type", "update"}, {"payload", payload()}});
   };
@@ -346,6 +351,7 @@ bool InGameGuide::setPaused(bool paused) {
       } else if (reply.contains("ok")) {
         if (!reply.value("ok").toBool()) { failed(); return; }
         m_paused = true;
+        if (m_parking) parkNow();
         qInfo("Guide timing: paused elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0);
         if (m_opened) send({{"type", "update"}, {"payload", payload()}});
       }
@@ -377,6 +383,14 @@ void InGameGuide::stopGuard() {
 bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
+  if (m_restoring) return true;
+  if (m_parked) {
+    m_restoreNode = node; m_restoreFallback = fallback; m_restoring = true;
+    if (m_managedRetained) emit restoreRequested();
+    else restoreWindow([this](bool ok) { restoreComplete(ok); });
+    QTimer::singleShot(8000, this, [this] { if (m_restoring) restoreComplete(false); });
+    return true;
+  }
   m_summonClock.start();
   qInfo("Guide timing: request mono_ns=%lld", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
   m_restoreFocus = true;
@@ -395,7 +409,7 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   m_poll.start();
   const auto token = m_token;
   qInfo("Guide timing: summon dispatched elapsed_ms=%lld", m_summonClock.elapsed());
-  shell({"shell", "summon", "omakade.guide", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))},
+  shell({"shell", "summon", "omakade.guide", QString::fromUtf8(QJsonDocument(m_lastPayload = payload()).toJson(QJsonDocument::Compact))},
         [this, token, fallback](bool ok, const QByteArray& reply) {
           if (token != m_token) return;
           if (!ok || reply.trimmed() == "unknown" || reply.trimmed() == "false" || reply.trimmed() == "error") {
@@ -407,9 +421,58 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   return true;
 }
 
+void InGameGuide::setContext(const QJsonObject& context) { m_context = context; }
+
+void InGameGuide::parkNow() {
+  m_parking = false; m_restoreFocus = false;
+  m_managedRetained = (m_gameMode && m_gameMode->active()) || m_context.value("gameModeActive").toBool();
+  // Retain the crash-safe pause guard and the exact game snapshot while out on the desktop.
+  m_parked = true;
+  finishClose(true, true);
+  if (m_gameMode && m_gameMode->active()) m_gameMode->park();
+  else if (m_managedRetained) emit parkRequested();
+  else {
+    auto* process = new QProcess(this);
+    connect(process, &QProcess::finished, this, [this, process](int code, QProcess::ExitStatus status) {
+      process->deleteLater();
+      if (code != 0 || status != QProcess::NormalExit) {
+        restoreWindow([this](bool) { m_parked = false; stopGuard(); });
+      }
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
+      if (error == QProcess::FailedToStart) { m_parked = false; stopGuard(); process->deleteLater(); }
+    });
+    QTimer::singleShot(2500, process, [process] { process->kill(); });
+    process->start("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"});
+  }
+}
+
+void InGameGuide::restoreWindow(std::function<void(bool)> done) {
+  const auto game = m_session;
+  const auto window = m_window;
+  auto* watcher = new QFutureWatcher<bool>(this);
+  connect(watcher, &QFutureWatcher<bool>::finished, this, [watcher, done] { const bool ok = watcher->result(); watcher->deleteLater(); done(ok); });
+  watcher->setFuture(QtConcurrent::run([game, window] {
+    if (!window.valid() || !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong())) return false;
+    HyprlandGameModeCompositor compositor;
+    // Address and process must still refer to the same client before restoring it.
+    const auto current = compositor.windowForPid(game.value("pid").toLongLong());
+    return current.address == window.address && compositor.focusWindow(window.address);
+  }));
+}
+
+void InGameGuide::restoreComplete(bool ok) {
+  if (!m_restoring) return;
+  m_restoring = false;
+  if (!ok) { qWarning("Guide: the parked game could not be restored; Home can retry."); return; }
+  m_parked = false; m_managedRetained = false;
+  // Leave the existing guard attached: only B/Resume resumes the game.
+  toggle(m_restoreNode, m_restoreFallback);
+}
+
 void InGameGuide::close() { finishClose(true); }
 
-void InGameGuide::finishClose(bool hide) {
+void InGameGuide::finishClose(bool hide, bool retainPause) {
   const bool hadGuide = m_opened || m_opening;
   QElapsedTimer closeClock; closeClock.start();
   m_opened = m_opening = false;
@@ -418,7 +481,8 @@ void InGameGuide::finishClose(bool hide) {
   m_polling = false;
   m_commands.clear();
   m_input.release();
-  stopGuard();
+  if (!retainPause) { m_parked = m_parking = m_restoring = m_managedRetained = false; stopGuard(); }
+  m_lastPayload = {};
   emit changed();
   if (hadGuide) qInfo("Guide timing: closed elapsed_ms=%lld", closeClock.elapsed());
   if (hide && hadGuide) shell({"shell", "hide", "omakade.guide"});
@@ -439,7 +503,7 @@ void InGameGuide::message(const QJsonObject& data) {
     const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     qInfo().noquote() << "GUIDE_LATENCY_MS" << (now - data.value("value").toObject().value("receivedNs").toString().toLongLong()) / 1000000.0;
   }
-  if (action == "opened") { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); send({{"type", "update"}, {"payload", payload()}}); }
+  if (action == "opened" && m_opening) { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); send({{"type", "update"}, {"payload", payload()}}); }
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
   else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
   else if (action == "closed") finishClose(false);
@@ -454,13 +518,12 @@ void InGameGuide::message(const QJsonObject& data) {
       m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
       if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
     }
-  } else if (action == "desktop" || action == "library") {
-    m_restoreFocus = false;
-    close();
-    if (action == "desktop") {
-      if (m_gameMode && m_gameMode->active()) m_gameMode->park();
-      else QTimer::singleShot(150, this, [] { QProcess::startDetached("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"}); });
-    } else emit libraryRequested();
+  } else if (action == "desktop" && m_opened && !m_session.isEmpty()) {
+    m_parking = true;
+    if (!setPaused(true)) { m_parking = false; toast("Return to desktop unavailable", "The game could not be paused"); }
+    else if (m_paused) parkNow();
+  } else if (action == "library" && m_opened) {
+    m_restoreFocus = false; close(); emit libraryRequested();
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();
     if (action == "force-quit") {
@@ -494,7 +557,18 @@ void InGameGuide::message(const QJsonObject& data) {
 
 void InGameGuide::send(const QJsonObject& data) {
   if (!m_peer || m_peer->state() != QLocalSocket::ConnectedState) return;
-  m_peer->write(QJsonDocument(data).toJson(QJsonDocument::Compact) + '\n');
+  auto outgoing = data;
+  if (data.value("type") == "update") {
+    const auto current = data.value("payload").toObject();
+    const auto changes = GuidePayload::difference(m_lastPayload, current);
+    if (changes.isEmpty()) return;
+    auto patch = current;
+    patch.insert("delta", true);
+    patch.insert("data", changes.value("data").toObject());
+    outgoing.insert("payload", patch);
+    m_lastPayload = current;
+  }
+  m_peer->write(QJsonDocument(outgoing).toJson(QJsonDocument::Compact) + '\n');
   m_peer->flush();
 }
 void InGameGuide::toast(const QString& title, const QString& detail) {

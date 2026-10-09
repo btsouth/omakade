@@ -120,6 +120,7 @@ signals:
   void parking();
   void parkedOnDesktop();
   void resumed();
+  void gameFocused(bool ok);
   void windowVisibilityRequested(bool visible);
   // The placeholder window that keeps Omakade's place in the desktop layout should be
   // shown or hidden. Emitted from the worker thread.

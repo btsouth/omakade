@@ -62,7 +62,7 @@ Item {
   readonly property var currentOutput: root.outputs.filter(function(o) { return o.current })[0] || root.outputs[0] || null
   readonly property var achievements: (root.game && root.game.achievements) || null
   readonly property bool hasAchievements: !!(root.achievements && root.achievements.total > 0)
-  // Omakade resends the whole payload every second; the list and the rows are
+  // Omakade sends changed fields after the initial payload; the list and the rows are
   // only rebuilt when what they show changed, so scrolling and hover hold.
   property var achievementItems: []
   property string achievementsJson: "[]"
@@ -166,7 +166,7 @@ Item {
   }
 
   function update(json) {
-    var p = Protocol.parse(json)
+    var p = Protocol.update(json, root.model)
     if (!p) return "invalid"
     if (root.backend && p.backend && root.backend.token !== p.backend.token) return "stale"
     root.fixtureMode = false
@@ -520,9 +520,11 @@ Item {
       break
     case "record":
       var starting = !root.recording
-      capture.toggleRecording()
-      // A new clip is of the game, not of the guide.
-      if (starting) root.close()
+      if (starting) {
+        // Close the card and scrim, then allow the same guide-free frame as Screenshot.
+        root.close()
+        recordStart.restart()
+      } else capture.toggleRecording()
       break
     case "save-replay": capture.saveReplay(); break
     // Omakade parks the game on the desktop, or opens its library, and closes
@@ -541,6 +543,12 @@ Item {
     var copy = JSON.parse(JSON.stringify(root.model))
     copy[key] = value
     root.model = copy
+  }
+
+  Timer {
+    id: recordStart
+    interval: 80
+    onTriggered: if (!root.opened) capture.toggleRecording()
   }
 
   Timer {

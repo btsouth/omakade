@@ -1,10 +1,14 @@
 #pragma once
 #include <QJsonArray>
 #include <QProcessEnvironment>
+#include <QJsonObject>
+#include <QVariantMap>
 #include <QString>
 #include <vector>
 
 namespace GuideActions {
+QVariantMap performanceSource(qint64 pid, qint64 start);
+QJsonObject performance(const QVariantMap& source);
 QString mangoConfig(const QString& socket, const QString& level, int limit);
 QProcessEnvironment mangoEnvironment(QProcessEnvironment base, bool installed,
                                      const QString& config);

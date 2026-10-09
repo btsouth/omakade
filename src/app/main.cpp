@@ -1845,7 +1845,7 @@ int main(int argc, char* argv[]) {
   // service retains exact process identities and resolves compositor data asynchronously.
   QTimer guideSnapshotTimer;
   guideSnapshotTimer.setInterval(1000);
-  const auto publishGuideGames = [&inGameGuide, &launcher, &unifiedGames] {
+  const auto publishGuideGames = [&inGameGuide, &launcher, &unifiedGames, &gameMode, &preferences] {
     auto sessions = launcher.trackedGames();
     for (auto& value : sessions) {
       auto session = value.toMap();
@@ -1864,8 +1864,16 @@ int main(int argc, char* argv[]) {
       }
       session.insert("metadata", metadata); value = session;
     }
-    inGameGuide.publish(sessions);
+    bool couch = preferences.couchModeEnabled();
+    for (auto* window : QGuiApplication::topLevelWindows())
+      if (window->property("couchMode").isValid()) { couch = window->property("couchMode").toBool(); break; }
+    inGameGuide.publish(sessions, {{"gameModeActive", gameMode.active()}, {"gameModeParked", gameMode.parked()},
+                                  {"scale", couch ? 1.7 : 1.0}});
   };
+  QObject::connect(&gameMode, &GameModeSession::stateChanged, &inGameGuide, publishGuideGames);
+  QObject::connect(&gameMode, &GameModeSession::gameFocused, &inGameGuide, [&inGameGuide](bool ok) {
+    GuideClient::request({{"action", "restored"}, {"ok", ok}}, &inGameGuide);
+  });
   QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, publishGuideGames);
   if (!isolatedTest && onOmarchy) {
     guideSnapshotTimer.start();

@@ -9,6 +9,7 @@ constexpr int kVersion = 1;
 // Missing data stays absent. Process identities remain in the native service.
 QJsonObject build(const QVariantMap& session, const QVariantMap& game, const QString& output,
                   const QString& pad, bool pauseWhileOpen, bool paused, const QString& artCacheRoot = {}, bool resolveArt = true);
+QJsonObject difference(const QJsonObject& before, const QJsonObject& after);
 bool parse(const QByteArray& json, QJsonObject* payload);
 QString padFamily(const QString& name);
 } // namespace GuidePayload

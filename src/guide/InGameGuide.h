@@ -48,10 +48,14 @@ public:
   Q_INVOKABLE void close();
   // Only enabled explicitly in isolated acceptance runs, through the authenticated socket.
   void setInjectedInputEnabled(bool enabled);
+  void setContext(const QJsonObject& context);
+  void restoreComplete(bool ok);
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
   void changed();
   void libraryRequested();
+  void parkRequested();
+  void restoreRequested();
   // The shell could not show the guide. The game is already resumed and the pads released.
   void summonFailed();
 private:
@@ -66,7 +70,13 @@ private:
   void message(const QJsonObject& message);
   void send(const QJsonObject& message);
   void toast(const QString& title, const QString& detail = {});
-  void finishClose(bool hide);
+  void finishClose(bool hide, bool retainPause = false);
+  void parkNow();
+  void restoreWindow(std::function<void(bool)> done);
+  QJsonObject m_context, m_lastPayload;
+  bool m_parked = false, m_parking = false, m_restoring = false, m_managedRetained = false;
+  QString m_restoreNode;
+  bool m_restoreFallback = false;
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
   GameModeSession* m_gameMode;

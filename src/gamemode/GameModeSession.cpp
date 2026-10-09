@@ -397,14 +397,17 @@ void GameModeSession::focusGame() {
       QThread::msleep(40);
     }
     if (!window.valid() || !m_compositor->setWindowMode(window.address, 2, 2)) {
+      emit gameFocused(false);
       emit failed(QStringLiteral("Game Mode's fullscreen window could not be restored. Its session is still available."));
       return;
     }
     if (!hasGame) {
-      m_compositor->focusWindow(window.address);
+      emit gameFocused(m_compositor->focusWindow(window.address));
       return;
     }
-    if (!m_controller.focusRetainedGame())
+    const bool focused = m_controller.focusRetainedGame();
+    emit gameFocused(focused);
+    if (!focused)
       emit failed(QStringLiteral("The retained game could not be focused. Its session is still available."));
   });
 }
