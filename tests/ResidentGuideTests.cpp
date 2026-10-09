@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <QScopeGuard>
+#include <time.h>
 
 class ResidentGuideTests final : public QObject {
   Q_OBJECT
@@ -26,6 +27,9 @@ private slots:
   void reconnectRefreshesEnvironment();
   void preparingDeadlineOwnsDecision();
   void failedProvisionRetries();
+  void justStartedResidentIsNotRestarted();
+  void staleResidentIsRestarted();
+  void ambiguousEnvironmentIsUnavailable();
 };
 
 void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
@@ -67,6 +71,8 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
   // An early default.target service acquires its desktop environment after login.
   QVERIFY(QDir().mkpath(runtime + "/hypr/late-test"));
+  QVERIFY(write(runtime + "/hypr/late-test/hyprland.lock", QByteArray::number(::getpid()) + "\nwayland-test\n"));
+  QVERIFY(write(runtime + "/wayland-test", ""));
   QLocalServer events; QVERIFY(events.listen(runtime + "/hypr/late-test/.socket2.sock"));
   QPointer<QLocalSocket> eventPeer;
   connect(&events, &QLocalServer::newConnection, &events, [&] {
@@ -208,6 +214,7 @@ struct Fixture {
   QTemporaryDir root;
   QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
   QString runtime, bin, config, data;
+  QLocalServer events;
   Fixture() {
     runtime = root.filePath("runtime"); bin = root.filePath("bin"); config = root.filePath("config"); data = root.filePath("data");
     for (const auto& path : {runtime, bin, config + "/omarchy/plugins/omakade.guide", data + "/omakade"}) QDir().mkpath(path);
@@ -217,6 +224,10 @@ struct Fixture {
     environment.insert("XDG_DATA_HOME", data); environment.insert("XDG_STATE_HOME", root.filePath("state"));
     environment.insert("PATH", bin + ':' + environment.value("PATH"));
     environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "test"); environment.insert("WAYLAND_DISPLAY", "test");
+    QDir().mkpath(runtime + "/hypr/test");
+    writeTestFile(runtime + "/hypr/test/hyprland.lock", QByteArray::number(::getpid()) + "\ntest\n");
+    writeTestFile(runtime + "/test", "");
+    events.listen(runtime + "/hypr/test/.socket2.sock");
     writeTestFile(config + "/omarchy/plugins/omakade.guide/manifest.json", "{}");
     writeTestFile(config + "/omarchy/shell.json", R"({"plugins":[{"id":"omakade.guide"}]})");
     writeTestFile(bin + "/systemctl", "#!/bin/sh\nexit 1\n", true);
@@ -320,15 +331,24 @@ void ResidentGuideTests::upgradeAndMergedRequests() {
 
 void ResidentGuideTests::reconnectRefreshesEnvironment() {
   Fixture fixture;
+  QVERIFY(QDir().mkpath(fixture.runtime + "/hypr/new-test"));
+  QVERIFY(writeTestFile(fixture.runtime + "/hypr/new-test/hyprland.lock", QByteArray::number(::getpid()) + "\nwayland-new\n"));
+  QVERIFY(writeTestFile(fixture.runtime + "/wayland-new", ""));
+  QLocalServer newer; QVERIFY(newer.listen(fixture.runtime + "/hypr/new-test/.socket2.sock"));
   QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho HYPRLAND_INSTANCE_SIGNATURE=new-test\necho WAYLAND_DISPLAY=wayland-new\n", true));
   auto resolved = GuideEnvironment::resolve(fixture.environment);
   QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "new-test");
   QCOMPARE(resolved.value("WAYLAND_DISPLAY"), "wayland-new");
   QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\nexit 1\n", true));
+  fixture.events.close(); newer.close();
   QVERIFY(QDir().mkpath(fixture.runtime + "/hypr/discovered"));
+  QVERIFY(writeTestFile(fixture.runtime + "/hypr/discovered/hyprland.lock", QByteArray::number(::getpid()) + "\nwayland-paired\n"));
+  QVERIFY(writeTestFile(fixture.runtime + "/wayland-paired", ""));
+  QVERIFY(writeTestFile(fixture.runtime + "/wayland-newest", ""));
   QLocalServer events; QVERIFY(events.listen(fixture.runtime + "/hypr/discovered/.socket2.sock"));
   resolved = GuideEnvironment::resolve(fixture.environment);
   QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "discovered");
+  QCOMPARE(resolved.value("WAYLAND_DISPLAY"), "wayland-paired");
 }
 
 void ResidentGuideTests::preparingDeadlineOwnsDecision() {
@@ -363,12 +383,64 @@ void ResidentGuideTests::failedProvisionRetries() {
   QFile::remove(fixture.config + "/omarchy/shell.json");
   const auto log = fixture.root.filePath("ensure.log"), ready = fixture.root.filePath("shell-ready");
   QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\n[ \"$2\" = activewindow ] && echo '{}' || echo '[]'\n", true));
-  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho call >> '" + log.toUtf8() + "'\n[ -f '" + ready.toUtf8() + "' ] && echo ok || echo error\n", true));
+  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho call >> '" + log.toUtf8() + "'\n[ -f '" + ready.toUtf8() + "' ] && echo ok || exit 1\n", true));
   QProcess daemon; daemon.setProcessEnvironment(fixture.environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
   QVERIFY(daemon.waitForStarted()); const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
   QTRY_VERIFY(QFileInfo::exists(log)); QTest::qWait(1800);
   QVERIFY(writeTestFile(ready, "ready"));
   QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(fixture.root.filePath("state/omakade/guide-plugin-enabled")), 10000);
+}
+
+
+void ResidentGuideTests::justStartedResidentIsNotRestarted() {
+  Fixture fixture;
+  const auto log = fixture.root.filePath("systemctl.log");
+  timespec now{}; ::clock_gettime(CLOCK_MONOTONIC, &now);
+  const auto entered = qint64(now.tv_sec) * 1000000 + now.tv_nsec / 1000;
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\n[ \"$2\" = show ] && echo " + QByteArray::number(entered) + "\nexit 0\n", true));
+  const auto oldRuntime = qgetenv("XDG_RUNTIME_DIR"), oldPath = qgetenv("PATH");
+  qputenv("XDG_RUNTIME_DIR", fixture.runtime.toUtf8()); qputenv("PATH", fixture.environment.value("PATH").toUtf8());
+  const auto cleanup = qScopeGuard([&] { qputenv("XDG_RUNTIME_DIR", oldRuntime); qputenv("PATH", oldPath); });
+  QLocalServer server;
+  connect(&server, &QLocalServer::newConnection, &server, [&] {
+    auto* peer = server.nextPendingConnection();
+    connect(peer, &QLocalSocket::readyRead, peer, [peer] { peer->readAll(); peer->write("{\"result\":\"handled\",\"ready\":true}\n"); peer->flush(); });
+  });
+  QTimer::singleShot(400, &server, [&] { QVERIFY(server.listen(fixture.endpoint())); });
+  QString result;
+  GuideClient::requestShortcut({}, this, [&](const QString& reply, const QJsonObject&) { result = reply; });
+  QTRY_COMPARE(result, QString("handled"));
+  QFile file(log); QVERIFY(file.open(QIODevice::ReadOnly)); const auto calls = file.readAll();
+  QVERIFY(calls.contains("ActiveEnterTimestampMonotonic")); QVERIFY(!calls.contains("try-restart")); QVERIFY(!calls.contains("--user start"));
+}
+void ResidentGuideTests::staleResidentIsRestarted() {
+  Fixture fixture;
+  const auto log = fixture.root.filePath("systemctl.log");
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\n[ \"$2\" = show ] && echo 1\nexit 0\n", true));
+  const auto oldRuntime = qgetenv("XDG_RUNTIME_DIR"), oldPath = qgetenv("PATH");
+  qputenv("XDG_RUNTIME_DIR", fixture.runtime.toUtf8()); qputenv("PATH", fixture.environment.value("PATH").toUtf8());
+  const auto cleanup = qScopeGuard([&] { qputenv("XDG_RUNTIME_DIR", oldRuntime); qputenv("PATH", oldPath); });
+  GuideClient::ensureResident(this);
+  QTRY_VERIFY(([&] { QFile file(log); return file.open(QIODevice::ReadOnly) && file.readAll().contains("try-restart"); })());
+  QTRY_VERIFY(!property("guideStarting").toBool());
+}
+void ResidentGuideTests::ambiguousEnvironmentIsUnavailable() {
+  Fixture fixture;
+  QVERIFY(QDir().mkpath(fixture.runtime + "/hypr/second"));
+  QVERIFY(writeTestFile(fixture.runtime + "/hypr/second/hyprland.lock", QByteArray::number(::getpid()) + "\nwayland-second\n"));
+  QVERIFY(writeTestFile(fixture.runtime + "/wayland-second", ""));
+  QLocalServer second; QVERIFY(second.listen(fixture.runtime + "/hypr/second/.socket2.sock"));
+  auto environment = fixture.environment; environment.remove("HYPRLAND_INSTANCE_SIGNATURE"); environment.remove("WAYLAND_DISPLAY");
+  auto resolved = GuideEnvironment::resolve(environment);
+  QVERIFY(resolved.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()); QVERIFY(resolved.value("WAYLAND_DISPLAY").isEmpty());
+  // A manager Wayland hint selects its paired instance, irrespective of mtime.
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho WAYLAND_DISPLAY=wayland-second\n", true));
+  resolved = GuideEnvironment::resolve(environment);
+  QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "second"); QCOMPARE(resolved.value("WAYLAND_DISPLAY"), "wayland-second");
+  // Reachable sockets with a dead owner are not compositor candidates.
+  QVERIFY(writeTestFile(fixture.runtime + "/hypr/second/hyprland.lock", "999999999\nwayland-second\n"));
+  resolved = GuideEnvironment::resolve(environment);
+  QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "test"); QCOMPARE(resolved.value("WAYLAND_DISPLAY"), "test");
 }
 
 QTEST_GUILESS_MAIN(ResidentGuideTests)

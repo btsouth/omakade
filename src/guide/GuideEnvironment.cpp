@@ -4,6 +4,8 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QLocalSocket>
+#include <QFile>
+#include "tracking/ProcFs.h"
 
 QProcessEnvironment GuideEnvironment::resolve(const QProcessEnvironment& inherited) {
   auto environment = inherited;
@@ -23,23 +25,33 @@ QProcessEnvironment GuideEnvironment::resolve(const QProcessEnvironment& inherit
     }
   }
   const auto runtime = environment.value("XDG_RUNTIME_DIR");
-  const auto socket = runtime + "/hypr/" + environment.value("HYPRLAND_INSTANCE_SIGNATURE") + "/.socket2.sock";
   const auto reachable = [](const QString& path) {
     QLocalSocket probe; probe.connectToServer(path);
     return probe.waitForConnected(80);
   };
-  if (!reachable(socket)) {
-    // A compositor can restart before it imports the new manager environment.
-    // Select the newest live-looking instance in this private user runtime.
-    for (const auto& instance : QDir(runtime + "/hypr").entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time)) {
-      if (!reachable(instance.filePath() + "/.socket2.sock")) continue;
-      environment.insert("HYPRLAND_INSTANCE_SIGNATURE", instance.fileName());
-      for (const auto& display : QDir(runtime).entryList({"wayland-*"}, QDir::System, QDir::Time)) {
-        if (display.endsWith(".lock")) continue;
-        environment.insert("WAYLAND_DISPLAY", display); break;
-      }
-      break;
-    }
+  struct Instance { QString signature, display; };
+  QList<Instance> live;
+  for (const auto& instance : QDir(runtime + "/hypr").entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+    QFile lock(instance.filePath() + "/hyprland.lock");
+    if (!lock.open(QIODevice::ReadOnly)) continue;
+    const auto pid = lock.readLine().trimmed().toLongLong();
+    const auto display = QString::fromUtf8(lock.readLine().trimmed());
+    if (!ProcFs::processRunning(pid) || display.isEmpty() || display.contains('/') ||
+        !QFileInfo::exists(runtime + '/' + display) || !reachable(instance.filePath() + "/.socket2.sock")) continue;
+    live.append({instance.fileName(), display});
+  }
+  const auto signature = environment.value("HYPRLAND_INSTANCE_SIGNATURE");
+  const auto display = environment.value("WAYLAND_DISPLAY");
+  QList<Instance> matches;
+  for (const auto& instance : live)
+    if (instance.signature == signature && (display.isEmpty() || display == instance.display)) matches.append(instance);
+  if (matches.isEmpty() && !display.isEmpty())
+    for (const auto& instance : live) if (instance.display == display) matches.append(instance);
+  if (matches.isEmpty() && live.size() == 1) matches = live;
+  environment.remove("HYPRLAND_INSTANCE_SIGNATURE"); environment.remove("WAYLAND_DISPLAY");
+  if (matches.size() == 1) {
+    environment.insert("HYPRLAND_INSTANCE_SIGNATURE", matches.first().signature);
+    environment.insert("WAYLAND_DISPLAY", matches.first().display);
   }
   return environment;
 }

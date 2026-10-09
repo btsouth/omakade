@@ -151,6 +151,20 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
   }
   previousKey = key; previous = result; return result;
 }
+bool calmDesktop(const QProcessEnvironment& environment, const QJsonArray& published) {
+  QJsonObject active;
+  QJsonArray clients;
+  for (const auto& query : {QString("clients"), QString("activewindow")}) {
+    QProcess process; process.setProcessEnvironment(environment);
+    process.start("hyprctl", {"-j", query});
+    if (!process.waitForFinished(300)) { process.kill(); process.waitForFinished(); return false; }
+    const auto document = QJsonDocument::fromJson(process.readAllStandardOutput());
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0 || document.isNull()) return false;
+    if (query == "clients") clients = document.array(); else active = document.object();
+  }
+  const auto current = snapshot(active, clients, {}, published);
+  return current.session.isEmpty() && !current.locked;
+}
 }
 
 ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr, nullptr, nullptr, nullptr, nullptr, true) {
@@ -228,7 +242,9 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
       const int end = m_eventBuffer.indexOf('\n');
       const auto event = m_eventBuffer.left(end).split('>').first(); m_eventBuffer.remove(0, end + 1);
       if (event.startsWith("activewindow") || event == "openwindow" || event == "closewindow" || event == "fullscreen" ||
-          event.startsWith("workspace") || event.startsWith("monitor") || event.startsWith("lock")) m_debounce.start();
+          event.startsWith("workspace") || event.startsWith("monitor") || event.startsWith("lock")) {
+        ++*m_desktopGeneration; m_debounce.start();
+      }
     }
   });
   connect(&m_events, &QLocalSocket::disconnected, this, [this] { m_reconnect.start(); });
@@ -281,6 +297,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   else if (action == "publish") {
     const auto published = data.value("sessions").toArray();
     const bool changed = sessionIdentities(published) != sessionIdentities(m_published);
+    if (changed) ++*m_desktopGeneration;
     m_published = published; m_guide.setContext(data.value("context").toObject());
     if (changed || !m_ready) refresh();
   }
@@ -288,6 +305,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   else if (action == "restored") m_guide.restoreComplete(data.value("ok").toBool());
   else if (action == "close") m_guide.close();
   else if (action == "shortcut" || action == "toggle") {
+    if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
     const auto requested = data.value("requestNs").toString().toLongLong();
     const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
@@ -305,6 +323,9 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   return reply;
 }
 void ResidentGuide::refresh() {
+  if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) {
+    m_ready = false; emit snapshotReady(); return;
+  }
   if (m_guide.showing()) return;
   if (m_refreshing) { m_refreshPending = true; return; }
   m_refreshing = true;
@@ -337,14 +358,18 @@ void ResidentGuide::refresh() {
         emit snapshotReady();
         if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }
         // This is the only provisioning path. Never mutate a plugin directory mid-game.
-        const bool provision = !m_provisioned && !m_provisioning && result.session.isEmpty();
+        const bool provision = !m_provisioned && !m_provisioning && m_provisionRetry->attempts < 3 && result.session.isEmpty();
         if (provision) {
           m_provisioning = true;
           GuidePlugin::ensureAsync(GuidePlugin::defaultPaths(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
             QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation), QCoreApplication::applicationDirPath()), this, [this](bool ok) {
               m_provisioned = ok;
-              if (ok) m_provisioning = false;
+              if (ok || m_provisionRetry->attempts >= 3) m_provisioning = false;
               else QTimer::singleShot(5000, this, [this] { m_provisioning = false; refresh(); });
+            }, m_provisionRetry, m_environment, [environment = m_environment, published = m_published,
+                generation = m_desktopGeneration, observed = m_desktopGeneration->load()] {
+              // A new GUI publication or window event invalidates the captured sessions.
+              return calmDesktop(environment, published) && generation->load() == observed;
             });
         }
       });

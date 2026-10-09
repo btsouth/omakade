@@ -62,6 +62,10 @@ private slots:
   void pluginKeepsUserCopyAndWaitsForShell();
   void pluginFallsBackWhenSummonFails();
   void provisioningAndPauseDoNotBlock();
+  void provisioningFailureIsBounded_data();
+  void provisioningFailureIsBounded();
+  void provisioningRechecksGame();
+  void guardAcquirePrecedesFallbackRelease();
 };
 
 void InGameGuideTests::changedPayloadKeepsStaticData() {
@@ -740,7 +744,7 @@ struct PluginFixture {
     if (reply.isEmpty()) body += "exit 1\n";
     else {
       if (writeConfig) body += "[ \"$2\" = enablePlugin ] && echo '{\"plugins\":[{\"id\":\"omakade.guide\"}]}' > '" + paths.shellConfig + "'\n";
-      body += "[ \"$2\" = enablePlugin ] && echo " + reply + "\n[ \"$2\" = rescanPlugins ] && echo ok\nexit 0\n";
+      body += "[ \"$2\" = enablePlugin ] && echo " + reply + "\n[ \"$2\" = rescanPlugins ] || [ \"$2\" = ping ] && echo ok\nexit 0\n";
     }
     script.write(body.toUtf8()); script.close();
     QFile::setPermissions(paths.shellProgram, QFile::permissions(paths.shellProgram) | QFile::ExeOwner);
@@ -758,12 +762,12 @@ void InGameGuideTests::pluginLinksAndEnablesOnce() {
   QCOMPARE(QFileInfo(link).symLinkTarget(), fixture.paths.bundledDir);
   QVERIFY(GuidePlugin::usable(fixture.paths));
   QVERIFY(QFileInfo::exists(fixture.paths.markerPath));
-  QCOMPARE(fixture.calls(), (QStringList{"shell rescanPlugins", "shell enablePlugin omakade.guide {}"}));
+  QCOMPARE(fixture.calls(), (QStringList{"shell ping", "shell rescanPlugins", "shell enablePlugin omakade.guide {}"}));
   // A later launch asks the shell nothing, and a plugin the user disabled stays disabled.
   QVERIFY(QFile::remove(fixture.paths.shellConfig));
   QVERIFY(!GuidePlugin::ensure(fixture.paths));
   QVERIFY(!GuidePlugin::usable(fixture.paths));
-  QCOMPARE(fixture.calls().size(), 2);
+  QCOMPARE(fixture.calls().size(), 3);
 }
 
 void InGameGuideTests::pluginKeepsUserCopyAndWaitsForShell() {
@@ -848,6 +852,70 @@ void InGameGuideTests::provisioningAndPauseDoNotBlock() {
   QTRY_VERIFY(ProcFs::processAlive(game.processId(), start));
   game.terminate(); QVERIFY(game.waitForFinished());
   qputenv("PATH", originalPath);
+}
+
+
+void InGameGuideTests::provisioningFailureIsBounded_data() {
+  QTest::addColumn<QByteArray>("failure");
+  QTest::newRow("unknown") << QByteArray("echo unknown");
+  QTest::newRow("error") << QByteArray("echo error");
+  QTest::newRow("nonzero") << QByteArray("exit 1");
+  QTest::newRow("timeout") << QByteArray("exec sleep 2");
+}
+void InGameGuideTests::provisioningFailureIsBounded() {
+  QFETCH(QByteArray, failure);
+  PluginFixture fixture;
+  QFile script(fixture.paths.shellProgram); QVERIFY(script.open(QIODevice::WriteOnly));
+  script.write("#!/bin/sh\necho \"$@\" >> '" + fixture.log.toUtf8() + "'\n[ \"$2\" = enablePlugin ] && { " + failure + "; exit; }\necho ok\n"); script.close();
+  QVERIFY(QFile::setPermissions(script.fileName(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  auto retry = std::make_shared<GuidePlugin::RetryState>();
+  // Advance the daemon's five-second retry ticks without sleeping for a minute.
+  for (int seconds = 0; seconds < 60; seconds += 5) {
+    QElapsedTimer elapsed; elapsed.start();
+    QVERIFY(!GuidePlugin::ensure(fixture.paths, retry));
+    QVERIFY(elapsed.elapsed() < 3500);
+  }
+  QCOMPARE(fixture.calls().count("shell rescanPlugins"), 1);
+  QCOMPARE(retry->attempts, 3);
+  QVERIFY(fixture.calls().filter("enablePlugin").size() <= 9);
+  QVERIFY(!QFileInfo::exists(fixture.paths.markerPath));
+}
+void InGameGuideTests::provisioningRechecksGame() {
+  PluginFixture fixture; fixture.fakeShell({}, false);
+  auto retry = std::make_shared<GuidePlugin::RetryState>();
+  for (int tick = 0; tick < 5; ++tick) QVERIFY(!GuidePlugin::ensure(fixture.paths, retry));
+  QCOMPARE(retry->attempts, 0); QVERIFY(!retry->rescanned);
+  fixture.fakeShell("unknown", false);
+  bool checked = false;
+  QVERIFY(!GuidePlugin::ensure(fixture.paths, retry, QProcessEnvironment::systemEnvironment(), [&] { checked = true; return false; }));
+  QVERIFY(checked); QVERIFY(!retry->rescanned); QCOMPARE(fixture.calls().count("shell rescanPlugins"), 0);
+  fixture.fakeShell("ok", true);
+  QVERIFY(GuidePlugin::ensure(fixture.paths, retry, QProcessEnvironment::systemEnvironment(), [] { return true; }));
+  QCOMPARE(fixture.calls().count("shell rescanPlugins"), 1);
+}
+void InGameGuideTests::guardAcquirePrecedesFallbackRelease() {
+  QTemporaryDir root;
+  const auto log = root.filePath("ipc.log"), bin = root.filePath("bin"); QVERIFY(QDir().mkpath(bin));
+  QFile shell(bin + "/hyprctl"); QVERIFY(shell.open(QIODevice::WriteOnly));
+  shell.write("#!/bin/sh\ncase \"$2\" in\n*'={pid='*) echo acquire-begin >> '" + log.toUtf8() + "'; sleep .3; echo acquire-end >> '" + log.toUtf8() + "';;\n*) echo release >> '" + log.toUtf8() + "';;\nesac\necho ok\n"); shell.close();
+  QVERIFY(QFile::setPermissions(shell.fileName(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { game.kill(); game.waitForFinished(); });
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", start}};
+  guide.m_environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "fake");
+  guide.m_environment.insert("PATH", bin + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath() + ':' + qEnvironmentVariable("PATH"));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", guide.m_environment.value("PATH").toUtf8());
+  const auto resetPath = qScopeGuard([&] { qputenv("PATH", oldPath); });
+  const auto calls = [&] { QFile file(log); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{}; };
+  QVERIFY(guide.setPaused(true)); QTRY_VERIFY(calls().contains("acquire-begin"));
+  guide.stopGuard();
+  QTest::qWait(100); QVERIFY(!calls().contains("release"));
+  QTRY_VERIFY(calls().contains("release"));
+  QVERIFY(calls().indexOf("acquire-end") < calls().indexOf("release"));
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

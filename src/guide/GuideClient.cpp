@@ -12,6 +12,7 @@
 #include <QLockFile>
 #include <unistd.h>
 #include <memory>
+#include <time.h>
 
 QString GuideClient::socketPath() {
   return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/omakade-guide-control-%1").arg(::getuid());
@@ -21,12 +22,12 @@ void GuideClient::ensureResident(QObject* owner) {
   if (owner->property("guideStarting").toBool()) return;
   owner->setProperty("guideStarting", true);
   request({{"action", "status"}}, owner, [owner](const QString& result, const QJsonObject& reply) {
-    const auto run = [owner](const QStringList& arguments, std::function<void(bool)> done) {
+    const auto run = [owner](const QStringList& arguments, std::function<void(bool, QByteArray)> done) {
       auto* process = new QProcess(owner);
       auto completed = std::make_shared<bool>(false);
       const auto finish = [process, completed, done](bool ok) {
         if (*completed) return;
-        *completed = true; process->deleteLater(); done(ok);
+        *completed = true; const auto output = process->readAllStandardOutput(); process->deleteLater(); done(ok, output);
       };
       QObject::connect(process, &QProcess::finished, owner, [finish](int code, QProcess::ExitStatus status) { finish(code == 0 && status == QProcess::NormalExit); });
       QObject::connect(process, &QProcess::errorOccurred, owner, [finish](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) finish(false); });
@@ -35,15 +36,28 @@ void GuideClient::ensureResident(QObject* owner) {
     };
     const auto start = [owner, run, result, reply] {
       if (result == "handled" && reply.contains("ready")) { owner->setProperty("guideStarting", false); return; }
-      run({"is-active", "--quiet", "omakade-sessiond.service"}, [owner, run](bool active) {
-        run({active ? "try-restart" : "start", "omakade-sessiond.service"}, [owner](bool) { owner->setProperty("guideStarting", false); });
+      const bool oldProtocol = result == "handled" && !reply.contains("ready");
+      run({"is-active", "--quiet", "omakade-sessiond.service"}, [owner, run, oldProtocol](bool active, const QByteArray&) {
+        const auto launch = [owner, run](const QString& action) {
+          run({action, "omakade-sessiond.service"}, [owner](bool, const QByteArray&) { owner->setProperty("guideStarting", false); });
+        };
+        if (!active) { launch("start"); return; }
+        if (oldProtocol) { launch("try-restart"); return; }
+        run({"show", "omakade-sessiond.service", "--property=ActiveEnterTimestampMonotonic", "--value"},
+            [owner, launch](bool ok, const QByteArray& output) {
+          bool valid = false; const auto entered = output.trimmed().toLongLong(&valid);
+          timespec now{}; ::clock_gettime(CLOCK_MONOTONIC, &now);
+          const qint64 current = qint64(now.tv_sec) * 1000000 + now.tv_nsec / 1000;
+          if (ok && valid && entered > 0 && current - entered > 3000000) launch("try-restart");
+          else owner->setProperty("guideStarting", false); // Type=simple may still be opening its socket.
+        });
       });
     };
     // Reenable only a previously enabled 1.15 unit. Do not enable a unit the
     // user disabled or migrate unrelated user-unit links.
     const auto oldLink = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                          "/systemd/user/default.target.wants/omakade-sessiond.service";
-    if (QFileInfo(oldLink).isSymLink()) run({"reenable", "omakade-sessiond.service"}, [start](bool) { start(); });
+    if (QFileInfo(oldLink).isSymLink()) run({"reenable", "omakade-sessiond.service"}, [start](bool, const QByteArray&) { start(); });
     else start();
   });
 }

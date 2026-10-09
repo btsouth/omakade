@@ -3,6 +3,7 @@
 #include <QLocalServer>
 #include <QJsonArray>
 #include <QTimer>
+#include <atomic>
 
 // Constructed inside sessiond's dedicated guide thread. No library, GUI or QML engine.
 class ResidentGuide final : public QObject {
@@ -20,6 +21,8 @@ private:
   QByteArray m_eventBuffer;
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   bool m_resolving = false, m_refreshPending = false;
+  std::shared_ptr<GuidePlugin::RetryState> m_provisionRetry = std::make_shared<GuidePlugin::RetryState>();
+  std::shared_ptr<std::atomic_uint> m_desktopGeneration = std::make_shared<std::atomic_uint>(0);
   void connectEvents();
   void launchLibrary(bool fallback);
   QJsonArray m_published;

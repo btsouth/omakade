@@ -335,7 +335,8 @@ bool InGameGuide::setPaused(bool paused) {
     qWarning("Guide: pause unavailable; the game remains running.");
     if (m_opened) send({{"type", "update"}, {"payload", payload()}});
   };
-  connect(guard, &QProcess::started, this, [guard, pid, start, token = m_anrToken] {
+  connect(guard, &QProcess::started, this, [this, guard, pid, start, token = m_anrToken] {
+    if (m_guard != guard) { guard->closeWriteChannel(); return; }
     guard->write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}, {"recoverable", true}, {"anrToken", token}}).toJson(QJsonDocument::Compact) + '\n');
   });
   connect(guard, &QProcess::readyReadStandardOutput, this, [this, guard, pending, failed] {
@@ -374,11 +375,14 @@ void InGameGuide::stopGuard() {
   m_resumeTree.signal(SIGCONT); m_resumeTree.clear(); m_guardPins = {};
   auto* guard = m_guard.data(); m_guard = nullptr;
   const auto token = std::exchange(m_anrToken, {});
-  if (!token.isEmpty()) {
-    // Keep compositor IPC off the close/input path. The guard also releases on
-    // EOF; this second, idempotent release covers guard SIGKILL.
-    (void)QtConcurrent::run([token, environment = m_environment] { GuideAnr::release(token, environment); });
-  }
+  const auto release = [token, environment = m_environment] {
+    if (!token.isEmpty()) (void)QtConcurrent::run([token, environment] { GuideAnr::release(token, environment); });
+  };
+  // The fallback must follow guard exit. Releasing while it can still acquire
+  // leaves a token behind if the shutdown deadline kills the guard afterwards.
+  if (guard && guard->state() != QProcess::NotRunning)
+    connect(guard, &QProcess::finished, guard, [release] { release(); });
+  else release();
   if (!guard) return;
   // EOF cancels pending pin handshakes and resumes any processes the guard owns.
   guard->closeWriteChannel();

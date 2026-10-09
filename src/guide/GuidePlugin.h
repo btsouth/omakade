@@ -3,6 +3,8 @@
 #include <QString>
 #include <QObject>
 #include <functional>
+#include <memory>
+#include <QProcessEnvironment>
 
 // The in-game guide is an Omarchy shell plugin shipped inside the package. Omakade links it
 // into the user's plugin folder and enables it the first time it runs, so installing or
@@ -27,8 +29,14 @@ bool usable(const Paths& paths);
 // Links the packaged plugin when nothing occupies its folder (a user's own copy or link is
 // never replaced) and enables it once. Without Omarchy's shell running it enables nothing
 // and tries again on the next launch. Blocks for at most a few seconds. Returns usable().
-bool ensure(const Paths& paths);
+struct RetryState { bool rescanned = false; int attempts = 0; };
+bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry = {},
+            const QProcessEnvironment& environment = QProcessEnvironment::systemEnvironment(),
+            const std::function<bool()>& calm = {});
 // Only called during a calm startup, never by toggle. Work stays off the owner thread.
-void ensureAsync(const Paths& paths, QObject* owner, std::function<void(bool)> done = {});
+void ensureAsync(const Paths& paths, QObject* owner, std::function<void(bool)> done = {},
+                 const std::shared_ptr<RetryState>& retry = {},
+                 const QProcessEnvironment& environment = QProcessEnvironment::systemEnvironment(),
+                 const std::function<bool()>& calm = {});
 
 }  // namespace GuidePlugin
