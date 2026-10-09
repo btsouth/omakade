@@ -79,13 +79,19 @@ public:
   [[nodiscard]] QString sysDir() const { return m_root.filePath(QStringLiteral("sys")); }
 
   FakeNode add(const QString& node, const QString& name, const QString& keys,
-               bool virtualDevice = false) {
+               bool virtualDevice = false, bool bluetooth = false) {
     // sysfs links each event node to its device; virtual devices live under devices/virtual.
     const QString device = m_root.filePath(
-        (virtualDevice ? QStringLiteral("devices/virtual/input/") : QStringLiteral("devices/"))
+        (bluetooth ? QStringLiteral("devices/virtual/misc/uhid/") :
+         virtualDevice ? QStringLiteral("devices/virtual/input/") : QStringLiteral("devices/"))
         + node);
     QDir().mkpath(device + QStringLiteral("/device/capabilities"));
     writeFile(device + QStringLiteral("/device/name"), name);
+    if (bluetooth) {
+      QDir().mkpath(device + QStringLiteral("/device/id"));
+      writeFile(device + QStringLiteral("/device/id/vendor"), QStringLiteral("045e"));
+      writeFile(device + QStringLiteral("/device/id/product"), QStringLiteral("0b20"));
+    }
     writeFile(device + QStringLiteral("/device/capabilities/key"), keys);
     writeFile(device + QStringLiteral("/device/capabilities/abs"),
               keys == kXpadKeys ? kXpadAxes : QStringLiteral("0"));
@@ -327,6 +333,18 @@ private slots:
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed));
     press.dropped(QStringLiteral("event1"));
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 100));
+  }
+
+  void listenerIdentifiesBluetoothUhidHardware() {
+    FakeInput input;
+    FakeNode pad = input.add("event3", "Xbox Wireless Controller", kXpadKeys, false, true);
+    FakeNode mirror = input.add("event4", "Microsoft X-Box 360 pad 0", kXpadKeys, true);
+    const auto found = GuideListener::scan(input.devDir(), input.sysDir());
+    QCOMPARE(found.size(), 2);
+    QVERIFY(!found.first().virtualDevice);
+    QCOMPARE(found.first().vendor, quint16(0x045e));
+    QCOMPARE(found.first().product, quint16(0x0b20));
+    QVERIFY(found.last().virtualDevice);
   }
 
   void listenerWatchesOnlyControllers() {
