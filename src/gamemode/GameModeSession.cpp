@@ -346,7 +346,7 @@ void GameModeSession::park() {
 
 void GameModeSession::showLibrary() {
   if (m_busy) {
-    if (m_change == Change::RefreshParked) m_libraryAfterRefresh = true;
+    if (m_change == Change::RefreshParked || m_change == Change::Park) m_libraryAfterChange = true;
     return;
   }
   if (!m_parked) return;
@@ -501,8 +501,8 @@ void GameModeSession::finishChange() {
   if (result.ok && !notes.isEmpty()) emit notice(notes);
   if (notify) emit devicesChanged();
 
-  const bool library = m_libraryAfterRefresh;
-  m_libraryAfterRefresh = false;
+  const bool library = m_libraryAfterChange;
+  m_libraryAfterChange = false;
   const bool resume = m_resumeAfterRefresh;
   const bool end = m_exitAfterChange;
   m_resumeAfterRefresh = false;

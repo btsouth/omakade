@@ -180,7 +180,7 @@ private:
   QString m_lastParkError;
   Change m_change = Change::Enter;
   bool m_resumeAfterRefresh = false;
-  bool m_libraryAfterRefresh = false;
+  bool m_libraryAfterChange = false;
   bool m_exitAfterChange = false;
   QTimer m_parkTimer;
   bool m_recoveryChecked = false;
