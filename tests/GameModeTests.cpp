@@ -1473,27 +1473,6 @@ private slots:
     QCOMPARE(visibility, (QStringList{"show", "hide", "show", "hide"}));
   }
 
-  void slowWindowQueriesConsumeHideDeadline() {
-    deskAndTv(true);
-    auto game = controller();
-    game.setTemporaryWindow(true);
-    QVERIFY(game.enter(tvSettings(), 100).ok);
-    int queries = 0;
-    game.setWindowVisibility([&](bool visible) {
-      if (visible) return;
-      m_compositor.beforeWindowLookup = [&] {
-        QTest::qSleep(1000);
-        // An unmap arriving after the three-second deadline must stay pending.
-        if (++queries == 5) m_compositor.windowMapped = false;
-      };
-    });
-    const auto result = game.exit(100);
-    QVERIFY(!result.ok);
-    QVERIFY(result.notes.join(' ').contains("temporary window did not hide"));
-    QVERIFY(game.state().windowPlaced);
-    QVERIFY(QFile::exists(statePath()));
-  }
-
   void retainedWarmWindowTradesPlaceholderEachCycle() {
     deskAndTv(true);
     auto game = controller();
@@ -2935,6 +2914,26 @@ private slots:
     QCOMPARE(loaded.outputDescription, kTvDescription);
     QCOMPARE(loaded.sinkName, kTvSink);
     QVERIFY(!loaded.silenceNotifications);
+  }
+  void slowWindowQueriesConsumeHideDeadline() {
+    deskAndTv(true);
+    auto game = controller();
+    game.setTemporaryWindow(true);
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+    int queries = 0;
+    game.setWindowVisibility([&](bool visible) {
+      if (visible) return;
+      m_compositor.beforeWindowLookup = [&] {
+        QTest::qSleep(1000);
+        // An unmap arriving after the three-second deadline must stay pending.
+        if (++queries == 5) m_compositor.windowMapped = false;
+      };
+    });
+    const auto result = game.exit(100);
+    QVERIFY(!result.ok);
+    QVERIFY(result.notes.join(' ').contains("temporary window did not hide"));
+    QVERIFY(game.state().windowPlaced);
+    QVERIFY(QFile::exists(statePath()));
   }
 };
 
