@@ -41,6 +41,7 @@ private slots:
   void surfaceFailureResumes();
   void openingDeadlineResumes();
   void pluginParser();
+  void pluginFocus();
   void buttons();
   void axes();
   void reportArbitrationAndRepeat();
@@ -336,6 +337,66 @@ void InGameGuideTests::pluginParser() {
   QCOMPARE(result.property("output").toString(), "DP-2");
   for (const QString invalid : {"{", "{}", "{\"version\":2}", "{\"version\":1,\"output\":\"a\",\"pad\":\"xbox\",\"data\":{\"game\":{}}}"})
     QVERIFY(parse.call({invalid}).isNull());
+}
+
+// The card's focus model (omarchy-plugin/GuideFocus.js): its rows for each
+// state, where the cursor starts, and one D-pad step at a time.
+void InGameGuideTests::pluginFocus() {
+  QFile script(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideFocus.js"));
+  QVERIFY(script.open(QIODevice::ReadOnly));
+  auto code = QString::fromUtf8(script.readAll());
+  code.remove(".pragma library");
+  QJSEngine engine;
+  QVERIFY(!engine.evaluate(code).isError());
+  const auto global = engine.globalObject();
+  const auto grid = [&](const QVariantMap& shown) { return global.property("grid").call({engine.toScriptValue(shown)}); };
+  const auto keys = [](const QJSValue& rows) {
+    QStringList out;
+    for (const auto& row : rows.toVariant().toList()) out << row.toStringList().join(',');
+    return out;
+  };
+  const QVariantMap full{{"game", true}, {"achievements", true}, {"volume", true}, {"outputs", 1}};
+  const auto rows = grid(full);
+  QCOMPARE(keys(rows), (QStringList{"screenshot,record,desktop,library", "achievements", "volume", "resume,quit"}));
+  QCOMPARE(global.property("home").call({rows}).toString(), QStringLiteral("resume"));
+  auto replay = full; replay.insert("replay", true); replay.insert("outputs", 3);
+  QCOMPARE(keys(grid(replay)), (QStringList{"screenshot,record,replay,desktop,library", "achievements", "volume", "output", "resume,quit"}));
+  QCOMPARE(keys(grid({{"game", true}})), (QStringList{"screenshot,record,desktop,library", "resume,quit"}));
+  QCOMPARE(keys(grid({})), (QStringList{"screenshot,record"}));
+  QCOMPARE(global.property("home").call({grid({})}).toString(), QStringLiteral("screenshot"));
+
+  // Walk a path of steps from Resume; "-" marks a step that is not a move.
+  const auto walk = [&](const QJSValue& rows, const QStringList& steps) {
+    QString cursor = global.property("home").call({rows}).toString();
+    auto anchor = global.property("homeAnchor");
+    QStringList visited;
+    for (const auto& step : steps) {
+      const auto next = global.property("move").call({rows, cursor, step, anchor});
+      if (next.isNull()) { visited << "-"; continue; }
+      cursor = next.property("key").toString(); anchor = next.property("anchor");
+      visited << cursor;
+    }
+    return visited;
+  };
+  QCOMPARE(walk(rows, {"up", "up", "up", "up"}), (QStringList{"volume", "achievements", "screenshot", "resume"}));
+  QCOMPARE(walk(rows, {"right", "left", "left", "down"}), (QStringList{"quit", "resume", "resume", "screenshot"}));
+  // Left and right on a one-item row belong to the control there.
+  QCOMPARE(walk(rows, {"up", "left", "right"}), (QStringList{"volume", "-", "-"}));
+  // The position across the card holds through one-item rows.
+  QCOMPARE(walk(rows, {"down", "right", "right", "right", "right", "down", "down", "down", "up", "up", "up"}),
+           (QStringList{"screenshot", "record", "desktop", "library", "library", "achievements", "volume", "quit",
+                        "volume", "achievements", "library"}));
+  QCOMPARE(walk(rows, {"down", "right", "down", "down", "down"}), (QStringList{"screenshot", "record", "achievements", "volume", "resume"}));
+  // With five tiles the middle one leads to Resume, the two on the right to Quit.
+  const auto five = grid(replay);
+  QCOMPARE(walk(five, {"down", "right", "right", "up"}), (QStringList{"screenshot", "record", "replay", "resume"}));
+  QCOMPARE(walk(five, {"down", "right", "right", "right", "up"}), (QStringList{"screenshot", "record", "replay", "desktop", "quit"}));
+  // One sweep of the D-pad reaches every control.
+  QSet<QString> seen;
+  for (const auto& key : walk(five, {"down", "right", "right", "right", "right", "down", "down", "down", "down", "left", "down"})) seen << key;
+  QCOMPARE(seen.size(), 10);
+  // An unknown cursor (a control that went away) goes home.
+  QCOMPARE(global.property("move").call({rows, QStringLiteral("replay"), QStringLiteral("down")}).property("key").toString(), QStringLiteral("resume"));
 }
 
 void InGameGuideTests::buttons() {
