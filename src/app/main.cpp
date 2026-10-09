@@ -6988,13 +6988,19 @@ int main(int argc, char* argv[]) {
       gameMode.showLibrary();
       return;
     }
+    GameModeDesktopFocus desktop;
+    const bool managed = gameModeCompositor.desktopFocus(&desktop, nullptr);
+    const auto pid = QCoreApplication::applicationPid();
+    // An already mapped library moves before activation can switch workspaces.
+    if (managed && gameModeCompositor.windowForPid(pid).valid() &&
+        !gameModeCompositor.moveLibraryToDesktop(pid, desktop)) return;
     rootWindow->show();
-    rootWindow->requestActivate();
+    if (!managed) rootWindow->requestActivate();
     QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
     revealGameMode();
-    QTimer::singleShot(150, &application, [&gameModeCompositor] {
-      const auto window = gameModeCompositor.windowForPid(QCoreApplication::applicationPid());
-      if (window.valid()) gameModeCompositor.focusWindow(window.address);
+    QTimer::singleShot(150, &application, [&gameModeCompositor, desktop, managed, pid] {
+      // A cold library maps asynchronously. Keep the original landing workspace.
+      if (managed) (void)gameModeCompositor.moveLibraryToDesktop(pid, desktop);
     });
   };
   QObject::connect(&gameMode, &GameModeSession::libraryShown, &application,

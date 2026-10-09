@@ -126,6 +126,10 @@ public:
   virtual bool returnWindow(const QString& address, const QString& workspace,
                             const QString& placeholder, QString* error = nullptr) = 0;
   virtual bool focusWindow(const QString& address, QString* error = nullptr) = 0;
+  // Move the library to the landing workspace before focusing it. Focusing a
+  // library left beside a frozen fullscreen game would reveal that game again.
+  bool moveLibraryToDesktop(qint64 pid, const GameModeDesktopFocus& desktop,
+                            QString* error = nullptr);
   virtual bool setWindowMode(const QString&, int, int, QString* error = nullptr) {
     if (error)
       *error = QStringLiteral("Window presentation cannot be restored.");

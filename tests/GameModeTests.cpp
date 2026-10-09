@@ -760,6 +760,21 @@ private slots:
     QVERIFY(game.exit(100).ok);
   }
 
+  void guideLibraryMovesBeforeFocus() {
+    deskAndTv(true);
+    m_compositor.others = {{"0x9a01", "3"}};
+    m_compositor.currentFocus = {kDesk, "7", {}};
+    QVERIFY(m_compositor.moveLibraryToDesktop(100, m_compositor.currentFocus));
+    QCOMPARE(m_compositor.window.workspace, "7");
+    QCOMPARE(m_compositor.currentFocus.address, kAddress);
+    QCOMPARE(m_compositor.others.first().workspace, "3");
+    QCOMPARE(m_compositor.log.first(), QString("place %1 7 %2").arg(kAddress, kDesk));
+    m_compositor.placeFails = true;
+    m_compositor.currentFocus = {kDesk, "8", {}};
+    QVERIFY(!m_compositor.moveLibraryToDesktop(100, m_compositor.currentFocus));
+    QVERIFY(m_compositor.currentFocus.address.isEmpty());
+  }
+
   void guideLibraryPreservesWarmDesktop_data() {
     QTest::addColumn<bool>("resume"); QTest::addColumn<bool>("withGame");
     QTest::newRow("end-library") << false << false;

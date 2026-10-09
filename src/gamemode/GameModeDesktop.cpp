@@ -733,3 +733,12 @@ bool PactlGameModeAudio::setStreamMuted(const GameModeStream& stream, bool muted
   setError(error, QStringLiteral("The game audio stream changed before muting."));
   return false;
 }
+
+bool GameModeCompositor::moveLibraryToDesktop(qint64 pid, const GameModeDesktopFocus& desktop,
+                                              QString* error) {
+  const auto window = windowForPid(pid);
+  if (!window.valid() || desktop.workspace.isEmpty() || desktop.output.isEmpty()) return false;
+  if (window.workspace != desktop.workspace &&
+      !placeWindow(window.address, desktop.workspace, desktop.output, {}, error)) return false;
+  return focusWindow(window.address, error);
+}
