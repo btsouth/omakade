@@ -100,11 +100,20 @@ QList<GuideListener::Controller> GuideListener::scan(const QString& devDir,
       continue;
     }
     const QString id = QFileInfo(device).canonicalFilePath();
+    QString driver;
+    QDir parent(id);
+    // The evdev input node's driver belongs to an ancestor USB/HID device.
+    while (!parent.isRoot()) {
+      const auto target = QFileInfo(parent.filePath("driver")).canonicalFilePath();
+      if (!target.isEmpty()) { driver = QFileInfo(target).fileName(); break; }
+      if (!parent.cdUp()) break;
+    }
     controllers.append(Controller{
         .node = node,
         .id = id,
         .name = readLine(device + QStringLiteral("/name")),
         .virtualDevice = id.contains(QStringLiteral("/devices/virtual/")),
+        .driver = driver,
     });
   }
   return controllers;

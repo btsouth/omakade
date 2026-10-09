@@ -5923,6 +5923,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   controls.gbutton.button = SDL_GAMEPAD_BUTTON_NORTH;
   QVERIFY(SDL_PushEvent(&controls));
   QTRY_COMPARE_WITH_TIMEOUT(toolbar.size(), 1, 1000);
+  QCOMPARE(controller.favoriteGlyph(), QStringLiteral("X"));
+  QCOMPARE(controller.toolbarGlyph(), QStringLiteral("Y"));
 
   keys.clear();
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 20000));

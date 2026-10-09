@@ -44,6 +44,8 @@ private slots:
   void openingDeadlineResumes();
   void pluginParser();
   void buttons();
+  void faceButtonPositions_data();
+  void faceButtonPositions();
   void axes();
   void reportArbitrationAndRepeat();
   void mirroredReportsAndRecovery();
@@ -397,6 +399,30 @@ void InGameGuideTests::buttons() {
   }
 }
 
+void InGameGuideTests::faceButtonPositions_data() {
+  QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
+  QTest::addColumn<int>("top"); QTest::addColumn<int>("left");
+  QTest::newRow("xpad") << QString("Microsoft X-Box 360 pad") << QString("xpad") << BTN_Y << BTN_X;
+  QTest::newRow("steam-xbox-mirror") << QString("Microsoft X-Box 360 pad 0") << QString{} << BTN_Y << BTN_X;
+  QTest::newRow("xpad-third-party") << QString("Logitech F310") << QString("xpad") << BTN_Y << BTN_X;
+  QTest::newRow("xpadneo") << QString("Xbox Wireless Controller") << QString("xpadneo") << BTN_Y << BTN_X;
+  QTest::newRow("hid-steam") << QString("Steam Deck") << QString("steam") << BTN_Y << BTN_X;
+  QTest::newRow("hid-playstation") << QString("Sony DualSense") << QString("playstation") << BTN_NORTH << BTN_WEST;
+  QTest::newRow("hid-nintendo") << QString("Nintendo Switch Pro Controller") << QString("nintendo") << BTN_NORTH << BTN_WEST;
+  QTest::newRow("position-driver-wins") << QString("Xbox style pad") << QString("hid-generic") << BTN_NORTH << BTN_WEST;
+  QTest::newRow("unknown") << QString("USB gamepad") << QString{} << BTN_NORTH << BTN_WEST;
+}
+
+void InGameGuideTests::faceButtonPositions() {
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(int, top); QFETCH(int, left);
+  GuideInputMap map; map.setController(name, driver);
+  map.event(EV_KEY, top, 1); QCOMPARE(map.report(0), QStringList{"y"});
+  QVERIFY(map.heldPosition(BTN_NORTH)); QVERIFY(!map.heldPosition(BTN_WEST));
+  map.event(EV_KEY, top, 0); map.report(1);
+  map.event(EV_KEY, left, 1); QCOMPARE(map.report(2), QStringList{"x"});
+  QVERIFY(map.heldPosition(BTN_WEST)); QVERIFY(!map.heldPosition(BTN_NORTH));
+}
+
 void InGameGuideTests::axes() {
   GuideInputMap map;
   map.setAxis(ABS_X, 0, 255, 8);
@@ -476,8 +502,18 @@ void InGameGuideTests::mirroredReportsAndRecovery() {
   report("event16", EV_KEY, BTN_MODE, 1); QTest::qWait(20); // currently armed, one close
   QTRY_COMPARE(actions.size(), 5);
   report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  // The physical Xbox top/left and Steam's mirror use legacy label codes.
+  // A mirrored screenshot press is one action, even when callbacks arrive apart.
+  report("event15", EV_KEY, BTN_Y, 1); QTRY_COMPARE(actions.size(), 6);
+  QCOMPARE(actions.last().first().toString(), "y");
+  report("event16", EV_KEY, BTN_Y, 1); QTest::qWait(20); QCOMPARE(actions.size(), 6);
+  report("event15", EV_KEY, BTN_Y, 0); report("event16", EV_KEY, BTN_Y, 0); QTest::qWait(20);
+  report("event16", EV_KEY, BTN_Y, 1); QTRY_COMPARE(actions.size(), 7);
+  QCOMPARE(actions.last().first().toString(), "y");
+  report("event15", EV_KEY, BTN_X, 1); report("event16", EV_KEY, BTN_X, 1);
+  QTRY_COMPARE(actions.size(), 8); QCOMPARE(actions.last().first().toString(), "x");
   report("event15", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
-  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 8);
   input.release(); for (const int fd : writers) ::close(fd);
 }
 
