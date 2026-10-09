@@ -89,6 +89,7 @@ public:
   Q_INVOKABLE void enter();
   Q_INVOKABLE void exit();
   Q_INVOKABLE void park();
+  void showLibrary();
   Q_INVOKABLE void focusGame();
   Q_INVOKABLE void toggle();
   // Gives Omakade's window keyboard focus through the compositor. A game that has focus
@@ -120,6 +121,7 @@ signals:
   void parking();
   void parkedOnDesktop();
   void resumed();
+  void libraryShown();
   void gameFocused(bool ok);
   void windowVisibilityRequested(bool visible);
   // The placeholder window that keeps Omakade's place in the desktop layout should be
@@ -148,7 +150,7 @@ private:
   void finishChange();
   void startChange();
   void refreshParked();
-  enum class Change { Enter, Exit, Park, Resume, RefreshParked };
+  enum class Change { Enter, Exit, Park, Resume, RefreshParked, ShowLibrary };
   void screenRemoved(QScreen* screen);
   [[nodiscard]] int currentDisplayIndex() const;
   [[nodiscard]] int currentSoundIndex() const;
@@ -178,6 +180,7 @@ private:
   QString m_lastParkError;
   Change m_change = Change::Enter;
   bool m_resumeAfterRefresh = false;
+  bool m_libraryAfterRefresh = false;
   bool m_exitAfterChange = false;
   QTimer m_parkTimer;
   bool m_recoveryChecked = false;

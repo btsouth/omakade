@@ -6985,11 +6985,10 @@ int main(int argc, char* argv[]) {
     // Parking has already hidden the game and retained its pause. Show the
     // session's library without resuming or focusing that game.
     if (gameMode.hasSession()) {
-      QMetaObject::invokeMethod(rootWindow, "prepareGameModeLayout", Q_ARG(QVariant, QVariant(true)));
-      rootWindow->setWindowState(Qt::WindowFullScreen);
-      rootWindow->setProperty("gameModeNavigationRestoring", false);
-      rootWindow->showFullScreen();
-    } else rootWindow->show();
+      gameMode.showLibrary();
+      return;
+    }
+    rootWindow->show();
     rootWindow->requestActivate();
     QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
     revealGameMode();
@@ -6998,6 +6997,17 @@ int main(int argc, char* argv[]) {
       if (window.valid()) gameModeCompositor.focusWindow(window.address);
     });
   };
+  QObject::connect(&gameMode, &GameModeSession::libraryShown, &application,
+                   [rootWindow, revealGameMode] {
+    if (rootWindow) {
+      QMetaObject::invokeMethod(rootWindow, "prepareGameModeLayout", Q_ARG(QVariant, QVariant(true)));
+      rootWindow->setWindowState(Qt::WindowFullScreen);
+      rootWindow->setProperty("gameModeNavigationRestoring", false);
+      rootWindow->showFullScreen();
+      QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
+      revealGameMode();
+    }
+  });
   QObject::connect(&singleInstance, &SingleInstance::guideLibraryRequested, &application, showGuideLibrary);
   QObject::connect(&inGameGuide, &GuideClient::libraryRequested, &application, showGuideLibrary);
   if (application.arguments().contains("--guide-library"))

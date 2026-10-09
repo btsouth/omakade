@@ -760,6 +760,60 @@ private slots:
     QVERIFY(game.exit(100).ok);
   }
 
+  void guideLibraryPreservesWarmDesktop_data() {
+    QTest::addColumn<bool>("resume"); QTest::addColumn<bool>("withGame");
+    QTest::newRow("end-library") << false << false;
+    QTest::newRow("resume-library") << true << false;
+    QTest::newRow("end-game") << false << true;
+    QTest::newRow("resume-game") << true << true;
+  }
+
+  void guideLibraryPreservesWarmDesktop() {
+    QFETCH(bool, resume); QFETCH(bool, withGame);
+    deskAndTv(true);
+    m_compositor.currentFocus = {kDesk, "3", "0xd00d"};
+    auto game = controller();
+    QVERIFY(game.enter({}, 100).ok);
+    if (withGame) retainedGame();
+    QVERIFY(game.park(100).ok);
+    QCOMPARE(m_compositor.window.fullscreenMode, 0);
+    const auto shown = game.showLibrary(100);
+    QVERIFY2(shown.ok, qPrintable(shown.error));
+    QVERIFY(game.parked()); QVERIFY(game.state().libraryPresented);
+    QCOMPARE(m_compositor.window.workspace, "name:omakade-library");
+    QCOMPARE(game.state().windowFullscreen, 0);
+    QCOMPARE(game.state().focusedWindow, "0xd00d");
+    // The UI changes native mode only after the controller owns restoration.
+    m_compositor.window.fullscreenMode = 2;
+    m_compositor.window.fullscreenClient = 2;
+    QVERIFY(game.refreshParked().ok);
+    QVERIFY(game.state().libraryPresented);
+    if (withGame) QVERIFY(m_audio.inputs.first().muted);
+    GameModeState journal;
+    QVERIFY(GameModeState::fromJson(game.state().toJson(), &journal));
+    QVERIFY(journal.libraryPresented);
+    if (resume) {
+      QVERIFY(game.resume({}, 100).ok);
+      QCOMPARE(game.state().windowFullscreen, 0);
+      QCOMPARE(game.state().focusedWindow, "0xd00d");
+    }
+    QVERIFY(game.exit(100).ok);
+    QCOMPARE(m_compositor.window.workspace, "3");
+    QCOMPARE(m_compositor.window.fullscreenMode, 0);
+    QCOMPARE(m_compositor.window.fullscreenClient, 0);
+    QCOMPARE(m_compositor.currentFocus.address, "0xd00d");
+  }
+
+  void guideLibraryPlacementFailureRestoresDesktop() {
+    deskAndTv(true); auto game = controller();
+    QVERIFY(game.enter({}, 100).ok); QVERIFY(game.park(100).ok);
+    m_compositor.placeFails = true;
+    QVERIFY(!game.showLibrary(100).ok);
+    QVERIFY(!game.state().libraryPresented); QVERIFY(!game.state().windowPlaced);
+    QCOMPARE(m_compositor.window.workspace, "3");
+    QVERIFY(game.exit(100).ok);
+  }
+
   void parkWithoutGamesRequestsUiLeaveBeforeRetainingLibrary() {
     deskAndTv(true);
     auto game = controller();

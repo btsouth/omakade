@@ -338,6 +338,8 @@ class GameModeStartupTests(unittest.TestCase):
         self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xaa",
                       "Guide library did not focus the retained library")
         self.assertEqual(json.loads(self.state.read_text())["phase"], "parked")
+        self.assertTrue(json.loads(self.state.read_text()).get("library_presented"))
+        self.assertEqual(json.loads(self.fixture.read_text())["owner_workspace"], "name:omakade-library")
         self.assertTrue(json.loads(self.fixture.read_text())["mute"])
 
     def test_explicit_game_mode_launch_closes_on_exit(self):
