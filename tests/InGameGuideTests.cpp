@@ -38,6 +38,7 @@ private slots:
   void outsideParkAndResume();
   void desktopUsesPausePreference();
   void surfaceFailureResumes();
+  void openingDeadlineResumes();
   void pluginParser();
   void buttons();
   void axes();
@@ -167,6 +168,25 @@ void InGameGuideTests::surfaceFailureResumes() {
   QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
   guide.message({{"action", "surface-failed"}});
   QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.showing()); QVERIFY(!guide.m_guard);
+}
+
+void InGameGuideTests::openingDeadlineResumes() {
+  QTemporaryDir root; QVERIFY(root.isValid());
+  QFile shell(root.filePath("omarchy-shell")); QVERIFY(shell.open(QIODevice::WriteOnly));
+  shell.write("#!/bin/sh\necho '{\"token\":\"ignored\",\"opening\":true}'\n"); shell.close();
+  QVERIFY(shell.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", root.path().toUtf8() + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false); guide.m_enabled = true;
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.toggle();
+  guide.m_poll.stop(); // Model an older plugin that keeps reporting opening forever.
+  QTRY_COMPARE(processState(game.processId()), 'T'); QVERIFY(guide.showing());
+  QTRY_VERIFY_WITH_TIMEOUT(!guide.showing(), 4000);
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_guard);
 }
 
 void InGameGuideTests::desktopRetainsPauseAndIdentity() {

@@ -106,13 +106,26 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QFile log(shellLog); QVERIFY(log.open(QIODevice::ReadOnly));
   QTRY_VERIFY(([&] { QFile queries(queryLog); return queries.open(QIODevice::ReadOnly) && queries.readAll().contains("dispatch focuswindow address:0x123"); })());
   const auto shellCalls = log.readAll(); QVERIFY(!shellCalls.contains("rescanPlugins")); QVERIFY(!shellCalls.contains("call omakade.guide update"));
-  const auto control = [&](const QString& action) {
+  const auto control = [&](const QString& action, QJsonObject data = {}) {
+    data.insert("action", action);
     QLocalSocket socket; socket.connectToServer(runtime + QStringLiteral("/omakade-guide-control-%1").arg(::getuid()));
     if (!socket.waitForConnected()) return QJsonObject{};
-    socket.write(QJsonDocument(QJsonObject{{"action", action}}).toJson(QJsonDocument::Compact) + '\n');
+    socket.write(QJsonDocument(data).toJson(QJsonDocument::Compact) + '\n');
     if (!socket.waitForReadyRead()) return QJsonObject{};
     return QJsonDocument::fromJson(socket.readAll()).object();
   };
+  // Clock-only publisher changes must not turn the library's one-second updates
+  // back into compositor process spawning.
+  QJsonObject published{{"pid", game.processId()}, {"procStart", start}, {"source", "Dolphin"}, {"path", "/games/test.rom"}, {"elapsedSeconds", 1}};
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}}).value("result").toString(), "handled");
+  QTest::qWait(100);
+  QFile publishedQueries(queryLog); QVERIFY(publishedQueries.open(QIODevice::ReadOnly)); const auto publishCalls = publishedQueries.readAll().count('\n'); publishedQueries.close();
+  for (int second = 2; second < 5; ++second) {
+    published.insert("elapsedSeconds", second);
+    control("publish", {{"sessions", QJsonArray{published}}}); QTest::qWait(40);
+  }
+  QVERIFY(publishedQueries.open(QIODevice::ReadOnly)); QCOMPARE(publishedQueries.readAll().count('\n'), publishCalls);
+  control("publish", {{"sessions", QJsonArray{}}});
   // Publish a game immediately after a cached no-game snapshot. A cache miss must
   // reconcile asynchronously, rather than routing this live game into the library.
   QVERIFY(SessionDatabase::open(database, databasePath, "resident-test-miss"));
@@ -129,6 +142,14 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"});
   QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
   QTRY_VERIFY(([&] { QFile events(shellLog); return events.open(QIODevice::ReadOnly) && events.readAll().count("shell summon omakade.guide") == 2; })());
+  QFile secondSummon(summonFile); QVERIFY(secondSummon.open(QIODevice::ReadOnly));
+  const auto secondBackend = QJsonDocument::fromJson(secondSummon.readAll()).object().value("backend").toObject();
+  QLocalSocket secondPlugin; secondPlugin.connectToServer(secondBackend.value("socket").toString()); QVERIFY(secondPlugin.waitForConnected());
+  for (const auto& action : {QString("opened"), QString("library")}) {
+    secondPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", secondBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
+    QVERIFY(secondPlugin.waitForBytesWritten()); QTest::qWait(30);
+  }
+  QTRY_VERIFY(([&] { QFile output(queryLog); return output.open(QIODevice::ReadOnly) && output.readAll().contains("dispatch exec"); })());
   QCOMPARE(control("close").value("result").toString(), "handled");
   QByteArray messages;
   QTRY_VERIFY2(([&] {
