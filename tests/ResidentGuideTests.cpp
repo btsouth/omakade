@@ -40,6 +40,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   const auto active = QJsonDocument(QJsonObject{{"pid", game.processId()}, {"address", "0x123"}, {"fullscreen", 1}}).toJson(QJsonDocument::Compact);
   const auto clients = QJsonDocument(QJsonArray{QJsonObject{{"pid", game.processId()}, {"address", "0x123"}, {"monitor", 0}}}).toJson(QJsonDocument::Compact);
   const auto queryLog = root.path() + "/queries";
+  QVERIFY(write(bin + "/systemctl", "#!/bin/sh\nexit 1\n", true));
   QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\necho \"$@\" >> '" + queryLog.toUtf8() + "'\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\nesac\n", true));
   const auto summonFile = root.path() + "/summon.json", shellLog = root.path() + "/shell.log";
   QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + "'\necho ok\n", true));
@@ -76,6 +77,12 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QFile log(shellLog); QVERIFY(log.open(QIODevice::ReadOnly)); QVERIFY(!log.readAll().contains("rescanPlugins"));
   const auto messages = daemon.readAllStandardError();
   QVERIFY(messages.contains("summon dispatched")); QVERIFY(messages.contains("opened elapsed_ms=")); QVERIFY(messages.contains("closed elapsed_ms="));
+  // A missing resident endpoint also exits cheaply and never creates a GUI.
+  daemon.kill(); QVERIFY(daemon.waitForFinished());
+  shortcut.start(QStringLiteral(OMAKADE_APP), {"--guide-toggle"});
+  QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 1);
+  const auto unavailable = shortcut.readAllStandardError();
+  QVERIFY(unavailable.contains("Resident guide unavailable")); QVERIFY(!unavailable.contains("platform plugin"));
 }
 
 QTEST_GUILESS_MAIN(ResidentGuideTests)

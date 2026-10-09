@@ -57,8 +57,8 @@ bool GuidePress::event(const QString& device, int type, int code, int value, qin
     const bool alone = !state->chord;
     state->heldSince = -1;
     state->chord = false;
-    const bool samePress = m_lastRelease >= 0 && nowMs - m_lastRelease < kSameReleaseMs;
-    m_lastRelease = nowMs;
+    const bool samePress = m_lastRelease >= 0 && device != m_lastReleaseDevice && nowMs - m_lastRelease < kSameReleaseMs;
+    if (!samePress) { m_lastRelease = nowMs; m_lastReleaseDevice = device; }
     return shortPress && alone && !samePress;
   }
   bool pressed = false;

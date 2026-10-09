@@ -14,7 +14,7 @@
 // press began after the controller had been open for kArmDelayMs. One physical press can arrive
 // from several devices at once, such as a controller and the virtual pad Steam Input makes from
 // it, so a release within kSameReleaseMs of the previous one is taken as the same press and
-// ignored.
+// ignored. A fresh release from the same source does not wait for this mirror window.
 class GuidePress {
 public:
   static constexpr qint64 kMaxHoldMs = 1000;
@@ -64,4 +64,5 @@ private:
   };
   QHash<QString, State> m_devices;
   qint64 m_lastRelease = -1;
+  QString m_lastReleaseDevice;
 };

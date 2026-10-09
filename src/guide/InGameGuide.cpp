@@ -202,7 +202,14 @@ void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& met
                               const QString& output, const GameModeWindow& window) {
   if (m_opened || m_opening) return; // Pin the current guide to its original game.
   const bool changedGame = session.value("pid") != m_session.value("pid") || session.value("procStart") != m_session.value("procStart");
-  m_session = session; m_metadata = metadata; m_output = output; m_window = window;
+  auto nextMetadata = metadata;
+  if (!changedGame) for (const auto& key : {QString("heroPath"), QString("logoPath")}) {
+    const auto cached = m_metadata.value(key).toString();
+    if (QUrl(cached).toLocalFile().startsWith(GuideArt::cacheRoot() + '/') &&
+        (nextMetadata.value(key).toString().isEmpty() || (key == "heroPath" && GuideArt::needsHero(nextMetadata.value(key).toString()))))
+      nextMetadata.insert(key, cached);
+  }
+  m_session = session; m_metadata = nextMetadata; m_output = output; m_window = window;
   if (changedGame) {
     stopGuard(); m_hudVisible = false; m_mango.abort();
     bool online = false;
@@ -443,7 +450,7 @@ void InGameGuide::message(const QJsonObject& data) {
     const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     qInfo().noquote() << "GUIDE_LATENCY_MS" << (now - data.value("value").toObject().value("receivedNs").toString().toLongLong()) / 1000000.0;
   }
-  if (action == "opened") { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); }
+  if (action == "opened") { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); send({{"type", "update"}, {"payload", payload()}}); }
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
   else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
   else if (action == "closed") finishClose(false);

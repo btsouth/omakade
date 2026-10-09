@@ -167,6 +167,9 @@ private slots:
     press.opened(QStringLiteral("event1"), 0);
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed));
     QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 120));
+    // A genuinely new press on the same source needs release, not a one-second wait.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 200));
+    QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 250));
     // Pressing again later toggles again.
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 3000));
     QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 3100));

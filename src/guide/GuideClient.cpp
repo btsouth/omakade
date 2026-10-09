@@ -47,8 +47,10 @@ QString GuideClient::routeShortcut(const QString& node) {
   QString result;
   QElapsedTimer elapsed; elapsed.start();
   const auto send = [&] {
-    request({{"action", "shortcut"}, {"node", node}}, &loop,
-            [&loop, &result](const QString& reply, const QJsonObject&) { result = reply; loop.quit(); });
+    QTimer::singleShot(0, &loop, [&] {
+      request({{"action", "shortcut"}, {"node", node}}, &loop,
+              [&loop, &result](const QString& reply, const QJsonObject&) { result = reply; loop.quit(); });
+    });
     loop.exec();
   };
   send();
