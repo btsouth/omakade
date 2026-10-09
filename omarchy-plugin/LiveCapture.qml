@@ -2,104 +2,71 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
+// Readings for the perf line and the capture rows, polled only while the card is
+// open. Recording goes through Omarchy's own recorder so the bar indicator and
+// the saved-clip notification are Omarchy's; next to a running replay buffer,
+// which that recorder would stop instead, the helper records on its own.
 Item {
   id: root
-  property var runner
-  property string output: ""
+
   property bool active: false
-  property var settings: ({replaySeconds: 30, sound: "game"})
-  property var files: ({})
-  property bool scanning: false
-  property string recordingFile: ""
-  property string pendingSave: ""
-  property string recordError: ""
-  property string replayError: ""
-  signal toast(var data)
-  readonly property var captureData: ({replayOn: replay.running, replaySeconds: settings.replaySeconds, sound: settings.sound,
-    recording: recording.running, folder: files.videos || "", recent: files.recent || [], lastShot: ((files.recent || [])[0] || {}).thumb || ""})
-  readonly property var status: ({recording: recording.running, replay: {on: replay.running, seconds: settings.replaySeconds}})
+  property string output: ""
+  // {cpu, cpuTemp, gpu, gpuTemp, recording: {pid, started}, replay: {pid, seconds}}
+  property var status: ({})
+  property bool busy: false
   readonly property string helper: String(Qt.resolvedUrl("guide-files.py")).replace("file://", "")
+
+  readonly property var recording: status.recording || null
+  readonly property var replay: status.replay || null
+
+  function run(command, done) {
+    var process = runner.createObject(root, {command: command})
+    process.result = done || function() {}
+    process.running = true
+  }
+
+  Component {
+    id: runner
+    Process {
+      id: process
+      property var result: function() {}
+      property string output: ""
+      stdout: StdioCollector { onStreamFinished: process.output = text }
+      onExited: function(code, status) { result(code === 0 && status === 0, process.output.trim()); destroy() }
+    }
+  }
+
   function refresh() {
-    if (scanning) return
-    scanning = true
-    runner.run(["python3", helper, "scan"], function(ok, value) {
-      root.scanning = false
-      if (ok) { try { root.files = JSON.parse(value) } catch(e) {} }
+    if (root.busy) return
+    root.busy = true
+    run(["python3", "-I", root.helper, "status"], function(ok, text) {
+      root.busy = false
+      if (!ok) return
+      try { root.status = JSON.parse(text) } catch (e) {}
     })
   }
+
   onActiveChanged: if (active) refresh()
-  Timer { interval: 3000; running: root.active || replay.running || recording.running; repeat: true; onTriggered: root.refresh() }
-  function command(replayMode) {
-    var args = ["gpu-screen-recorder", "-w", output, "-k", "auto", "-f", "60", "-fallback-cpu-encoding", "yes"]
-    if (settings.sound !== "none") args = args.concat(["-a", settings.sound === "game-mic" ? "default_output|default_input" : "default_output", "-ac", "aac"])
-    if (replayMode) args = args.concat(["-c", "mp4", "-r", String(settings.replaySeconds), "-o", files.videos])
-    else args = args.concat(["-o", recordingFile])
-    return args
+  Timer { interval: 2000; running: root.active; repeat: true; onTriggered: root.refresh() }
+
+  // `done(ok)` runs once the file exists, or once it is known not to.
+  function screenshot(done) {
+    run(["python3", "-I", root.helper, "screenshot", root.output], function(ok) { if (done) done(ok) })
   }
-  Process {
-    id: recording
-    onRunningChanged: if (running) startedTimer.restart()
-    stderr: StdioCollector { onStreamFinished: root.recordError = text.slice(-700) }
-    onExited: function(code, status) {
-      var path = root.recordingFile
-      if (status !== 0 || code !== 0) root.toast({title: "Recording failed", detail: root.reason(root.recordError)})
-      else runner.run(["test", "-s", path], function(ok) { root.toast({title: ok ? "Recording saved" : "Recording produced no file"}) })
-      root.refresh()
+
+  function toggleRecording() {
+    if (root.recording) {
+      if (root.replay) run(["python3", "-I", root.helper, "record-stop", String(root.recording.pid)], root.refresh)
+      else Quickshell.execDetached(["omarchy-capture-screenrecording", "--stop-recording"])
+      root.status = Object.assign({}, root.status, {recording: null})
+    } else if (root.replay) {
+      Quickshell.execDetached(["python3", "-I", root.helper, "record", root.output])
+    } else {
+      Quickshell.execDetached(["omarchy-capture-screenrecording", "--fullscreen", "--with-desktop-audio"])
     }
   }
-  Process {
-    id: replay
-    stderr: StdioCollector { onStreamFinished: root.replayError = text.slice(-700) }
-    stdout: SplitParser {
-      onRead: function(line) {
-        if (!line.trim()) return
-        runner.run(["test", "-s", line.trim()], function(ok) {
-          if (ok) { root.refresh(); root.toast({title: "Replay saved", detail: line.trim().split("/").pop()}) }
-        })
-      }
-    }
-    onExited: function(code, status) { if (code !== 0 || status !== 0) root.toast({title: "Replay unavailable", detail: root.reason(root.replayError)}) }
-  }
-  Timer {
-    id: startedTimer
-    interval: 500
-    onTriggered: if (recording.running) runner.run(["test", "-s", root.recordingFile], function(ok) { if (ok && recording.running) root.toast({title: "Recording started"}) })
-  }
-  // gpu-screen-recorder's stderr, said the way a player needs it.
-  function reason(error) {
-    var text = String(error || "")
-    if (/no default audio output/i.test(text)) return "No sound output is available. Set Sound in captures to None, or connect speakers."
-    if (/no default audio input|default_input/i.test(text)) return "No microphone is available. Set Sound in captures to Game."
-    if (/vaapi|vulkan|nvenc|encoder|egl|drm/i.test(text)) return "The graphics card's video encoder is unavailable."
-    if (/No such file|not found|ENOENT/i.test(text)) return "Install gpu-screen-recorder to record clips."
-    var line = text.split("\n").map(function(l) { return l.replace(/^gsr (error|warning):\s*/i, "").trim() }).filter(function(l) { return l !== "" })[0] || ""
-    return line ? (line.charAt(0).toUpperCase() + line.slice(1)).slice(0, 110) : "The capture backend is unavailable"
-  }
-  function act(name, value) {
-    if (name === "record") {
-      if (recording.running) recording.signal(2)
-      else if (output && files.videos) {
-        recordingFile = files.videos + "/screenrecording-" + Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss-zzz") + ".mp4"
-        recordError = ""; recording.command = command(false); recording.running = true
-      }
-      return true
-    }
-    if (name === "replay-buffer") {
-      if (value && !replay.running && output && files.videos) { replayError = ""; replay.command = command(true); replay.running = true }
-      else if (!value && replay.running) replay.signal(2)
-      return true
-    }
-    if (name === "save-replay") {
-      if (replay.running) replay.signal(10)
-      else root.toast({title: "Replay buffer is off", detail: "Turn it on before saving a replay"})
-      return true
-    }
-    if (name === "open-capture") { if (value && value.path) runner.run(["xdg-open", value.path]); return true }
-    if (name === "open-folder") { runner.run(["xdg-open", files.videos]); return true }
-    return false
-  }
-  Component.onDestruction: {
-    if (recording.running) recording.signal(2)
-    if (replay.running) replay.signal(2)
+
+  function saveReplay() {
+    if (root.replay) Quickshell.execDetached(["python3", "-I", root.helper, "replay-save", String(root.replay.pid)])
   }
 }

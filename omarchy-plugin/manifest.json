@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Omakade",
   "license": "MIT",
-  "description": "A theme-matched guide over any running game: capture, performance, sound, controllers and quick settings, one button away.",
+  "description": "A theme-matched card over any running game: resume, capture, volume and quit, one button away.",
   "kinds": ["overlay"],
   "keepLoaded": true,
   "entryPoints": { "overlay": "Guide.qml" }
