@@ -54,8 +54,8 @@ class GameModeStartupTests(unittest.TestCase):
         self.primary = None
         self.game = None
         # Keep real resident IPC in these legacy fallback ownership tests. Its
-        # compositor has a separate neutral inventory: the GUI transport below
-        # changes per test, and intentionally requires variables absent at login.
+        # compositor is unavailable: the GUI transport below changes per test,
+        # and intentionally requires variables absent at login.
         resident_tools = root / "resident-tools"
         resident_tools.mkdir()
         hyprctl = resident_tools / "hyprctl"
@@ -75,7 +75,10 @@ class GameModeStartupTests(unittest.TestCase):
                     channel.settimeout(0.5)
                     channel.connect(endpoint)
                     channel.sendall(b'{"action":"status"}\n')
-                    if json.loads(channel.recv(65536)).get("ready"):
+                    status = json.loads(channel.recv(65536))
+                    # Socket/protocol readiness is sufficient for this fallback
+                    # fixture. An unavailable compositor correctly reports ready=false.
+                    if status.get("result") == "handled" and "ready" in status:
                         break
             except (OSError, ValueError):
                 pass
