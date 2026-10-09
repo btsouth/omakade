@@ -94,7 +94,7 @@ public:
     }
     writeFile(device + QStringLiteral("/device/capabilities/key"), keys);
     writeFile(device + QStringLiteral("/device/capabilities/abs"),
-              keys == kXpadKeys ? kXpadAxes : QStringLiteral("0"));
+              keys == kXpadKeys || bluetooth ? kXpadAxes : QStringLiteral("0"));
     QFile::remove(sysDir() + QLatin1Char('/') + node);
     QFile::link(device, sysDir() + QLatin1Char('/') + node);
     FakeNode fake{.path = devDir() + QLatin1Char('/') + node};
@@ -339,12 +339,17 @@ private slots:
     FakeInput input;
     FakeNode pad = input.add("event3", "Xbox Wireless Controller", kXpadKeys, false, true);
     FakeNode mirror = input.add("event4", "Microsoft X-Box 360 pad 0", kXpadKeys, true);
+    // Compact button usages 1..10 plus a separately exposed Guide button.
+    FakeNode compact = input.add("event5", "Xbox Wireless Controller", "13ff000000000000 0 0 0 0", false, true);
     const auto found = GuideListener::scan(input.devDir(), input.sysDir());
-    QCOMPARE(found.size(), 2);
+    QCOMPARE(found.size(), 3);
     QVERIFY(!found.first().virtualDevice);
     QCOMPARE(found.first().vendor, quint16(0x045e));
     QCOMPARE(found.first().product, quint16(0x0b20));
-    QVERIFY(found.last().virtualDevice);
+    QVERIFY(found.at(1).virtualDevice);
+    QVERIFY(!found.first().compactHidButtons);
+    QVERIFY(found.last().compactHidButtons);
+    QVERIFY(!found.last().virtualDevice);
   }
 
   void listenerWatchesOnlyControllers() {

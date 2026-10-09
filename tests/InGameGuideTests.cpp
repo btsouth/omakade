@@ -47,6 +47,7 @@ private slots:
   void buttons();
   void faceButtonPositions_data();
   void faceButtonPositions();
+  void compactXboxShoulders();
   void axes();
   void reportArbitrationAndRepeat();
   void mirroredReportsAndRecovery();
@@ -466,30 +467,41 @@ void InGameGuideTests::faceButtonPositions_data() {
   QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
   QTest::addColumn<int>("top"); QTest::addColumn<int>("left");
   QTest::addColumn<quint16>("vendor"); QTest::addColumn<quint16>("product");
-  QTest::newRow("xpad") << QString("Microsoft X-Box 360 pad") << QString("xpad") << BTN_Y << BTN_X << quint16(0) << quint16(0);
-  QTest::newRow("steam-xbox-mirror") << QString("Microsoft X-Box 360 pad 0") << QString{} << BTN_Y << BTN_X << quint16(0) << quint16(0);
-  QTest::newRow("xpad-third-party") << QString("Logitech F310") << QString("xpad") << BTN_Y << BTN_X << quint16(0) << quint16(0);
-  QTest::newRow("xpadneo") << QString("Xbox Wireless Controller") << QString("xpadneo") << BTN_Y << BTN_X << quint16(0) << quint16(0);
-  QTest::newRow("hid-steam") << QString("Steam Deck") << QString("steam") << BTN_Y << BTN_X << quint16(0) << quint16(0);
-  QTest::newRow("hid-playstation") << QString("Sony DualSense") << QString("playstation") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0);
-  QTest::newRow("hid-nintendo") << QString("Nintendo Switch Pro Controller") << QString("nintendo") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0);
-  QTest::newRow("position-driver-wins") << QString("Xbox style pad") << QString("hid-generic") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0);
-  QTest::newRow("xbox-bt-microsoft") << QString("Xbox Wireless Controller") << QString("microsoft") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x02fd);
-  QTest::newRow("xbox-series-hid-microsoft") << QString("Wireless Controller") << QString("hid-microsoft") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x0b13);
-  QTest::newRow("xbox-bt-generic") << QString("Xbox Wireless Controller") << QString("hid-generic") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x0b20);
-  QTest::newRow("generic-vendor-required") << QString("Xbox style pad") << QString("generic") << BTN_NORTH << BTN_WEST << quint16(0x1234) << quint16(0x0b20);
-  QTest::newRow("sony-bt") << QString("Wireless Controller") << QString("hid-sony") << BTN_NORTH << BTN_WEST << quint16(0x054c) << quint16(0x05c4);
-  QTest::newRow("unknown") << QString("USB gamepad") << QString{} << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0);
+  QTest::addColumn<bool>("compact");
+  QTest::newRow("xpad") << QString("Microsoft X-Box 360 pad") << QString("xpad") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("steam-xbox-mirror") << QString("Microsoft X-Box 360 pad 0") << QString{} << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("xpad-third-party") << QString("Logitech F310") << QString("xpad") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("xpadneo") << QString("Xbox Wireless Controller") << QString("xpadneo") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("hid-steam") << QString("Steam Deck") << QString("steam") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("hid-playstation") << QString("Sony DualSense") << QString("playstation") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+  QTest::newRow("hid-nintendo") << QString("Nintendo Switch Pro Controller") << QString("nintendo") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+  QTest::newRow("position-driver-wins") << QString("Xbox style pad") << QString("hid-generic") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+  QTest::newRow("xbox-bt-microsoft") << QString("Xbox Wireless Controller") << QString("microsoft") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x02fd) << false;
+  QTest::newRow("xbox-series-hid-microsoft") << QString("Wireless Controller") << QString("hid-microsoft") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x0b13) << false;
+  QTest::newRow("xbox-bt-generic") << QString("Xbox Wireless Controller") << QString("hid-generic") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x0b20) << false;
+  QTest::newRow("generic-vendor-required") << QString("Xbox style pad") << QString("generic") << BTN_NORTH << BTN_WEST << quint16(0x1234) << quint16(0x0b20) << false;
+  QTest::newRow("sony-bt") << QString("Wireless Controller") << QString("hid-sony") << BTN_NORTH << BTN_WEST << quint16(0x054c) << quint16(0x05c4) << false;
+  QTest::newRow("xbox-bt-compact-hid") << QString("Xbox Wireless Controller") << QString("hid-generic") << BTN_NORTH << BTN_C << quint16(0x045e) << quint16(0x02e0) << true;
+  QTest::newRow("unknown") << QString("USB gamepad") << QString{} << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
 }
 
 void InGameGuideTests::faceButtonPositions() {
-  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(int, top); QFETCH(int, left); QFETCH(quint16, vendor); QFETCH(quint16, product);
-  GuideInputMap map; map.setController(name, driver, vendor, product);
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(int, top); QFETCH(int, left); QFETCH(quint16, vendor); QFETCH(quint16, product); QFETCH(bool, compact);
+  GuideInputMap map; map.setController(name, driver, vendor, product, compact);
   map.event(EV_KEY, top, 1); QCOMPARE(map.report(0), QStringList{"y"});
   QVERIFY(map.heldPosition(BTN_NORTH)); QVERIFY(!map.heldPosition(BTN_WEST));
   map.event(EV_KEY, top, 0); map.report(1);
   map.event(EV_KEY, left, 1); QCOMPARE(map.report(2), QStringList{"x"});
   QVERIFY(map.heldPosition(BTN_WEST)); QVERIFY(!map.heldPosition(BTN_NORTH));
+}
+
+void InGameGuideTests::compactXboxShoulders() {
+  GuideInputMap map; map.setController("Xbox Wireless Controller", "hid-generic", 0x045e, 0x02e0, true);
+  for (const auto& pair : {qMakePair(BTN_WEST, "lb"), qMakePair(BTN_Z, "rb"), qMakePair(BTN_TR, "start")}) {
+    map.event(EV_KEY, pair.first, 1); QCOMPARE(map.report(0), QStringList{pair.second});
+    map.event(EV_KEY, pair.first, 0); map.report(1);
+  }
+  map.event(EV_KEY, BTN_TL, 1); QVERIFY(map.report(2).isEmpty()); // Back is not LB.
 }
 
 void InGameGuideTests::axes() {

@@ -55,7 +55,7 @@ void GuideInputMap::setAxis(int code, int minimum, int maximum, int flat) {
   m_axes.insert(code, {minimum, maximum, flat, 0});
 }
 
-void GuideInputMap::setController(const QString& name, const QString& driver, quint16 vendor, quint16 product) {
+void GuideInputMap::setController(const QString& name, const QString& driver, quint16 vendor, quint16 product, bool compactHidButtons) {
   const auto family = GuidePayload::padFamily(name);
   const auto backend = driver.startsWith("hid-") ? driver.mid(4) : driver;
   const bool microsoftXbox = vendor == 0x045e && (family == "xbox" ||
@@ -68,12 +68,41 @@ void GuideInputMap::setController(const QString& name, const QString& driver, qu
   // xpad, xpadneo and hid-steam retain BTN_X/BTN_Y's old label meanings.
   // hid-playstation and hid-nintendo use BTN_WEST/BTN_NORTH by position.
   // Steam's Xbox mirror has no hardware driver, so use its advertised family.
-  m_labelCodes = backend == "xpad" || backend == "xpadneo" || backend == "steam" ||
+  // Older Xbox One S firmware uses compact usages 3/4 for X/Y. The
+  // resulting BTN_C capability distinguishes it from modern usages 4/5.
+  m_compactHidCodes = microsoftXbox && compactHidButtons &&
+      (backend == "microsoft" || backend == "generic");
+  m_labelCodes = !m_compactHidCodes && (backend == "xpad" || backend == "xpadneo" || backend == "steam" ||
       (microsoftXbox && (backend == "microsoft" || backend == "generic")) ||
-      (driver.isEmpty() && (family == "xbox" || family == "deck"));
+      (driver.isEmpty() && (family == "xbox" || family == "deck")));
+}
+
+int GuideInputMap::buttonPosition(int code) const {
+  if (m_compactHidCodes) {
+    switch (code) {
+    case BTN_C: return BTN_WEST;
+    case BTN_WEST: return BTN_TL;
+    case BTN_Z: return BTN_TR;
+    case BTN_TL: return BTN_SELECT;
+    case BTN_TR: return BTN_START;
+    default: return code;
+    }
+  }
+  return m_labelCodes && (code == BTN_NORTH || code == BTN_WEST)
+      ? (code == BTN_NORTH ? BTN_WEST : BTN_NORTH) : code;
 }
 
 bool GuideInputMap::heldPosition(int code) const {
+  if (m_compactHidCodes) {
+    switch (code) {
+    case BTN_WEST: return held(BTN_C);
+    case BTN_TL: return held(BTN_WEST);
+    case BTN_TR: return held(BTN_Z);
+    case BTN_SELECT: return held(BTN_TL);
+    case BTN_START: return held(BTN_TR);
+    default: return held(code);
+    }
+  }
   if (m_labelCodes && (code == BTN_NORTH || code == BTN_WEST))
     code = code == BTN_NORTH ? BTN_WEST : BTN_NORTH;
   return held(code);
@@ -84,8 +113,7 @@ QString GuideInputMap::event(int type, int code, int value) {
     if (value == 0) m_keys.remove(code);
     else if (value == 1 && !m_keys.contains(code)) {
       m_keys.insert(code);
-      const int position = m_labelCodes && (code == BTN_NORTH || code == BTN_WEST)
-          ? (code == BTN_NORTH ? BTN_WEST : BTN_NORTH) : code;
+      const int position = buttonPosition(code);
       const auto action = button(position);
       if (!action.isEmpty() && !direction(action)) m_pending.append(action);
     }
@@ -234,7 +262,7 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   }
   device->ungrab = m_access.ungrab ? m_access.ungrab : [](int fd) { ::ioctl(fd, EVIOCGRAB, 0); };
   device->family = GuidePayload::padFamily(pad.name);
-  device->mapping.setController(pad.name, pad.driver, pad.vendor, pad.product);
+  device->mapping.setController(pad.name, pad.driver, pad.vendor, pad.product, pad.compactHidButtons);
   const int clock = CLOCK_MONOTONIC;
   device->monotonic = ::ioctl(device->fd, EVIOCSCLOCKID, &clock) == 0;
   device->attachedAt = clockMs(device->monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME);

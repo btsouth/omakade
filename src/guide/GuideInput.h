@@ -14,7 +14,7 @@
 // The same translator is used by evdev and the isolated acceptance harness.
 class GuideInputMap {
 public:
-  void setController(const QString& name, const QString& driver = {}, quint16 vendor = 0, quint16 product = 0);
+  void setController(const QString& name, const QString& driver = {}, quint16 vendor = 0, quint16 product = 0, bool compactHidButtons = false);
   void setAxis(int code, int minimum, int maximum, int flat);
   QString event(int type, int code, int value);
   QStringList report(qint64 nowMs, bool stale = false);
@@ -32,6 +32,8 @@ private:
   QString m_direction;
   bool m_needsNeutral = false;
   bool m_labelCodes = false;
+  bool m_compactHidCodes = false;
+  int buttonPosition(int code) const;
   qint64 m_started = 0, m_nextRepeat = 0;
   QString cardinal(bool held) const;
 };

@@ -95,7 +95,8 @@ QList<GuideListener::Controller> GuideListener::scan(const QString& devDir,
   const QStringList nodes = QDir(devDir).entryList({QStringLiteral("event*")}, QDir::System);
   for (const QString& node : nodes) {
     const QString device = sysDir + QLatin1Char('/') + node + QStringLiteral("/device");
-    if (!GuidePress::isController(readLine(device + QStringLiteral("/capabilities/key")),
+    const auto keys = readLine(device + QStringLiteral("/capabilities/key"));
+    if (!GuidePress::isController(keys,
                                   readLine(device + QStringLiteral("/capabilities/abs")))) {
       continue;
     }
@@ -116,6 +117,7 @@ QList<GuideListener::Controller> GuideListener::scan(const QString& devDir,
         .driver = driver,
         .vendor = readLine(device + QStringLiteral("/id/vendor")).toUShort(nullptr, 16),
         .product = readLine(device + QStringLiteral("/id/product")).toUShort(nullptr, 16),
+        .compactHidButtons = GuidePress::hasBit(keys, BTN_C) && !GuidePress::hasBit(keys, BTN_SELECT),
     });
   }
   return controllers;

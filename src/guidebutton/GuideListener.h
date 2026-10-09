@@ -34,6 +34,7 @@ public:
     QString driver;
     quint16 vendor = 0;
     quint16 product = 0;
+    bool compactHidButtons = false;
   };
 
   explicit GuideListener(QString devDir = QStringLiteral("/dev/input"),
