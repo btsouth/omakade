@@ -16,12 +16,21 @@ class GuideInputMap {
 public:
   void setAxis(int code, int minimum, int maximum, int flat);
   QString event(int type, int code, int value);
+  QStringList report(qint64 nowMs, bool stale = false);
+  QStringList repeat(qint64 nowMs);
   QStringList heldDirections() const;
+  bool held(int code) const { return m_keys.contains(code); }
+  void suppressUntilNeutral();
   void reset();
 private:
-  struct Axis { int minimum = -32768, maximum = 32767, flat = 4096, direction = 0; };
+  struct Axis { int minimum = -32768, maximum = 32767, flat = 4096; double value = 0; };
   QHash<int, Axis> m_axes;
   QSet<int> m_keys;
+  QStringList m_pending;
+  QString m_direction;
+  bool m_needsNeutral = false;
+  qint64 m_started = 0, m_nextRepeat = 0;
+  QString cardinal(bool held) const;
 };
 
 struct ff_effect;
@@ -59,6 +68,9 @@ private:
   void drop(const QString& node);
   QList<GuideListener::Controller> scan() const;
   void read(Device& device);
+  void sample(Device& device);
+  void regroup();
+  void dispatch();
   // Steam Input deletes and recreates its virtual pads while a game runs: pads that
   // appear while the guide is open are grabbed too, or the game would see them.
   QFileSystemWatcher m_watcher;
@@ -66,5 +78,7 @@ private:
   std::vector<std::unique_ptr<Device>> m_devices;
   GuideInputMap m_injected;
   QTimer m_repeat;
-  int m_repeatTicks = 0;
+  QTimer m_dispatch;
+  struct Group { QString primary; QSet<int> latched; bool homeArmed = false; };
+  QHash<QString, Group> m_groups;
 };

@@ -32,6 +32,8 @@ private slots:
   void pluginParser();
   void buttons();
   void axes();
+  void reportArbitrationAndRepeat();
+  void mirroredReportsAndRecovery();
   void families();
   void guardResumesOnOwnerDeath();
   void guardTreeAndIdentity();
@@ -151,35 +153,95 @@ void InGameGuideTests::pluginParser() {
 
 void InGameGuideTests::buttons() {
   GuideInputMap map;
-  for (const auto& pair : {qMakePair(BTN_SOUTH, "a"), qMakePair(BTN_EAST, "b"), qMakePair(BTN_WEST, "x"),
-      qMakePair(BTN_NORTH, "y"), qMakePair(BTN_TL, "lb"), qMakePair(BTN_TR, "rb"),
-      qMakePair(BTN_MODE, "guide"), qMakePair(BTN_START, "start"), qMakePair(BTN_DPAD_DOWN, "down")}) {
-    QCOMPARE(map.event(EV_KEY, pair.first, 1), QLatin1String(pair.second));
+  for (const auto& pair : {qMakePair(BTN_SOUTH, "a"), qMakePair(BTN_EAST, "b"), qMakePair(BTN_MODE, "guide")}) {
     QVERIFY(map.event(EV_KEY, pair.first, 1).isEmpty());
-    QVERIFY(map.event(EV_KEY, pair.first, 2).isEmpty());
-    QVERIFY(map.event(EV_KEY, pair.first, 0).isEmpty());
-    QCOMPARE(map.event(EV_KEY, pair.first, 1), QLatin1String(pair.second));
+    QCOMPARE(map.report(0), QStringList{pair.second});
+    map.event(EV_KEY, pair.first, 1); map.event(EV_KEY, pair.first, 2);
+    QVERIFY(map.report(1).isEmpty());
+    map.event(EV_KEY, pair.first, 0); QVERIFY(map.report(2).isEmpty());
+    map.event(EV_KEY, pair.first, 1); QCOMPARE(map.report(3), QStringList{pair.second});
     map.reset();
   }
-  QVERIFY(map.event(EV_KEY, BTN_SELECT, 1).isEmpty());
 }
 
 void InGameGuideTests::axes() {
   GuideInputMap map;
   map.setAxis(ABS_X, 0, 255, 8);
-  QVERIFY(map.event(EV_ABS, ABS_X, 128).isEmpty());
-  QCOMPARE(map.event(EV_ABS, ABS_X, 255), "right");
-  QVERIFY(map.event(EV_ABS, ABS_X, 230).isEmpty());
+  map.event(EV_ABS, ABS_X, 128); QVERIFY(map.report(0).isEmpty());
+  map.event(EV_ABS, ABS_X, 255); QCOMPARE(map.report(1), QStringList{"right"});
+  map.event(EV_ABS, ABS_X, 230); QVERIFY(map.report(2).isEmpty());
   QCOMPARE(map.heldDirections(), QStringList{"right"});
-  QVERIFY(map.event(EV_ABS, ABS_X, 128).isEmpty());
+  map.event(EV_ABS, ABS_X, 0); QVERIFY(map.report(3).isEmpty()); // reversal requires neutral
   QVERIFY(map.heldDirections().isEmpty());
-  QCOMPARE(map.event(EV_ABS, ABS_X, 0), "left");
-  QCOMPARE(map.event(EV_ABS, ABS_Y, -32768), "up");
-  QCOMPARE(map.event(EV_ABS, ABS_HAT0Y, 1), "down");
-  QVERIFY(map.event(EV_ABS, ABS_HAT0Y, 1).isEmpty());
+  map.event(EV_ABS, ABS_X, 128); QVERIFY(map.report(4).isEmpty());
+  map.event(EV_ABS, ABS_X, 0); QCOMPARE(map.report(5), QStringList{"left"});
+  map.reset(); QVERIFY(map.heldDirections().isEmpty());
+}
+
+void InGameGuideTests::reportArbitrationAndRepeat() {
+  GuideInputMap map;
+  map.event(EV_ABS, ABS_X, 18000); map.event(EV_ABS, ABS_Y, 18000);
+  QCOMPARE(map.report(0), QStringList{"down"}); // radial diagonal, dominant-axis tie
+  QVERIFY(map.repeat(349).isEmpty()); QCOMPARE(map.repeat(350), QStringList{"down"});
+  QVERIFY(map.repeat(449).isEmpty()); QCOMPARE(map.repeat(450), QStringList{"down"});
+  QCOMPARE(map.repeat(1000), QStringList{"down"});
+  QVERIFY(map.repeat(1079).isEmpty()); QCOMPARE(map.repeat(1080), QStringList{"down"});
+  QCOMPARE(map.repeat(9000), QStringList{"down"}); QVERIFY(map.repeat(9000).isEmpty());
   map.reset();
-  QVERIFY(map.heldDirections().isEmpty());
-  QVERIFY(map.event(EV_ABS, ABS_Z, 32767).isEmpty());
+  map.event(EV_ABS, ABS_X, 32767); map.event(EV_ABS, ABS_HAT0Y, -1); map.event(EV_KEY, BTN_DPAD_DOWN, 1);
+  QCOMPARE(map.report(0), QStringList{"down"}); // buttons take precedence over hat and stick
+  map.reset();
+  map.event(EV_ABS, ABS_X, 11000); map.event(EV_ABS, ABS_Y, 11000);
+  QCOMPARE(map.report(0), QStringList{"down"}); // each axis below threshold, radius above it
+  map.reset(); map.event(EV_KEY, BTN_DPAD_DOWN, 1);
+  QVERIFY(map.report(0, true).isEmpty()); QVERIFY(map.repeat(5000).isEmpty());
+  QVERIFY(map.report(5001).isEmpty()); // a stale held gesture cannot repeat later
+  map.event(EV_KEY, BTN_DPAD_DOWN, 0); map.report(5002);
+  map.event(EV_KEY, BTN_DPAD_DOWN, 1); QCOMPARE(map.report(5003), QStringList{"down"});
+}
+
+void InGameGuideTests::mirroredReportsAndRecovery() {
+  GuideInput input;
+  QHash<QString, int> writers;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{
+    {"event15", "physical", "Microsoft X-Box 360 pad", false},
+    {"event16", "virtual", "Microsoft X-Box 360 pad 0", true}}; };
+  access.open = [&writers](const QString& node) { int fds[2]; if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC)) return -1; writers[node] = fds[1]; return fds[0]; };
+  access.grab = [](int) { return true; }; access.ungrab = [](int) {};
+  input.setAccess(access); input.grab("event15", nullptr, nullptr);
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto report = [&writers](const QString& node, int type, int code, int value, qint64 age = 0) {
+    input_event events[2]{};
+    events[0].type = type; events[0].code = code; events[0].value = value;
+    events[1].type = EV_SYN; events[1].code = SYN_REPORT;
+    if (age) { const auto at = QDateTime::currentMSecsSinceEpoch() - age; for (auto& event : events) { event.input_event_sec = at / 1000; event.input_event_usec = (at % 1000) * 1000; } }
+    QCOMPARE(::write(writers[node], events, sizeof(events)), ssize_t(sizeof(events)));
+  };
+  report("event15", EV_KEY, BTN_DPAD_DOWN, 1); report("event16", EV_KEY, BTN_DPAD_DOWN, 1);
+  QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
+  report("event15", EV_KEY, BTN_DPAD_DOWN, 0); report("event16", EV_KEY, BTN_DPAD_DOWN, 0);
+  QTest::qWait(20);
+  report("event15", EV_KEY, BTN_SOUTH, 1); report("event16", EV_KEY, BTN_SOUTH, 1);
+  QTRY_COMPARE(actions.size(), 2);
+  report("event15", EV_KEY, BTN_SOUTH, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_SOUTH, 1); QTest::qWait(20); QCOMPARE(actions.size(), 2); // mirror still held
+  report("event15", EV_KEY, BTN_SOUTH, 0); report("event16", EV_KEY, BTN_SOUTH, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_SOUTH, 1); QTRY_COMPARE(actions.size(), 3);
+  report("event15", EV_KEY, BTN_DPAD_DOWN, 1, 5000); report("event15", EV_KEY, BTN_DPAD_DOWN, 0, 4000);
+  report("event15", EV_KEY, BTN_DPAD_UP, 1, 3000); report("event15", EV_KEY, BTN_DPAD_UP, 0, 2000);
+  QTest::qWait(20); QCOMPARE(actions.size(), 3);
+  report("event15", EV_SYN, SYN_DROPPED, 0); report("event15", EV_KEY, BTN_EAST, 1);
+  QTest::qWait(20); QCOMPARE(actions.size(), 3); // recovery is sampled, never dispatched
+  report("event15", EV_KEY, BTN_EAST, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_EAST, 1); QTRY_COMPARE(actions.size(), 4);
+  // Home must first be neutral on every source, including a delayed virtual mirror.
+  report("event16", EV_KEY, BTN_MODE, 1); QTest::qWait(20); // currently armed, one close
+  QTRY_COMPARE(actions.size(), 5);
+  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  report("event15", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  input.release(); for (const int fd : writers) ::close(fd);
 }
 
 void InGameGuideTests::families() {
@@ -315,7 +377,9 @@ void InGameGuideTests::perDeviceGrab() {
   QVERIFY(warning.contains("Busy pad may still reach the game"));
   QVERIFY(warning.contains("Unavailable pad could not be opened"));
   input_event event{}; event.type = EV_KEY; event.code = BTN_DPAD_DOWN; event.value = 1;
+  input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT;
   QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
+  QCOMPARE(::write(writer, &syn, sizeof(syn)), ssize_t(sizeof(syn)));
   QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
   input.release(); ::close(writer);
   QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(ungrabs, 1);
@@ -354,13 +418,16 @@ void InGameGuideTests::padsChangingWhileOpen() {
   input.rescan();
   QCOMPARE(input.deviceCount(), size_t(2));
   input_event event{}; event.type = EV_KEY; event.code = BTN_SOUTH; event.value = 1;
+  input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT;
   QCOMPARE(::write(writers.value("event16"), &event, sizeof(event)), ssize_t(sizeof(event)));
+  QCOMPARE(::write(writers.value("event16"), &syn, sizeof(syn)), ssize_t(sizeof(syn)));
   QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "a");
   pads.removeLast();
   ::close(writers.take("event16"));
   QTRY_COMPARE(input.deviceCount(), size_t(1));
   event.code = BTN_EAST;
   QCOMPARE(::write(writers.value("event15"), &event, sizeof(event)), ssize_t(sizeof(event)));
+  QCOMPARE(::write(writers.value("event15"), &syn, sizeof(syn)), ssize_t(sizeof(syn)));
   QTRY_COMPARE(actions.size(), 2); QCOMPARE(actions.last().first().toString(), "b");
   input.release();
   for (const int fd : writers) ::close(fd);
