@@ -14,13 +14,14 @@ Focusable {
   property string label: ""
 
   bordered: true
+  iconItem: glyph
+  truncated: labelText.truncated
 
   InkGlyph {
     id: glyph
-    x: 0
     width: tile.width
-    y: Math.round(tile.height * 0.36 - height / 2)
     height: tile.g.sized(Style.space(30))
+    y: Math.round(tile.height * 0.37 - height / 2)
     text: tile.icon
     color: tile.iconColor
     size: Math.round(tile.g.sized(Style.font.display) * tile.iconScale)
@@ -28,10 +29,11 @@ Focusable {
   }
 
   Text {
+    id: labelText
     textFormat: Text.PlainText
-    anchors.horizontalCenter: parent.horizontalCenter
-    y: Math.round(tile.height * 0.74 - height / 2)
-    width: Math.min(implicitWidth, tile.width - tile.g.sized(Style.space(8)))
+    x: Math.round((tile.width - width) / 2)
+    y: Math.round(tile.height * 0.75 - height / 2)
+    width: Math.min(implicitWidth, tile.width - tile.g.sized(Style.space(4)))
     horizontalAlignment: Text.AlignHCenter
     text: tile.label
     color: tile.ink

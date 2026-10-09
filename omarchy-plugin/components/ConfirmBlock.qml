@@ -9,7 +9,6 @@ import qs.Ui
 Column {
   id: block
   property var g
-  property bool stacked: false
   spacing: g.sized(Style.space(6))
 
   Text {
@@ -39,15 +38,17 @@ Column {
 
   Grid {
     width: parent.width
-    columns: block.stacked ? 1 : 2
+    columns: 2
     spacing: block.g.sized(Style.space(8))
-    readonly property int cell: block.stacked ? width : Math.floor((width - spacing) / 2)
+    readonly property int cell: Math.floor((width - spacing) / 2)
 
     ActionButton {
       g: block.g
       width: parent.cell
       height: block.g.sized(Style.space(44))
+      name: "keep"
       current: block.g.confirmChoice === 0
+      onHovered: (source, mouse) => block.g.hoverConfirm(0, source, mouse)
       icon: block.g.icons.resume
       iconScale: 1.3
       label: "Keep playing"
@@ -57,7 +58,9 @@ Column {
       g: block.g
       width: parent.cell
       height: block.g.sized(Style.space(44))
+      name: "confirm-quit"
       current: block.g.confirmChoice === 1
+      onHovered: (source, mouse) => block.g.hoverConfirm(1, source, mouse)
       urgent: true
       icon: block.g.icons.quit
       label: block.g.forceReady ? "Force quit" : "Quit game"

@@ -29,7 +29,6 @@ Item {
 
   function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
 
-  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Commons.Color.menu.selectedBorder, 0)
   // Steam's icons are 64 px squares drawn to their edges: slightly larger than
   // the menu's glyphs so they read as pictures, not as ink.
   readonly property int iconSize: root.sized(Style.space(40))
@@ -41,8 +40,15 @@ Item {
   function reveal() {
     if (list.count === 0) return
     var i = Math.max(0, Math.min(root.current, list.count - 1))
-    if (i === 0) list.positionViewAtBeginning()
-    else list.positionViewAtIndex(i, ListView.Contain)
+    if (i === 0) { list.positionViewAtBeginning(); return }
+    list.positionViewAtIndex(i, ListView.Contain)
+    // No sliver of an entry at the top: start at the next whole one while the
+    // cursor entry still fits below it.
+    var top = list.itemAt(0, list.contentY + 1), entry = list.itemAtIndex(i)
+    if (top && entry && top.y < list.contentY) {
+      var next = top.y + top.height + list.spacing
+      if (entry.y + entry.height <= next + list.height) list.contentY = next
+    }
   }
   onCurrentChanged: reveal()
   // A list laid out while hidden has guessed heights: place it from the top
@@ -111,8 +117,8 @@ Item {
         height: Math.max(root.iconSize, words.implicitHeight) + root.padY * 2
         radius: root.sized(Style.cornerRadius)
         color: entry.cursor ? Commons.Color.menu.selectedBackground : "transparent"
-        borderSpec: !entry.cursor ? Border.none()
-          : root.edge ? Border.flat(root.edgeColor, Math.max(1, Style.focusBorderWidth)) : root.selectedBorderSpec
+        // The card's focus: the menu's selected fill and a border in the selected colour.
+        borderSpec: entry.cursor ? Border.flat(entry.ink, Math.max(1, Style.normalBorderWidth)) : Border.none()
 
         Item {
           id: art

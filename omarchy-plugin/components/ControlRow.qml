@@ -3,9 +3,9 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// A row in the card's icon column with a control after the icon: a progress
-// rail, the volume slider or a name, and a value on the right edge. The audio
-// panel's slider row, at the menu's row metrics.
+// A panel section's control row: the icon in the card's icon column, then a
+// progress rail, the volume slider or a name, as Omarchy's audio panel draws
+// its slider and device rows. A name may take two lines; the row grows.
 Focusable {
   id: row
 
@@ -18,14 +18,21 @@ Focusable {
   property string value: ""
   property real amount: 0
   property bool dim: false
-  property int inset: g.sized(Style.space(8))
+  readonly property int inset: g.sized(Style.space(8))
+  readonly property int iconBox: g.sized(Style.space(28))
+  readonly property int controlX: row.inset + row.iconBox + g.sized(Style.space(10))
+  // Controls end on the section's right edge, where its figure ends.
+  readonly property int controlRight: valueText.visible ? valueText.x - g.sized(Style.space(14)) : row.width - row.inset
+  readonly property int padY: g.sized(Style.space(9))
 
-  height: g.sized(Style.space(38))
+  iconItem: glyph
+  truncated: nameText.truncated
+  height: Math.max(g.sized(Style.space(38)), row.kind === "text" ? nameText.height + row.padY * 2 : 0)
 
   InkGlyph {
     id: glyph
     x: row.inset
-    width: row.g.sized(Style.space(28))
+    width: row.iconBox
     height: row.height
     text: row.icon
     color: row.iconColor
@@ -33,30 +40,21 @@ Focusable {
     fontFamily: row.g.fontFamily
   }
 
-  readonly property int controlX: glyph.x + glyph.width + row.g.sized(Style.space(10))
-  readonly property int controlRight: row.value === "" ? row.width - row.inset : valueText.x - row.g.sized(Style.space(14))
-
   Text {
     id: valueText
     textFormat: Text.PlainText
+    visible: row.value !== ""
     anchors.right: parent.right
-    anchors.rightMargin: row.inset + row.g.sized(Style.space(4))
+    anchors.rightMargin: row.inset
     anchors.verticalCenter: parent.verticalCenter
-    width: Math.max(implicitWidth, widest.advanceWidth)
-    horizontalAlignment: Text.AlignRight
     text: row.value
     color: row.ink
     font.family: row.g.fontFamily
     font.pixelSize: row.g.sized(Style.font.body)
   }
 
-  TextMetrics {
-    id: widest
-    font: valueText.font
-    text: row.kind === "text" || row.value === "" ? "" : "100%"
-  }
-
   Text {
+    id: nameText
     visible: row.kind === "text"
     textFormat: Text.PlainText
     x: row.controlX
@@ -65,8 +63,9 @@ Focusable {
     text: row.label
     color: row.ink
     font.family: row.g.fontFamily
-    font.pixelSize: row.g.sized(Style.font.heading)
-    font.weight: Font.Medium
+    font.pixelSize: row.g.sized(Style.font.body)
+    wrapMode: Text.Wrap
+    maximumLineCount: 2
     elide: Text.ElideRight
   }
 
@@ -80,6 +79,7 @@ Focusable {
     ink: row.ink
   }
 
+  // PanelSlider takes its colours from a bar; the card is that bar here.
   QtObject {
     id: sliderColors
     property color foreground: row.ink
@@ -100,6 +100,6 @@ Focusable {
     step: 0.05
     value: row.amount
     opacity: row.dim ? 0.5 : 1
-    onMoved: function(v) { row.g.cursor = "volume"; row.g.act("volume", v) }
+    onMoved: function(v) { row.g.cursor = row.key; row.g.act("volume", v) }
   }
 }

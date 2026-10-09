@@ -15,6 +15,7 @@ Item {
   property int coverWidth: g.sized(Style.space(42))
   readonly property string cover: (!glyphOnly && g.game && g.game.cover) ? String(g.game.cover) : ""
   readonly property bool hasCover: cover !== ""
+  readonly property bool truncated: titleText.truncated
 
   implicitHeight: Math.max(picture.height, labels.implicitHeight)
 
@@ -46,7 +47,7 @@ Item {
 
     MultiEffect {
       anchors.fill: parent
-      visible: hero.hasCover && art.status === Image.Ready
+      visible: art.status === Image.Ready
       source: art
       maskEnabled: mask.radius > 0
       maskSource: mask
@@ -55,9 +56,9 @@ Item {
     }
 
     InkGlyph {
-      visible: !hero.hasCover
+      visible: art.status !== Image.Ready
       anchors.fill: parent
-      text: "\u{f0297}"
+      text: hero.g.icons.gamepad
       color: hero.g.text
       size: hero.g.sized(Style.font.display)
       fontFamily: hero.g.fontFamily
@@ -74,6 +75,7 @@ Item {
     spacing: hero.g.sized(Style.space(3))
 
     Text {
+      id: titleText
       width: parent.width
       textFormat: Text.PlainText
       text: hero.g.game ? hero.g.game.title : "No game running"
@@ -82,7 +84,7 @@ Item {
       font.pixelSize: hero.g.sized(Style.font.heading)
       font.bold: true
       wrapMode: Text.Wrap
-      maximumLineCount: 2
+      maximumLineCount: 3
       elide: Text.ElideRight
     }
 

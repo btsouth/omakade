@@ -3,8 +3,8 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// A button with an icon and its name side by side, centred, in a bordered
-// chip. Quit takes the urgent colour when the cursor is on it.
+// A button with its icon and name side by side, centred, in a bordered chip:
+// Resume and Quit, and the quit question's two choices.
 Focusable {
   id: button
 
@@ -12,19 +12,20 @@ Focusable {
   property real iconScale: 1
   property color iconColor: button.ink
   property string label: ""
-  property string value: ""
-  property bool leftAlign: false
 
   bordered: true
+  iconItem: glyph
+  truncated: labelText.truncated
 
   Row {
     id: content
-    anchors.verticalCenter: parent.verticalCenter
-    x: button.leftAlign ? button.g.sized(Style.space(8)) : Math.round((button.width - width) / 2)
-    spacing: button.g.sized(Style.space(button.leftAlign ? 10 : 6))
+    x: Math.round((button.width - width) / 2)
+    height: button.height
+    spacing: button.g.sized(Style.space(6))
 
     InkGlyph {
-      width: button.g.sized(Style.space(button.leftAlign ? 28 : 26))
+      id: glyph
+      width: button.g.sized(Style.space(26))
       height: button.height
       text: button.icon
       color: button.iconColor
@@ -33,25 +34,16 @@ Focusable {
     }
 
     Text {
+      id: labelText
       textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
+      width: Math.min(implicitWidth, button.width - glyph.width - content.spacing - button.g.sized(Style.space(16)))
       text: button.label
       color: button.ink
       font.family: button.g.fontFamily
       font.pixelSize: button.g.sized(Style.font.heading)
       font.weight: Font.Medium
+      elide: Text.ElideRight
     }
-  }
-
-  Text {
-    textFormat: Text.PlainText
-    visible: button.value !== ""
-    anchors.right: parent.right
-    anchors.rightMargin: button.g.sized(Style.space(14))
-    anchors.verticalCenter: parent.verticalCenter
-    text: button.value
-    color: button.ink
-    font.family: button.g.fontFamily
-    font.pixelSize: button.g.sized(Style.font.body)
   }
 }

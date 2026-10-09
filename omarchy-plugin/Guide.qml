@@ -8,13 +8,15 @@ import qs.Commons as Commons
 import qs.Ui
 import "components"
 import "GuideProtocol.js" as Protocol
+import "GuideFocus.js" as Focus
 import "Legibility.js" as Legibility
 
-// The in-game guide: one card over the paused game, built like Omarchy's menu.
-// Header with the game and the time, one line of performance readings, then
-// Resume, capture, volume and Quit. Input arrives as actions (up, down, left,
-// right, a, b, y, guide) from the keyboard or, for controllers, from Omakade's
-// service over the guide socket.
+// The in-game guide: one card over the paused game, built like Omarchy's
+// panels. A hero with the game and the time, its readings, action tiles,
+// achievements and sound, then Resume and Quit (components/GuideCard.qml).
+// Input arrives as actions (up, down, left, right, a, b, y, guide) from the
+// keyboard or, for controllers, from Omakade's service over the guide socket;
+// input() maps them to cursor moves and to actions.
 Item {
   id: root
 
@@ -52,10 +54,6 @@ Item {
   // the card needs to fit the screen without scrolling.
   property real couchScale: 1
   property real zoom: 1
-  // Design prototype to draw instead of the card ("a", "b" or "c"), from the
-  // summon payload. Empty is the current card.
-  property string design: ""
-  property string designCursor: ""
   function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
 
   readonly property var game: root.model.game || null
@@ -80,26 +78,19 @@ Item {
     var json = JSON.stringify(items)
     if (json !== root.achievementsJson) { root.achievementsJson = json; root.achievementItems = items }
   }
-  property var rowLayout: []
-  onLayoutChanged: if (JSON.stringify(root.layout) !== JSON.stringify(root.rowLayout)) root.rowLayout = root.layout
   readonly property var padLevels: root.fixtureMode ? (root.model.pads || []) : pads.levels
 
-  // The card's rows in groups, top to bottom; a divider runs between groups.
-  // Every row shown takes the cursor.
-  readonly property var groups: [
-    root.game ? ["resume", "desktop", "library"] : [],
-    ["screenshot", "record"].concat(root.replay ? ["replay"] : []),
-    root.hasAchievements ? ["achievements"] : [],
-    (root.volumeAvailable ? ["volume"] : []).concat(root.outputs.length > 1 ? ["output"] : []),
-    root.game ? ["quit"] : []
-  ].filter(function(g) { return g.length > 0 })
-  readonly property var rows: [].concat.apply([], root.groups)
-  // The rows with the divider each one opens, for the card's repeater.
-  readonly property var layout: {
-    var list = []
-    root.groups.forEach(function(g, gi) { g.forEach(function(key, ki) { list.push({key: key, divider: gi > 0 && ki === 0}) }) })
-    return list
-  }
+  // The card's controls as rows of keys, top to bottom (GuideFocus.js): the
+  // tiles, achievements, volume, sound output, then Resume and Quit. Every
+  // control shown takes the cursor; `rows` is all of them.
+  readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay, achievements: root.hasAchievements,
+                                          volume: root.volumeAvailable, outputs: root.outputs.length})
+  readonly property var rows: [].concat.apply([], root.grid)
+  // Where across the card the cursor is (0..1), kept through one-item rows.
+  property real focusAnchor: Focus.homeAnchor
+  // The card's width in Omarchy units at scale 1: room for five tiles.
+  readonly property int cardWidth: 480
+  readonly property int replaySeconds: (root.replay && root.replay.seconds) || 30
 
   // ------------------------------------------------------------ colours and type
 
@@ -228,25 +219,24 @@ Item {
       return [p.x, p.y, item.width, item.height]
     }
     var rowBoxes = {}, iconBoxes = {}, truncated = []
-    for (var i = 0; i < rowRepeater.count; i++) {
-      var slot = rowRepeater.itemAt(i)
-      if (!slot || !slot.row.visible) continue
-      rowBoxes[slot.key] = box(slot.row)
-      iconBoxes[slot.key] = box(slot.row.iconItem)
-      if (slot.row.truncated) truncated.push(slot.row.label)
-    }
-    var confirmRows = [keepRow, quitConfirmRow]
-    confirmRows.forEach(function(r, n) {
-      if (!r.visible) return
-      var key = n === 0 ? "keep" : "confirm-quit"
-      rowBoxes[key] = box(r); iconBoxes[key] = box(r.iconItem)
-      if (r.truncated) truncated.push(r.label)
+    Object.keys(root.controls).forEach(function(key) {
+      var item = root.controls[key]
+      if (!item || !item.visible) return
+      rowBoxes[key] = box(item)
+      iconBoxes[key] = box(item.iconItem)
+      if (item.truncated) truncated.push(item.label || key)
     })
+    if (content.titleTruncated) truncated.push("title")
     return {card: box(card), rows: rowBoxes, icons: iconBoxes,
-      fits: card.height >= card.contentTopInset + content.implicitHeight + card.contentBottomInset,
-      truncated: truncated, list: box(achievementList),
-      perfLines: perf.visible ? perf.lines : 0}
+      fits: card.height >= card.contentTopInset + content.implicitHeight + card.contentBottomInset
+        && card.y >= 0 && card.y + card.height <= window.height && card.width <= window.width,
+      truncated: truncated, list: box(content.achievementList), readouts: content.readoutCount, lastAct: root.lastAct}
   }
+
+  // The card's controls by key, as they register themselves (Focusable.qml).
+  property var controls: ({})
+  function register(key, item) { root.controls[key] = item }
+  function unregister(key, item) { if (root.controls[key] === item) delete root.controls[key] }
 
   // ------------------------------------------------------------ lifecycle
 
@@ -271,17 +261,17 @@ Item {
       root.family = "keyboard"
     }
     if (p.pad) root.family = p.pad
-    if (p.design !== undefined) root.setDesign(String(p.design || ""))
-    root.designCursor = p.cursor || ""
     if (p.version === undefined) root.setCouchScale(p.scale)
     if (root.opened) return
     root.now = new Date()
-    root.cursor = root.rows[0]
+    root.cursor = Focus.home(root.grid)
+    root.focusAnchor = Focus.homeAnchor
     root.view = p.confirm ? "confirm" : "main"
     root.confirmChoice = 0
     root.achIndex = 0
     root.quitting = false
     root.capturing = false
+    root.lastAct = ""
     root.backAt = 0
     pointerGate.reset()
     window.targetScreen = root.gameScreen()
@@ -314,10 +304,9 @@ Item {
   // Lower the zoom until the card fits: its size is proportional to the zoom,
   // so one measurement says how far.
   function fitZoom() {
-    var d = designLoader.item
-    var natural = (d ? d.contentHeight : card.contentTopInset + content.implicitHeight + card.contentBottomInset) / root.zoom
+    var natural = (card.contentTopInset + content.implicitHeight + card.contentBottomInset) / root.zoom
     var room = Math.min((window.height - Style.gapsOut * 2) / natural,
-                        (window.width - Style.gapsOut * 2) / Style.space(d ? d.baseWidth : 380))
+                        (window.width - Style.gapsOut * 2) / Style.space(root.cardWidth))
     var next = window.height > 1 ? Math.min(root.couchScale, Math.floor(room * 20) / 20) : root.couchScale
     next = Math.max(0.5, next)
     if (Math.abs(next - root.zoom) > 0.001) root.zoom = next
@@ -339,8 +328,9 @@ Item {
       try { root.model = JSON.parse(text().replace(/"@\//g, '"file://' + base)) } catch (e) { console.warn("omakade.guide: bad fixture", e) }
       root.family = root.fixturePad || root.model.pad || "keyboard"
       // A fixture stands for a fresh open: the cursor starts on the first row.
-      var wanted = root.designCursor || root.model.cursor
-      root.cursor = root.rows.indexOf(wanted) >= 0 ? wanted : root.rows[0]
+      // A fixture opens on Resume too, unless it names a control to show focused.
+      root.cursor = root.rows.indexOf(root.model.cursor) >= 0 ? root.model.cursor : Focus.home(root.grid)
+      root.focusAnchor = Focus.homeAnchor
       root.achIndex = root.model.achIndex || 0
       root.view = root.model.confirm ? "confirm" : root.model.view === "achievements" && root.hasAchievements ? "achievements" : "main"
     }
@@ -421,11 +411,14 @@ Item {
 
   // ------------------------------------------------------------ navigation
 
-  function move(delta) {
-    var list = root.rows
-    var i = list.indexOf(root.cursor)
-    if (i < 0) { root.cursor = list[0]; return }
-    root.cursor = list[(i + delta + list.length) % list.length]
+  // One D-pad step over the card's grid (GuideFocus.js). False where left or
+  // right belong to the control under the cursor (volume, sound output).
+  function move(action) {
+    var step = Focus.move(root.grid, root.cursor, action, root.focusAnchor)
+    if (!step) return false
+    root.cursor = step.key
+    root.focusAnchor = step.anchor
+    return true
   }
 
   function input(action) {
@@ -436,7 +429,7 @@ Item {
       if (action === "guide") root.open("{}")
       return "closed"
     }
-    if (root.rows.indexOf(root.cursor) < 0) root.cursor = root.rows[0]
+    if (root.rows.indexOf(root.cursor) < 0) root.cursor = Focus.home(root.grid)
     pointerGate.reset()
     if (root.view === "confirm") {
       if (["up", "down", "left", "right"].indexOf(action) >= 0) root.confirmChoice = root.confirmChoice === 0 ? 1 : 0
@@ -456,11 +449,10 @@ Item {
       else if (action === "y") root.activate("screenshot")
       return "ok"
     }
-    if (designLoader.item && ["up", "down", "left", "right"].indexOf(action) >= 0 && designLoader.item.navigate(action)) return "ok"
     switch (action) {
-    case "up": root.move(-1); break
-    case "down": root.move(1); break
+    case "up": case "down": root.move(action); break
     case "left": case "right":
+      if (root.move(action)) break
       var step = action === "left" ? -1 : 1
       if (root.cursor === "volume") root.act("volume", root.volume + step * 0.05)
       else if (root.cursor === "output") root.act("output", step)
@@ -541,11 +533,15 @@ Item {
     }
   }
 
+  // The last action a fixture asked for, for checks (fixture mode only).
+  property string lastAct: ""
+
   function act(name, value) {
     if (root.fixtureMode) {
       console.log("GUIDE_ACT " + name + " " + JSON.stringify(value === undefined ? null : value))
-      if (name === "volume") root.setFixture("audio", {volume: Math.max(0, Math.min(1, value)), muted: root.muted})
-      else if (name === "mute") root.setFixture("audio", {volume: root.volume, muted: !root.muted})
+      root.lastAct = name
+      if (name === "volume") root.setFixture("audio", Object.assign({}, root.model.audio, {volume: Math.max(0, Math.min(1, value)), muted: root.muted}))
+      else if (name === "mute") root.setFixture("audio", Object.assign({}, root.model.audio, {volume: root.volume, muted: !root.muted}))
       else if (name === "output" && root.outputs.length > 1) {
         var list = root.outputs, at = Math.max(0, list.indexOf(root.currentOutput))
         var next = (at + value + list.length) % list.length
@@ -623,7 +619,7 @@ Item {
 
   function quitGame() {
     root.view = "main"
-    if (root.fixtureMode || !root.backend) { root.close(); return }
+    if (root.fixtureMode || !root.backend) { root.lastAct = "quit-confirmed"; root.close(); return }
     if (root.forceReady) { root.notify("force-quit", null); return }
     root.quitting = true
     root.notify("quit-confirmed", null)
@@ -751,7 +747,7 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: designLoader.item && designLoader.item.scrim !== undefined ? designLoader.item.scrim : Commons.Color.menu.scrim
+        color: Commons.Color.menu.scrim
       }
 
       MouseArea {
@@ -771,21 +767,10 @@ Item {
         }
       }
 
-      // A design prototype in place of the card: it draws its own surface.
-      Loader {
-        id: designLoader
-        anchors.fill: parent
-        opacity: card.opacity
-        onLoaded: Qt.callLater(root.fitZoom)
-      }
-
       BorderSurface {
         id: card
         readonly property int pad: root.sized(Style.spacing.panelPadding)
-        // Header, readings and hint sit on the row fill's edges, as the menu's
-        // title does; rows inset their own icon and value.
-        readonly property int inset: 0
-        width: Math.min(root.sized(Style.space(380)), window.width - Style.gapsOut * 2)
+        width: Math.min(root.sized(Style.space(root.cardWidth)), window.width - Style.gapsOut * 2)
         height: Math.min(card.contentTopInset + content.implicitHeight + card.contentBottomInset, window.height - Style.gapsOut * 2)
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.max(Style.gapsOut, Math.round((window.height - card.height) / 2))
@@ -794,7 +779,6 @@ Item {
         borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
         padding: card.pad
         opacity: 0
-        visible: root.design === ""
 
         NumberAnimation on opacity {
           id: fadeIn
@@ -807,262 +791,28 @@ Item {
 
         MouseArea { anchors.fill: parent }
 
-        Column {
+        GuideCard {
           id: content
+          g: root
           onImplicitHeightChanged: Qt.callLater(root.fitZoom)
           x: card.contentLeftInset
           y: card.contentTopInset
           width: card.width - card.contentLeftInset - card.contentRightInset
-
-          // Header: the game, how long this session has run and whether it is
-          // paused, and the time.
-          Item {
-            id: header
-            x: card.inset
-            width: parent.width - card.inset * 2
-            height: Math.max(title.height, clockText.height) + (detail.visible ? root.sized(Style.space(2)) + detail.height : 0)
-
-            Text {
-              id: title
-              textFormat: Text.PlainText
-              width: Math.min(implicitWidth, parent.width - clockText.width - root.sized(Style.space(16)))
-              text: root.game ? root.game.title : "No game running"
-              color: root.text
-              font.family: root.fontFamily
-              font.pixelSize: root.sized(Style.font.heading)
-              font.weight: Font.Medium
-              wrapMode: Text.Wrap
-            }
-
-            Text {
-              id: clockText
-              textFormat: Text.PlainText
-              anchors.right: parent.right
-              anchors.baseline: title.baseline
-              text: root.clock
-              color: root.quiet
-              font.family: root.fontFamily
-              font.pixelSize: root.sized(Style.font.body)
-            }
-
-            Text {
-              id: detail
-              textFormat: Text.PlainText
-              y: title.height + root.sized(Style.space(2))
-              width: parent.width
-              visible: text.length > 0
-              text: root.sessionText()
-              color: root.quiet
-              font.family: root.fontFamily
-              font.pixelSize: root.sized(Style.font.body)
-              wrapMode: Text.Wrap
-            }
-          }
-
-          Item { width: 1; height: root.sized(Style.spacing.md); visible: perf.visible }
-
-          PerfLine {
-            id: perf
-            zoom: root.zoom
-            x: card.inset
-            width: parent.width - card.inset * 2
-            text: root.text
-            quiet: root.quiet
-            fontFamily: root.fontFamily
-            fps: root.performance.fps
-            frametime: root.performance.frametime
-            cpu: root.stats.cpu
-            cpuTemp: root.stats.cpuTemp
-            gpu: root.stats.gpu
-            gpuTemp: root.stats.gpuTemp
-          }
-
-          Divider { zoom: root.zoom; color: root.text }
-
-          // The card body: the rows, the achievements list or the quit question.
-          // The list takes the rows' height, so opening it does not move the
-          // card; the question takes its own.
-          Item {
-            id: body
-            width: parent.width
-            height: root.view === "confirm" ? question.implicitHeight : rowsColumn.implicitHeight
-
-            Column {
-              id: rowsColumn
-              width: parent.width
-              visible: root.view === "main"
-              spacing: root.sized(Style.spacing.xs)
-
-              Repeater {
-                id: rowRepeater
-                model: root.rowLayout
-
-                Column {
-                  id: slot
-                  required property var modelData
-                  readonly property string key: modelData.key
-                  readonly property alias row: row
-                  readonly property var spec: root.rowSpec(slot.key)
-                  width: rowsColumn.width
-                  spacing: root.sized(Style.spacing.xs)
-
-                  Divider { zoom: root.zoom; color: root.text; visible: slot.modelData.divider }
-
-                  GuideRow {
-                    id: row
-                    zoom: root.zoom
-                    selectedInk: root.selectedInk
-                    urgentInk: root.urgentInk
-                    edge: root.needsEdge
-                    edgeColor: root.focusEdge
-                    width: parent.width
-                    icon: slot.spec.icon
-                    iconScale: slot.spec.iconScale || 1
-                    iconColor: slot.spec.iconColor !== undefined ? slot.spec.iconColor : row.ink
-                    label: slot.spec.label
-                    value: slot.spec.value || ""
-                    urgent: !!slot.spec.urgent
-                    wrapLabel: !!slot.spec.wrap
-                    slider: slot.key === "volume"
-                    sliderValue: root.volume
-                    sliderMuted: root.muted
-                    current: root.cursor === slot.key
-                    onHovered: (source, mouse) => root.hover(slot.key, source, mouse)
-                    onActivated: { root.cursor = slot.key; root.activate(slot.key) }
-                    onSliderMoved: v => { root.cursor = "volume"; root.act("volume", v) }
-                  }
-                }
-              }
-            }
-
-            AchievementList {
-              id: achievementList
-              anchors.fill: parent
-              visible: root.view === "achievements"
-              items: root.achievementItems
-              unlockedCount: root.achievements ? (root.achievements.unlocked || 0) : 0
-              total: root.achievements ? (root.achievements.total || 0) : 0
-              current: root.achIndex
-              zoom: root.zoom
-              fontFamily: root.fontFamily
-              text: root.text
-              quiet: root.quiet
-              selectedInk: root.selectedInk
-              edge: root.needsEdge
-              edgeColor: root.focusEdge
-              onHovered: (index, source, mouse) => { if (pointerGate.moved(source, mouse)) root.achIndex = index }
-            }
-
-            // The quit question, in the card's own rows.
-            Column {
-              id: question
-              width: parent.width
-              visible: root.view === "confirm"
-              spacing: root.sized(Style.spacing.xs)
-
-              Text {
-                width: parent.width
-                textFormat: Text.PlainText
-                text: root.forceReady ? (root.game ? root.game.title : "The game") + " is not closing"
-                  : "Quit " + (root.game ? root.game.title : "the game") + "?"
-                color: root.text
-                font.family: root.fontFamily
-                font.pixelSize: root.sized(Style.font.heading)
-                font.weight: Font.Medium
-                wrapMode: Text.Wrap
-              }
-              Text {
-                width: parent.width
-                textFormat: Text.PlainText
-                text: root.forceReady ? "Force quit ends it now. Unsaved progress is lost."
-                  : "Progress since your last save may be lost."
-                color: root.quiet
-                font.family: root.fontFamily
-                font.pixelSize: root.sized(Style.font.body)
-                wrapMode: Text.Wrap
-              }
-              Item { width: 1; height: root.sized(Style.spacing.md) }
-
-              GuideRow {
-                id: keepRow
-                zoom: root.zoom
-                selectedInk: root.selectedInk
-                urgentInk: root.urgentInk
-                edge: root.needsEdge
-                edgeColor: root.focusEdge
-                width: parent.width
-                icon: root.icons.resume
-                iconScale: 1.3
-                label: "Keep playing"
-                current: root.confirmChoice === 0
-                onHovered: (source, mouse) => { if (pointerGate.moved(source, mouse)) root.confirmChoice = 0 }
-                onActivated: root.cancelQuit()
-              }
-              GuideRow {
-                id: quitConfirmRow
-                zoom: root.zoom
-                selectedInk: root.selectedInk
-                urgentInk: root.urgentInk
-                edge: root.needsEdge
-                edgeColor: root.focusEdge
-                width: parent.width
-                icon: root.icons.quit
-                label: root.forceReady ? "Force quit" : "Quit game"
-                urgent: true
-                current: root.confirmChoice === 1
-                onHovered: (source, mouse) => { if (pointerGate.moved(source, mouse)) root.confirmChoice = 1 }
-                onActivated: root.quitGame()
-              }
-            }
-          }
-
-          // Room for the hint line.
-          Item { width: 1; height: root.sized(Style.spacing.xl) + hintLine.height }
-        }
-
-        // What the buttons do.
-        Flow {
-          id: hintLine
-          x: card.contentLeftInset + card.inset
-          y: card.height - card.contentBottomInset - height
-          width: content.width - card.inset * 2
-          spacing: root.sized(Style.space(16))
-
-          Repeater {
-            model: root.hint
-            Row {
-              required property var modelData
-              Text {
-                textFormat: Text.PlainText
-                text: modelData[0] + " "
-                color: root.text
-                font.family: root.fontFamily
-                font.pixelSize: root.sized(Style.font.body)
-              }
-              Text {
-                textFormat: Text.PlainText
-                text: modelData[1]
-                color: root.quiet
-                font.family: root.fontFamily
-                font.pixelSize: root.sized(Style.font.body)
-              }
-            }
-          }
         }
       }
     }
   }
 
-  function setDesign(name) {
-    name = name.toLowerCase()
-    if (name === root.design) return
-    root.design = name
-    if (name === "") designLoader.source = ""
-    else designLoader.setSource(Qt.resolvedUrl("designs/Design" + name.toUpperCase() + ".qml"), {g: root})
-  }
-
   function hover(key, source, mouse) {
     if (root.view !== "main" || !pointerGate.moved(source, mouse)) return
     root.cursor = key
+  }
+
+  function hoverConfirm(choice, source, mouse) {
+    if (root.view === "confirm" && pointerGate.moved(source, mouse)) root.confirmChoice = choice
+  }
+
+  function hoverAchievement(index, source, mouse) {
+    if (root.view === "achievements" && pointerGate.moved(source, mouse)) root.achIndex = index
   }
 }
