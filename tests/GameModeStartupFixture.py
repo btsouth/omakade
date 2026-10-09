@@ -89,7 +89,7 @@ with open(str(path) + ".lock", "w") as lock:
         print(json.dumps([{**workspace("name:omakade"), "monitor": "HEADLESS-1"}]))
     elif args[:1] == ["eval"]:
         script = args[1]
-        if state.get("fail_resume") and 'workspace = "name:omakade"' in script and 'window.move' in script:
+        if state.get("fail_resume") and 'workspace = "name:omakade"' in script and ('window.move' in script or 'dsp.focus' in script):
             print("error: fixture resume placement failed")
             sys.exit(1)
         for line in script.splitlines():

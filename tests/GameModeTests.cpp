@@ -768,8 +768,8 @@ private slots:
     QCOMPARE(m_compositor.window.workspace, "7");
     QCOMPARE(m_compositor.currentFocus.address, kAddress);
     QCOMPARE(m_compositor.others.first().workspace, "3");
-    QCOMPARE(m_compositor.log.first(), QString("place %1 7 %2").arg(kAddress, kDesk));
-    m_compositor.placeFails = true;
+    QCOMPARE(m_compositor.log.first(), QString("return %1 7").arg(kAddress));
+    m_compositor.returnFails = true;
     m_compositor.currentFocus = {kDesk, "8", {}};
     QVERIFY(!m_compositor.moveLibraryToDesktop(100, m_compositor.currentFocus));
     QVERIFY(m_compositor.currentFocus.address.isEmpty());

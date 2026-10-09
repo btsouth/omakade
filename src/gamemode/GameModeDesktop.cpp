@@ -739,6 +739,6 @@ bool GameModeCompositor::moveLibraryToDesktop(qint64 pid, const GameModeDesktopF
   const auto window = windowForPid(pid);
   if (!window.valid() || desktop.workspace.isEmpty() || desktop.output.isEmpty()) return false;
   if (window.workspace != desktop.workspace &&
-      !placeWindow(window.address, desktop.workspace, desktop.output, {}, error)) return false;
+      !returnWindow(window.address, desktop.workspace, {}, error)) return false;
   return focusWindow(window.address, error);
 }
