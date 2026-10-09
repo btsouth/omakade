@@ -48,7 +48,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   const auto clients = QJsonDocument(QJsonArray{QJsonObject{{"pid", game.processId()}, {"address", "0x123"}, {"monitor", 0}}}).toJson(QJsonDocument::Compact);
   const auto queryLog = root.path() + "/queries";
   QVERIFY(write(bin + "/systemctl", "#!/bin/sh\n[ \"$2\" = show-environment ] || exit 1\necho HYPRLAND_INSTANCE_SIGNATURE=late-test\necho WAYLAND_DISPLAY=wayland-test\n", true));
-  QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\n[ \"$HYPRLAND_INSTANCE_SIGNATURE\" = late-test ] || exit 1\necho \"$@\" >> '" + queryLog.toUtf8() + "'\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\nesac\n", true));
+  QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\n[ \"$HYPRLAND_INSTANCE_SIGNATURE\" = late-test ] || exit 1\necho \"$@\" >> '" + queryLog.toUtf8() + "'\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\neval) echo ok;;\nesac\n", true));
   const auto summonFile = root.path() + "/summon.json", shellLog = root.path() + "/shell.log";
   QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + "'\necho ok\n", true));
   auto env = QProcessEnvironment::systemEnvironment();
@@ -104,7 +104,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--guide-toggle"}); QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
   QTRY_VERIFY(([&] { QFile log(shellLog); return log.open(QIODevice::ReadOnly) && log.readAll().contains("shell hide omakade.guide"); })());
   QFile log(shellLog); QVERIFY(log.open(QIODevice::ReadOnly));
-  QTRY_VERIFY(([&] { QFile queries(queryLog); return queries.open(QIODevice::ReadOnly) && queries.readAll().contains("dispatch focuswindow address:0x123"); })());
+  QTRY_VERIFY(([&] { QFile queries(queryLog); return queries.open(QIODevice::ReadOnly) && queries.readAll().contains("hl.dispatch(hl.dsp.focus({window=\"address:0x123\"}))"); })());
   const auto shellCalls = log.readAll(); QVERIFY(!shellCalls.contains("rescanPlugins")); QVERIFY(!shellCalls.contains("call omakade.guide update"));
   const auto control = [&](const QString& action, QJsonObject data = {}) {
     data.insert("action", action);
@@ -169,7 +169,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
     thirdPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", thirdBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
     QVERIFY(thirdPlugin.waitForBytesWritten()); QTest::qWait(30);
   }
-  QTRY_VERIFY(([&] { QFile output(queryLog); return output.open(QIODevice::ReadOnly) && output.readAll().contains("dispatch exec"); })());
+  QTRY_VERIFY(([&] { QFile output(queryLog); return output.open(QIODevice::ReadOnly) && output.readAll().contains("hl.exec_cmd("); })());
   QCOMPARE(control("close").value("result").toString(), "handled");
   QByteArray messages;
   QTRY_VERIFY2(([&] {

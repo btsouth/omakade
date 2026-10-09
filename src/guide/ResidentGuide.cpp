@@ -252,12 +252,17 @@ void ResidentGuide::launchLibrary(bool fallback) {
   const auto executable = QFileInfo(adjacent).isExecutable() ? adjacent : QString("omakade");
   // Hyprland owns the launched library and its descendants, outside sessiond's
   // service cgroup. A recorder restart must never kill the user's game.
-  const auto command = HyprlandGameModeCompositor::luaString(executable) + (fallback ? " --game-mode-fallback" : "");
+  auto quotedExecutable = executable; quotedExecutable.replace('\'', QString("'\\''"));
+  const auto command = "'" + quotedExecutable + "'" + (fallback ? " --game-mode-fallback" : "");
   auto* process = new QProcess(this); process->setProcessEnvironment(m_environment);
-  connect(process, &QProcess::finished, process, &QObject::deleteLater);
+  connect(process, &QProcess::finished, process, [process](int code, QProcess::ExitStatus status) {
+    if (status != QProcess::NormalExit || code != 0 || process->readAllStandardOutput().trimmed() != "ok")
+      qWarning("Guide: Hyprland could not launch the library");
+    process->deleteLater();
+  });
   connect(process, &QProcess::errorOccurred, process, [process] { process->deleteLater(); });
   QTimer::singleShot(2000, process, [process] { process->kill(); });
-  process->start("hyprctl", {"dispatch", "exec", command});
+  process->start("hyprctl", {"eval", "hl.exec_cmd(" + HyprlandGameModeCompositor::luaString(command) + ")"});
 }
 void ResidentGuide::fallback() { launchLibrary(true); }
 QJsonObject ResidentGuide::command(const QJsonObject& data) {

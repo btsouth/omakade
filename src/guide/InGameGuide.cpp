@@ -491,9 +491,9 @@ void InGameGuide::restoreWindow(std::function<void(bool)> done) {
     }
     if (!matches || !HyprlandGameModeCompositor::validAddress(window.address)) return false;
     QProcess focus; focus.setProcessEnvironment(environment);
-    focus.start("hyprctl", {"dispatch", "focuswindow", "address:" + window.address});
+    focus.start("hyprctl", {"eval", "hl.dispatch(hl.dsp.focus({window=" + HyprlandGameModeCompositor::luaString("address:" + window.address) + "}))"});
     if (!focus.waitForFinished(1000)) { focus.kill(); focus.waitForFinished(); return false; }
-    return focus.exitStatus() == QProcess::NormalExit && focus.exitCode() == 0;
+    return focus.exitStatus() == QProcess::NormalExit && focus.exitCode() == 0 && focus.readAllStandardOutput().trimmed() == "ok";
   }));
 }
 
