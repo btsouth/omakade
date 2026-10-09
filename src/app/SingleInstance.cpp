@@ -40,6 +40,8 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
           emit gameModeToggleRequested(QString::fromUtf8(command.mid(16)).trimmed());
         } else if (command.startsWith("guide toggle")) {
           emit guideToggleRequested(QString::fromUtf8(command.mid(12)).trimmed());
+        } else if (command == "guide library") {
+          emit guideLibraryRequested();
         } else if (command == "quit") {
           emit quitRequested();
         } else if (command.contains("activate")) {

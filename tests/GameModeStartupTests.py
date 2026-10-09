@@ -312,6 +312,34 @@ class GameModeStartupTests(unittest.TestCase):
         self.assertEqual(self.primary.wait(timeout=8), 0)
         self.assertFalse(self.state.exists())
 
+    def test_guide_library_cold_launch_keeps_normal_library(self):
+        self.launch("--guide-library")
+        endpoint = Path(self.env["TMPDIR"]) / f"omakade-{os.getuid()}"
+        self.wait_for(endpoint.exists, "Cold guide library did not claim IPC")
+        self.command("--guide-library")
+        self.assertIsNone(self.primary.poll())
+        self.assertFalse(self.state.exists(), "Cold guide library unexpectedly started Game Mode")
+
+    def test_guide_library_keeps_game_mode_game_parked(self):
+        self.retained_fixture()
+        self.launch("--game-mode")
+        self.fixture_update(owner=self.primary.pid)
+        self.phase("active")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 2,
+                      "Initial Game Mode handoff did not settle")
+        self.command("--game-mode-desktop")
+        self.phase("parked")
+        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xdd",
+                      "Game did not park")
+        # Offscreen has no window server. Model the library action's remap;
+        # the GUI Game Mode test observes the actual visibleChanged hookup.
+        self.fixture_update(guide_library=True)
+        self.command("--guide-library")
+        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Guide library did not focus the retained library")
+        self.assertEqual(json.loads(self.state.read_text())["phase"], "parked")
+        self.assertTrue(json.loads(self.fixture.read_text())["mute"])
+
     def test_explicit_game_mode_launch_closes_on_exit(self):
         self.assert_temporary_launch_closes("--game-mode", "--game-mode-exit")
 

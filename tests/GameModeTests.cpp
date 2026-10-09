@@ -1375,6 +1375,7 @@ private slots:
     deskAndTv(true);
     auto game = controller();
     game.setTemporaryWindow(true);
+    game.setPlaceholder([&](bool shown) { m_compositor.placeholderShown = shown; });
     QStringList visibility;
     game.setWindowVisibility([&](bool shown) {
       visibility.append(shown ? "show" : "hide");
@@ -1383,11 +1384,15 @@ private slots:
         m_compositor.currentFocus = {kTv, GameModeController::workspace(), kAddress};
     });
     QVERIFY(game.enter(tvSettings(), 100).ok);
+    QVERIFY(!m_compositor.placeholderShown);
+    QVERIFY(!game.state().placeholder);
     retainedGame();
     QVERIFY(game.park(100).ok);
     QCOMPARE(visibility, (QStringList{"show", "hide"}));
     m_compositor.currentFocus = {kDesk, QStringLiteral("8"), QStringLiteral("0xcafe")};
     QVERIFY(game.resume(tvSettings(), 100).ok);
+    QVERIFY(!m_compositor.placeholderShown);
+    QVERIFY(!game.state().placeholder);
     QVERIFY(game.park(100).ok);
     QCOMPARE(m_compositor.currentFocus.workspace, QStringLiteral("8"));
     QCOMPARE(m_compositor.currentFocus.address, QStringLiteral("0xcafe"));
@@ -2426,6 +2431,10 @@ private slots:
     // Hyprland matches a rule against the whole title, which Qt ends with " — Omakade".
     QVERIFY(HyprlandGameModeCompositor::holdScript().contains(
         QStringLiteral("title = \"^Omakade Game Mode Placeholder.*\"")));
+    const auto cold = HyprlandGameModeCompositor::coldWindowScript();
+    QVERIFY(cold.contains("initial_title = \"^Omakade Game Mode Startup.*\""));
+    QVERIFY(cold.contains("class = \"^io.github.tsouth89.Omakade$\""));
+    QVERIFY(cold.contains("no_anim = true"));
     const QString place =
         HyprlandGameModeCompositor::placeScript("0xddd4", "name:omakade", "HDMI-A-2");
     const QString heldPlace = HyprlandGameModeCompositor::placeScript(

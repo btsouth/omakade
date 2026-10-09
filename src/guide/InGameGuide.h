@@ -77,11 +77,13 @@ private:
   void toast(const QString& title, const QString& detail = {});
   void finishClose(bool hide, bool retainPause = false);
   void parkNow();
+  void finishPark();
   void restoreWindow(std::function<void(bool)> done);
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   QJsonObject m_context, m_lastPayload;
   bool m_parked = false, m_parking = false, m_restoring = false, m_managedRetained = false;
   bool m_waitingManagedPark = false;
+  bool m_libraryAfterPark = false;
   quint64 m_parkGeneration = 0, m_restoreGeneration = 0;
   QString m_restoreNode;
   bool m_restoreFallback = false;

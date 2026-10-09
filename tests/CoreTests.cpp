@@ -5563,6 +5563,10 @@ void CoreTests::singleInstanceForwardsPlayAndQuitCommands() {
   QSignalSpy plays(&primary, &SingleInstance::playRequested);
   QSignalSpy quits(&primary, &SingleInstance::quitRequested);
   QSignalSpy activations(&primary, &SingleInstance::activationRequested);
+  QSignalSpy libraries(&primary, &SingleInstance::guideLibraryRequested);
+  QVERIFY(SingleInstance::sendCommand(name, "guide library"));
+  QTRY_COMPARE_WITH_TIMEOUT(libraries.size(), 1, 1000);
+  QCOMPARE(activations.size(), 0);
   QSignalSpy storageFailures(&primary, &SingleInstance::trackingStorageFailed);
   QVERIFY(SingleInstance::sendCommand(name, "tracking-storage-error"));
   QTRY_COMPARE_WITH_TIMEOUT(storageFailures.size(), 1, 1000);
@@ -5919,6 +5923,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   controls.gbutton.button = SDL_GAMEPAD_BUTTON_NORTH;
   QVERIFY(SDL_PushEvent(&controls));
   QTRY_COMPARE_WITH_TIMEOUT(toolbar.size(), 1, 1000);
+  QCOMPARE(controller.favoriteGlyph(), QStringLiteral("X"));
+  QCOMPARE(controller.toolbarGlyph(), QStringLiteral("Y"));
 
   keys.clear();
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 20000));

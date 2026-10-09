@@ -31,6 +31,7 @@ public:
     QString name;
     // Made by software, such as Steam Input's pad, rather than a driver for hardware.
     bool virtualDevice = false;
+    QString driver;
   };
 
   explicit GuideListener(QString devDir = QStringLiteral("/dev/input"),

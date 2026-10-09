@@ -30,6 +30,8 @@ public:
   [[nodiscard]] static QString moveWorkspaceScript(const QString& workspace, const QString& output);
   [[nodiscard]] GameModeWindow placeholderForPid(qint64 pid) override;
   bool holdPlaceholder(QString* error = nullptr) override;
+  bool prepareColdWindow(QString* error = nullptr);
+  [[nodiscard]] static QString coldWindowScript();
   bool placeWindow(const QString& address, const QString& workspace, const QString& output,
                    const QString& placeholder, QString* error = nullptr) override;
   bool returnWindow(const QString& address, const QString& workspace, const QString& placeholder,

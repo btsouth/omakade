@@ -34,6 +34,8 @@ private slots:
   void changedPayloadKeepsStaticData();
   void telemetryRequiresRealFreshReadings();
   void desktopRetainsPauseAndIdentity();
+  void libraryParksBeforeActivation_data();
+  void libraryParksBeforeActivation();
   void outsideParkAndResume_data();
   void outsideParkAndResume();
   void restoreFailureReleasesNewPause();
@@ -43,6 +45,8 @@ private slots:
   void pluginParser();
   void pluginFocus();
   void buttons();
+  void faceButtonPositions_data();
+  void faceButtonPositions();
   void axes();
   void reportArbitrationAndRepeat();
   void mirroredReportsAndRecovery();
@@ -242,6 +246,50 @@ void InGameGuideTests::desktopRetainsPauseAndIdentity() {
   game.terminate(); QVERIFY(game.waitForFinished());
 }
 
+void InGameGuideTests::libraryParksBeforeActivation_data() {
+  QTest::addColumn<bool>("managed");
+  QTest::addColumn<bool>("accepted");
+  QTest::newRow("game-mode-library") << true << true;
+  QTest::newRow("cold-gui-library") << false << true;
+  QTest::newRow("refused-game-mode-park") << true << false;
+}
+
+void InGameGuideTests::libraryParksBeforeActivation() {
+  QFETCH(bool, managed); QFETCH(bool, accepted);
+  QTemporaryDir root; QVERIFY(root.isValid());
+  QFile hyprctl(root.filePath("hyprctl")); QVERIFY(hyprctl.open(QIODevice::WriteOnly));
+  hyprctl.write("#!/bin/sh\nexit 0\n"); hyprctl.close();
+  QVERIFY(hyprctl.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", root.path().toUtf8() + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}, {"source", "Manual"}};
+  guide.setContext({{"gameModeActive", managed}});
+  guide.m_opened = true;
+  QSignalSpy libraries(&guide, &InGameGuide::libraryRequested), parks(&guide, &InGameGuide::parkRequested);
+  guide.message({{"action", "library"}});
+  QTRY_VERIFY(guide.parked()); QTRY_COMPARE(processState(game.processId()), 'T');
+  QVERIFY(!guide.opened()); QVERIFY(guide.m_guard);
+  if (managed) {
+    QCOMPARE(parks.count(), 1); QCOMPARE(libraries.count(), 0);
+    guide.parkComplete(accepted);
+  }
+  if (accepted) {
+    QTRY_COMPARE(libraries.count(), 1);
+    QVERIFY(guide.parked()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
+    guide.m_enabled = true;
+    QSignalSpy restores(&guide, &InGameGuide::restoreRequested);
+    if (managed) { QVERIFY(guide.toggle()); QCOMPARE(restores.count(), 1); }
+    guide.close(); QTRY_VERIFY(processState(game.processId()) != 'T');
+  } else {
+    QTRY_VERIFY(!guide.parked()); QTRY_VERIFY(processState(game.processId()) != 'T');
+    QCOMPARE(libraries.count(), 0);
+  }
+}
+
 void InGameGuideTests::steamArtSelection() {
   QTemporaryDir directory; QVERIFY(directory.isValid());
   const auto cache = directory.path() + "/268910/";
@@ -412,6 +460,30 @@ void InGameGuideTests::buttons() {
   }
 }
 
+void InGameGuideTests::faceButtonPositions_data() {
+  QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
+  QTest::addColumn<int>("top"); QTest::addColumn<int>("left");
+  QTest::newRow("xpad") << QString("Microsoft X-Box 360 pad") << QString("xpad") << BTN_Y << BTN_X;
+  QTest::newRow("steam-xbox-mirror") << QString("Microsoft X-Box 360 pad 0") << QString{} << BTN_Y << BTN_X;
+  QTest::newRow("xpad-third-party") << QString("Logitech F310") << QString("xpad") << BTN_Y << BTN_X;
+  QTest::newRow("xpadneo") << QString("Xbox Wireless Controller") << QString("xpadneo") << BTN_Y << BTN_X;
+  QTest::newRow("hid-steam") << QString("Steam Deck") << QString("steam") << BTN_Y << BTN_X;
+  QTest::newRow("hid-playstation") << QString("Sony DualSense") << QString("playstation") << BTN_NORTH << BTN_WEST;
+  QTest::newRow("hid-nintendo") << QString("Nintendo Switch Pro Controller") << QString("nintendo") << BTN_NORTH << BTN_WEST;
+  QTest::newRow("position-driver-wins") << QString("Xbox style pad") << QString("hid-generic") << BTN_NORTH << BTN_WEST;
+  QTest::newRow("unknown") << QString("USB gamepad") << QString{} << BTN_NORTH << BTN_WEST;
+}
+
+void InGameGuideTests::faceButtonPositions() {
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(int, top); QFETCH(int, left);
+  GuideInputMap map; map.setController(name, driver);
+  map.event(EV_KEY, top, 1); QCOMPARE(map.report(0), QStringList{"y"});
+  QVERIFY(map.heldPosition(BTN_NORTH)); QVERIFY(!map.heldPosition(BTN_WEST));
+  map.event(EV_KEY, top, 0); map.report(1);
+  map.event(EV_KEY, left, 1); QCOMPARE(map.report(2), QStringList{"x"});
+  QVERIFY(map.heldPosition(BTN_WEST)); QVERIFY(!map.heldPosition(BTN_NORTH));
+}
+
 void InGameGuideTests::axes() {
   GuideInputMap map;
   map.setAxis(ABS_X, 0, 255, 8);
@@ -491,8 +563,18 @@ void InGameGuideTests::mirroredReportsAndRecovery() {
   report("event16", EV_KEY, BTN_MODE, 1); QTest::qWait(20); // currently armed, one close
   QTRY_COMPARE(actions.size(), 5);
   report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  // The physical Xbox top/left and Steam's mirror use legacy label codes.
+  // A mirrored screenshot press is one action, even when callbacks arrive apart.
+  report("event15", EV_KEY, BTN_Y, 1); QTRY_COMPARE(actions.size(), 6);
+  QCOMPARE(actions.last().first().toString(), "y");
+  report("event16", EV_KEY, BTN_Y, 1); QTest::qWait(20); QCOMPARE(actions.size(), 6);
+  report("event15", EV_KEY, BTN_Y, 0); report("event16", EV_KEY, BTN_Y, 0); QTest::qWait(20);
+  report("event16", EV_KEY, BTN_Y, 1); QTRY_COMPARE(actions.size(), 7);
+  QCOMPARE(actions.last().first().toString(), "y");
+  report("event15", EV_KEY, BTN_X, 1); report("event16", EV_KEY, BTN_X, 1);
+  QTRY_COMPARE(actions.size(), 8); QCOMPARE(actions.last().first().toString(), "x");
   report("event15", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
-  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 8);
   input.release(); for (const int fd : writers) ::close(fd);
 }
 

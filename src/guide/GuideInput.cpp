@@ -55,12 +55,30 @@ void GuideInputMap::setAxis(int code, int minimum, int maximum, int flat) {
   m_axes.insert(code, {minimum, maximum, flat, 0});
 }
 
+void GuideInputMap::setController(const QString& name, const QString& driver) {
+  const auto family = GuidePayload::padFamily(name);
+  // xpad, xpadneo and hid-steam retain BTN_X/BTN_Y's old label meanings.
+  // hid-playstation and hid-nintendo use BTN_WEST/BTN_NORTH by position.
+  // Steam's Xbox mirror has no hardware driver, so use its advertised family.
+  m_labelCodes = driver == "xpad" || driver == "hid-xpadneo" || driver == "xpadneo" ||
+      driver == "hid-steam" || driver == "steam" ||
+      (driver.isEmpty() && (family == "xbox" || family == "deck"));
+}
+
+bool GuideInputMap::heldPosition(int code) const {
+  if (m_labelCodes && (code == BTN_NORTH || code == BTN_WEST))
+    code = code == BTN_NORTH ? BTN_WEST : BTN_NORTH;
+  return held(code);
+}
+
 QString GuideInputMap::event(int type, int code, int value) {
   if (type == EV_KEY) {
     if (value == 0) m_keys.remove(code);
     else if (value == 1 && !m_keys.contains(code)) {
       m_keys.insert(code);
-      const auto action = button(code);
+      const int position = m_labelCodes && (code == BTN_NORTH || code == BTN_WEST)
+          ? (code == BTN_NORTH ? BTN_WEST : BTN_NORTH) : code;
+      const auto action = button(position);
       if (!action.isEmpty() && !direction(action)) m_pending.append(action);
     }
   } else if (type == EV_ABS && (code == ABS_X || code == ABS_Y || code == ABS_HAT0X || code == ABS_HAT0Y)) {
@@ -136,6 +154,7 @@ struct GuideInput::Device {
 };
 
 GuideInput::GuideInput(QObject* parent) : QObject(parent) {
+  m_injected.setController("Xbox test pad");
   m_rescan.setSingleShot(true);
   m_rescan.setInterval(120);
   connect(&m_rescan, &QTimer::timeout, this, &GuideInput::rescan);
@@ -202,6 +221,7 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   }
   device->ungrab = m_access.ungrab ? m_access.ungrab : [](int fd) { ::ioctl(fd, EVIOCGRAB, 0); };
   device->family = GuidePayload::padFamily(pad.name);
+  device->mapping.setController(pad.name, pad.driver);
   const int clock = CLOCK_MONOTONIC;
   device->monotonic = ::ioctl(device->fd, EVIOCSCLOCKID, &clock) == 0;
   device->attachedAt = clockMs(device->monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME);
@@ -287,9 +307,9 @@ void GuideInput::regroup() {
       state.primary = primary->node;
       primary->mapping.suppressUntilNeutral();
     }
-    for (const int key : {BTN_SOUTH, BTN_EAST, BTN_MODE}) {
+    for (const int key : {BTN_SOUTH, BTN_EAST, BTN_WEST, BTN_NORTH, BTN_MODE}) {
       for (const auto& device : m_devices)
-        if (device->group == group && device->mapping.held(key)) state.latched.insert(key);
+        if (device->group == group && device->mapping.heldPosition(key)) state.latched.insert(key);
     }
   }
 }
@@ -315,7 +335,7 @@ void GuideInput::read(Device& device) {
         if (event.type == EV_SYN && event.code == SYN_REPORT) {
           sample(device); device.dropping = false;
           // Never turn a recovery snapshot into a fresh button press.
-          m_groups[device.group].latched = {BTN_SOUTH, BTN_EAST, BTN_MODE};
+          m_groups[device.group].latched = {BTN_SOUTH, BTN_EAST, BTN_WEST, BTN_NORTH, BTN_MODE};
           m_groups[device.group].homeArmed = false;
         }
         continue;
@@ -352,16 +372,17 @@ void GuideInput::dispatch() {
           if (device->node == group.primary) intents.append({action, device->family});
           continue;
         }
-        int key = action == "a" ? BTN_SOUTH : action == "b" ? BTN_EAST : action == "guide" ? BTN_MODE : 0;
+        int key = action == "a" ? BTN_SOUTH : action == "b" ? BTN_EAST : action == "x" ? BTN_WEST :
+            action == "y" ? BTN_NORTH : action == "guide" ? BTN_MODE : 0;
         if (key && (group.latched.contains(key) || (key == BTN_MODE && !group.homeArmed))) continue;
         if (key) group.latched.insert(key);
         intents.append({action, device->family});
       }
     }
-    for (const int key : {BTN_SOUTH, BTN_EAST, BTN_MODE}) {
+    for (const int key : {BTN_SOUTH, BTN_EAST, BTN_WEST, BTN_NORTH, BTN_MODE}) {
       bool held = false;
       for (const auto& device : m_devices)
-        if (device->group == it.key() && device->mapping.held(key)) held = true;
+        if (device->group == it.key() && device->mapping.heldPosition(key)) held = true;
       if (!held) { group.latched.remove(key); if (key == BTN_MODE) group.homeArmed = true; }
       else { group.latched.insert(key); if (key == BTN_MODE) group.homeArmed = false; }
     }
