@@ -12,6 +12,7 @@
 #include <QLocalServer>
 #include <QProcess>
 #include <QQueue>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QVariantMap>
 #include <functional>
@@ -33,6 +34,9 @@ public:
   bool opened() const { return m_opened; }
   bool available() const { return m_enabled; }
   bool hasGame();
+  void prepare() { refreshGame(); }
+  void setSnapshot(const QVariantMap& session, const QVariantMap& metadata, const QString& output,
+                   const GameModeWindow& window = {});
   // The guide plugin is installed and enabled, so opening the guide can show something.
   // Without it the shortcut and controller button keep their Game Mode behavior.
   Q_INVOKABLE bool usable() const { return m_enabled && GuidePlugin::usable(m_pluginPaths); }
@@ -75,10 +79,17 @@ private:
   GuideInput m_input;
   GuideArt m_art;
   QString m_achievementDatabase;
-  QJsonArray achievementItems(const QString& appId) const;
+  static QJsonArray achievementItems(const QString& appId, const QString& path);
   GameModeWindow gameWindow(const QVariantMap& session) const;
   int m_testPadWriter = -1;
-  QProcess m_guard;
+  QPointer<QProcess> m_guard;
+  QJsonArray m_guardPins;
+  QElapsedTimer m_summonClock;
+  bool m_refreshing = false;
+  GameModeWindow m_window;
+  QJsonArray m_achievements;
+  QString m_achievementKey;
+  void cacheAchievements();
   QLocalSocket m_mango;
   GuideActions::Tree m_resumeTree, m_quitTree;
   QPointer<QLocalSocket> m_peer;

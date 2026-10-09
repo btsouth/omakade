@@ -142,7 +142,7 @@ add_library(omakade_guide_runtime STATIC
   src/guide/GuideActions.cpp src/guide/GuideActions.h
 )
 target_include_directories(omakade_guide_runtime PUBLIC src)
-target_link_libraries(omakade_guide_runtime PUBLIC omakade_guide omakade_tracking Qt6::Gui Qt6::Network)
+target_link_libraries(omakade_guide_runtime PUBLIC omakade_guide omakade_tracking Qt6::Gui Qt6::Network Qt6::Concurrent)
 qt_add_executable(omakade-guide-guard src/guide/guard.cpp)
 target_link_libraries(omakade-guide-guard PRIVATE omakade_guide_runtime)
 

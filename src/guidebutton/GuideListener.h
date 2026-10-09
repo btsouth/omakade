@@ -44,6 +44,7 @@ public:
   [[nodiscard]] QStringList openNodes() const;
 
 signals:
+  void preparing(const QString& node, const QString& name);
   void pressed(const QString& node, const QString& name);
   void devicesChanged();
 

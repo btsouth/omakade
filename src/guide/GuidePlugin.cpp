@@ -9,6 +9,8 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QThread>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 
 namespace GuidePlugin {
 namespace {
@@ -78,6 +80,15 @@ bool ensure(const Paths& paths) {
     if (marker.open(QIODevice::WriteOnly)) marker.write("1\n");
   }
   return enabled;
+}
+
+void ensureAsync(const Paths& paths, QObject* owner, std::function<void(bool)> done) {
+  auto* watcher = new QFutureWatcher<bool>(owner);
+  QObject::connect(watcher, &QFutureWatcher<bool>::finished, owner, [watcher, done] {
+    if (done) done(watcher->result());
+    watcher->deleteLater();
+  });
+  watcher->setFuture(QtConcurrent::run([paths] { return ensure(paths); }));
 }
 
 }  // namespace GuidePlugin

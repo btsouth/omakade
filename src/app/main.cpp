@@ -1834,7 +1834,10 @@ int main(int argc, char* argv[]) {
         QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)),
         QCoreApplication::applicationDirPath());
     inGameGuide.setPluginPaths(guidePluginPaths);
-    GuidePlugin::ensure(guidePluginPaths);
+    if (!guideToggleRequest && !gameModeToggleRequest && launcher.trackedGames().isEmpty() &&
+        (!playSessionStore || playSessionStore->nowPlaying().isEmpty()))
+      GuidePlugin::ensureAsync(guidePluginPaths, &inGameGuide);
+    inGameGuide.prepare();
   }
   // Without the guide plugin the shortcut keeps its Game Mode behavior.
   const bool coldGuideRequest = guideToggleRequest ||
@@ -6926,7 +6929,7 @@ int main(int argc, char* argv[]) {
       if (window.valid()) gameModeCompositor.focusWindow(window.address);
     });
   });
-  if (coldGuideRequest) QTimer::singleShot(500, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice, true); });
+  if (coldGuideRequest) QTimer::singleShot(0, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice, true); });
   if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {

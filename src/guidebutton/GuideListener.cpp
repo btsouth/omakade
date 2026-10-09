@@ -313,7 +313,9 @@ void GuideListener::read(const QString& node) {
       const qint64 at = device->eventTimes ? qint64(event.input_event_sec) * 1000 +
                                                  qint64(event.input_event_usec) / 1000
                                            : readAt;
+      const bool wasHolding = m_press.holding(node);
       fired = m_press.event(node, event.type, event.code, event.value, at) || fired;
+      if (!wasHolding && m_press.holding(node)) emit preparing(node, name);
     }
     watchTriggers(node, *device, readAt);
   }

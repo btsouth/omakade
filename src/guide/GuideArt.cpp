@@ -12,6 +12,10 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <memory>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 
 namespace {
 constexpr qsizetype maximumBytes = 8 * 1024 * 1024;
@@ -26,6 +30,7 @@ bool readable(QImageReader& reader, bool hero) {
 // The guide polls every second: decode a cached file once per change, not per poll.
 bool cached(const QString& path, bool hero) {
   static QHash<QString, std::pair<QString, bool>> known;
+  static QMutex mutex; QMutexLocker lock(&mutex);
   const QFileInfo file(path);
   if (!file.isFile()) return false;
   const auto stamp = QString::number(file.lastModified().toMSecsSinceEpoch()) + ':' + QString::number(file.size());
@@ -93,19 +98,22 @@ void GuideArt::prefetch(const QString& source, const QVariantMap& metadata) {
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply, contents, path, id, hero] {
       if (contents->size() <= maximumBytes) contents->append(reply->read(maximumBytes + 1 - contents->size()));
-      QBuffer buffer(contents.get());
-      buffer.open(QIODevice::ReadOnly);
-      QImageReader reader(&buffer);
-      bool saved = false;
-      if (reply->error() == QNetworkReply::NoError &&
-          reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 &&
-          contents->size() <= maximumBytes && readable(reader, hero) && QDir().mkpath(QFileInfo(path).absolutePath())) {
-        QSaveFile file(path);
-        saved = file.open(QIODevice::WriteOnly) && file.write(*contents) == contents->size() && file.commit();
-      }
-      m_pending.remove(path);
+      const bool accepted = reply->error() == QNetworkReply::NoError &&
+          reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200 && contents->size() <= maximumBytes;
       reply->deleteLater();
-      if (saved) emit ready(id);
+      auto* watcher = new QFutureWatcher<bool>(this);
+      connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, path, id] {
+        m_pending.remove(path);
+        if (watcher->result()) emit ready(id);
+        watcher->deleteLater();
+      });
+      watcher->setFuture(QtConcurrent::run([accepted, contents, path, hero] {
+        QBuffer buffer(contents.get()); buffer.open(QIODevice::ReadOnly);
+        QImageReader reader(&buffer);
+        if (!accepted || !readable(reader, hero) || !QDir().mkpath(QFileInfo(path).absolutePath())) return false;
+        QSaveFile file(path);
+        return file.open(QIODevice::WriteOnly) && file.write(*contents) == contents->size() && file.commit();
+      }));
     });
   }
 }

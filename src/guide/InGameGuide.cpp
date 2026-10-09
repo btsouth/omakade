@@ -36,17 +36,13 @@
 #include <QUuid>
 #include <unistd.h>
 #include <chrono>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 
 namespace {
 QString executable(const QString& name) {
   const auto adjacent = QCoreApplication::applicationDirPath() + '/' + name;
   return QFileInfo(adjacent).isExecutable() ? adjacent : QStandardPaths::findExecutable(name);
-}
-QByteArray hyprland(const QString& query) {
-  QProcess process;
-  process.start("hyprctl", {"-j", query});
-  if (!process.waitForFinished(1500)) { process.kill(); process.waitForFinished(); return {}; }
-  return process.exitCode() == 0 ? process.readAllStandardOutput() : QByteArray{};
 }
 QString preferenceKey(const QVariantMap& session) {
   return QString::fromLatin1(session.value("source").toString().toUtf8().toHex()) + '/' +
@@ -115,15 +111,23 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
     else send({{"type", "input"}, {"action", action}, {"receivedNs", received}});
   });
   connect(&m_art, &GuideArt::ready, this, [this](const QString& appId) {
-    if ((m_opened || m_opening) && GuideArt::appId(m_session.value("source").toString(), m_metadata) == appId)
-      send({{"type", "update"}, {"payload", payload()}});
+    if (GuideArt::appId(m_session.value("source").toString(), m_metadata) != appId) return;
+    auto* watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this, [this, watcher, appId] {
+      if (GuideArt::appId(m_session.value("source").toString(), m_metadata) == appId) {
+        m_metadata = watcher->result();
+        if (m_opened || m_opening) send({{"type", "update"}, {"payload", payload()}});
+      }
+      watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([source = m_session.value("source").toString(), metadata = m_metadata] {
+      return GuideArt::select(source, metadata, GuideArt::cacheRoot());
+    }));
   });
   m_poll.setInterval(1000);
   connect(&m_poll, &QTimer::timeout, this, &InGameGuide::poll);
   connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &InGameGuide::close);
-  connect(&m_guard, &QProcess::finished, this, [this] {
-    if (m_paused) { m_resumeTree.signal(SIGCONT); m_resumeTree.clear(); m_paused = false; finishClose(true); }
-  });
+
 }
 
 InGameGuide::~InGameGuide() { finishClose(false); if (m_testPadWriter >= 0) ::close(m_testPadWriter); }
@@ -146,117 +150,95 @@ void InGameGuide::setInjectedInputEnabled(bool enabled) {
 }
 
 void InGameGuide::refreshGame() {
-  if (m_opened && !m_quitSession.isEmpty()) return;
-  if (m_sessions) m_sessions->refreshNowPlaying();
-  const auto previous = m_session;
-  auto sessions = m_sessions ? m_sessions->nowPlaying() : QVariantList{};
-  // The launcher can describe games even when play-session recording is switched off.
-  if (m_launcher) {
-    for (const auto& value : m_launcher->trackedGames()) {
-      const auto owned = value.toMap();
-      const auto source = owned.value("source").toString();
-      if (source != "Manual" && !GameLauncher::isEmulatorSourceName(source)) continue;
-      if (!m_compositor || !m_compositor->windowForPid(owned.value("pid").toLongLong()).valid()) continue;
-      bool present = false;
-      for (auto& value : sessions) {
-        auto session = value.toMap();
-        if (session.value("pid") == owned.value("pid") && session.value("procStart") == owned.value("procStart")) {
-          present = true;
-          for (const auto& key : {"saveContext", "mangoSocket"}) if (owned.contains(key)) session.insert(key, owned.value(key));
-          value = session;
+  if (m_refreshing || !m_enabled || m_opened || m_opening) return;
+  m_refreshing = true;
+  auto* process = new QProcess(this);
+  auto finished = std::make_shared<bool>(false);
+  const auto complete = [this, process, finished](bool ok) {
+    if (*finished) return;
+    *finished = true; m_refreshing = false;
+    const auto active = ok ? QJsonDocument::fromJson(process->readAllStandardOutput()).object() : QJsonObject{};
+    process->deleteLater();
+    QVariantMap chosen, metadata;
+    const auto focusedPid = active.value("pid").toInteger();
+    auto sessions = m_sessions ? m_sessions->nowPlaying() : QVariantList{};
+    if (m_launcher) sessions.append(m_launcher->trackedGames());
+    for (const auto& value : sessions) {
+      const auto candidate = value.toMap();
+      if (candidate.value("pid").toLongLong() == focusedPid) { chosen = candidate; break; }
+    }
+    if (chosen.isEmpty() && !sessions.isEmpty()) chosen = sessions.first().toMap();
+    if (m_library && !chosen.isEmpty()) {
+      for (int row = 0; row < m_library->rowCount(); ++row) {
+        for (const auto& value : m_library->installations(row)) {
+          const auto installation = value.toMap();
+          if (installation.value("source") != chosen.value("source") ||
+              (installation.value("installPath") != chosen.value("path") && installation.value("appId") != chosen.value("path") &&
+               installation.value("appId") != chosen.value("appId") && installation.value("launchTarget") != chosen.value("path"))) continue;
+          const auto index = m_library->index(row);
+          for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath, GameRoles::LogoPath,
+                                GameRoles::PlaytimeSeconds, GameRoles::AchievementsTotal, GameRoles::AchievementsUnlocked, GameRoles::Tags})
+            metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), index.data(role));
+          metadata.insert("appId", installation.value("appId"));
+          break;
         }
+        if (!metadata.isEmpty()) break;
       }
-      if (!present) sessions.append(owned);
     }
-  }
-  const auto active = QJsonDocument::fromJson(hyprland("activewindow")).object();
-  const auto focusedPid = active.value("pid").toInteger();
-  QVariantMap chosen;
-  for (const auto& value : sessions) {
-    const auto session = value.toMap();
-    if (session.value("pid").toLongLong() == focusedPid ||
-        (m_opened && session.value("pid") == previous.value("pid") &&
-         session.value("procStart") == previous.value("procStart"))) { chosen = session; break; }
-  }
-  if (chosen.isEmpty() && !sessions.isEmpty()) chosen = sessions.first().toMap();
-  // Steam games are not emulator recorder sessions. Attribute them by the process's exact
-  // Steam app id and a library installation, never by Steam's launcher process tree.
-  ProcessSnapshot steam;
-  if (chosen.isEmpty() && (m_opened || active.value("fullscreen").toInt() != 0)) {
-    const auto pid = m_opened ? previous.value("pid").toLongLong() : focusedPid;
-    for (const auto& process : ProcFs::listProcesses(true)) {
-      if (process.pid == pid && !process.steamAppId.isEmpty() && process.comm != "steam" &&
-          process.comm != "steamwebhelper") { steam = process; break; }
+    GameModeWindow window;
+    if (focusedPid == chosen.value("pid").toLongLong()) {
+      window.address = active.value("address").toString();
     }
-  }
-  m_metadata.clear();
-  if (m_library) {
-    for (int row = 0; row < m_library->rowCount(); ++row) {
-      const auto index = m_library->index(row);
-      for (const auto& value : m_library->installations(row)) {
-        const auto installation = value.toMap();
-        const bool match = !chosen.isEmpty()
-            ? installation.value("source") == chosen.value("source") &&
-              (installation.value("appId") == chosen.value("appId") ||
-               installation.value("installPath") == chosen.value("path") ||
-               installation.value("appId") == chosen.value("path") ||
-               installation.value("launchTarget") == chosen.value("path"))
-            : steam.pid > 0 && installation.value("source") == "Steam" &&
-              installation.value("appId").toString() == steam.steamAppId;
-        if (!match) continue;
-        for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath, GameRoles::LogoPath,
-                               GameRoles::PlaytimeSeconds, GameRoles::AchievementsTotal,
-                               GameRoles::AchievementsUnlocked, GameRoles::Tags}) {
-          if (role == GameRoles::PlaytimeSeconds && installation.value("source") == "Manual") continue;
-          const auto data = index.data(role);
-          if (data.isValid()) m_metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), data);
-        }
-        m_metadata.insert("appId", installation.value("appId"));
-        m_metadata.insert("kind", GameLauncher::isEmulatorSourceName(installation.value("source").toString()) ? "emulator" : "native");
-        if (chosen.isEmpty()) {
-          chosen = {{"pid", steam.pid}, {"procStart", steam.procStart}, {"source", "Steam"},
-                    {"path", steam.steamAppId}, {"name", index.data(GameRoles::Title)}};
-        }
-        break;
-      }
-      if (!m_metadata.isEmpty()) break;
-    }
-  }
-  m_session = chosen;
-  if (m_enabled) m_art.prefetch(m_session.value("source").toString(), m_metadata);
-  if (chosen.value("pid") != previous.value("pid") || chosen.value("procStart") != previous.value("procStart")) {
-    stopGuard();
-    m_hudVisible = false;
-    m_mango.abort();
-    const auto tags = m_metadata.value("tags").toStringList();
+    setSnapshot(chosen, metadata, m_gameMode ? m_gameMode->sessionOutputName() : QString{}, window);
+  };
+  connect(process, &QProcess::finished, this, [complete](int code, QProcess::ExitStatus status) { complete(code == 0 && status == QProcess::NormalExit); });
+  connect(process, &QProcess::errorOccurred, this, [complete](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) complete(false); });
+  QTimer::singleShot(1000, process, [process] { process->kill(); });
+  process->start("hyprctl", {"-j", "activewindow"});
+}
+
+void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& metadata,
+                              const QString& output, const GameModeWindow& window) {
+  if (m_opened || m_opening) return; // Pin the current guide to its original game.
+  const bool changedGame = session.value("pid") != m_session.value("pid") || session.value("procStart") != m_session.value("procStart");
+  m_session = session; m_metadata = metadata; m_output = output; m_window = window;
+  if (changedGame) {
+    stopGuard(); m_hudVisible = false; m_mango.abort();
     bool online = false;
-    for (const auto& tag : tags) if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
-    QSettings preferences;
-    m_pauseWhileOpen = preferences.value("guide/pause/" + preferenceKey(chosen), !online).toBool();
+    for (const auto& tag : metadata.value("tags").toStringList())
+      if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
+    QSettings preferences("Omakade", "Omakade");
+    m_pauseWhileOpen = preferences.value("guide/pause/" + preferenceKey(session), !online).toBool();
   }
-  m_output = m_gameMode ? m_gameMode->sessionOutputName() : QString{};
-  if (!chosen.isEmpty() && m_compositor) {
-    const auto window = gameWindow(chosen);
-    if (!window.output.isEmpty()) m_output = window.output;
+  cacheAchievements();
+  if (m_enabled && changedGame) {
+    auto* watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcher<QVariantMap>::finished, this, [this, watcher, session] {
+      if (session.value("pid") == m_session.value("pid") && session.value("procStart") == m_session.value("procStart")) {
+        m_metadata = watcher->result();
+        m_art.prefetch(session.value("source").toString(), m_metadata);
+      }
+      watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([session, metadata] { return GuideArt::select(session.value("source").toString(), metadata, GuideArt::cacheRoot()); }));
   }
 }
 
 bool InGameGuide::hasGame() {
   if (!m_enabled) return false;
-  refreshGame();
   return !m_session.isEmpty();
 }
 
 // The running Steam game's achievements for the guide's list: unlocked newest first, then
 // locked by how common they are. Read-only, so the library's own model is left alone.
-QJsonArray InGameGuide::achievementItems(const QString& appId) const {
+QJsonArray InGameGuide::achievementItems(const QString& appId, const QString& path) {
   QJsonArray items;
-  if (appId.isEmpty() || m_achievementDatabase.isEmpty() || !QFileInfo::exists(m_achievementDatabase)) return items;
-  const auto connection = QStringLiteral("omakade-guide-achievements");
+  if (appId.isEmpty() || path.isEmpty() || !QFileInfo::exists(path)) return items;
+  const auto connection = "omakade-guide-achievements-" + QUuid::createUuid().toString();
   {
     auto database = QSqlDatabase::contains(connection) ? QSqlDatabase::database(connection, false)
                                                        : QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
-    database.setDatabaseName(m_achievementDatabase);
+    database.setDatabaseName(path);
     database.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY;QSQLITE_BUSY_TIMEOUT=200"));
     if (!database.isOpen() && !database.open()) return items;
     QSqlQuery query(database);
@@ -280,22 +262,30 @@ QJsonArray InGameGuide::achievementItems(const QString& appId) const {
       items.append(item);
     }
   }
+  QSqlDatabase::removeDatabase(connection);
   return items;
+}
+
+void InGameGuide::cacheAchievements() {
+  const auto id = GuideArt::appId(m_session.value("source").toString(), m_metadata);
+  if (id == m_achievementKey) return;
+  m_achievementKey = id; m_achievements = {};
+  auto* watcher = new QFutureWatcher<QJsonArray>(this);
+  connect(watcher, &QFutureWatcher<QJsonArray>::finished, this, [this, watcher, id] {
+    if (id == m_achievementKey) { m_achievements = watcher->result(); if (m_opened) send({{"type", "update"}, {"payload", payload()}}); }
+    watcher->deleteLater();
+  });
+  watcher->setFuture(QtConcurrent::run([id, path = m_achievementDatabase] { return achievementItems(id, path); }));
 }
 
 // The game's window: by its process, or for Steam games by the steam_app_<id> class.
 GameModeWindow InGameGuide::gameWindow(const QVariantMap& session) const {
-  if (!m_compositor) return {};
-  auto window = m_compositor->windowForPid(session.value("pid").toLongLong());
-  if (!window.valid() && session.value("source") == "Steam") {
-    const auto appId = GuideArt::appId("Steam", {{"appId", session.value("path")}});
-    if (!appId.isEmpty()) window = m_compositor->windowForClass("steam_app_" + appId);
-  }
-  return window;
+  if (session.value("pid") == m_session.value("pid") && session.value("procStart") == m_session.value("procStart")) return m_window;
+  return {};
 }
 
 QJsonObject InGameGuide::payload() const {
-  auto data = GuidePayload::build(m_session, m_metadata, m_output, m_family, m_pauseWhileOpen, m_paused);
+  auto data = GuidePayload::build(m_session, m_metadata, m_output, m_family, m_pauseWhileOpen, m_paused, {}, false);
   auto model = data.value("data").toObject();
   if (!m_session.isEmpty()) {
     auto game = model.value("game").toObject();
@@ -303,7 +293,7 @@ QJsonObject InGameGuide::payload() const {
     const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
     const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
     game.insert("canBackup", !context.isEmpty() && layout.valid());
-    const auto items = achievementItems(GuideArt::appId(m_session.value("source").toString(), m_metadata));
+    const auto items = m_achievements;
     if (!items.isEmpty()) {
       auto achievements = game.value("achievements").toObject();
       int unlocked = 0;
@@ -332,58 +322,67 @@ QJsonObject InGameGuide::payload() const {
 
 bool InGameGuide::setPaused(bool paused) {
   if (!paused) { stopGuard(); return true; }
-  if (m_paused) return true;
-  const auto pid = m_session.value("pid").toLongLong();
-  const auto start = m_session.value("procStart").toLongLong();
-  if (!ProcFs::processAlive(pid, start) || start <= 0) return false;
-  m_guard.start(executable("omakade-guide-guard"));
-  if (!m_guard.waitForStarted(1500)) return false;
-  const auto request = QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}, {"recoverable", true}}).toJson(QJsonDocument::Compact) + '\n';
-  m_guard.write(request);
-  m_guard.waitForBytesWritten(1000);
-  // Pin each identity before acknowledging the guard's SIGSTOP. This also covers
-  // guard death between stopping a process and delivering the final reply.
-  QJsonArray pinned;
-  QByteArray pending;
-  QElapsedTimer deadline; deadline.start();
-  bool ok = false;
-  while (deadline.elapsed() < 2500) {
-    if (!m_guard.bytesAvailable() && !m_guard.waitForReadyRead(qMax(1, 2500 - int(deadline.elapsed())))) break;
-    pending += m_guard.readAllStandardOutput();
-    while (pending.contains('\n')) {
-      const auto end = pending.indexOf('\n');
-      const auto reply = QJsonDocument::fromJson(pending.left(end)).object(); pending.remove(0, end + 1);
+  if (m_paused || m_guard) return true;
+  const auto pid = m_session.value("pid").toLongLong(), start = m_session.value("procStart").toLongLong();
+  if (start <= 0 || !ProcFs::processAlive(pid, start)) return false;
+  auto* guard = new QProcess(this); m_guard = guard; m_guardPins = {};
+  auto pending = std::make_shared<QByteArray>();
+  const auto failed = [this, guard] {
+    if (m_guard != guard) return;
+    stopGuard(); m_pauseWhileOpen = false;
+    qWarning("Guide: pause unavailable; the game remains running.");
+    if (m_opened) send({{"type", "update"}, {"payload", payload()}});
+  };
+  connect(guard, &QProcess::started, this, [guard, pid, start] {
+    guard->write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", pid}, {"start", start}, {"recoverable", true}}).toJson(QJsonDocument::Compact) + '\n');
+  });
+  connect(guard, &QProcess::readyReadStandardOutput, this, [this, guard, pending, failed] {
+    pending->append(guard->readAllStandardOutput());
+    while (pending->contains('\n')) {
+      const int end = pending->indexOf('\n');
+      const auto reply = QJsonDocument::fromJson(pending->left(end)).object(); pending->remove(0, end + 1);
+      if (m_guard != guard) continue;
       if (reply.contains("pin")) {
-        pinned.append(reply.value("pin"));
-        if (!m_resumeTree.adopt(pinned)) { stopGuard(); return false; }
-        m_guard.write("pin-ok\n"); m_guard.waitForBytesWritten(200);
-      } else if (reply.contains("ok")) { ok = reply.value("ok").toBool(); break; }
+        m_guardPins.append(reply.value("pin"));
+        if (!m_resumeTree.adopt(m_guardPins)) { failed(); return; }
+        guard->write("pin-ok\n");
+      } else if (reply.contains("ok")) {
+        if (!reply.value("ok").toBool()) { failed(); return; }
+        m_paused = true;
+        qInfo("Guide timing: paused elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0);
+        if (m_opened) send({{"type", "update"}, {"payload", payload()}});
+      }
     }
-    if (ok || m_guard.state() == QProcess::NotRunning) break;
-  }
-  if (!ok) { stopGuard(); return false; }
-  m_paused = true;
-  return true;
+  });
+  connect(guard, &QProcess::finished, this, [this, guard, failed] {
+    if (m_guard == guard) { const bool wasPaused = m_paused; failed(); if (wasPaused) finishClose(true); }
+    guard->deleteLater();
+  });
+  connect(guard, &QProcess::errorOccurred, this, [failed, guard](QProcess::ProcessError error) {
+    if (error == QProcess::FailedToStart) { failed(); guard->deleteLater(); }
+  });
+  QTimer::singleShot(2500, guard, [this, guard, failed] { if (m_guard == guard && !m_paused) failed(); });
+  guard->start(executable("omakade-guide-guard"));
+  return true; // Accepted; the payload changes only after the safe asynchronous handshake.
 }
 
 void InGameGuide::stopGuard() {
   m_paused = false;
-  m_resumeTree.signal(SIGCONT); m_resumeTree.clear();
-  if (m_guard.state() == QProcess::NotRunning) return;
-  m_guard.closeWriteChannel();
-  if (!m_guard.waitForFinished(2000)) { m_guard.terminate(); m_guard.waitForFinished(1000); }
+  m_resumeTree.signal(SIGCONT); m_resumeTree.clear(); m_guardPins = {};
+  auto* guard = m_guard.data(); m_guard = nullptr;
+  if (!guard) return;
+  // EOF cancels pending pin handshakes and resumes any processes the guard owns.
+  guard->closeWriteChannel();
+  QTimer::singleShot(2000, guard, [guard] { if (guard->state() != QProcess::NotRunning) guard->terminate(); });
+  QTimer::singleShot(3000, guard, [guard] { if (guard->state() != QProcess::NotRunning) guard->kill(); });
 }
 
 bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
-  refreshGame();
+  m_summonClock.start();
+  qInfo("Guide timing: request mono_ns=%lld", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
   m_restoreFocus = true;
-  if (!m_session.isEmpty() && m_compositor &&
-      ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) {
-    const auto window = gameWindow(m_session);
-    if (window.valid()) m_compositor->focusWindow(window.address);
-  }
   m_token = QUuid::createUuid().toString(QUuid::WithoutBraces);
   m_family = node.isEmpty() ? "keyboard" : "generic";
   QString pad, error;
@@ -414,6 +413,7 @@ void InGameGuide::close() { finishClose(true); }
 
 void InGameGuide::finishClose(bool hide) {
   const bool hadGuide = m_opened || m_opening;
+  QElapsedTimer closeClock; closeClock.start();
   m_opened = m_opening = false;
   m_token.clear();
   m_poll.stop();
@@ -422,6 +422,7 @@ void InGameGuide::finishClose(bool hide) {
   m_input.release();
   stopGuard();
   emit changed();
+  if (hadGuide) qInfo("Guide timing: closed elapsed_ms=%lld", closeClock.elapsed());
   if (hide && hadGuide) shell({"shell", "hide", "omakade.guide"});
   if (hadGuide && m_restoreFocus && !m_session.isEmpty()) {
     const auto game = m_session;
@@ -440,7 +441,7 @@ void InGameGuide::message(const QJsonObject& data) {
     const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     qInfo().noquote() << "GUIDE_LATENCY_MS" << (now - data.value("value").toObject().value("receivedNs").toString().toLongLong()) / 1000000.0;
   }
-  if (action == "opened") { m_opening = false; m_opened = true; emit changed(); }
+  if (action == "opened") { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); }
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
   else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
   else if (action == "closed") finishClose(false);
@@ -473,7 +474,7 @@ void InGameGuide::message(const QJsonObject& data) {
     const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
     if (!layout.valid()) { toast("Backup unavailable", layout.error); return; }
     const bool wasPaused = m_paused;
-    if (!setPaused(true)) { toast("Backup unavailable", "The emulator could not be paused safely"); return; }
+    if (!m_paused) { setPaused(true); toast("Backup unavailable", "Wait until the game is paused, then try again"); return; }
     SaveSetStore store(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-backups", [] { return false; });
     store.setPolicy(10, 2LL * 1024 * 1024 * 1024);
     QString error;
@@ -600,7 +601,6 @@ void InGameGuide::poll() {
       finishClose(true);
       return;
     }
-    refreshGame();
     shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
   });
 }

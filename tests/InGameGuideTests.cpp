@@ -52,6 +52,7 @@ private slots:
   void pluginLinksAndEnablesOnce();
   void pluginKeepsUserCopyAndWaitsForShell();
   void pluginFallsBackWhenSummonFails();
+  void provisioningAndPauseDoNotBlock();
 };
 
 void InGameGuideTests::steamArtSelection() {
@@ -681,6 +682,30 @@ void InGameGuideTests::pluginFallsBackWhenSummonFails() {
   QVERIFY(guide.usable());
   guide.m_enabled = false;
   QVERIFY(!guide.usable());
+}
+
+void InGameGuideTests::provisioningAndPauseDoNotBlock() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  bool done = false; QElapsedTimer elapsed; elapsed.start();
+  GuidePlugin::ensureAsync(fixture.paths, this, [&done](bool ready) { done = ready; });
+  QVERIFY(elapsed.elapsed() < 30);
+  QTRY_VERIFY(done); QVERIFY(GuidePlugin::usable(fixture.paths));
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QVERIFY(start > 0);
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", start}};
+  // The test executable sits in tests/, beside which the guard is not installed.
+  const auto originalPath = qgetenv("PATH");
+  qputenv("PATH", (QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath() + ':' + originalPath).toUtf8());
+  elapsed.restart(); QVERIFY(guide.setPaused(true)); QVERIFY(elapsed.elapsed() < 30);
+  QTRY_VERIFY(guide.m_paused);
+  elapsed.restart(); guide.close(); QVERIFY(elapsed.elapsed() < 30);
+  QVERIFY(!guide.m_paused); QVERIFY(!guide.m_guard);
+  QTRY_VERIFY(ProcFs::processAlive(game.processId(), start));
+  game.terminate(); QVERIFY(game.waitForFinished());
+  qputenv("PATH", originalPath);
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)
