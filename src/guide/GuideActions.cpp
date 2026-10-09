@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QSet>
 #include <QDir>
+#include <QDirIterator>
 #include <QDateTime>
 #include <QRegularExpression>
 #include <cmath>
@@ -29,9 +30,32 @@ QVariantMap performanceSource(qint64 pid, qint64 start) {
     const auto value = [&text](const QString& key) {
       return QRegularExpression("(?m)^\\s*" + key + "\\s*=\\s*([^#\\r\\n]+)").match(text).captured(1).trimmed();
     };
-    const auto prefix = value("output_file"), folder = value("output_folder");
-    // A per-game output_file is necessary to avoid borrowing another game's log.
-    if (!prefix.isEmpty() && !folder.isEmpty()) return {{"kind", "mangohud"}, {"folder", folder}, {"prefix", prefix}};
+    const auto folder = value("output_folder");
+    const auto executable = QFileInfo(QStringLiteral("/proc/%1/exe").arg(pid)).symLinkTarget();
+    auto program = QFileInfo(executable).fileName();
+    if (program.endsWith("wine-preloader") || program.endsWith("wine64-preloader")) {
+      QFile comm(QStringLiteral("/proc/%1/comm").arg(pid));
+      if (!comm.open(QIODevice::ReadOnly)) return {};
+      program = QString::fromLocal8Bit(comm.read(64)).trimmed();
+      if (!program.endsWith(".exe", Qt::CaseInsensitive)) return {}; // Do not guess Wine targets.
+      program.chop(4);
+    }
+    if (!folder.isEmpty() && !program.isEmpty()) {
+      QFileInfo newest; int count = 0;
+      QDirIterator files(folder, {program + "_*.csv"}, QDir::Files);
+      while (files.hasNext()) {
+        files.next(); if (++count > 128) return {};
+        const auto file = files.fileInfo();
+        if (!file.fileName().endsWith("_summary.csv") && (!newest.exists() || file.lastModified() > newest.lastModified())) newest = file;
+      }
+      // Only read a log created during this process's lifetime.
+      QFile uptime("/proc/uptime");
+      if (newest.exists() && uptime.open(QIODevice::ReadOnly)) {
+        const auto boot = QDateTime::currentSecsSinceEpoch() - qint64(uptime.read(64).split(' ').first().toDouble());
+        if (newest.birthTime().toSecsSinceEpoch() >= boot + start / ::sysconf(_SC_CLK_TCK))
+          return {{"kind", "mangohud"}, {"path", newest.filePath()}};
+      }
+    }
   }
   // Gamescope documents --stats-path (-T); walk only this process's ancestry.
   for (int depth = 0; pid > 1 && depth < 8; ++depth) {
@@ -57,14 +81,6 @@ QVariantMap performanceSource(qint64 pid, qint64 start) {
 QJsonObject performance(const QVariantMap& source) {
   QString path = source.value("path").toString();
   const bool mango = source.value("kind") == "mangohud";
-  if (mango) {
-    QDir folder(source.value("folder").toString());
-    const auto prefix = QFileInfo(source.value("prefix").toString()).fileName();
-    // Bound directory lookup; do not search the user's capture or log tree.
-    const auto files = folder.entryInfoList({prefix + "*.csv"}, QDir::Files, QDir::Time);
-    if (files.isEmpty() || files.size() > 128) return {};
-    for (const auto& file : files) if (!file.fileName().endsWith("_summary.csv")) { path = file.filePath(); break; }
-  }
   if (path.isEmpty()) return {};
   // Never block on a stats FIFO or consume an existing reader's stream.
   const int fd = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW);
@@ -78,6 +94,7 @@ QJsonObject performance(const QVariantMap& source) {
   auto tail = file.read(4096); if (!tail.endsWith('\n')) tail = tail.left(tail.lastIndexOf('\n') + 1);
   QJsonObject result;
   const auto reading = [&result](const QString& key, const QByteArray& text) {
+    result.remove(key);
     bool ok = false; const auto number = text.trimmed().toDouble(&ok);
     if (ok && std::isfinite(number) && number > 0 && number < 100000) result.insert(key, number);
   };

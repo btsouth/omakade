@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // The game's achievements inside the card: unlocked, newest first, then locked.
@@ -17,18 +18,18 @@ Item {
   property int current: 0
   property real zoom: 1
   property string fontFamily: Style.font.menuFamily
-  property color text: Color.menu.text
-  property color quiet: Color.menu.text
-  property color selectedInk: Color.menu.selectedText
+  property color text: Commons.Color.menu.text
+  property color quiet: Commons.Color.menu.text
+  property color selectedInk: Commons.Color.menu.selectedText
   property bool edge: false
-  property color edgeColor: Color.menu.selectedText
+  property color edgeColor: Commons.Color.menu.selectedText
   readonly property int count: list.count
 
   signal hovered(int index, Item source, var mouse)
 
   function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
 
-  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Color.menu.selectedBorder, 0)
+  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Commons.Color.menu.selectedBorder, 0)
   // Steam's icons are 64 px squares drawn to their edges: slightly larger than
   // the menu's glyphs so they read as pictures, not as ink.
   readonly property int iconSize: root.sized(Style.space(40))
@@ -109,7 +110,7 @@ Item {
         width: parent.width
         height: Math.max(root.iconSize, words.implicitHeight) + root.padY * 2
         radius: root.sized(Style.cornerRadius)
-        color: entry.cursor ? Color.menu.selectedBackground : "transparent"
+        color: entry.cursor ? Commons.Color.menu.selectedBackground : "transparent"
         borderSpec: !entry.cursor ? Border.none()
           : root.edge ? Border.flat(root.edgeColor, Math.max(1, Style.focusBorderWidth)) : root.selectedBorderSpec
 

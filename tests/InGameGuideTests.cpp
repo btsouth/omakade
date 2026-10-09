@@ -81,7 +81,7 @@ void InGameGuideTests::telemetryRequiresRealFreshReadings() {
   QTemporaryDir root; QVERIFY(root.isValid());
   const auto path = root.filePath("game.csv");
   const auto write = [&](const QByteArray& bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(bytes); };
-  const QVariantMap source{{"kind", "mangohud"}, {"folder", root.path()}, {"prefix", "game"}};
+  const QVariantMap source{{"kind", "mangohud"}, {"path", path}};
   write("os,cpu\nLinux,Test\nfps,frametime,cpu_load\n59.2,16.7,10\n");
   QCOMPARE(GuideActions::performance(source), (QJsonObject{{"fps", 59.2}, {"frametime", 16.7}}));
   write("fps,frametime,cpu_load\nnan,-3,10\n"); QVERIFY(GuideActions::performance(source).isEmpty());

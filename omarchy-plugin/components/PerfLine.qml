@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 // One line of readings: frame rate and frame time when MangoHud reports them,
 // CPU and GPU load and temperature where the drivers expose them. Numbers in
@@ -15,8 +16,8 @@ Item {
   property var cpuTemp
   property var gpu
   property var gpuTemp
-  property color text: Color.menu.text
-  property color quiet: Color.menu.text
+  property color text: Commons.Color.menu.text
+  property color quiet: Commons.Color.menu.text
   property string fontFamily: Style.font.menuFamily
 
   // Couch scale: one multiplier on the card's Omarchy tokens.

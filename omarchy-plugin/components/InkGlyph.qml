@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // An icon centred on its drawn ink in both directions. OpticalGlyph corrects
@@ -9,7 +10,7 @@ Item {
   id: root
 
   property string text: ""
-  property color color: Color.menu.text
+  property color color: Commons.Color.menu.text
   property real size: Style.font.iconLarge
   property string fontFamily: Style.font.menuFamily
 

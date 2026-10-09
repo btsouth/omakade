@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "components"
 import "GuideProtocol.js" as Protocol
@@ -95,21 +96,21 @@ Item {
   // ------------------------------------------------------------ colours and type
 
   readonly property string fontFamily: Style.font.menuFamily
-  readonly property color text: Color.menu.text
-  readonly property color background: Color.menu.background
+  readonly property color text: Commons.Color.menu.text
+  readonly property color background: Commons.Color.menu.background
   // The menu's colours, held to the release bar: 4.5:1 for text and 3:1 for
   // the focus edge and the recording mark, over a dark and a light frame.
   // Secondary text is Omarchy's 0.52, raised only where a theme needs it.
-  readonly property var cardGrounds: Legibility.grounds(Color.menu.background)
-  readonly property var fillGrounds: Legibility.grounds(Color.menu.selectedBackground, root.cardGrounds)
+  readonly property var cardGrounds: Legibility.grounds(Commons.Color.menu.background)
+  readonly property var fillGrounds: Legibility.grounds(Commons.Color.menu.selectedBackground, root.cardGrounds)
   readonly property color quiet: root.solid(Legibility.fade(root.text, root.background, root.cardGrounds, 0.52, 4.6))
-  readonly property color selectedInk: root.solid(Legibility.legibleInk(Color.menu.selectedText, root.text, root.fillGrounds, 4.6))
-  readonly property color urgentInk: root.solid(Legibility.legibleInk(Color.urgent, root.text, root.fillGrounds, 4.6))
-  readonly property color recordingInk: root.solid(Legibility.legibleInk(Color.bar.active, root.text, root.cardGrounds.concat(root.fillGrounds), 3))
+  readonly property color selectedInk: root.solid(Legibility.legibleInk(Commons.Color.menu.selectedText, root.text, root.fillGrounds, 4.6))
+  readonly property color urgentInk: root.solid(Legibility.legibleInk(Commons.Color.urgent, root.text, root.fillGrounds, 4.6))
+  readonly property color recordingInk: root.solid(Legibility.legibleInk(Commons.Color.bar.active, root.text, root.cardGrounds.concat(root.fillGrounds), 3))
   // Where the selected fill alone is too close to the card to see at 3:1, the
   // row also takes a hairline in the theme's focus colour.
   readonly property bool needsEdge: Legibility.weakest(root.fillGrounds, root.cardGrounds) < 3
-  readonly property color focusEdge: root.solid(Legibility.fade(Style.focusStateColor(root.text, Color.accent, Color.urgent), root.background, root.cardGrounds, 0.25, 3))
+  readonly property color focusEdge: root.solid(Legibility.fade(Style.focusStateColor(root.text, Commons.Color.accent, Commons.Color.urgent), root.background, root.cardGrounds, 0.25, 3))
 
   function solid(c) { return Qt.rgba(c.r, c.g, c.b, 1) }
 
@@ -185,13 +186,13 @@ Item {
   }
 
   function state(unused) {
-    return JSON.stringify({opened: root.opened, opening: root.opened && !root.presented, presented: root.presented, ready: root.ready(),
+    return JSON.stringify({scale: root.couchScale, zoom: root.zoom, opened: root.opened, opening: root.opened && !root.presented, presented: root.presented, ready: root.ready(),
       token: root.backend ? root.backend.token : "", socket: root.backend ? root.backend.socket : "",
       output: window.screen ? window.screen.name : "", surface: [window.width, window.height],
       cursor: root.cursor, rows: root.rows, view: root.view, confirming: root.confirming, confirmChoice: root.confirmChoice, achIndex: root.achIndex, pad: root.family, data: root.model,
-      geometry: root.geometry(), palette: {text: String(Color.menu.text), quiet: String(root.quiet),
-        background: String(Color.menu.background), selectedBackground: String(Color.menu.selectedBackground),
-        selectedText: String(Color.menu.selectedText), urgent: String(Color.urgent), border: String(Color.menu.border),
+      geometry: root.geometry(), palette: {text: String(Commons.Color.menu.text), quiet: String(root.quiet),
+        background: String(Commons.Color.menu.background), selectedBackground: String(Commons.Color.menu.selectedBackground),
+        selectedText: String(Commons.Color.menu.selectedText), urgent: String(Commons.Color.urgent), border: String(Commons.Color.menu.border),
         recording: String(root.recordingInk), selectedInk: String(root.selectedInk), urgentInk: String(root.urgentInk),
         focusEdge: root.needsEdge ? String(root.focusEdge) : ""}})
   }
@@ -692,7 +693,7 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: Color.menu.scrim
+        color: Commons.Color.menu.scrim
       }
 
       MouseArea {
@@ -711,8 +712,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.max(Style.gapsOut, Math.round((window.height - card.height) / 2))
         radius: root.sized(Style.cornerRadius)
-        color: Color.menu.background
-        borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
+        color: Commons.Color.menu.background
+        borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
         padding: card.pad
         opacity: 0
 

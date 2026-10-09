@@ -1,12 +1,13 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // A section divider: a hairline in a band of its own height.
 Item {
   id: root
 
-  property color color: Color.menu.text
+  property color color: Commons.Color.menu.text
 
   // Couch scale: one multiplier on the card's Omarchy tokens.
   property real zoom: 1

@@ -298,9 +298,6 @@ QJsonObject InGameGuide::payload() const {
   if (!m_session.isEmpty()) {
     auto game = model.value("game").toObject();
     game.insert("forceReady", m_forceReady);
-    const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
-    const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
-    game.insert("canBackup", !context.isEmpty() && layout.valid());
     const auto items = m_achievements;
     if (!items.isEmpty()) {
       auto achievements = game.value("achievements").toObject();
@@ -385,6 +382,7 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (m_opened || m_opening) { close(); return true; }
   if (m_restoring) return true;
   if (m_parked) {
+    setPaused(true);
     m_restoreNode = node; m_restoreFallback = fallback; m_restoring = true;
     if (m_managedRetained) emit restoreRequested();
     else restoreWindow([this](bool ok) { restoreComplete(ok); });
@@ -421,7 +419,14 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   return true;
 }
 
-void InGameGuide::setContext(const QJsonObject& context) { m_context = context; }
+void InGameGuide::setContext(const QJsonObject& context) {
+  m_context = context;
+  if (!showing() && !m_session.isEmpty() && context.value("gameModeParked").toBool()) {
+    m_parked = true; m_managedRetained = true;
+    // Home from a 1.15 park must keep the restored game paused too.
+    setPaused(true);
+  }
+}
 
 void InGameGuide::parkNow() {
   m_parking = false; m_restoreFocus = false;

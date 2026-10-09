@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // One row of the card, drawn like an Omarchy menu row: icon column, label in the
@@ -25,10 +26,10 @@ BorderSurface {
   property string fontFamily: Style.font.menuFamily
   // The card's legible versions of the menu's selected and urgent colours, and
   // the focus hairline for themes whose selected fill is too faint on its own.
-  property color selectedInk: Color.menu.selectedText
-  property color urgentInk: Color.urgent
+  property color selectedInk: Commons.Color.menu.selectedText
+  property color urgentInk: Commons.Color.urgent
   property bool edge: false
-  property color edgeColor: Color.menu.selectedText
+  property color edgeColor: Commons.Color.menu.selectedText
 
   // Couch scale: one multiplier on the card's Omarchy tokens.
   property real zoom: 1
@@ -38,8 +39,8 @@ BorderSurface {
   signal activated()
   signal sliderMoved(real value)
 
-  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Color.menu.selectedBorder, 0)
-  readonly property color ink: row.current ? (row.urgent ? row.urgentInk : row.selectedInk) : Color.menu.text
+  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Commons.Color.menu.selectedBorder, 0)
+  readonly property color ink: row.current ? (row.urgent ? row.urgentInk : row.selectedInk) : Commons.Color.menu.text
   // The menu's icon column. Its ink box's left edge is the row's inset, which
   // the value on the right and the card's header and hint line share.
   readonly property int iconBox: row.sized(Style.space(36))
@@ -50,7 +51,7 @@ BorderSurface {
   height: Math.max(row.sized(Style.space(50)), row.sized(Style.font.body) + row.sized(Style.spacing.rowPaddingX) * 2,
                   labelText.lineCount > 1 ? labelText.height + row.sized(Style.spacing.rowPaddingX) * 2 : 0)
   radius: row.sized(Style.cornerRadius)
-  color: row.current ? Color.menu.selectedBackground : "transparent"
+  color: row.current ? Commons.Color.menu.selectedBackground : "transparent"
   borderSpec: !row.current ? Border.none()
     : row.edge ? Border.flat(row.edgeColor, Math.max(1, Style.focusBorderWidth)) : row.selectedBorderSpec
 
@@ -117,7 +118,7 @@ BorderSurface {
   QtObject {
     id: sliderColors
     property color foreground: row.ink
-    property color background: Color.menu.background
+    property color background: Commons.Color.menu.background
   }
 
   PanelSlider {
