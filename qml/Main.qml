@@ -85,7 +85,9 @@ ApplicationWindow {
         { id: "psx", name: "PlayStation" }
     ]
     property int desktopVisibility: Window.Windowed
-    readonly property bool libraryScanning: (SteamLibrary ? SteamLibrary.scanning : false)
+    property int pendingStartupScans: 0
+    readonly property bool libraryScanning: root.pendingStartupScans > 0
+                                            || (SteamLibrary ? SteamLibrary.scanning : false)
                                             || (LutrisLibrary ? LutrisLibrary.scanning : false)
                                             || (HeroicLibrary ? HeroicLibrary.scanning : false)
                                             || (FaugusLibrary ? FaugusLibrary.scanning : false)
@@ -98,6 +100,7 @@ ApplicationWindow {
                                             || (CemuLibrary ? CemuLibrary.scanning : false)
                                             || (MelondsLibrary ? MelondsLibrary.scanning : false)
                                             || (DolphinLibrary ? DolphinLibrary.scanning : false)
+                                            || (XeniaLibrary ? XeniaLibrary.scanning : false)
                                             || (BattleNetLibrary ? BattleNetLibrary.scanning : false)
     readonly property int ownedGameCount: SteamAccount
                                           ? SteamAccount.ownedGameCount

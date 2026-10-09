@@ -188,6 +188,18 @@ QString HyprlandGameModeCompositor::holdScript() {
       .arg(luaString(QLatin1Char('^') + placeholderTitle() + QStringLiteral(".*")));
 }
 
+QString HyprlandGameModeCompositor::coldWindowScript() {
+  // Only a temporary Game Mode root carries this initial title. Warm library
+  // windows keep their ordinary desktop animation and placement rules.
+  return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-startup\", "
+                        "match = { initial_title = \"^Omakade Game Mode Startup.*\", "
+                        "class = \"^io.github.tsouth89.Omakade$\" }, no_anim = true })");
+}
+
+bool HyprlandGameModeCompositor::prepareColdWindow(QString* error) {
+  return eval(coldWindowScript(), error);
+}
+
 QString HyprlandGameModeCompositor::placeScript(const QString& address, const QString& workspace,
                                                 const QString& output, const QString& placeholder) {
   const QString window = luaString(QStringLiteral("address:") + address);

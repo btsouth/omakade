@@ -6965,8 +6965,23 @@ int main(int argc, char* argv[]) {
   });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
                    [&inGameGuide](const QString& node) { inGameGuide.toggle(node, true); });
-  const auto showGuideLibrary = [rootWindow, &gameMode, &gameModeCompositor, &application] {
+  const auto presentationGeneration = std::make_shared<quint64>(0);
+  const auto revealGameMode = [rootWindow, presentationGeneration] {
     if (!rootWindow) return;
+    rootWindow->setTitle(QStringLiteral("Omakade"));
+    auto* quick = qobject_cast<QQuickWindow*>(rootWindow);
+    if (!quick || quick->contentItem()->opacity() != 0) return;
+    const auto generation = *presentationGeneration;
+    QObject::connect(quick, &QQuickWindow::frameSwapped, quick,
+                     [quick, presentationGeneration, generation] {
+      if (generation == *presentationGeneration) quick->contentItem()->setOpacity(1);
+    }, Qt::SingleShotConnection);
+    quick->update();
+  };
+  const auto showGuideLibrary = [rootWindow, &gameMode, &gameModeCompositor, &application,
+                                presentationGeneration, revealGameMode] {
+    if (!rootWindow) return;
+    ++*presentationGeneration;
     // Parking has already hidden the game and retained its pause. Show the
     // session's library without resuming or focusing that game.
     if (gameMode.hasSession()) {
@@ -6977,6 +6992,7 @@ int main(int argc, char* argv[]) {
     } else rootWindow->show();
     rootWindow->requestActivate();
     QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
+    revealGameMode();
     QTimer::singleShot(150, &application, [&gameModeCompositor] {
       const auto window = gameModeCompositor.windowForPid(QCoreApplication::applicationPid());
       if (window.valid()) gameModeCompositor.focusWindow(window.address);
@@ -6993,9 +7009,21 @@ int main(int argc, char* argv[]) {
     const auto windowStateBeforePreparation =
         std::make_shared<Qt::WindowState>(rootWindow->windowState());
     QObject::connect(&gameMode, &GameModeSession::windowVisibilityRequested, rootWindow,
-                     [rootWindow](bool visible) {
+                     [rootWindow, &gameModeCompositor, presentationGeneration](bool visible) {
                        // The controller snapshots desktop focus before asking to map
                        // a cold root. Request its native mode while it is still hidden.
+                       ++*presentationGeneration;
+                       if (visible && !rootWindow->isVisible()) {
+                         rootWindow->setTitle(QStringLiteral("Omakade Game Mode Startup"));
+                         (void)gameModeCompositor.prepareColdWindow();
+                         // Wayland's fullscreen configure arrives after mapping.
+                         // Size the first buffer now and keep its content hidden
+                         // until placement and the prepared scene have rendered.
+                         if (QGuiApplication::platformName() == "wayland" && rootWindow->screen())
+                           rootWindow->resize(rootWindow->screen()->size());
+                         if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow))
+                           quick->contentItem()->setOpacity(0);
+                       }
                        if (visible) rootWindow->setWindowState(Qt::WindowFullScreen);
                        rootWindow->setVisible(visible);
                      });
@@ -7012,8 +7040,9 @@ int main(int argc, char* argv[]) {
       // handler. A parked resume failure keeps its hidden fullscreen session.
       if (!gameMode.hasSession()) rootWindow->setWindowState(*windowStateBeforePreparation);
     });
-    QObject::connect(&gameMode, &GameModeSession::resumed, rootWindow, [rootWindow] {
+    QObject::connect(&gameMode, &GameModeSession::resumed, rootWindow, [rootWindow, revealGameMode] {
       QMetaObject::invokeMethod(rootWindow, "resumeGameMode");
+      revealGameMode();
     });
     QObject::connect(&gameMode, &GameModeSession::parking, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "captureGameModeNavigation");
@@ -7026,10 +7055,11 @@ int main(int argc, char* argv[]) {
     QObject::connect(&gameMode, &GameModeSession::entering, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "captureGameModeDesktopMode");
     });
-    QObject::connect(&gameMode, &GameModeSession::entered, rootWindow, [rootWindow] {
+    QObject::connect(&gameMode, &GameModeSession::entered, rootWindow, [rootWindow, revealGameMode] {
       QMetaObject::invokeMethod(rootWindow, "enterGameMode");
       rootWindow->setVisible(true);
       rootWindow->requestActivate();
+      revealGameMode();
     });
     QObject::connect(&gameMode, &GameModeSession::leaving, rootWindow, [rootWindow](bool retainNavigation) {
       QMetaObject::invokeMethod(rootWindow, "leaveGameMode",
@@ -7057,7 +7087,12 @@ int main(int argc, char* argv[]) {
                              QVariantMap{}, 8000});
                          (void)QDBusConnection::sessionBus().asyncCall(notification, 2500);
                        }
-                       if (!gameMode.hasSession()) rootWindow->setVisible(true);
+                       if (!gameMode.hasSession()) {
+                         if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow))
+                           quick->contentItem()->setOpacity(1);
+                         rootWindow->setTitle(QStringLiteral("Omakade"));
+                         rootWindow->setVisible(true);
+                       }
                      });
     QObject::connect(&gameMode, &GameModeSession::notice, rootWindow, toast);
   }
@@ -7151,27 +7186,40 @@ int main(int argc, char* argv[]) {
   QObject::connect(&singleInstance, &SingleInstance::quitRequested, &application,
                    &QCoreApplication::quit);
 
+  // Keep the empty library's loading state continuous across staggered source
+  // starts. A gap between scans must not briefly claim that no games exist.
+  const auto scheduleStartupScan = [rootWindow](int delay, auto* source, auto refresh) {
+    if (rootWindow)
+      rootWindow->setProperty("pendingStartupScans",
+                             rootWindow->property("pendingStartupScans").toInt() + 1);
+    QTimer::singleShot(delay, source, [rootWindow, source, refresh] {
+      (source->*refresh)();
+      if (rootWindow)
+        rootWindow->setProperty("pendingStartupScans",
+                               rootWindow->property("pendingStartupScans").toInt() - 1);
+    });
+  };
   if (steamLibrary != nullptr && preferences.steamEnabled()) {
-    QTimer::singleShot(0, steamLibrary, &SteamGameModel::refresh);
+    scheduleStartupScan(0, steamLibrary, &SteamGameModel::refresh);
   }
   if (lutrisLibrary != nullptr && preferences.lutrisEnabled()) {
-    QTimer::singleShot(150, lutrisLibrary, &LutrisGameModel::refresh);
+    scheduleStartupScan(150, lutrisLibrary, &LutrisGameModel::refresh);
   }
   if (heroicLibrary != nullptr && (preferences.heroicEnabled() || preferences.gogEnabled())) {
-    QTimer::singleShot(300, heroicLibrary, &HeroicGameModel::refresh);
+    scheduleStartupScan(300, heroicLibrary, &HeroicGameModel::refresh);
   }
   if (faugusLibrary != nullptr && preferences.faugusEnabled()) {
-    QTimer::singleShot(450, faugusLibrary, &FaugusGameModel::refresh);
+    scheduleStartupScan(450, faugusLibrary, &FaugusGameModel::refresh);
   }
   if (retroArchLibrary != nullptr && preferences.retroArchEnabled() && !consolePortalTest) {
-    QTimer::singleShot(600, retroArchLibrary, &RetroArchGameModel::refresh);
+    scheduleStartupScan(600, retroArchLibrary, &RetroArchGameModel::refresh);
   }
   // Sources start disabled and switch on once their emulator is detected, unless
   // the user wrote an explicit pcsx2_enabled/ryujinx_enabled key. Scans only run
   // while the source is enabled or still eligible for automatic detection.
   if (pcsx2Library != nullptr &&
       (preferences.pcsx2Enabled() || preferences.pcsx2AutoEnabled())) {
-    QTimer::singleShot(650, pcsx2Library, &Pcsx2GameModel::refresh);
+    scheduleStartupScan(650, pcsx2Library, &Pcsx2GameModel::refresh);
     QObject::connect(pcsx2Library, &Pcsx2GameModel::statusChanged, pcsx2Library,
                      [&preferences, pcsx2Library] {
                        if (pcsx2Library->pcsx2Detected() && preferences.pcsx2AutoEnabled()) {
@@ -7182,7 +7230,7 @@ int main(int argc, char* argv[]) {
   }
   if (ryujinxLibrary != nullptr &&
       (preferences.ryujinxEnabled() || preferences.ryujinxAutoEnabled())) {
-    QTimer::singleShot(700, ryujinxLibrary, &RyujinxGameModel::refresh);
+    scheduleStartupScan(700, ryujinxLibrary, &RyujinxGameModel::refresh);
     QObject::connect(ryujinxLibrary, &RyujinxGameModel::statusChanged, ryujinxLibrary,
                      [&preferences, ryujinxLibrary] {
                        if (ryujinxLibrary->ryujinxDetected() && preferences.ryujinxAutoEnabled()) {
@@ -7193,7 +7241,7 @@ int main(int argc, char* argv[]) {
   }
   if (shadps4Library != nullptr &&
       (preferences.shadps4Enabled() || preferences.shadps4AutoEnabled())) {
-    QTimer::singleShot(720, shadps4Library, &Shadps4GameModel::refresh);
+    scheduleStartupScan(720, shadps4Library, &Shadps4GameModel::refresh);
     QObject::connect(shadps4Library, &Shadps4GameModel::statusChanged, shadps4Library,
                      [&preferences, shadps4Library] {
                        if (shadps4Library->shadps4Detected() && preferences.shadps4AutoEnabled()) {
@@ -7204,7 +7252,7 @@ int main(int argc, char* argv[]) {
   }
   if (dolphinLibrary != nullptr &&
       (preferences.dolphinEnabled() || preferences.dolphinAutoEnabled())) {
-    QTimer::singleShot(760, dolphinLibrary, &DolphinGameModel::refresh);
+    scheduleStartupScan(760, dolphinLibrary, &DolphinGameModel::refresh);
     QObject::connect(dolphinLibrary, &DolphinGameModel::statusChanged, dolphinLibrary,
                      [&preferences, dolphinLibrary] {
                        if (dolphinLibrary->dolphinDetected() && preferences.dolphinAutoEnabled()) {
@@ -7214,7 +7262,7 @@ int main(int argc, char* argv[]) {
                      });
   }
   if (cemuLibrary != nullptr && (preferences.cemuEnabled() || preferences.cemuAutoEnabled())) {
-    QTimer::singleShot(740, cemuLibrary, &CemuGameModel::refresh);
+    scheduleStartupScan(740, cemuLibrary, &CemuGameModel::refresh);
     QObject::connect(cemuLibrary, &CemuGameModel::statusChanged, cemuLibrary,
                      [&preferences, cemuLibrary] {
                        if (cemuLibrary->cemuDetected() && preferences.cemuAutoEnabled()) {
@@ -7225,7 +7273,7 @@ int main(int argc, char* argv[]) {
   }
   if (rpcs3Library != nullptr &&
       (preferences.rpcs3Enabled() || preferences.rpcs3AutoEnabled())) {
-    QTimer::singleShot(675, rpcs3Library, &Rpcs3GameModel::refresh);
+    scheduleStartupScan(675, rpcs3Library, &Rpcs3GameModel::refresh);
     QObject::connect(rpcs3Library, &Rpcs3GameModel::statusChanged, rpcs3Library,
                      [&preferences, rpcs3Library] {
                        if (rpcs3Library->rpcs3Detected() && preferences.rpcs3AutoEnabled()) {
@@ -7236,7 +7284,7 @@ int main(int argc, char* argv[]) {
   }
   if (ppssppLibrary != nullptr &&
       (preferences.ppssppEnabled() || preferences.ppssppAutoEnabled())) {
-    QTimer::singleShot(690, ppssppLibrary, &PpssppGameModel::refresh);
+    scheduleStartupScan(690, ppssppLibrary, &PpssppGameModel::refresh);
     QObject::connect(ppssppLibrary, &PpssppGameModel::statusChanged, ppssppLibrary,
                      [&preferences, ppssppLibrary] {
                        if (ppssppLibrary->ppssppDetected() && preferences.ppssppAutoEnabled()) {
@@ -7247,7 +7295,7 @@ int main(int argc, char* argv[]) {
   }
   if (melondsLibrary != nullptr &&
       (preferences.melondsEnabled() || preferences.melondsAutoEnabled())) {
-    QTimer::singleShot(750, melondsLibrary, &MelondsGameModel::refresh);
+    scheduleStartupScan(750, melondsLibrary, &MelondsGameModel::refresh);
     QObject::connect(melondsLibrary, &MelondsGameModel::statusChanged, melondsLibrary,
                      [&preferences, melondsLibrary] {
                        if (melondsLibrary->melondsDetected() &&
@@ -7258,7 +7306,7 @@ int main(int argc, char* argv[]) {
                      });
   }
   if (xeniaLibrary != nullptr && (preferences.xeniaEnabled() || preferences.xeniaAutoEnabled())) {
-    QTimer::singleShot(745, xeniaLibrary, &XeniaGameModel::refresh);
+    scheduleStartupScan(745, xeniaLibrary, &XeniaGameModel::refresh);
     QObject::connect(xeniaLibrary, &XeniaGameModel::statusChanged, xeniaLibrary,
                      [&preferences, xeniaLibrary] {
                        if (xeniaLibrary->xeniaDetected() && preferences.xeniaAutoEnabled()) {
@@ -7268,7 +7316,7 @@ int main(int argc, char* argv[]) {
                      });
   }
   if (battleNetLibrary != nullptr && preferences.battleNetEnabled()) {
-    QTimer::singleShot(750, battleNetLibrary, &BattleNetGameModel::refresh);
+    scheduleStartupScan(750, battleNetLibrary, &BattleNetGameModel::refresh);
   }
 
   if (gogSettingsTest || linkedPreferenceTest) {
@@ -7665,6 +7713,22 @@ int main(int argc, char* argv[]) {
         return ready();
       };
       const bool couchBefore = rootWindow->property("couchMode").toBool();
+      const int pendingScansBefore = rootWindow->property("pendingStartupScans").toInt();
+      rootWindow->setProperty("pendingStartupScans", 0);
+      const bool scanningBefore = rootWindow->property("libraryScanning").toBool();
+      rootWindow->setProperty("pendingStartupScans", 2);
+      if (!rootWindow->property("libraryScanning").toBool()) {
+        fail(QStringLiteral("Queued startup scans did not retain the library loading state")); return;
+      }
+      rootWindow->setProperty("pendingStartupScans", 1);
+      if (!rootWindow->property("libraryScanning").toBool()) {
+        fail(QStringLiteral("A gap between startup scans flashed the empty library")); return;
+      }
+      rootWindow->setProperty("pendingStartupScans", 0);
+      if (rootWindow->property("libraryScanning").toBool() != scanningBefore) {
+        fail(QStringLiteral("Startup scan completion did not release the loading state")); return;
+      }
+      rootWindow->setProperty("pendingStartupScans", pendingScansBefore);
       const auto preparationRestored = [rootWindow, couchBefore](const QVariant& desktopVisibility) {
         return rootWindow->property("couchMode").toBool() == couchBefore &&
                rootWindow->property("desktopVisibility") == desktopVisibility &&
@@ -7713,7 +7777,8 @@ int main(int argc, char* argv[]) {
             ++mapped;
             mappedWrongPresentation = mappedWrongPresentation ||
                 !rootWindow->property("couchMode").toBool() ||
-                rootWindow->windowState() != Qt::WindowFullScreen;
+                rootWindow->windowState() != Qt::WindowFullScreen ||
+                qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() != 0;
           });
       for (int cycle = 0; cycle < 3; ++cycle) {
         gameMode.enter();
@@ -7724,6 +7789,12 @@ int main(int argc, char* argv[]) {
         }
         if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
           fail(QStringLiteral("Cold presentation fixture did not enter or resume"));
+          return;
+        }
+        if (!settled([rootWindow] {
+              return qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() == 1;
+            })) {
+          fail(QStringLiteral("Cold Game Mode did not reveal its completed first frame"));
           return;
         }
         gameMode.park();
@@ -7754,11 +7825,17 @@ int main(int argc, char* argv[]) {
         fail(QStringLiteral("Cold root was exposed before couch layout and native fullscreen"));
         return;
       }
+      // A fast park can cancel the initial frame callback. Library activation
+      // must reveal its own complete scene even when that frame never appeared.
+      qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->setOpacity(0);
       showGuideLibrary();
       QCoreApplication::processEvents();
       if (!gameMode.parked() || !rootWindow->isVisible() ||
           !rootWindow->property("couchMode").toBool() ||
-          rootWindow->windowState() != Qt::WindowFullScreen) {
+          rootWindow->windowState() != Qt::WindowFullScreen ||
+          !settled([rootWindow] {
+            return qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() == 1;
+          })) {
         fail(QStringLiteral("Guide library resumed the game or failed to show the retained fullscreen library"));
         return;
       }

@@ -442,7 +442,7 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     // new window. A placeholder keeps its exact place instead. A floating window keeps its
     // own position, so it needs none. The compositor clears fullscreen before swapping.
     GameModeWindow placeholder;
-    if (m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
+    if (!state.temporaryWindow && m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
@@ -932,7 +932,7 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
   // The warm window may have moved while parked; this cycle owns its current home.
   if (window.workspace != workspace()) {
     GameModeWindow placeholder;
-    if (m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
+    if (!m_state.temporaryWindow && m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
