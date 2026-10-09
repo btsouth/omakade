@@ -281,8 +281,13 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
-    if (!m_guide.showing() && !m_guide.parked() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};
-    if (action == "toggle" && !m_guide.parked() && !m_guide.usable()) return {{"result", "unavailable"}};
+    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable())) {
+      // A disabled plugin returns ownership to 1.15 Game Mode, including a
+      // guide-owned parked pause. Let its toggle restore the window exactly once.
+      if (m_guide.parked()) m_guide.close();
+      return {{"result", "fallback"}};
+    }
+    if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");
   } else reply.insert("result", "unavailable");
   return reply;

@@ -145,9 +145,29 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QFile secondSummon(summonFile); QVERIFY(secondSummon.open(QIODevice::ReadOnly));
   const auto secondBackend = QJsonDocument::fromJson(secondSummon.readAll()).object().value("backend").toObject();
   QLocalSocket secondPlugin; secondPlugin.connectToServer(secondBackend.value("socket").toString()); QVERIFY(secondPlugin.waitForConnected());
-  for (const auto& action : {QString("opened"), QString("library")}) {
+  for (const auto& action : {QString("opened"), QString("desktop")}) {
     secondPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", secondBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
     QVERIFY(secondPlugin.waitForBytesWritten()); QTest::qWait(30);
+  }
+  const auto stopped = [&] {
+    QFile state(QStringLiteral("/proc/%1/stat").arg(game.processId()));
+    if (!state.open(QIODevice::ReadOnly)) return false;
+    const auto raw = state.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).startsWith('T');
+  };
+  QTRY_VERIFY(stopped());
+  QTest::qWait(100);
+  QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[]})"));
+  QCOMPARE(control("shortcut").value("result").toString(), "fallback");
+  QTRY_VERIFY(!stopped());
+  QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[{"id":"omakade.guide"}]})"));
+  shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"}); QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
+  QTRY_VERIFY(([&] { QFile calls(shellLog); return calls.open(QIODevice::ReadOnly) && calls.readAll().count("shell summon omakade.guide") == 3; })());
+  QFile thirdSummon(summonFile); QVERIFY(thirdSummon.open(QIODevice::ReadOnly));
+  const auto thirdBackend = QJsonDocument::fromJson(thirdSummon.readAll()).object().value("backend").toObject();
+  QLocalSocket thirdPlugin; thirdPlugin.connectToServer(thirdBackend.value("socket").toString()); QVERIFY(thirdPlugin.waitForConnected());
+  for (const auto& action : {QString("opened"), QString("library")}) {
+    thirdPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", thirdBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
+    QVERIFY(thirdPlugin.waitForBytesWritten()); QTest::qWait(30);
   }
   QTRY_VERIFY(([&] { QFile output(queryLog); return output.open(QIODevice::ReadOnly) && output.readAll().contains("dispatch exec"); })());
   QCOMPARE(control("close").value("result").toString(), "handled");
