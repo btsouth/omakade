@@ -10,8 +10,8 @@ tools/guide-overlay-preview/render-plugin.sh OUT_DIR apple-dark gruvbox catppucc
 
 Each theme gets one full-screen shot per fixture in `fixtures/`, named
 `THEME-FIXTURE.png`. `FIXTURES="lantern-road recording"` picks fixtures, `PAD`
-the button names (`xbox`, `playstation`, `nintendo`, `deck`, `keyboard`) and
-`OMABOX_BOX` the box. Use `omabox up --size 1280x720` or `2560x1440` for other
+the button names (`xbox`, `playstation`, `nintendo`, `deck`, `keyboard`),
+`SCALE` the couch scale and `OMABOX_BOX` the box. Use `omabox up --size 1280x720` or `2560x1440` for other
 screen sizes.
 
 A fixture is the card's data without the backend: `game` as Omakade sends it,

@@ -110,7 +110,7 @@ from Omakade. Input is ordered on that persistent connection. Old v1 payload
 readers ignore the added optional fields. Shell lifecycle commands remain serialized. `input`, `state` and `update` are callable root methods. An open-only
 heartbeat releases ownership if the shell disappears or opens a different payload.
 
-The fixture payload (`fixture`, `pad`) remains supported by preview tooling. A generic
+The fixture payload (`fixture`, `pad`, `scale`) remains supported by preview tooling. A generic
 summon with `{}` clears the game: the card says no game is running and keeps
 Screenshot, Record clip and Volume, which stay plugin-owned. Resume and Quit are absent
 without a known game; unknown readings stay absent.

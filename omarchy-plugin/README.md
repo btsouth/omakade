@@ -24,6 +24,10 @@ come from Omakade when MangoHud reports them, CPU and GPU load and temperature
 from the drivers. Without a game the header says so and Resume and Quit are
 hidden.
 
+A payload `scale` (Omakade's couch mode) multiplies every size and gap of the
+card, so it reads from a couch; 1 is exactly the Omarchy menu. Where the scaled
+card would not fit the screen it shrinks only as far as it must.
+
 ## Input
 
 Actions arrive from the keyboard or, for controllers, from Omakade over the guide
