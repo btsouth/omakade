@@ -68,8 +68,15 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   // An early default.target service acquires its desktop environment after login.
   QVERIFY(QDir().mkpath(runtime + "/hypr/late-test"));
   QLocalServer events; QVERIFY(events.listen(runtime + "/hypr/late-test/.socket2.sock"));
-  QTRY_VERIFY(events.hasPendingConnections());
-  auto* eventPeer = events.nextPendingConnection(); QVERIFY(eventPeer);
+  QPointer<QLocalSocket> eventPeer;
+  connect(&events, &QLocalServer::newConnection, &events, [&] {
+    while (auto* peer = events.nextPendingConnection()) eventPeer = peer;
+  });
+  // Environment discovery may first make a short reachability probe.
+  QTRY_VERIFY(eventPeer && eventPeer->state() == QLocalSocket::ConnectedState);
+  QTRY_VERIFY(!events.hasPendingConnections());
+  QTest::qWait(50);
+  QTRY_VERIFY(eventPeer && eventPeer->state() == QLocalSocket::ConnectedState);
   QTRY_VERIFY(QFileInfo::exists(runtime + QStringLiteral("/omakade-guide-control-%1").arg(::getuid())));
   // A second daemon must fail before either guide socket is removed.
   QProcess second; second.setProcessEnvironment(env); second.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
@@ -257,12 +264,14 @@ void ResidentGuideTests::missingServiceHomeFallback() {
   QVERIFY(button.waitForStarted());
   const auto cleanup = qScopeGuard([&] { button.kill(); button.waitForFinished(); });
   QTest::qWait(1200); QCOMPARE(button.state(), QProcess::Running);
-  for (int value : {1, 0}) {
+  for (int value : {1, 0, 1, 0}) {
     input_event event{}; event.type = EV_KEY; event.code = BTN_MODE; event.value = value;
     QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
     QTest::qWait(30);
   }
   QTRY_VERIFY_WITH_TIMEOUT(([&] { QFile output(log); return output.open(QIODevice::ReadOnly) && output.readAll().contains("--game-mode-fallback --guide-device"); })(), 5000);
+  QTest::qWait(500);
+  QFile fallbackLog(log); QVERIFY(fallbackLog.open(QIODevice::ReadOnly)); QCOMPARE(fallbackLog.readAll().count("--game-mode-fallback --guide-device"), 1);
   QFile unit(QStringLiteral(OMAKADE_SOURCE_DIR "/packaging/omakade-guide-button.service")); QVERIFY(unit.open(QIODevice::ReadOnly));
   const auto text = unit.readAll(); QVERIFY(text.contains("Wants=omakade-sessiond.service")); QVERIFY(!text.contains("Requires="));
 }
