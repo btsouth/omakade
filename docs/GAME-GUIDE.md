@@ -2,7 +2,7 @@
 
 The guide is the `omakade.guide` Omarchy shell overlay in `omarchy-plugin/`.
 Omakade owns game discovery, controller input and pause state. The shell renders the
-approved D2 interface. On other desktops, and wherever the plugin is not enabled,
+guide card. On other desktops, and wherever the plugin is not enabled,
 Omakade keeps its existing Game Mode controls.
 
 ## Setup
@@ -30,7 +30,8 @@ Guide-button detection still uses `omakade-guide-button` and its short, solitary
 policy. It forwards the originating event node. While open, Omakade grabs all detected
 Guide-capable controller evdev nodes, including virtual pads, and translates their
 physical button positions, hats and calibrated left stick into guide actions. The
-keyboard uses the same actions. B, Guide and Start close the guide; LB/RB change tabs.
+keyboard uses the same actions. B, Guide and Start close the guide; B first backs out of
+the quit question.
 Grabs are per device. A pad that cannot be grabbed does not block opening; the guide
 keeps reading any pad it can open and warns that the named pad may still reach the game.
 A pad it cannot open is skipped with a warning. A disconnected reader or a dropped input report closes
@@ -109,15 +110,16 @@ from Omakade. Input is ordered on that persistent connection. Old v1 payload
 readers ignore the added optional fields. Shell lifecycle commands remain serialized. `input`, `state` and `update` are callable root methods. An open-only
 heartbeat releases ownership if the shell disappears or opens a different payload.
 
-The fixture payload (`fixture`, `tab`, `pad`, `scale`, `audit`) remains supported by
-preview tooling. A generic summon with `{}` clears the game and opens System,
-with a real clock and independent quick settings. Generic capture, audio, media, batteries and quick settings stay plugin-owned.
-Game controls are absent without a known game; unknown hardware values stay absent.
+The fixture payload (`fixture`, `pad`) remains supported by preview tooling. A generic
+summon with `{}` clears the game: the card says no game is running and keeps
+Screenshot, Record clip and Volume, which stay plugin-owned. Resume and Quit are absent
+without a known game; unknown readings stay absent.
 
-Frozen capture resets the source on each open and waits for `ScreencopyView.hasContent`
-before mapping the overlay. If capture is unsupported, it opens after a bounded 750 ms
-with the theme scrim. Theme changes snapshot the complete previous panel and fade it
-out over the new panel in 180 ms; reduced motion applies the new theme immediately.
+The card shows as soon as the overlay surface has its full size, with no capture step
+first: the card fades in over 140 ms and closes at once. A summon that lands while the
+previous hide is still shrinking the surface waits for it to park before showing again,
+so the overlay never stays at 1x1. `ready` answers only once the surface has its size
+and the card is fully shown.
 
 ## Game actions
 
@@ -139,8 +141,9 @@ Omakade adds `MANGOHUD=1` only to directly launched Manual games and emulators w
 MangoHud is installed. Each launch has a unique configuration and abstract control
 socket. The HUD always starts hidden. Steam shows the launch option
 `MANGOHUD=1 %command%`; games with no verified control socket show setup guidance.
-The Performance page reports driver-provided CPU/GPU, RAM/VRAM, temperature and
-power counters where available. It omits unavailable sensors and FPS telemetry.
+The card's readings line shows driver-provided CPU/GPU load and temperature where
+available, and frame rate and frame time only when the payload carries them. It omits
+unavailable readings.
 
 MangoHud's normal Vulkan/OpenGL socket accepts `:hud;` to toggle visibility. It
 supports neither selecting HUD detail nor setting a frame limit. `mangohudctl`
@@ -156,8 +159,8 @@ Controller identify uses a 500 ms rumble effect on Omakade's existing evdev fd
 while the native guide is open. Generic mode uses the plugin helper. Controllers
 without rumble support report an error. Physical rumble requires hardware testing.
 
-See `omarchy-plugin/README.md` for capture paths, replay, audio, batteries, settings
-and couch scale. Those features work independently of Omakade.
+See `omarchy-plugin/README.md` for the card, capture and sound. Those features work
+independently of Omakade.
 
 ## Isolated verification
 
@@ -185,7 +188,7 @@ used by the evdev reader, without claiming that a box has real controller device
 Native tests cover payload and plugin parser agreement, unknown data, button mapping,
 axis calibration/hysteresis, family selection, process-tree pause, identity refusal,
 pipe-loss and guard-death resume, per-device grabs, quit escalation,
-MangoHud configuration and Auto couch-scale boundaries. A box covers shell IPC, capture, navigation, themes, process
+MangoHud configuration. A box covers shell IPC, capture, navigation, themes, process
 signals and compositor focus. Physical evdev grabs, hidraw/Steam Input leak paths and
 multiple physical monitors remain hardware checks.
 
