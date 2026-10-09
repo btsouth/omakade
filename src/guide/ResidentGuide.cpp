@@ -278,7 +278,7 @@ void ResidentGuide::launchLibrary(bool fallback) {
   // Hyprland owns the launched library and its descendants, outside sessiond's
   // service cgroup. A recorder restart must never kill the user's game.
   auto quotedExecutable = executable; quotedExecutable.replace('\'', QString("'\\''"));
-  const auto command = "'" + quotedExecutable + "'" + (fallback ? " --game-mode-fallback" : "");
+  const auto command = "'" + quotedExecutable + "'" + (fallback ? " --game-mode-fallback" : " --guide-library");
   auto* process = new QProcess(this); process->setProcessEnvironment(m_environment);
   connect(process, &QProcess::finished, process, [process](int code, QProcess::ExitStatus status) {
     if (status != QProcess::NormalExit || code != 0 || process->readAllStandardOutput().trimmed() != "ok")

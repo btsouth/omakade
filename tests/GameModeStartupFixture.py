@@ -49,7 +49,7 @@ with open(str(path) + ".lock", "w") as lock:
                   client("0xcc", state["owner"], "special:omakade", "Omakade Game Mode Placeholder", "Omakade"),
                   client("0xdd", int(os.environ["GM_DESKTOP_PID"]), "1", "Desktop", "fixture")]
         if hidden:
-            result[0]["mapped"] = False
+            result[0]["mapped"] = state.get("guide_library", False)
         if state.get("ending") and journal.get("temporary_window"):
             result[0]["mapped"] = False
         if journal.get("phase") == "parked" and (not journal.get("window_placed")

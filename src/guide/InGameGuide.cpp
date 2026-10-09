@@ -55,6 +55,10 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
                           GameLauncher* launcher, bool enabled, QObject* parent)
     : QObject(parent), m_sessions(sessions), m_library(library), m_gameMode(gameMode),
       m_launcher(launcher), m_compositor(compositor), m_enabled(enabled) {
+  if (m_gameMode) {
+    connect(m_gameMode, &GameModeSession::parkedOnDesktop, this, [this] { parkComplete(true); });
+    connect(m_gameMode, &GameModeSession::failed, this, [this] { parkComplete(false); });
+  }
   m_socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) +
                  QStringLiteral("/omakade-guide-%1").arg(::getuid());
   m_server.setSocketOptions(QLocalServer::UserAccessOption);
@@ -452,7 +456,10 @@ void InGameGuide::parkNow() {
   // Retain the crash-safe pause guard and the exact game snapshot while out on the desktop.
   m_parked = true;
   finishClose(true, true);
-  if (m_gameMode && m_gameMode->active()) m_gameMode->park();
+  if (m_gameMode && m_gameMode->active()) {
+    m_waitingManagedPark = true;
+    m_gameMode->park();
+  }
   else if (m_managedRetained) {
     m_waitingManagedPark = true;
     const auto generation = ++m_parkGeneration;
@@ -464,11 +471,12 @@ void InGameGuide::parkNow() {
     connect(process, &QProcess::finished, this, [this, process](int code, QProcess::ExitStatus status) {
       process->deleteLater();
       if (code != 0 || status != QProcess::NormalExit) {
+        m_libraryAfterPark = false;
         restoreWindow([this](bool) { m_parked = false; stopGuard(); });
-      }
+      } else finishPark();
     });
     connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
-      if (error == QProcess::FailedToStart) { m_parked = false; stopGuard(); process->deleteLater(); }
+      if (error == QProcess::FailedToStart) { m_libraryAfterPark = false; m_parked = false; stopGuard(); process->deleteLater(); }
     });
     QTimer::singleShot(2500, process, [process] { process->kill(); });
     process->setProcessEnvironment(m_environment);
@@ -476,10 +484,17 @@ void InGameGuide::parkNow() {
   }
 }
 
+void InGameGuide::finishPark() {
+  if (!m_libraryAfterPark) return;
+  m_libraryAfterPark = false;
+  emit libraryRequested();
+}
+
 void InGameGuide::parkComplete(bool ok) {
   if (!m_waitingManagedPark) return;
   m_waitingManagedPark = false;
-  if (ok) return;
+  if (ok) { finishPark(); return; }
+  m_libraryAfterPark = false;
   // Game Mode can refuse a park (for example, when audio cannot be silenced).
   // Roll back our extra pause too, rather than leaving a paused, closed guide.
   m_managedRetained = false;
@@ -544,7 +559,7 @@ void InGameGuide::finishClose(bool hide, bool retainPause) {
   m_polling = false;
   m_commands.clear();
   m_input.release();
-  if (!retainPause) { m_parked = m_parking = m_restoring = m_managedRetained = m_waitingManagedPark = false; stopGuard(); }
+  if (!retainPause) { m_libraryAfterPark = false; m_parked = m_parking = m_restoring = m_managedRetained = m_waitingManagedPark = false; stopGuard(); }
   m_lastPayload = {};
   emit changed();
   if (hadGuide) qInfo("Guide timing: closed elapsed_ms=%lld", closeClock.elapsed());
@@ -584,10 +599,11 @@ void InGameGuide::message(const QJsonObject& data) {
       m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
       if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
     }
-  } else if (action == "desktop" && m_opened && !m_session.isEmpty()) {
+  } else if ((action == "desktop" || action == "library") && m_opened && !m_session.isEmpty()) {
+    m_libraryAfterPark = action == "library";
     m_parking = true;
     if (!m_pauseWhileOpen) { stopGuard(); parkNow(); }
-    else if (!setPaused(true)) { m_parking = false; toast("Return to desktop unavailable", "The game could not be paused"); }
+    else if (!setPaused(true)) { m_libraryAfterPark = false; m_parking = false; toast("Return to desktop unavailable", "The game could not be paused"); }
     else if (m_paused) parkNow();
   } else if (action == "library" && m_opened) {
     m_restoreFocus = false; close(); emit libraryRequested();

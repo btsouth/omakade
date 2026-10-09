@@ -921,6 +921,7 @@ int main(int argc, char* argv[]) {
   SingleInstance singleInstance;
   const QByteArray instanceCommand =
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
+      : application.arguments().contains("--guide-library") ? QByteArray("guide library")
       : gameModeRequest                  ? QByteArray("game-mode enter")
       : couchRequest                     ? QByteArray("activate stream")
                                          : QByteArray("activate");
@@ -6964,14 +6965,27 @@ int main(int argc, char* argv[]) {
   });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
                    [&inGameGuide](const QString& node) { inGameGuide.toggle(node, true); });
-  QObject::connect(&inGameGuide, &GuideClient::libraryRequested, &application, [rootWindow, &gameModeCompositor, &application] {
+  const auto showGuideLibrary = [rootWindow, &gameMode, &gameModeCompositor, &application] {
     if (!rootWindow) return;
-    rootWindow->show(); rootWindow->requestActivate();
+    // Parking has already hidden the game and retained its pause. Show the
+    // session's library without resuming or focusing that game.
+    if (gameMode.hasSession()) {
+      QMetaObject::invokeMethod(rootWindow, "prepareGameModeLayout", Q_ARG(QVariant, QVariant(true)));
+      rootWindow->setWindowState(Qt::WindowFullScreen);
+      rootWindow->setProperty("gameModeNavigationRestoring", false);
+      rootWindow->showFullScreen();
+    } else rootWindow->show();
+    rootWindow->requestActivate();
+    QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
     QTimer::singleShot(150, &application, [&gameModeCompositor] {
       const auto window = gameModeCompositor.windowForPid(QCoreApplication::applicationPid());
       if (window.valid()) gameModeCompositor.focusWindow(window.address);
     });
-  });
+  };
+  QObject::connect(&singleInstance, &SingleInstance::guideLibraryRequested, &application, showGuideLibrary);
+  QObject::connect(&inGameGuide, &GuideClient::libraryRequested, &application, showGuideLibrary);
+  if (application.arguments().contains("--guide-library"))
+    QTimer::singleShot(0, &application, showGuideLibrary);
   if (coldGuideRequest) QTimer::singleShot(0, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice, true); });
   if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
   gameMode.setTemporaryWindow(gameModeRequest);
@@ -7636,7 +7650,7 @@ int main(int argc, char* argv[]) {
     // Game Mode holds Couch Mode for its session. Every way of switching modes opens its
     // controls instead of leaving, and leaving returns the window to the mode it had.
     QTimer::singleShot(200, &application, [&application, rootWindow, &gameMode, &gameStop, &controller,
-                                         &gameModeTestCompositor] {
+                                         &gameModeTestCompositor, showGuideLibrary] {
       const auto fail = [&application](const QString& message) {
         qCritical().noquote() << message;
         application.exit(EXIT_FAILURE);
@@ -7738,6 +7752,14 @@ int main(int argc, char* argv[]) {
       QObject::disconnect(mappingCheck);
       if (mappedWrongPresentation || mapped != 4) {
         fail(QStringLiteral("Cold root was exposed before couch layout and native fullscreen"));
+        return;
+      }
+      showGuideLibrary();
+      QCoreApplication::processEvents();
+      if (!gameMode.parked() || !rootWindow->isVisible() ||
+          !rootWindow->property("couchMode").toBool() ||
+          rootWindow->windowState() != Qt::WindowFullScreen) {
+        fail(QStringLiteral("Guide library resumed the game or failed to show the retained fullscreen library"));
         return;
       }
       gameMode.exit();

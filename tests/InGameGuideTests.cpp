@@ -34,6 +34,8 @@ private slots:
   void changedPayloadKeepsStaticData();
   void telemetryRequiresRealFreshReadings();
   void desktopRetainsPauseAndIdentity();
+  void libraryParksBeforeActivation_data();
+  void libraryParksBeforeActivation();
   void outsideParkAndResume_data();
   void outsideParkAndResume();
   void restoreFailureReleasesNewPause();
@@ -239,6 +241,50 @@ void InGameGuideTests::desktopRetainsPauseAndIdentity() {
   QTRY_VERIFY(!guide.m_parked); QTRY_VERIFY(!guide.m_paused); QTRY_VERIFY(processState(pid) != 'T');
   guide.close(); QTRY_VERIFY(!guide.m_paused); QVERIFY(!guide.m_guard); QVERIFY(!guide.m_parked); QTRY_VERIFY(processState(pid) != 'T');
   game.terminate(); QVERIFY(game.waitForFinished());
+}
+
+void InGameGuideTests::libraryParksBeforeActivation_data() {
+  QTest::addColumn<bool>("managed");
+  QTest::addColumn<bool>("accepted");
+  QTest::newRow("game-mode-library") << true << true;
+  QTest::newRow("cold-gui-library") << false << true;
+  QTest::newRow("refused-game-mode-park") << true << false;
+}
+
+void InGameGuideTests::libraryParksBeforeActivation() {
+  QFETCH(bool, managed); QFETCH(bool, accepted);
+  QTemporaryDir root; QVERIFY(root.isValid());
+  QFile hyprctl(root.filePath("hyprctl")); QVERIFY(hyprctl.open(QIODevice::WriteOnly));
+  hyprctl.write("#!/bin/sh\nexit 0\n"); hyprctl.close();
+  QVERIFY(hyprctl.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", root.path().toUtf8() + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}, {"source", "Manual"}};
+  guide.setContext({{"gameModeActive", managed}});
+  guide.m_opened = true;
+  QSignalSpy libraries(&guide, &InGameGuide::libraryRequested), parks(&guide, &InGameGuide::parkRequested);
+  guide.message({{"action", "library"}});
+  QTRY_VERIFY(guide.parked()); QTRY_COMPARE(processState(game.processId()), 'T');
+  QVERIFY(!guide.opened()); QVERIFY(guide.m_guard);
+  if (managed) {
+    QCOMPARE(parks.count(), 1); QCOMPARE(libraries.count(), 0);
+    guide.parkComplete(accepted);
+  }
+  if (accepted) {
+    QTRY_COMPARE(libraries.count(), 1);
+    QVERIFY(guide.parked()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
+    guide.m_enabled = true;
+    QSignalSpy restores(&guide, &InGameGuide::restoreRequested);
+    if (managed) { QVERIFY(guide.toggle()); QCOMPARE(restores.count(), 1); }
+    guide.close(); QTRY_VERIFY(processState(game.processId()) != 'T');
+  } else {
+    QTRY_VERIFY(!guide.parked()); QTRY_VERIFY(processState(game.processId()) != 'T');
+    QCOMPARE(libraries.count(), 0);
+  }
 }
 
 void InGameGuideTests::steamArtSelection() {

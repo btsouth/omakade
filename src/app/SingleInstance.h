@@ -26,6 +26,7 @@ signals:
   void gameModeToggleRequested(const QString& node);
   void guideToggleRequested(const QString& node);
   void gameModeDesktopRequested();
+  void guideLibraryRequested();
   void quitRequested();
   void trackingStorageFailed();
   // The recorder's durable recovery journal is full or was found damaged, so refused writes
