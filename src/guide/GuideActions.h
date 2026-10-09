@@ -8,7 +8,6 @@ namespace GuideActions {
 QString mangoConfig(const QString& socket, const QString& level, int limit);
 QProcessEnvironment mangoEnvironment(QProcessEnvironment base, bool installed,
                                      const QString& config);
-QByteArray mangoVisibilityCommand(bool before, bool after);
 // Pins an exact process tree for graceful termination and later explicit escalation.
 class Tree final {
 public:

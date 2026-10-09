@@ -27,7 +27,6 @@ QProcessEnvironment mangoEnvironment(QProcessEnvironment base, bool installed, c
   }
   return base;
 }
-QByteArray mangoVisibilityCommand(bool before, bool after) { return before == after ? QByteArray{} : QByteArray(":hud;"); }
 Tree::~Tree() { clear(); }
 void Tree::clear() { for (const auto& e : m_entries) ::close(e.fd); m_entries.clear(); }
 bool Tree::adopt(const QJsonArray& identities) {

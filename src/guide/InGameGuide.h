@@ -91,12 +91,11 @@ private:
   QJsonArray m_achievements;
   QString m_achievementKey;
   void cacheAchievements();
-  QLocalSocket m_mango;
   GuideActions::Tree m_resumeTree, m_quitTree;
   QPointer<QLocalSocket> m_peer;
   QString m_grabWarning;
   GuidePlugin::Paths m_pluginPaths;
-  bool m_forceReady = false, m_hudVisible = false;
+  bool m_forceReady = false;
   QLocalServer m_server;
   QTimer m_poll;
   struct Command { QStringList arguments; std::function<void(bool, QByteArray)> done; };

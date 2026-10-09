@@ -33,8 +33,6 @@ private:
   QString cardinal(bool held) const;
 };
 
-struct ff_effect;
-
 class GuideInput final : public QObject {
   Q_OBJECT
 public:
@@ -45,15 +43,10 @@ public:
   // Grab controllers that appeared since grab(); the /dev/input watcher calls this.
   void rescan();
   void inject(int type, int code, int value);
-  bool identify(const QString& node, QString* error);
   struct Access {
     std::function<QList<GuideListener::Controller>()> scan;
     std::function<int(const QString&)> open;
     std::function<bool(int)> grab;
-    std::function<bool(int)> supportsRumble;
-    std::function<bool(int, ff_effect*)> upload;
-    std::function<bool(int, int)> play;
-    std::function<void(int, int)> erase;
     std::function<void(int)> ungrab;
   };
   void setAccess(Access access) { m_access = std::move(access); }

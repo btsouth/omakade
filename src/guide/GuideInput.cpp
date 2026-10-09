@@ -123,16 +123,12 @@ struct GuideInput::Device {
   qint64 attachedAt = 0;
   QStringList pending;
   bool grabbed = false;
-  int effect = -1;
-  QTimer effectTimer;
-  std::function<void(int, int)> erase;
   std::function<void(int)> ungrab;
   GuideInputMap mapping;
   std::unique_ptr<QSocketNotifier> notifier;
   ~Device() {
     notifier.reset();
     if (fd >= 0) {
-      if (effect >= 0) erase(fd, effect);
       if (grabbed) ungrab(fd);
       ::close(fd);
     }
@@ -205,7 +201,6 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
     if (warnings) warnings->append(pad.name + " may still reach the game");
   }
   device->ungrab = m_access.ungrab ? m_access.ungrab : [](int fd) { ::ioctl(fd, EVIOCGRAB, 0); };
-  device->erase = m_access.erase ? m_access.erase : [](int fd, int effect) { ::ioctl(fd, EVIOCRMFF, effect); };
   device->family = GuidePayload::padFamily(pad.name);
   const int clock = CLOCK_MONOTONIC;
   device->monotonic = ::ioctl(device->fd, EVIOCSCLOCKID, &clock) == 0;
@@ -214,11 +209,6 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   auto* reader = device.get();
   device->notifier = std::make_unique<QSocketNotifier>(device->fd, QSocketNotifier::Read);
   connect(device->notifier.get(), &QSocketNotifier::activated, this, [this, reader] { read(*reader); });
-  device->effectTimer.setSingleShot(true);
-  connect(&device->effectTimer, &QTimer::timeout, device->notifier.get(), [reader] {
-    if (reader->effect >= 0) reader->erase(reader->fd, reader->effect);
-    reader->effect = -1;
-  });
   m_devices.push_back(std::move(device));
   return true;
 }
@@ -388,40 +378,4 @@ void GuideInput::inject(int type, int code, int value) {
 
 size_t GuideInput::grabbedCount() const {
   return std::count_if(m_devices.begin(), m_devices.end(), [](const auto& device) { return device->grabbed; });
-}
-
-bool GuideInput::identify(const QString& node, QString* error) {
-  if (error) error->clear();
-  for (const auto& device : m_devices) {
-    if (device->node != node) continue;
-    const bool supported = m_access.supportsRumble ? m_access.supportsRumble(device->fd) : [&] {
-      std::array<unsigned char, (FF_MAX + 8) / 8> effects{};
-      return ::ioctl(device->fd, EVIOCGBIT(EV_FF, effects.size()), effects.data()) >= 0 &&
-             (effects[FF_RUMBLE / 8] & (1 << (FF_RUMBLE % 8)));
-    }();
-    if (!supported) { if (error) *error = "This controller has no rumble support"; return false; }
-    device->effectTimer.stop();
-    if (device->effect >= 0) device->erase(device->fd, device->effect);
-    device->effect = -1;
-    ff_effect effect{};
-    effect.type = FF_RUMBLE;
-    effect.id = -1;
-    effect.replay.length = 500;
-    effect.u.rumble.strong_magnitude = effect.u.rumble.weak_magnitude = 0x7000;
-    const bool uploaded = m_access.upload ? m_access.upload(device->fd, &effect) : ::ioctl(device->fd, EVIOCSFF, &effect) == 0;
-    if (!uploaded) { if (error) *error = "The controller could not upload a rumble effect"; return false; }
-    device->effect = effect.id;
-    input_event play{};
-    play.type = EV_FF; play.code = effect.id; play.value = 1;
-    const bool played = m_access.play ? m_access.play(device->fd, effect.id) : ::write(device->fd, &play, sizeof(play)) == sizeof(play);
-    if (!played) {
-      device->erase(device->fd, device->effect); device->effect = -1;
-      if (error) *error = "The controller could not play the rumble effect";
-      return false;
-    }
-    device->effectTimer.start(550);
-    return true;
-  }
-  if (error) *error = "This controller is no longer connected to the guide";
-  return false;
 }

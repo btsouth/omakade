@@ -1,8 +1,6 @@
 #include "guide/InGameGuide.h"
 #include "achievements/AchievementModel.h"
 #include "guide/GuidePayload.h"
-#include "saves/SaveLayouts.h"
-#include "saves/SaveSetStore.h"
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeSession.h"
 #include "library/GameRoles.h"
@@ -211,7 +209,7 @@ void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& met
   }
   m_session = session; m_metadata = nextMetadata; m_output = output; m_window = window;
   if (changedGame) {
-    stopGuard(); m_hudVisible = false; m_mango.abort();
+    stopGuard();
     bool online = false;
     for (const auto& tag : metadata.value("tags").toStringList())
       if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
@@ -312,16 +310,7 @@ QJsonObject InGameGuide::payload() const {
       game.insert("achievements", achievements);
     }
     model.insert("game", game);
-    QSettings settings("Omakade", "Omakade");
-    const bool steam = m_session.value("source") == "Steam";
-    QFile sockets("/proc/net/unix");
-    const bool hooked = !steam && !m_session.value("mangoSocket").toString().isEmpty() &&
-        sockets.open(QIODevice::ReadOnly) && sockets.readAll().contains(("@" + m_session.value("mangoSocket").toString() + '\n').toUtf8());
-    model.insert("performance", QJsonObject{{"mangohud", hooked},
-        {"hud", settings.value("guide/hud", "off").toString()}, {"limit", settings.value("guide/limit", 0).toInt()},
-        {"setupHint", QStandardPaths::findExecutable("mangohud").isEmpty() ? "Install the mangohud package to see frame rate"
-                      : steam ? "Steam launch option: MANGOHUD=1 %command%" : "Launch this game again from Omakade"},
-        {"nextLaunch", true}});
+
   }
   data.insert("data", model);
   data.insert("backend", QJsonObject{{"socket", m_socketPath}, {"token", m_token}});
@@ -454,13 +443,7 @@ void InGameGuide::message(const QJsonObject& data) {
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
   else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
   else if (action == "closed") finishClose(false);
-  else if (action == "pause-while-open" && m_opened) {
-    m_pauseWhileOpen = data.value("value").toBool();
-    if (!setPaused(m_pauseWhileOpen)) m_pauseWhileOpen = false;
-    QSettings preferences("Omakade", "Omakade");
-    preferences.setValue("guide/pause/" + preferenceKey(m_session), m_pauseWhileOpen);
-    send({{"type", "update"}, {"payload", payload()}});
-  } else if (action == "inject" && m_injectedInput && m_opened) {
+  else if (action == "inject" && m_injectedInput && m_opened) {
     const auto event = data.value("value").toObject();
     if (m_testPadWriter >= 0) {
       input_event raw{};
@@ -471,10 +454,6 @@ void InGameGuide::message(const QJsonObject& data) {
       m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
       if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
     }
-  } else if (action == "identify" && m_opened) {
-    QString error;
-    const bool ok = m_input.identify(data.value("value").toString(), &error);
-    toast(ok ? "Controller identified" : "Controller could not be identified", error);
   } else if (action == "desktop" || action == "library") {
     m_restoreFocus = false;
     close();
@@ -482,56 +461,6 @@ void InGameGuide::message(const QJsonObject& data) {
       if (m_gameMode && m_gameMode->active()) m_gameMode->park();
       else QTimer::singleShot(150, this, [] { QProcess::startDetached("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"}); });
     } else emit libraryRequested();
-  } else if (action == "backup" && m_opened && !m_session.value("saveContext").toMap().isEmpty()) {
-    const auto context = QJsonObject::fromVariantMap(m_session.value("saveContext").toMap());
-    const auto layout = resolveSaveLayout(context, QDir::homePath(), QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg");
-    if (!layout.valid()) { toast("Backup unavailable", layout.error); return; }
-    const bool wasPaused = m_paused;
-    if (!m_paused) { setPaused(true); toast("Backup unavailable", "Wait until the game is paused, then try again"); return; }
-    SaveSetStore store(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-backups", [] { return false; });
-    store.setPolicy(10, 2LL * 1024 * 1024 * 1024);
-    QString error;
-    const bool ok = store.snapshot(context.value("game").toString(), context, layout, &error);
-    if (!wasPaused) stopGuard();
-    toast(ok ? "Saves backed up" : "Backup failed", error);
-  } else if (action == "steam-overlay" && m_opened && m_session.value("source") == "Steam") {
-    if (!m_compositor) return;
-    const auto window = gameWindow(m_session);
-    const auto game = m_session;
-    close();
-    if (!window.valid()) { toast("Steam overlay unavailable", "Press Shift+Tab in the game"); return; }
-    // The overlay hook in the game reads X11 key events, so it needs a real Shift press,
-    // not Tab with a Shift flag. Wait until the resumed game holds focus, then send it once.
-    auto attempts = std::make_shared<int>(0);
-    auto send = std::make_shared<std::function<void()>>();
-    *send = [this, window, game, attempts, send] {
-      if (m_opened || m_opening || !ProcFs::processAlive(game.value("pid").toLongLong(), game.value("procStart").toLongLong()) ||
-          gameWindow(game).address != window.address) return;
-      m_compositor->focusWindow(window.address);
-      QByteArray active;
-      QProcess probe; probe.start("hyprctl", {"-j", "activewindow"}); probe.waitForFinished(500);
-      active = probe.readAllStandardOutput();
-      if (QJsonDocument::fromJson(active).object().value("address").toString() != window.address) {
-        if (++*attempts < 8) QTimer::singleShot(100, this, *send);
-        else toast("Steam overlay unavailable", "Press Shift+Tab in the game");
-        return;
-      }
-      const auto xdotool = QStandardPaths::findExecutable("xdotool");
-      if (!xdotool.isEmpty() && window.xwayland) {
-        // XTEST into the game's XWayland server: the same events a keyboard makes.
-        QProcess::startDetached(xdotool, {"key", "--delay", "60", "shift+Tab"});
-        return;
-      }
-      const auto target = QStringLiteral("address:%1").arg(window.address);
-      const QStringList steps{
-        QStringLiteral("hl.dsp.send_key_state({mods=\"\",key=\"Shift_L\",state=\"down\",window=\"%1\"})").arg(target),
-        QStringLiteral("hl.dsp.send_key_state({mods=\"SHIFT\",key=\"Tab\",state=\"down\",window=\"%1\"})").arg(target),
-        QStringLiteral("hl.dsp.send_key_state({mods=\"SHIFT\",key=\"Tab\",state=\"up\",window=\"%1\"})").arg(target),
-        QStringLiteral("hl.dsp.send_key_state({mods=\"\",key=\"Shift_L\",state=\"up\",window=\"%1\"})").arg(target)};
-      for (int i = 0; i < steps.size(); ++i)
-        QTimer::singleShot(i * 40, this, [step = steps[i]] { QProcess::startDetached("hyprctl", {"dispatch", step}); });
-    };
-    QTimer::singleShot(250, this, *send);
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();
     if (action == "force-quit") {
@@ -560,35 +489,6 @@ void InGameGuide::message(const QJsonObject& data) {
       toast("Game is still running", "Force quit is now available");
     };
     QTimer::singleShot(200, this, *check);
-  } else if ((action == "hud" || action == "limit" || action == "enable-mangohud") && m_opened) {
-    if (action == "enable-mangohud") {
-      toast("MangoHud setup", QStandardPaths::findExecutable("mangohud").isEmpty() ? "Install it with: sudo pacman -S mangohud"
-            : m_session.value("source") == "Steam" ? "Add MANGOHUD=1 %command% to the game's Steam launch options" : "Launch the game again from Omakade");
-      return;
-    }
-    QSettings settings("Omakade", "Omakade");
-    if (action == "hud") {
-      const auto level = data.value("value").toString();
-      if (!QStringList{"off", "fps", "frametime", "full"}.contains(level)) return;
-      settings.setValue("guide/hud", level);
-      const auto command = GuideActions::mangoVisibilityCommand(m_hudVisible, level != "off");
-      if (!command.isEmpty() && !m_session.value("mangoSocket").toString().isEmpty()) {
-        if (m_mango.state() != QLocalSocket::ConnectedState) {
-          m_mango.abort();
-          m_mango.setSocketOptions(QLocalSocket::AbstractNamespaceOption);
-          m_mango.connectToServer(m_session.value("mangoSocket").toString());
-          m_mango.waitForConnected(200);
-        }
-        if (m_mango.state() == QLocalSocket::ConnectedState && m_mango.write(command) == command.size() && m_mango.waitForBytesWritten(200)) m_hudVisible = level != "off";
-        else toast("MangoHud control unavailable");
-      }
-    } else {
-      const int limit = data.value("value").toInt(-1);
-      if (limit < 0 || limit > 1000) return;
-      settings.setValue("guide/limit", limit);
-    }
-    toast("Setting saved", "HUD detail and frame limit apply at next launch");
-    send({{"type", "update"}, {"payload", payload()}});
   }
 }
 

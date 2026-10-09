@@ -41,7 +41,6 @@ private slots:
   void mangoBuilding();
   void perDeviceGrab();
   void padsChangingWhileOpen();
-  void identifyOnGrabbedDevice();
   void trackedQuit();
   void guardDeathResume();
   void quitEscalation();
@@ -347,9 +346,6 @@ void InGameGuideTests::mangoBuilding() {
     if (QString(level) == "full") QVERIFY(config.contains("full\n"));
     if (QString(level) == "frametime") QVERIFY(config.contains("frame_timing=1"));
   }
-  QCOMPARE(GuideActions::mangoVisibilityCommand(false, true), QByteArray(":hud;"));
-  QCOMPARE(GuideActions::mangoVisibilityCommand(true, false), QByteArray(":hud;"));
-  QVERIFY(GuideActions::mangoVisibilityCommand(true, true).isEmpty());
 }
 void InGameGuideTests::perDeviceGrab() {
   GuideInput input;
@@ -429,41 +425,6 @@ void InGameGuideTests::padsChangingWhileOpen() {
   QTRY_COMPARE(actions.size(), 2); QCOMPARE(actions.last().first().toString(), "b");
   input.release();
   for (const int fd : writers) ::close(fd);
-}
-
-void InGameGuideTests::identifyOnGrabbedDevice() {
-  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  int fd = -1, writer = -1, opens = 0, uploads = 0, plays = 0, erases = 0;
-  bool supported = true, canUpload = true, canPlay = true;
-  GuideInput::Access access;
-  access.scan = [] { return QList<GuideListener::Controller>{{"event0", "a", "Xbox pad", false}}; };
-  access.open = [&](const QString&) { int pipe[2]; if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1; ++opens; writer = pipe[1]; return fd = pipe[0]; };
-  access.grab = [&](int grabbed) { return grabbed == fd; };
-  access.supportsRumble = [&](int device) { return device == fd && supported; };
-  access.upload = [&](int device, ff_effect* effect) {
-    if (device != fd || effect->type != FF_RUMBLE || effect->id != -1 || effect->replay.length != 500 || effect->u.rumble.strong_magnitude != 0x7000) return false;
-    ++uploads; effect->id = 7; return canUpload;
-  };
-  access.play = [&](int device, int effect) { if (device != fd || effect != 7) return false; ++plays; return canPlay; };
-  access.erase = [&](int device, int effect) { if (device == fd && effect == 7) ++erases; };
-  guide.m_input.setAccess(access);
-  QString family, error;
-  QVERIFY(guide.m_input.grab("event0", &family, &error)); QCOMPARE(guide.m_input.grabbedCount(), size_t(1));
-  guide.m_opened = true;
-  guide.message({{"action", "identify"}, {"value", "/dev/input/event0"}});
-  QCOMPARE(opens, 1); QCOMPARE(uploads, 1); QCOMPARE(plays, 1);
-  QTRY_COMPARE_WITH_TIMEOUT(erases, 1, 1000);
-  supported = false;
-  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("no rumble support"));
-  QCOMPARE(uploads, 1); QCOMPARE(plays, 1);
-  supported = true; canUpload = false;
-  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("upload"));
-  canUpload = true; canPlay = false;
-  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("play")); QCOMPARE(erases, 2);
-  canPlay = true;
-  QVERIFY(guide.m_input.identify("/dev/input/event0", &error));
-  guide.m_input.release(); QCOMPARE(erases, 3); ::close(writer);
-  QVERIFY(!guide.m_input.identify("/dev/input/event0", &error)); QVERIFY(error.contains("no longer connected"));
 }
 
 void InGameGuideTests::trackedQuit() {
