@@ -169,7 +169,7 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
     auto* socket = new QLocalSocket(this);
     connect(socket, &QLocalSocket::connected, socket, [socket, command] { socket->write(command); socket->flush(); socket->disconnectFromServer(); });
     connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
-    connect(socket, &QLocalSocket::errorOccurred, this, [this, socket] { m_guide.restoreComplete(false); socket->deleteLater(); });
+    connect(socket, &QLocalSocket::errorOccurred, this, [this, socket] { m_guide.parkComplete(false); m_guide.restoreComplete(false); socket->deleteLater(); });
     QTimer::singleShot(2000, socket, [socket] { socket->abort(); socket->deleteLater(); });
     socket->connectToServer(SingleInstance::defaultServerName());
   };
@@ -189,6 +189,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     reply.insert("opened", m_guide.opened()); reply.insert("usable", m_guide.usable()); reply.insert("hasGame", m_guide.hasGame()); reply.insert("ready", m_ready);
   } else if (action == "prepare") refresh();
   else if (action == "publish") { m_published = data.value("sessions").toArray(); m_guide.setContext(data.value("context").toObject()); refresh(); }
+  else if (action == "parked") m_guide.parkComplete(data.value("ok").toBool());
   else if (action == "restored") m_guide.restoreComplete(data.value("ok").toBool());
   else if (action == "close") m_guide.close();
   else if (action == "shortcut" || action == "toggle") {

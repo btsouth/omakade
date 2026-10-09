@@ -112,8 +112,12 @@ void InGameGuideTests::desktopRetainsPauseAndIdentity() {
   guide.message({{"action", "desktop"}});
   QTRY_VERIFY(guide.m_parked); QCOMPARE(park.count(), 1); QVERIFY(!guide.opened()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
   guide.setSnapshot({{"pid", 123}, {"procStart", 456}}, {}, "OTHER"); QCOMPARE(guide.m_session.value("pid").toLongLong(), pid);
+  guide.parkComplete(true);
   guide.m_enabled = true; QVERIFY(guide.toggle()); QCOMPARE(restore.count(), 1); QVERIFY(guide.m_paused);
   guide.restoreComplete(false); QVERIFY(guide.m_parked); QVERIFY(guide.m_paused);
+  // A managed park refusal rolls back the retained guard as well.
+  guide.m_waitingManagedPark = true; guide.parkComplete(false);
+  QTRY_VERIFY(!guide.m_parked); QTRY_VERIFY(!guide.m_paused);
   guide.close(); QTRY_VERIFY(!guide.m_paused); QVERIFY(!guide.m_guard); QVERIFY(!guide.m_parked);
   game.terminate(); QVERIFY(game.waitForFinished());
 }

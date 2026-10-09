@@ -380,13 +380,14 @@ void InGameGuide::stopGuard() {
 bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
-  if (m_restoring) return true;
+  if (m_restoring || m_waitingManagedPark) return true;
   if (m_parked) {
     setPaused(true);
     m_restoreNode = node; m_restoreFallback = fallback; m_restoring = true;
     if (m_managedRetained) emit restoreRequested();
     else restoreWindow([this](bool ok) { restoreComplete(ok); });
-    QTimer::singleShot(8000, this, [this] { if (m_restoring) restoreComplete(false); });
+    const auto generation = ++m_restoreGeneration;
+    QTimer::singleShot(8000, this, [this, generation] { if (m_restoring && generation == m_restoreGeneration) restoreComplete(false); });
     return true;
   }
   m_summonClock.start();
@@ -435,7 +436,12 @@ void InGameGuide::parkNow() {
   m_parked = true;
   finishClose(true, true);
   if (m_gameMode && m_gameMode->active()) m_gameMode->park();
-  else if (m_managedRetained) emit parkRequested();
+  else if (m_managedRetained) {
+    m_waitingManagedPark = true;
+    const auto generation = ++m_parkGeneration;
+    emit parkRequested();
+    QTimer::singleShot(8000, this, [this, generation] { if (m_waitingManagedPark && generation == m_parkGeneration) parkComplete(false); });
+  }
   else {
     auto* process = new QProcess(this);
     connect(process, &QProcess::finished, this, [this, process](int code, QProcess::ExitStatus status) {
@@ -450,6 +456,19 @@ void InGameGuide::parkNow() {
     QTimer::singleShot(2500, process, [process] { process->kill(); });
     process->start("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"});
   }
+}
+
+void InGameGuide::parkComplete(bool ok) {
+  if (!m_waitingManagedPark) return;
+  m_waitingManagedPark = false;
+  if (ok) return;
+  // Game Mode can refuse a park (for example, when audio cannot be silenced).
+  // Roll back our extra pause too, rather than leaving a paused, closed guide.
+  m_managedRetained = false;
+  restoreWindow([this](bool) {
+    m_parked = false; stopGuard();
+    toast("Return to desktop failed", "The game is running again");
+  });
 }
 
 void InGameGuide::restoreWindow(std::function<void(bool)> done) {
@@ -486,7 +505,7 @@ void InGameGuide::finishClose(bool hide, bool retainPause) {
   m_polling = false;
   m_commands.clear();
   m_input.release();
-  if (!retainPause) { m_parked = m_parking = m_restoring = m_managedRetained = false; stopGuard(); }
+  if (!retainPause) { m_parked = m_parking = m_restoring = m_managedRetained = m_waitingManagedPark = false; stopGuard(); }
   m_lastPayload = {};
   emit changed();
   if (hadGuide) qInfo("Guide timing: closed elapsed_ms=%lld", closeClock.elapsed());

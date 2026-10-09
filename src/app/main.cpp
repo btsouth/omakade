@@ -1871,6 +1871,13 @@ int main(int argc, char* argv[]) {
                                   {"scale", couch ? 1.7 : 1.0}});
   };
   QObject::connect(&gameMode, &GameModeSession::stateChanged, &inGameGuide, publishGuideGames);
+  QObject::connect(&gameMode, &GameModeSession::parkedOnDesktop, &inGameGuide, [&inGameGuide] {
+    GuideClient::request({{"action", "parked"}, {"ok", true}}, &inGameGuide);
+  });
+  QObject::connect(&gameMode, &GameModeSession::failed, &inGameGuide, [&inGameGuide] {
+    GuideClient::request({{"action", "parked"}, {"ok", false}}, &inGameGuide);
+    GuideClient::request({{"action", "restored"}, {"ok", false}}, &inGameGuide);
+  });
   QObject::connect(&gameMode, &GameModeSession::gameFocused, &inGameGuide, [&inGameGuide](bool ok) {
     GuideClient::request({{"action", "restored"}, {"ok", ok}}, &inGameGuide);
   });

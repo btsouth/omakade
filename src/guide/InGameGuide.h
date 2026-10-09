@@ -50,6 +50,7 @@ public:
   void setInjectedInputEnabled(bool enabled);
   void setContext(const QJsonObject& context);
   void restoreComplete(bool ok);
+  void parkComplete(bool ok);
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
   void changed();
@@ -75,6 +76,8 @@ private:
   void restoreWindow(std::function<void(bool)> done);
   QJsonObject m_context, m_lastPayload;
   bool m_parked = false, m_parking = false, m_restoring = false, m_managedRetained = false;
+  bool m_waitingManagedPark = false;
+  quint64 m_parkGeneration = 0, m_restoreGeneration = 0;
   QString m_restoreNode;
   bool m_restoreFallback = false;
   PlaySessionStore* m_sessions;
