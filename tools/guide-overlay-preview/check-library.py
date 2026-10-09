@@ -66,7 +66,15 @@ with tempfile.TemporaryFile() as log:
         subprocess.run(["grim", str(output / "library.png")], check=True, timeout=5)
         library_window, game_window = client(library.pid), client(game.pid)
         assert library_window["workspace"]["id"] == landing, "Library activation returned to the frozen game's workspace"
-        assert game_window["workspace"]["id"] != landing and not game_window["visible"]
+        assert game_window["workspace"]["id"] != landing
+        # Hyprland's client "visible" flag is workspace-local. Verify exposure
+        # against the monitor's displayed workspaces instead.
+        monitors = json.loads(hypr("-j", "monitors"))
+        (output / "monitors.json").write_text(json.dumps(monitors, indent=2))
+        for monitor in monitors:
+            if monitor["id"] == game_window["monitor"]:
+                assert monitor["activeWorkspace"]["id"] != game_window["workspace"]["id"]
+                assert monitor.get("specialWorkspace", {}).get("id") != game_window["workspace"]["id"]
         assert (game_window["fullscreen"], game_window["fullscreenClient"]) == (2, 2), "Frozen game presentation changed"
         assert active["pid"] == library.pid
         print("PASS: library focused on landing workspace; frozen game hidden with fullscreen 2/2")
