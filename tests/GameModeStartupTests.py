@@ -108,7 +108,15 @@ class GameModeStartupTests(unittest.TestCase):
         self.resident.terminate()
         self.resident.wait(timeout=5)
         self.log.close()
-        self.directory.cleanup()
+        # Helpers the fixture's fake compositor started can still be finishing a write.
+        for attempt in range(20):
+            try:
+                self.directory.cleanup()
+                break
+            except OSError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.1)
 
     def wait_for(self, predicate, message):
         deadline = time.monotonic() + 8
