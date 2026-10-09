@@ -53,12 +53,19 @@ class GameModeStartupTests(unittest.TestCase):
         self.log = open(root / "app.log", "w+")
         self.primary = None
         self.game = None
-        # The shortcut now asks the resident service before entering the legacy
-        # library session. Keep that real IPC route in these fallback tests;
-        # the absent plugin must preserve every ownership assertion below.
+        # Keep real resident IPC in these legacy fallback ownership tests. Its
+        # compositor has a separate neutral inventory: the GUI transport below
+        # changes per test, and intentionally requires variables absent at login.
+        resident_tools = root / "resident-tools"
+        resident_tools.mkdir()
+        hyprctl = resident_tools / "hyprctl"
+        hyprctl.write_text("#!/bin/sh\ncase \"$2\" in\nactivewindow) echo '{}';;\nclients|monitors) echo '[]';;\n*) exit 1;;\nesac\n")
+        hyprctl.chmod(0o755)
+        resident_env = self.env.copy()
+        resident_env["PATH"] = str(resident_tools) + os.pathsep + self.env["PATH"]
         self.resident = subprocess.Popen(
             [str(Path(BINARY).with_name("omakade-sessiond")), "--guide-only"],
-            env=self.env, stdout=self.log, stderr=subprocess.STDOUT,
+            env=resident_env, stdout=self.log, stderr=subprocess.STDOUT,
         )
         endpoint = str(root / "runtime" / f"omakade-guide-control-{os.getuid()}")
         deadline = time.monotonic() + 8
