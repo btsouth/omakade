@@ -7103,12 +7103,15 @@ int main(int argc, char* argv[]) {
                              QVariantMap{}, 8000});
                          (void)QDBusConnection::sessionBus().asyncCall(notification, 2500);
                        }
-                       if (!gameMode.hasSession()) {
-                         if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow))
-                           quick->contentItem()->setOpacity(1);
-                         rootWindow->setTitle(QStringLiteral("Omakade"));
-                         rootWindow->setVisible(true);
+                       // A failed resume may also fail to unmap its temporary root.
+                       // Restore content even while the recovery session is retained.
+                       if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow)) {
+                         quick->contentItem()->setOpacity(1);
+                         qInfo("Game Mode presentation: opacity=%g retained=%s",
+                               quick->contentItem()->opacity(), gameMode.hasSession() ? "true" : "false");
                        }
+                       rootWindow->setTitle(QStringLiteral("Omakade"));
+                       if (!gameMode.hasSession()) rootWindow->setVisible(true);
                      });
     QObject::connect(&gameMode, &GameModeSession::notice, rootWindow, toast);
   }

@@ -50,6 +50,8 @@ with open(str(path) + ".lock", "w") as lock:
                   client("0xdd", int(os.environ["GM_DESKTOP_PID"]), "1", "Desktop", "fixture")]
         if hidden:
             result[0]["mapped"] = state.get("guide_library", False)
+        if state.get("hide_fails"):
+            result[0]["mapped"] = True
         if state.get("ending") and journal.get("temporary_window"):
             result[0]["mapped"] = False
         if journal.get("phase") == "parked" and (not journal.get("window_placed")
@@ -87,6 +89,9 @@ with open(str(path) + ".lock", "w") as lock:
         print(json.dumps([{**workspace("name:omakade"), "monitor": "HEADLESS-1"}]))
     elif args[:1] == ["eval"]:
         script = args[1]
+        if state.get("fail_resume") and 'workspace = "name:omakade"' in script and 'window.move' in script:
+            print("error: fixture resume placement failed")
+            sys.exit(1)
         for line in script.splitlines():
             if "window.swap" in line:
                 state["owner_workspace"] = "1" if state["owner_workspace"] == "name:omakade" else "special:omakade"

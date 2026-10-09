@@ -342,6 +342,29 @@ class GameModeStartupTests(unittest.TestCase):
         self.assertEqual(json.loads(self.fixture.read_text())["owner_workspace"], "name:omakade-library")
         self.assertTrue(json.loads(self.fixture.read_text())["mute"])
 
+    def test_resume_and_hide_failure_reveals_retained_content(self):
+        self.retained_fixture()
+        self.launch("--game-mode-toggle")
+        self.fixture_update(owner=self.primary.pid)
+        self.phase("active")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 2,
+                      "Initial handoff did not settle")
+        self.command("--game-mode-desktop")
+        self.phase("parked")
+        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xdd",
+                      "Game did not park")
+        self.fixture_update(fail_resume=True, hide_fails=True)
+        self.command("--game-mode-toggle")
+        def recovered_content():
+            self.log.flush()
+            self.log.seek(0)
+            log = self.log.read()
+            return "did not hide" in log and "Game Mode presentation: opacity=1 retained=true" in log
+        self.wait_for(recovered_content, "Retained failure kept startup content transparent")
+        self.assertIsNone(self.primary.poll())
+        self.assertTrue(self.state.exists())
+        self.assertEqual(json.loads(self.state.read_text())["phase"], "parked")
+
     def test_explicit_game_mode_launch_closes_on_exit(self):
         self.assert_temporary_launch_closes("--game-mode", "--game-mode-exit")
 
