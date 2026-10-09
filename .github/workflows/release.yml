@@ -40,6 +40,8 @@ jobs:
           - arch: x86_64
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
+            # Build against Omarchy stable's Arch snapshot so the package runs on every channel.
+            mirror: https://stable-mirror.omarchy.org/$repo/os/$arch
           - arch: aarch64
             runner: ubuntu-24.04-arm
             container: menci/archlinuxarm:base-devel@sha256:5dda87d4b360dff28fe5ce27a20041949aa770a785c52daf82fc9956b2534c39
@@ -47,8 +49,13 @@ jobs:
     container:
       image: ${{ matrix.container }}
     steps:
+      - name: Use Omarchy stable's package snapshot
+        if: matrix.mirror != ''
+        env:
+          MIRROR: ${{ matrix.mirror }}
+        run: printf 'Server = %s\n' "$MIRROR" > /etc/pacman.d/mirrorlist
       - name: Install dependencies
-        run: pacman -Syu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
+        run: pacman -Syuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -91,6 +98,8 @@ jobs:
           - arch: x86_64
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
+            # Build against Omarchy stable's Arch snapshot so the package runs on every channel.
+            mirror: https://stable-mirror.omarchy.org/$repo/os/$arch
           - arch: aarch64
             runner: ubuntu-24.04-arm
             container: menci/archlinuxarm:base-devel@sha256:5dda87d4b360dff28fe5ce27a20041949aa770a785c52daf82fc9956b2534c39
@@ -104,8 +113,13 @@ jobs:
     env:
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
+      - name: Use Omarchy stable's package snapshot
+        if: matrix.mirror != ''
+        env:
+          MIRROR: ${{ matrix.mirror }}
+        run: printf 'Server = %s\n' "$MIRROR" > /etc/pacman.d/mirrorlist
       - name: Install dependencies
-        run: pacman -Syu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
+        run: pacman -Syuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -150,6 +164,27 @@ jobs:
             -name "omakade-[0-9]*-$PACKAGE_ARCH.pkg.tar.zst" -print -quit)"
           test -n "$package_file"
           echo "PACKAGE_FILE=$package_file" >> "$GITHUB_ENV"
+      - name: Check the package runs on Omarchy stable
+        if: matrix.arch == 'x86_64'
+        run: |
+          # Read stable's versions from its mirror, not from the build container.
+          stable_version() {
+            curl -fsSL "https://stable-mirror.omarchy.org/$1/os/x86_64/$1.db" | bsdtar -tf - \
+              | sed -nE "s|^$2-([0-9]+\.[0-9]+)[^/]*/$|\1|p" | head -n 1
+          }
+          newest() { sort -V | tail -n 1; }
+          stable_qt="$(stable_version extra qt6-base)"
+          stable_glibc="$(stable_version core glibc)"
+          test -n "$stable_qt" && test -n "$stable_glibc"
+          unpacked="$(mktemp -d)"
+          bsdtar -xf "$PACKAGE_FILE" -C "$unpacked" usr
+          symbols="$(find "$unpacked" -type f -exec objdump -T {} + 2>/dev/null || true)"
+          needed_qt="$(grep -oE 'Qt_6\.[0-9]+' <<<"$symbols" | sed 's/^Qt_//' | newest)"
+          needed_glibc="$(grep -oE 'GLIBC_2\.[0-9]+' <<<"$symbols" | sed 's/^GLIBC_//' | newest)"
+          echo "Omarchy stable has Qt $stable_qt and glibc $stable_glibc; the package needs Qt $needed_qt and glibc $needed_glibc."
+          test -n "$needed_qt" && test -n "$needed_glibc"
+          test "$(printf '%s\n' "$needed_qt" "$stable_qt" | newest)" = "$stable_qt"
+          test "$(printf '%s\n' "$needed_glibc" "$stable_glibc" | newest)" = "$stable_glibc"
       - name: Test install, upgrade, removal, and reinstall
         env:
           GH_TOKEN: ${{ github.token }}
