@@ -28,11 +28,16 @@ Item {
   property var model: ({})
   property string family: "keyboard"
   property string cursor: ""
-  property bool confirming: false
+  // What the card body shows: the rows, the game's achievements, or the quit
+  // question. The header and hint line stay.
+  property string view: "main"
+  readonly property bool confirming: root.view === "confirm"
+  property int confirmChoice: 0
+  property int achIndex: 0
   // Quit was confirmed and Omakade is waiting for the game to exit.
   property bool quitting: false
-  // A second B straight after backing out of the confirmation must not also close.
-  property double confirmClosedAt: 0
+  // A second B straight after backing out of a view must not also close.
+  property double backAt: 0
   // The card steps aside while a screenshot is taken.
   property bool capturing: false
   property date now: new Date()
@@ -53,15 +58,37 @@ Item {
   readonly property bool volumeAvailable: root.fixtureMode ? (root.model.audio || {}).volume !== undefined : audio.available
   readonly property real volume: root.fixtureMode ? Number((root.model.audio || {}).volume || 0) : audio.volume
   readonly property bool muted: root.fixtureMode ? !!(root.model.audio || {}).muted : audio.muted
+  readonly property var outputs: root.fixtureMode ? ((root.model.audio || {}).outputs || []) : audio.outputs
+  readonly property var currentOutput: root.outputs.filter(function(o) { return o.current })[0] || root.outputs[0] || null
+  readonly property var achievements: (root.game && root.game.achievements) || null
+  readonly property bool hasAchievements: !!(root.achievements && root.achievements.total > 0)
+  // Omakade resends the whole payload every second; the list and the rows are
+  // only rebuilt when what they show changed, so scrolling and hover hold.
+  property var achievementItems: []
+  property string achievementsJson: "[]"
+  onAchievementsChanged: {
+    var items = (root.achievements && root.achievements.items) || []
+    var json = JSON.stringify(items)
+    if (json !== root.achievementsJson) { root.achievementsJson = json; root.achievementItems = items }
+  }
+  property var rowLayout: []
+  onLayoutChanged: if (JSON.stringify(root.layout) !== JSON.stringify(root.rowLayout)) root.rowLayout = root.layout
+  readonly property var padLevels: root.fixtureMode ? (root.model.pads || []) : pads.levels
 
-  // Every row the card shows, top to bottom. All of them take the cursor.
-  readonly property var rows: {
+  // The card's rows in groups, top to bottom; a divider runs between groups.
+  // Every row shown takes the cursor.
+  readonly property var groups: [
+    root.game ? ["resume", "desktop", "library"] : [],
+    ["screenshot", "record"].concat(root.replay ? ["replay"] : []),
+    root.hasAchievements ? ["achievements"] : [],
+    (root.volumeAvailable ? ["volume"] : []).concat(root.outputs.length > 1 ? ["output"] : []),
+    root.game ? ["quit"] : []
+  ].filter(function(g) { return g.length > 0 })
+  readonly property var rows: [].concat.apply([], root.groups)
+  // The rows with the divider each one opens, for the card's repeater.
+  readonly property var layout: {
     var list = []
-    if (root.game) list.push("resume")
-    list.push("screenshot", "record")
-    if (root.replay) list.push("replay")
-    if (root.volumeAvailable) list.push("volume")
-    if (root.game) list.push("quit")
+    root.groups.forEach(function(g, gi) { g.forEach(function(key, ki) { list.push({key: key, divider: gi > 0 && ki === 0}) }) })
     return list
   }
 
@@ -88,8 +115,9 @@ Item {
 
   // Material Design glyphs from the Nerd Font: one set, one weight.
   readonly property var icons: ({
-    resume: "\u{f040a}", screenshot: "\u{f0100}", record: "\u{f044a}", replay: "\u{f02da}",
-    volume: "\u{f057e}", volumeOff: "\u{f0581}", quit: "\u{f0343}"
+    resume: "\u{f040a}", desktop: "\u{f0379}", library: "\u{f0570}", screenshot: "\u{f0100}",
+    record: "\u{f044a}", replay: "\u{f02da}", achievements: "\u{f0538}", volume: "\u{f057e}",
+    volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}", quit: "\u{f0343}"
   })
 
   // ------------------------------------------------------------ backend socket
@@ -160,7 +188,7 @@ Item {
     return JSON.stringify({opened: root.opened, opening: root.opened && !root.presented, presented: root.presented, ready: root.ready(),
       token: root.backend ? root.backend.token : "", socket: root.backend ? root.backend.socket : "",
       output: window.screen ? window.screen.name : "", surface: [window.width, window.height],
-      cursor: root.cursor, rows: root.rows, confirming: root.confirming, confirmChoice: confirm.selectedIndex, pad: root.family, data: root.model,
+      cursor: root.cursor, rows: root.rows, view: root.view, confirming: root.confirming, confirmChoice: root.confirmChoice, achIndex: root.achIndex, pad: root.family, data: root.model,
       geometry: root.geometry(), palette: {text: String(Color.menu.text), quiet: String(root.quiet),
         background: String(Color.menu.background), selectedBackground: String(Color.menu.selectedBackground),
         selectedText: String(Color.menu.selectedText), urgent: String(Color.urgent), border: String(Color.menu.border),
@@ -175,13 +203,24 @@ Item {
       var p = item.mapToItem(surface, 0, 0)
       return [p.x, p.y, item.width, item.height]
     }
-    var rows = [resumeRow, screenshotRow, recordRow, replayRow, volumeRow, quitRow]
-    return {card: box(card), rows: {resume: box(resumeRow), screenshot: box(screenshotRow), record: box(recordRow),
-      replay: box(replayRow), volume: box(volumeRow), quit: box(quitRow)},
-      icons: {resume: box(resumeRow.iconItem), screenshot: box(screenshotRow.iconItem), record: box(recordRow.iconItem),
-      replay: box(replayRow.iconItem), volume: box(volumeRow.iconItem), quit: box(quitRow.iconItem)},
+    var rowBoxes = {}, iconBoxes = {}, truncated = []
+    for (var i = 0; i < rowRepeater.count; i++) {
+      var slot = rowRepeater.itemAt(i)
+      if (!slot || !slot.row.visible) continue
+      rowBoxes[slot.key] = box(slot.row)
+      iconBoxes[slot.key] = box(slot.row.iconItem)
+      if (slot.row.truncated) truncated.push(slot.row.label)
+    }
+    var confirmRows = [keepRow, quitConfirmRow]
+    confirmRows.forEach(function(r, n) {
+      if (!r.visible) return
+      var key = n === 0 ? "keep" : "confirm-quit"
+      rowBoxes[key] = box(r); iconBoxes[key] = box(r.iconItem)
+      if (r.truncated) truncated.push(r.label)
+    })
+    return {card: box(card), rows: rowBoxes, icons: iconBoxes,
       fits: card.height >= card.contentTopInset + content.implicitHeight + card.contentBottomInset,
-      truncated: rows.filter(function(r) { return r.visible && r.truncated }).map(function(r) { return r.label }),
+      truncated: truncated, list: box(achievementList),
       perfLines: perf.visible ? perf.lines : 0}
   }
 
@@ -212,11 +251,12 @@ Item {
     if (root.opened) return
     root.now = new Date()
     root.cursor = root.rows[0]
-    root.confirming = !!p.confirm
-    confirm.selectedIndex = 0
+    root.view = p.confirm ? "confirm" : "main"
+    root.confirmChoice = 0
+    root.achIndex = 0
     root.quitting = false
     root.capturing = false
-    root.confirmClosedAt = 0
+    root.backAt = 0
     pointerGate.reset()
     window.targetScreen = root.gameScreen()
     root.opened = true
@@ -227,7 +267,7 @@ Item {
     var was = root.opened
     root.opened = false
     root.presented = false
-    root.confirming = false
+    root.view = "main"
     root.quitting = false
     root.capturing = false
     root.surfaceShown = false
@@ -264,11 +304,14 @@ Item {
     path: ""
     onLoaded: {
       if (!root.fixtureMode) return
-      try { root.model = JSON.parse(text()) } catch (e) { console.warn("omakade.guide: bad fixture", e) }
+      // "@/" in a fixture is the preview folder, where its pictures live.
+      var base = String(path).replace(/\/[^\/]*\/[^\/]*$/, "/")
+      try { root.model = JSON.parse(text().replace(/"@\//g, '"file://' + base)) } catch (e) { console.warn("omakade.guide: bad fixture", e) }
       root.family = root.fixturePad || root.model.pad || "keyboard"
       // A fixture stands for a fresh open: the cursor starts on the first row.
       root.cursor = root.rows.indexOf(root.model.cursor) >= 0 ? root.model.cursor : root.rows[0]
-      if (root.model.confirm) root.confirming = true
+      root.achIndex = root.model.achIndex || 0
+      root.view = root.model.confirm ? "confirm" : root.model.view === "achievements" && root.hasAchievements ? "achievements" : "main"
     }
   }
 
@@ -354,25 +397,71 @@ Item {
     }
     if (root.rows.indexOf(root.cursor) < 0) root.cursor = root.rows[0]
     pointerGate.reset()
-    if (root.confirming) {
-      if (action === "left" || action === "right") confirm.selectedIndex = confirm.selectedIndex === 0 ? 1 : 0
-      else if (action === "a") { if (confirm.selectedIndex === 0) root.cancelQuit(); else root.quitGame() }
+    if (root.view === "confirm") {
+      if (["up", "down", "left", "right"].indexOf(action) >= 0) root.confirmChoice = root.confirmChoice === 0 ? 1 : 0
+      else if (action === "a") { if (root.confirmChoice === 0) root.cancelQuit(); else root.quitGame() }
       else if (action === "b") root.cancelQuit()
       else if (action === "guide" || action === "start") root.close()
+      return "ok"
+    }
+    if (root.view === "achievements") {
+      var last = Math.max(0, root.achievementItems.length - 1)
+      if (action === "up") root.achIndex = Math.max(0, root.achIndex - 1)
+      else if (action === "down") root.achIndex = Math.min(last, root.achIndex + 1)
+      else if (action === "left") root.achIndex = Math.max(0, root.achIndex - 5)
+      else if (action === "right") root.achIndex = Math.min(last, root.achIndex + 5)
+      else if (action === "b") root.back()
+      else if (action === "guide" || action === "start") root.close()
+      else if (action === "y") root.activate("screenshot")
       return "ok"
     }
     switch (action) {
     case "up": root.move(-1); break
     case "down": root.move(1); break
     case "left": case "right":
-      if (root.cursor === "volume") root.act("volume", root.volume + (action === "left" ? -0.05 : 0.05))
+      var step = action === "left" ? -1 : 1
+      if (root.cursor === "volume") root.act("volume", root.volume + step * 0.05)
+      else if (root.cursor === "output") root.act("output", step)
       break
     case "a": root.activate(root.cursor); break
-    case "b": if (Date.now() - root.confirmClosedAt > 300) root.close(); break
+    case "b": if (Date.now() - root.backAt > 300) root.close(); break
     case "guide": case "start": root.close(); break
     case "y": root.activate("screenshot"); break
     }
     return "ok"
+  }
+
+  // What each row shows.
+  function rowSpec(key) {
+    switch (key) {
+    // The play triangle draws a third less ink than its neighbours.
+    case "resume": return {icon: root.icons.resume, iconScale: 1.3, label: "Resume"}
+    case "desktop": return {icon: root.icons.desktop, label: "Return to desktop"}
+    case "library": return {icon: root.icons.library, label: "Game library"}
+    case "screenshot": return {icon: root.icons.screenshot, label: "Screenshot"}
+    // The bar's recording colour while a clip runs.
+    case "record": return root.recording ? {icon: root.icons.record, iconColor: root.recordingInk, label: "Stop recording", value: root.recordingTime}
+                                         : {icon: root.icons.record, label: "Record clip"}
+    case "replay": return {icon: root.icons.replay, label: "Save last " + ((root.replay && root.replay.seconds) || 30) + " s"}
+    case "achievements": return {icon: root.icons.achievements, label: "Achievements",
+                                 value: (root.achievements.unlocked || 0) + "/" + root.achievements.total}
+    case "volume": return {icon: root.muted ? root.icons.volumeOff : root.icons.volume, label: "Volume",
+                           value: root.muted ? "Muted" : Math.round(root.volume * 100) + "%"}
+    case "output":
+      var name = root.currentOutput ? root.currentOutput.name : "Output"
+      // Which of how many: says the row cycles, as Achievements says how far.
+      return {icon: /head|ear|bud|airpod/i.test(name) ? root.icons.headphones : root.icons.speaker,
+              label: name, wrap: true, value: (root.outputs.indexOf(root.currentOutput) + 1) + "/" + root.outputs.length}
+    case "quit": return {icon: root.icons.quit, urgent: true,
+                         label: root.forceReady ? "Force quit" : root.quitting ? "Closing game\u2026" : "Quit game"}
+    }
+    return {icon: "", label: key}
+  }
+
+  // Out of a view and back to the rows, on the row that opened it.
+  function back() {
+    root.view = "main"
+    root.backAt = Date.now()
   }
 
   function keyAction(event) {
@@ -394,14 +483,18 @@ Item {
   function activate(key) {
     switch (key) {
     case "resume": root.close(); break
+    case "desktop": root.act("desktop"); break
+    case "library": root.act("library"); break
+    case "achievements": root.view = "achievements"; break
+    case "output": root.act("output", 1); break
     case "screenshot": root.act("screenshot"); break
     case "record": root.act("record"); break
     case "replay": root.act("save-replay"); break
     case "volume": root.act("mute"); break
     case "quit":
       if (root.quitting && !root.forceReady) break
-      confirm.selectedIndex = 0
-      root.confirming = true
+      root.confirmChoice = 0
+      root.view = "confirm"
       break
     }
   }
@@ -411,7 +504,11 @@ Item {
       console.log("GUIDE_ACT " + name + " " + JSON.stringify(value === undefined ? null : value))
       if (name === "volume") root.setFixture("audio", {volume: Math.max(0, Math.min(1, value)), muted: root.muted})
       else if (name === "mute") root.setFixture("audio", {volume: root.volume, muted: !root.muted})
-      else if (name === "record") root.close()
+      else if (name === "output" && root.outputs.length > 1) {
+        var list = root.outputs, at = Math.max(0, list.indexOf(root.currentOutput))
+        var next = (at + value + list.length) % list.length
+        root.setFixture("audio", Object.assign({}, root.model.audio, {outputs: list.map(function(o, i) { return {name: o.name, current: i === next} })}))
+      } else if (name === "record" || name === "desktop" || name === "library") root.close()
       return
     }
     switch (name) {
@@ -428,6 +525,13 @@ Item {
       if (starting) root.close()
       break
     case "save-replay": capture.saveReplay(); break
+    // Omakade parks the game on the desktop, or opens its library, and closes
+    // the guide itself.
+    case "desktop": case "library":
+      if (root.backend) root.notify(name, null)
+      else root.close()
+      break
+    case "output": audio.cycleOutput(Number(value) < 0 ? -1 : 1); break
     case "volume": audio.setVolume(Number(value)); break
     case "mute": audio.toggleMute(); break
     }
@@ -446,13 +550,12 @@ Item {
   }
 
   function cancelQuit() {
-    root.confirming = false
-    root.confirmClosedAt = Date.now()
-    confirm.selectedIndex = 0
+    root.back()
+    root.confirmChoice = 0
   }
 
   function quitGame() {
-    root.confirming = false
+    root.view = "main"
     if (root.fixtureMode || !root.backend) { root.close(); return }
     if (root.forceReady) { root.notify("force-quit", null); return }
     root.quitting = true
@@ -469,13 +572,18 @@ Item {
   }
 
   function sessionText() {
-    if (!root.game) return ""
     var parts = []
+    if (!root.game) {
+      if (root.padLevels.length) parts.push((root.padLevels.length > 1 ? "Pads " : "Pad ") + root.padLevels.map(function(p) { return p + "%" }).join(" "))
+      return parts.join(" · ")
+    }
     var minutes = root.game.sessionMinutes
     if (minutes !== undefined && minutes !== null) {
       parts.push(minutes >= 60 ? Math.floor(minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min")
     }
     if (root.game.paused) parts.push("Paused")
+    var pads = root.padLevels
+    if (pads.length) parts.push((pads.length > 1 ? "Pads " : "Pad ") + pads.map(function(p) { return p + "%" }).join(" "))
     return parts.join(" · ")
   }
 
@@ -520,9 +628,12 @@ Item {
   // Button names in the text colour, what they do quiet, as in the readings.
   readonly property var hint: {
     var b = root.buttons, list = []
-    if (root.confirming) list.push([b[0], "select"], [b[1], "back"])
-    else if (root.cursor === "volume") list.push([b[0], root.muted ? "unmute" : "mute"], ["\u2190\u2192", "volume"], [b[1], root.game ? "resume" : "close"])
-    else list.push([b[0], "select"], [b[1], root.game ? "resume" : "close"], [b[2], "screenshot"])
+    var leave = root.game ? "resume" : "close"
+    if (root.view === "confirm") list.push([b[0], "select"], [b[1], "keep playing"])
+    else if (root.view === "achievements") list.push(["\u2191\u2193", "scroll"], ["\u2190\u2192", "page"], [b[1], "back"])
+    else if (root.cursor === "volume") list.push([b[0], root.muted ? "unmute" : "mute"], ["\u2190\u2192", "volume"], [b[1], leave])
+    else if (root.cursor === "output") list.push([b[0], "next"], ["\u2190\u2192", "output"], [b[1], leave])
+    else list.push([b[0], "select"], [b[1], leave], [b[2], "screenshot"])
     return list
   }
 
@@ -547,6 +658,8 @@ Item {
     id: audio
     active: root.opened && !root.fixtureMode
   }
+
+  LivePads { id: pads }
 
   // Measured against the full-screen layer, which never moves: a card that
   // grows under a resting pointer is not the pointer moving.
@@ -690,127 +803,150 @@ Item {
 
           Divider { zoom: root.zoom; color: root.text }
 
-          Column {
+          // The card body: the rows, the achievements list or the quit question.
+          // The list takes the rows' height, so opening it does not move the
+          // card; the question takes its own.
+          Item {
+            id: body
             width: parent.width
-            spacing: root.sized(Style.spacing.xs)
+            height: root.view === "confirm" ? question.implicitHeight : rowsColumn.implicitHeight
 
-            GuideRow {
-              id: resumeRow
-              zoom: root.zoom
-              selectedInk: root.selectedInk
-              urgentInk: root.urgentInk
-              edge: root.needsEdge
-              edgeColor: root.focusEdge
+            Column {
+              id: rowsColumn
               width: parent.width
-              visible: root.rows.indexOf("resume") >= 0
-              icon: root.icons.resume
-              // The play triangle draws a third less ink than its neighbours.
-              iconScale: 1.3
-              label: "Resume"
-              current: root.cursor === "resume"
-              onHovered: (source, mouse) => root.hover("resume", source, mouse)
-              onActivated: root.activate("resume")
+              visible: root.view === "main"
+              spacing: root.sized(Style.spacing.xs)
+
+              Repeater {
+                id: rowRepeater
+                model: root.rowLayout
+
+                Column {
+                  id: slot
+                  required property var modelData
+                  readonly property string key: modelData.key
+                  readonly property alias row: row
+                  readonly property var spec: root.rowSpec(slot.key)
+                  width: rowsColumn.width
+                  spacing: root.sized(Style.spacing.xs)
+
+                  Divider { zoom: root.zoom; color: root.text; visible: slot.modelData.divider }
+
+                  GuideRow {
+                    id: row
+                    zoom: root.zoom
+                    selectedInk: root.selectedInk
+                    urgentInk: root.urgentInk
+                    edge: root.needsEdge
+                    edgeColor: root.focusEdge
+                    width: parent.width
+                    icon: slot.spec.icon
+                    iconScale: slot.spec.iconScale || 1
+                    iconColor: slot.spec.iconColor !== undefined ? slot.spec.iconColor : row.ink
+                    label: slot.spec.label
+                    value: slot.spec.value || ""
+                    urgent: !!slot.spec.urgent
+                    wrapLabel: !!slot.spec.wrap
+                    slider: slot.key === "volume"
+                    sliderValue: root.volume
+                    sliderMuted: root.muted
+                    current: root.cursor === slot.key
+                    onHovered: (source, mouse) => root.hover(slot.key, source, mouse)
+                    onActivated: { root.cursor = slot.key; root.activate(slot.key) }
+                    onSliderMoved: v => { root.cursor = "volume"; root.act("volume", v) }
+                  }
+                }
+              }
             }
 
-            GuideRow {
-              id: screenshotRow
+            AchievementList {
+              id: achievementList
+              anchors.fill: parent
+              visible: root.view === "achievements"
+              items: root.achievementItems
+              unlockedCount: root.achievements ? (root.achievements.unlocked || 0) : 0
+              total: root.achievements ? (root.achievements.total || 0) : 0
+              current: root.achIndex
               zoom: root.zoom
+              fontFamily: root.fontFamily
+              text: root.text
+              quiet: root.quiet
               selectedInk: root.selectedInk
-              urgentInk: root.urgentInk
               edge: root.needsEdge
               edgeColor: root.focusEdge
-              width: parent.width
-              icon: root.icons.screenshot
-              label: "Screenshot"
-              current: root.cursor === "screenshot"
-              onHovered: (source, mouse) => root.hover("screenshot", source, mouse)
-              onActivated: root.activate("screenshot")
+              onHovered: (index, source, mouse) => { if (pointerGate.moved(source, mouse)) root.achIndex = index }
             }
 
-            GuideRow {
-              id: recordRow
-              zoom: root.zoom
-              selectedInk: root.selectedInk
-              urgentInk: root.urgentInk
-              edge: root.needsEdge
-              edgeColor: root.focusEdge
+            // The quit question, in the card's own rows.
+            Column {
+              id: question
               width: parent.width
-              icon: root.icons.record
-              // The bar's recording colour while a clip runs.
-              iconColor: root.recording ? root.recordingInk : recordRow.ink
-              label: root.recording ? "Stop recording" : "Record clip"
-              value: root.recordingTime
-              current: root.cursor === "record"
-              onHovered: (source, mouse) => root.hover("record", source, mouse)
-              onActivated: root.activate("record")
-            }
+              visible: root.view === "confirm"
+              spacing: root.sized(Style.spacing.xs)
 
-            GuideRow {
-              id: replayRow
-              zoom: root.zoom
-              selectedInk: root.selectedInk
-              urgentInk: root.urgentInk
-              edge: root.needsEdge
-              edgeColor: root.focusEdge
-              width: parent.width
-              visible: root.rows.indexOf("replay") >= 0
-              icon: root.icons.replay
-              label: "Save last " + ((root.replay && root.replay.seconds) || 30) + " s"
-              current: root.cursor === "replay"
-              onHovered: (source, mouse) => root.hover("replay", source, mouse)
-              onActivated: root.activate("replay")
-            }
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                text: root.forceReady ? (root.game ? root.game.title : "The game") + " is not closing"
+                  : "Quit " + (root.game ? root.game.title : "the game") + "?"
+                color: root.text
+                font.family: root.fontFamily
+                font.pixelSize: root.sized(Style.font.heading)
+                font.weight: Font.Medium
+                wrapMode: Text.Wrap
+              }
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                text: root.forceReady ? "Force quit ends it now. Unsaved progress is lost."
+                  : "Progress since your last save may be lost."
+                color: root.quiet
+                font.family: root.fontFamily
+                font.pixelSize: root.sized(Style.font.body)
+                wrapMode: Text.Wrap
+              }
+              Item { width: 1; height: root.sized(Style.spacing.md) }
 
-            GuideRow {
-              id: volumeRow
-              zoom: root.zoom
-              selectedInk: root.selectedInk
-              urgentInk: root.urgentInk
-              edge: root.needsEdge
-              edgeColor: root.focusEdge
-              width: parent.width
-              visible: root.rows.indexOf("volume") >= 0
-              icon: root.muted ? root.icons.volumeOff : root.icons.volume
-              label: "Volume"
-              slider: true
-              sliderValue: root.volume
-              sliderMuted: root.muted
-              value: root.muted ? "Muted" : Math.round(root.volume * 100) + "%"
-              current: root.cursor === "volume"
-              onHovered: (source, mouse) => root.hover("volume", source, mouse)
-              onActivated: root.activate("volume")
-              onSliderMoved: v => { root.cursor = "volume"; root.act("volume", v) }
-            }
-
-            Divider { zoom: root.zoom; color: root.text; visible: root.rows.indexOf("quit") >= 0 }
-
-            GuideRow {
-              id: quitRow
-              zoom: root.zoom
-              selectedInk: root.selectedInk
-              urgentInk: root.urgentInk
-              edge: root.needsEdge
-              edgeColor: root.focusEdge
-              width: parent.width
-              visible: root.rows.indexOf("quit") >= 0
-              icon: root.icons.quit
-              label: root.forceReady ? "Force quit" : root.quitting ? "Closing game…" : "Quit game"
-              urgent: true
-              current: root.cursor === "quit"
-              onHovered: (source, mouse) => root.hover("quit", source, mouse)
-              onActivated: root.activate("quit")
+              GuideRow {
+                id: keepRow
+                zoom: root.zoom
+                selectedInk: root.selectedInk
+                urgentInk: root.urgentInk
+                edge: root.needsEdge
+                edgeColor: root.focusEdge
+                width: parent.width
+                icon: root.icons.resume
+                iconScale: 1.3
+                label: "Keep playing"
+                current: root.confirmChoice === 0
+                onHovered: (source, mouse) => { if (pointerGate.moved(source, mouse)) root.confirmChoice = 0 }
+                onActivated: root.cancelQuit()
+              }
+              GuideRow {
+                id: quitConfirmRow
+                zoom: root.zoom
+                selectedInk: root.selectedInk
+                urgentInk: root.urgentInk
+                edge: root.needsEdge
+                edgeColor: root.focusEdge
+                width: parent.width
+                icon: root.icons.quit
+                label: root.forceReady ? "Force quit" : "Quit game"
+                urgent: true
+                current: root.confirmChoice === 1
+                onHovered: (source, mouse) => { if (pointerGate.moved(source, mouse)) root.confirmChoice = 1 }
+                onActivated: root.quitGame()
+              }
             }
           }
 
-          // Room for the hint line, which sits above the quit question's scrim.
+          // Room for the hint line.
           Item { width: 1; height: root.sized(Style.spacing.xl) + hintLine.height }
         }
 
-        // What the buttons do. Above the quit question's scrim, so it stays
-        // readable while the question is open.
+        // What the buttons do.
         Flow {
           id: hintLine
-          z: 11
           x: card.contentLeftInset + card.inset
           y: card.height - card.contentBottomInset - height
           width: content.width - card.inset * 2
@@ -837,51 +973,12 @@ Item {
             }
           }
         }
-
-        ConfirmDialog {
-          id: confirm
-          // Inside the card's border, which stays drawn around the question.
-          // Omarchy's dialog sizes itself from the shell's tokens, so the couch
-          // scale reaches it as a transform.
-          x: card.borderLeft
-          y: card.borderTop
-          width: (card.width - card.borderLeft - card.borderRight) / root.zoom
-          height: (card.height - card.borderTop - card.borderBottom) / root.zoom
-          scale: root.zoom
-          transformOrigin: Item.TopLeft
-          opened: root.confirming
-          z: 10
-          message: root.forceReady
-            ? (root.game ? root.game.title : "The game") + " is not closing. Force quit it? Unsaved progress is lost."
-            : "Quit " + (root.game ? root.game.title : "the game") + "? Progress since your last save may be lost."
-          cancelText: "Keep playing"
-          confirmText: root.forceReady ? "Force quit" : "Quit"
-          selectedIndex: 0
-          background: Color.menu.background
-          foreground: Color.menu.text
-          // Denser than the menu's 0.5 scrim: inside a card the rows behind
-          // the question would otherwise read as part of it.
-          scrim: Util.alpha(Color.menu.background, 0.85)
-          selectedBackground: Color.menu.selectedBackground
-          selectedText: Color.menu.selectedText
-          fontFamily: root.fontFamily
-          cornerRadius: Style.cornerRadius
-          onCanceled: root.cancelQuit()
-          onConfirmed: root.quitGame()
-        }
-
-        // The question's scrim follows the card's corners.
-        Binding {
-          target: confirm.children[0]
-          property: "radius"
-          value: Math.max(0, card.radius - card.borderTop) / root.zoom
-        }
       }
     }
   }
 
   function hover(key, source, mouse) {
-    if (root.confirming || !pointerGate.moved(source, mouse)) return
+    if (root.view !== "main" || !pointerGate.moved(source, mouse)) return
     root.cursor = key
   }
 }

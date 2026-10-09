@@ -24,7 +24,21 @@ Item {
   readonly property real volume: available ? sink.audio.volume : 0
   readonly property bool muted: available ? sink.audio.muted : false
 
-  PwObjectTracker { objects: root.sink ? [root.sink] : [] }
+  // Output devices to switch between, in PipeWire's order, by their own names.
+  readonly property var sinks: (Pipewire.nodes ? Pipewire.nodes.values : [])
+    .filter(function(n) { return n && n.audio && n.isSink && !n.isStream })
+  readonly property var outputs: root.sinks.map(function(n) {
+    return {name: String(n.description || n.nickname || n.name), current: n === root.defaultSink}
+  })
+
+  PwObjectTracker { objects: root.sinks }
+
+  function cycleOutput(step) {
+    var list = root.sinks
+    if (list.length < 2) return
+    var i = list.indexOf(root.defaultSink)
+    Pipewire.preferredDefaultAudioSink = list[((i < 0 ? 0 : i) + step + list.length) % list.length]
+  }
 
   function setVolume(value) {
     if (!available) return

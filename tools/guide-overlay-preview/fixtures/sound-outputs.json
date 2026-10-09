@@ -93,12 +93,22 @@
   },
   "audio": {
     "volume": 0.72,
-    "muted": false
+    "muted": false,
+    "outputs": [
+      {
+        "name": "Living room TV (HDMI)",
+        "current": true
+      },
+      {
+        "name": "Xbox Wireless Headset",
+        "current": false
+      },
+      {
+        "name": "Speakers",
+        "current": false
+      }
+    ]
   },
-  "capture": {
-    "replay": {
-      "seconds": 30
-    }
-  },
-  "cursor": "replay"
+  "capture": {},
+  "cursor": "output"
 }

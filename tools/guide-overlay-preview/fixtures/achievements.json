@@ -95,10 +95,7 @@
     "volume": 0.72,
     "muted": false
   },
-  "capture": {
-    "replay": {
-      "seconds": 30
-    }
-  },
-  "cursor": "replay"
+  "capture": {},
+  "view": "achievements",
+  "achIndex": 1
 }

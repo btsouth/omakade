@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// The menu's section divider: a hairline in a band of its own height.
+// A section divider: a hairline in a band of its own height.
 Item {
   id: root
 
@@ -13,7 +13,7 @@ Item {
   function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
 
   width: parent ? parent.width : 0
-  height: root.sized(Style.space(17))
+  height: root.sized(Style.space(13))
 
   PanelSeparator {
     x: root.sized(Style.space(4))

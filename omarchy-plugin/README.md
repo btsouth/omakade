@@ -5,19 +5,32 @@ from the shell's kit (`qs.Commons`, `qs.Ui`), so it follows the active theme's
 menu colours, font, corner radius and spacing.
 
 ```
-Lantern Road                      9:47 PM
-42 min · Paused
+Lantern Road                          9:47 PM
+42 min · Paused · Pad 80%
 58 fps   17.2 ms   CPU 41% 67°   GPU 88% 71°
-──────────────────────────────────────────
+─────────────────────────────────────────────
  ▶  Resume
+    Return to desktop
+    Game library
+─────────────────────────────────────────────
     Screenshot
     Record clip            (Stop recording  01:12)
     Save last 30 s         (while a replay buffer runs)
-    Volume  ━━━━━━━━━━━○───  72%
-──────────────────────────────────────────
-    Quit game              (asks first, Keep playing focused)
+─────────────────────────────────────────────
+    Achievements                         23/63
+─────────────────────────────────────────────
+    Volume  ━━━━━━━━━━━○───               72%
+    Living room TV (HDMI)                  1/3
+─────────────────────────────────────────────
+    Quit game
 A select   B resume   Y screenshot
 ```
+
+Achievements (Steam games with data) opens a list inside the card: unlocked,
+newest first, then locked, with their pictures; B goes back to the rows. The
+output row appears only when there is more than one output and cycles them.
+Quit asks in the card's own rows, starting on Keep playing. The header adds
+controller batteries when UPower reports them.
 
 The readings line leaves out what is not available: frame rate and frame time
 come from Omakade when MangoHud reports them, CPU and GPU load and temperature

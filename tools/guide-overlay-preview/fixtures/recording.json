@@ -7,7 +7,78 @@
     "kind": "steam",
     "sessionMinutes": 42,
     "pauseWhileOpen": true,
-    "paused": true
+    "paused": true,
+    "achievements": {
+      "total": 63,
+      "unlocked": 23,
+      "items": [
+        {
+          "title": "Night Market Regular",
+          "description": "Eat at every stall in the night market",
+          "unlocked": true,
+          "when": "8 Oct 2026",
+          "icon": "@/achievements/1.png",
+          "rarity": 31.4
+        },
+        {
+          "title": "Ferryman's Apprentice",
+          "description": "Cross the bay at night without lighting a lantern",
+          "unlocked": true,
+          "when": "8 Oct 2026",
+          "icon": "@/achievements/2.png",
+          "rarity": 12.0
+        },
+        {
+          "title": "First Light",
+          "description": "Finish the prologue",
+          "unlocked": true,
+          "when": "2 Oct 2026",
+          "rarity": 88.6
+        },
+        {
+          "title": "Moon Viewing",
+          "description": "Watch the full moon rise from the shrine steps",
+          "unlocked": true,
+          "when": "29 Sep 2026",
+          "icon": "@/achievements/3.png",
+          "rarity": 45.2
+        },
+        {
+          "title": "The Unexpectedly Long Way Round the Lantern Road Ferry Docks",
+          "description": "Walk from the north gate to the ferry docks without using a single shortcut, a lift or the tram, in one night",
+          "unlocked": false,
+          "icon": "@/achievements/4.png",
+          "rarity": 6.3
+        },
+        {
+          "title": "Lamplighter",
+          "description": "Light all 48 lanterns on the main road",
+          "unlocked": false,
+          "icon": "@/achievements/5.png",
+          "rarity": 18.7
+        },
+        {
+          "title": "Quiet Hours",
+          "unlocked": false,
+          "hidden": true,
+          "icon": "@/achievements/6.png",
+          "rarity": 2.1
+        },
+        {
+          "title": "Perfect Pour",
+          "description": "Serve 100 bowls of ramen without a single spill",
+          "unlocked": false,
+          "icon": "@/achievements/7.png",
+          "rarity": 0.4
+        },
+        {
+          "title": "Collector",
+          "description": "Find every postcard",
+          "unlocked": false,
+          "icon": "@/achievements/8.png"
+        }
+      ]
+    }
   },
   "performance": {
     "mangohud": true,

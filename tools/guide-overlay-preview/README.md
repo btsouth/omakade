@@ -16,9 +16,11 @@ screen sizes.
 
 A fixture is the card's data without the backend: `game` as Omakade sends it,
 `performance` (`fps`, `frametime`), `stats` (`cpu`, `cpuTemp`, `gpu`,
-`gpuTemp`), `audio` (`volume`, `muted`), `capture` (`recording: {seconds}`,
-`replay: {seconds}`), plus `clock`, `cursor` (the focused row) and `confirm`
-(the quit question open). Actions in fixture mode change the fixture and are
+`gpuTemp`), `audio` (`volume`, `muted`, `outputs: [{name, current}]`), `pads` (battery
+percentages), `capture` (`recording: {seconds}`,
+`replay: {seconds}`), plus `clock`, `cursor` (the focused row), `confirm` (the quit question open)
+and `view: "achievements"` with `achIndex` (the list open). `"@/..."` paths
+point into this folder, where the achievement pictures live. Actions in fixture mode change the fixture and are
 logged as `GUIDE_ACT`.
 
 `omarchy-shell shell call omakade.guide state ""` returns the card's state,

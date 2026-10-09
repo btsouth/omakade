@@ -19,6 +19,9 @@ BorderSurface {
   property bool slider: false
   property real sliderValue: 0
   property bool sliderMuted: false
+  // A label that may need two lines (a sound device's name) wraps instead of
+  // being cut off; the row grows to hold it.
+  property bool wrapLabel: false
   property string fontFamily: Style.font.menuFamily
   // The card's legible versions of the menu's selected and urgent colours, and
   // the focus hairline for themes whose selected fill is too faint on its own.
@@ -44,7 +47,8 @@ BorderSurface {
   readonly property Item iconItem: glyph
   readonly property int inset: row.sized(Style.space(8)) + Math.round((iconBox - row.sized(Style.font.iconLarge)) / 2)
 
-  height: Math.max(row.sized(Style.space(50)), row.sized(Style.font.body) + row.sized(Style.spacing.rowPaddingX) * 2)
+  height: Math.max(row.sized(Style.space(50)), row.sized(Style.font.body) + row.sized(Style.spacing.rowPaddingX) * 2,
+                  labelText.lineCount > 1 ? labelText.height + row.sized(Style.spacing.rowPaddingX) * 2 : 0)
   radius: row.sized(Style.cornerRadius)
   color: row.current ? Color.menu.selectedBackground : "transparent"
   borderSpec: !row.current ? Border.none()
@@ -76,13 +80,15 @@ BorderSurface {
     textFormat: Text.PlainText
     x: glyph.x + glyph.width + row.sized(Style.space(6))
     width: row.slider ? implicitWidth : Math.max(0, (valueText.visible ? valueText.x - row.sized(Style.space(12)) : row.width - row.borderRight - row.inset) - x)
-    y: Math.round(row.height / 2 - (labelText.baselineOffset + caps.tightBoundingRect.y + caps.tightBoundingRect.height / 2))
+    y: labelText.lineCount > 1 ? Math.round((row.height - labelText.height) / 2)
+      : Math.round(row.height / 2 - (labelText.baselineOffset + caps.tightBoundingRect.y + caps.tightBoundingRect.height / 2))
     text: row.label
     color: row.ink
     font.family: row.fontFamily
     font.pixelSize: row.sized(Style.font.heading)
     font.weight: Font.Medium
-    elide: Text.ElideRight
+    elide: row.wrapLabel ? Text.ElideNone : Text.ElideRight
+    wrapMode: row.wrapLabel ? Text.Wrap : Text.NoWrap
   }
 
   Text {
