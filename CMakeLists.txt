@@ -127,7 +127,8 @@ target_include_directories(omakade_guide PUBLIC src)
 target_link_libraries(omakade_guide PUBLIC Qt6::Core)
 
 qt_add_executable(omakade-guide-button src/guidebutton/main.cpp)
-target_link_libraries(omakade-guide-button PRIVATE omakade_guide)
+target_link_libraries(omakade-guide-button PRIVATE omakade_guide Qt6::Network)
+target_sources(omakade-guide-button PRIVATE src/guide/GuideClient.cpp src/guide/GuideClient.h)
 target_compile_definitions(omakade-guide-button PRIVATE OMAKADE_VERSION="${PROJECT_VERSION}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade_guide PRIVATE -Wall -Wextra -Wpedantic)
@@ -322,6 +323,8 @@ add_library(omakade_core STATIC
   src/guide/GuidePlugin.h
   src/guide/InGameGuide.cpp
   src/guide/InGameGuide.h
+  src/guide/GuideClient.cpp src/guide/GuideClient.h
+  src/guide/ResidentGuide.cpp src/guide/ResidentGuide.h
   src/gamemode/GameModeOverlay.cpp
   src/gamemode/GameModeOverlay.h
   src/gamemode/GameModePorts.h
@@ -356,6 +359,8 @@ target_link_libraries(omakade_core PUBLIC
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+target_link_libraries(omakade-sessiond PRIVATE omakade_core)
 
 qt_add_executable(omakade
   src/app/main.cpp

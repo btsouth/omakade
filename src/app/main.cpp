@@ -50,6 +50,7 @@
 #include "gamemode/GameModeOverlay.h"
 #include "guide/GuidePlugin.h"
 #include "guide/InGameGuide.h"
+#include "guide/GuideClient.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
@@ -708,6 +709,21 @@ int testRestoreStartup(QGuiApplication& application, OmarchyTheme& theme, const 
 } // namespace
 
 int main(int argc, char* argv[]) {
+  QStringList rawArguments;
+  for (int index = 0; index < argc; ++index) rawArguments.append(QString::fromLocal8Bit(argv[index]));
+  const bool guideShortcut = rawArguments.contains("--game-mode-toggle") || rawArguments.contains("--guide-toggle");
+  bool guideFallback = rawArguments.contains("--game-mode-fallback");
+  if (guideShortcut && !guideFallback) {
+    // This path exits before loading a Qt platform, theme, library, models or QML.
+    QCoreApplication commandApplication(argc, argv);
+    const auto result = GuideClient::routeShortcut(optionValue(rawArguments, "--guide-device"));
+    if (result == "handled" || result == "locked") return EXIT_SUCCESS;
+    if (result != "fallback") {
+      qWarning("Resident guide unavailable. Start omakade-sessiond; the library was not opened.");
+      return EXIT_FAILURE;
+    }
+    guideFallback = true;
+  }
   QElapsedTimer startupTimer;
   startupTimer.start();
 
@@ -766,8 +782,8 @@ int main(int argc, char* argv[]) {
   // leaves it, and with no window running it undoes what an interrupted session left changed.
   // `--game-mode-toggle` does whichever applies, which is what a key binding wants.
   const bool gameModeToggleRequest =
-      application.arguments().contains(QStringLiteral("--game-mode-toggle"));
-  const bool guideToggleRequest = application.arguments().contains(QStringLiteral("--guide-toggle"));
+      guideFallback;
+  const bool guideToggleRequest = false;
   const QString guideDevice = optionValue(application.arguments(), QStringLiteral("--guide-device"));
   bool gameModeRequest = application.arguments().contains(QStringLiteral("--game-mode"));
   bool gameModeExitRequest = application.arguments().contains(QStringLiteral("--game-mode-exit"));
@@ -879,7 +895,7 @@ int main(int argc, char* argv[]) {
   }
   if (guideToggleRequest && SingleInstance::sendCommand({}, "guide toggle " + guideDevice.toUtf8())) return EXIT_SUCCESS;
   if (gameModeToggleRequest) {
-    if (SingleInstance::sendCommand({}, "game-mode toggle " + guideDevice.toUtf8())) {
+    if (SingleInstance::sendCommand({}, "game-mode toggle game-mode-fallback")) {
       return EXIT_SUCCESS;
     }
     // With no window running, a record left by an interrupted session means Game Mode is
@@ -1824,25 +1840,16 @@ int main(int argc, char* argv[]) {
       isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy);
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
-  InGameGuide inGameGuide(playSessionStore.get(), &unifiedGames, &gameMode, &gameModeCompositor, &launcher,
-                          !isolatedTest && onOmarchy);
-  inGameGuide.setInjectedInputEnabled(application.arguments().contains(QStringLiteral("--guide-input-test")));
-  inGameGuide.setAchievementDatabase(achievementDatabasePath);
-  if (inGameGuide.available()) {
-    const auto guidePluginPaths = GuidePlugin::defaultPaths(
-        configRoot,
-        QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)),
-        QCoreApplication::applicationDirPath());
-    inGameGuide.setPluginPaths(guidePluginPaths);
-    if (!guideToggleRequest && !gameModeToggleRequest && launcher.trackedGames().isEmpty() &&
-        (!playSessionStore || playSessionStore->nowPlaying().isEmpty()))
-      GuidePlugin::ensureAsync(guidePluginPaths, &inGameGuide);
-    inGameGuide.prepare();
-  }
-  // Without the guide plugin the shortcut keeps its Game Mode behavior.
-  const bool coldGuideRequest = guideToggleRequest ||
-                                (gameModeToggleRequest && inGameGuide.usable() && inGameGuide.hasGame());
-  if (coldGuideRequest) gameModeRequest = false;
+  GuideClient inGameGuide(!isolatedTest && onOmarchy);
+  // Publish launcher-owned games even when session recording is disabled. The resident
+  // service retains exact process identities and resolves compositor data asynchronously.
+  QTimer guideSnapshotTimer;
+  guideSnapshotTimer.setInterval(1000);
+  QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, [&inGameGuide, &launcher] {
+    inGameGuide.publish(launcher.trackedGames());
+  });
+  if (!isolatedTest && onOmarchy) guideSnapshotTimer.start();
+  const bool coldGuideRequest = false;
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
   engine.rootContext()->setContextProperty("Stats", &stats);
@@ -6908,7 +6915,7 @@ int main(int argc, char* argv[]) {
                    &GameModeSession::park);
   QObject::connect(&singleInstance, &SingleInstance::gameModeToggleRequested, &gameMode,
                    [&gameMode, &inGameGuide, rootWindow](const QString& node) {
-                     if (inGameGuide.opened() || (inGameGuide.usable() && inGameGuide.hasGame())) { inGameGuide.toggle(node, true); return; }
+                     if (node != "game-mode-fallback") { inGameGuide.toggle(node, true); return; }
                      // The shortcut parks or resumes the complete library session.
                      if (rootWindow == nullptr ||
                          !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) {
@@ -6916,12 +6923,12 @@ int main(int argc, char* argv[]) {
                      }
                    });
   // The shell was unreachable when the guide was requested: do what the shortcut did before the guide.
-  QObject::connect(&inGameGuide, &InGameGuide::summonFailed, &gameMode, [&gameMode, rootWindow] {
+  QObject::connect(&inGameGuide, &GuideClient::summonFailed, &gameMode, [&gameMode, rootWindow] {
     if (rootWindow == nullptr || !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) gameMode.toggle();
   });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
                    [&inGameGuide](const QString& node) { inGameGuide.toggle(node, true); });
-  QObject::connect(&inGameGuide, &InGameGuide::libraryRequested, &application, [rootWindow, &gameModeCompositor, &application] {
+  QObject::connect(&inGameGuide, &GuideClient::libraryRequested, &application, [rootWindow, &gameModeCompositor, &application] {
     if (!rootWindow) return;
     rootWindow->show(); rootWindow->requestActivate();
     QTimer::singleShot(150, &application, [&gameModeCompositor] {

@@ -3,6 +3,7 @@
 // Hyprland to run the same command the keyboard shortcut runs.
 
 #include "guidebutton/GuideListener.h"
+#include "guide/GuideClient.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -150,12 +151,20 @@ int main(int argc, char* argv[]) {
 
   GuideListener listener(parser.value(devDir), parser.value(sysDir));
   const QString toggleCommand = parser.value(command);
+  QObject::connect(&listener, &GuideListener::preparing, &application, [&application](const QString&, const QString&) {
+    // Preserve release/chord safety while preparing the cached game snapshot on down.
+    GuideClient::request({{"action", "prepare"}}, &application);
+  });
   QObject::connect(&listener, &GuideListener::pressed, &application,
                    [&application, toggleCommand](const QString& node, const QString& name) {
-                     qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)")
-                                              .arg(node, name);
-                     toggleGameMode(toggleCommand + QStringLiteral(" --guide-device ") + node, &application);
-                   });
+    qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)").arg(node, name);
+    GuideClient::request({{"action", "shortcut"}, {"node", node}}, &application,
+                        [&application, toggleCommand, node](const QString& result, const QJsonObject&) {
+      if (result == "fallback")
+        toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback").replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node, &application);
+      else if (result != "handled" && result != "locked") qWarning("Resident guide unavailable; Home did not open the library");
+    });
+  });
   listener.start();
   return application.exec();
 }

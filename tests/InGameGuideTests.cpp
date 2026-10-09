@@ -259,7 +259,10 @@ void InGameGuideTests::guardResumesOnOwnerDeath() {
   QVERIFY(game.waitForStarted());
   qint64 start = -1;
   for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
-  QVERIFY(start > 0);
+  QTRY_VERIFY(([&] {
+    for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+    return start > 0;
+  })());
   QProcess guard;
   guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD));
   QVERIFY(guard.waitForStarted());

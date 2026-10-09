@@ -1,5 +1,6 @@
 [Unit]
-Description=Omakade play session recorder
+Description=Omakade session recorder and resident game guide
+After=graphical-session.target
 Documentation=https://github.com/btsouth/omakade
 
 [Service]

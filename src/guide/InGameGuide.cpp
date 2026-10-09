@@ -304,7 +304,7 @@ QJsonObject InGameGuide::payload() const {
       game.insert("achievements", achievements);
     }
     model.insert("game", game);
-    QSettings settings;
+    QSettings settings("Omakade", "Omakade");
     const bool steam = m_session.value("source") == "Steam";
     QFile sockets("/proc/net/unix");
     const bool hooked = !steam && !m_session.value("mangoSocket").toString().isEmpty() &&
@@ -397,6 +397,7 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
   m_opening = true;
   m_poll.start();
   const auto token = m_token;
+  qInfo("Guide timing: summon dispatched elapsed_ms=%lld", m_summonClock.elapsed());
   shell({"shell", "summon", "omakade.guide", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))},
         [this, token, fallback](bool ok, const QByteArray& reply) {
           if (token != m_token) return;
@@ -448,7 +449,7 @@ void InGameGuide::message(const QJsonObject& data) {
   else if (action == "pause-while-open" && m_opened) {
     m_pauseWhileOpen = data.value("value").toBool();
     if (!setPaused(m_pauseWhileOpen)) m_pauseWhileOpen = false;
-    QSettings preferences;
+    QSettings preferences("Omakade", "Omakade");
     preferences.setValue("guide/pause/" + preferenceKey(m_session), m_pauseWhileOpen);
     shell({"shell", "call", "omakade.guide", "update", QString::fromUtf8(QJsonDocument(payload()).toJson(QJsonDocument::Compact))});
   } else if (action == "inject" && m_injectedInput && m_opened) {
@@ -553,7 +554,7 @@ void InGameGuide::message(const QJsonObject& data) {
             : m_session.value("source") == "Steam" ? "Add MANGOHUD=1 %command% to the game's Steam launch options" : "Launch the game again from Omakade");
       return;
     }
-    QSettings settings;
+    QSettings settings("Omakade", "Omakade");
     if (action == "hud") {
       const auto level = data.value("value").toString();
       if (!QStringList{"off", "fps", "frametime", "full"}.contains(level)) return;
