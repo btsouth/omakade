@@ -95,5 +95,9 @@
     "volume": 0.72,
     "muted": false
   },
-  "capture": {}
+  "capture": {},
+  "pads": [
+    80,
+    15
+  ]
 }

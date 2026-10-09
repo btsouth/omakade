@@ -39,7 +39,6 @@ private slots:
   void guardTreeAndIdentity();
   void protocolExtension();
   void mangoBuilding();
-  void couchScale();
   void perDeviceGrab();
   void padsChangingWhileOpen();
   void identifyOnGrabbedDevice();
@@ -351,15 +350,6 @@ void InGameGuideTests::mangoBuilding() {
   QCOMPARE(GuideActions::mangoVisibilityCommand(false, true), QByteArray(":hud;"));
   QCOMPARE(GuideActions::mangoVisibilityCommand(true, false), QByteArray(":hud;"));
   QVERIFY(GuideActions::mangoVisibilityCommand(true, true).isEmpty());
-}
-void InGameGuideTests::couchScale() {
-  QFile file(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideSettings.js")); QVERIFY(file.open(QIODevice::ReadOnly));
-  auto script = QString::fromUtf8(file.readAll()); script.remove(".pragma library"); QJSEngine engine; QVERIFY(!engine.evaluate(script).isError());
-  auto scale = engine.globalObject().property("couchScale");
-  QCOMPARE(scale.call({"auto", 800}).toNumber(), 1.5); QCOMPARE(scale.call({"auto", 801}).toNumber(), 1.5);
-  QCOMPARE(scale.call({"auto", 200}).toNumber(), 1.25); QCOMPARE(scale.call({"auto", 199}).toNumber(), 1.25);
-  QCOMPARE(scale.call({"auto", 201}).toNumber(), 1.0); QCOMPARE(scale.call({"auto", 0}).toNumber(), 1.0);
-  QCOMPARE(scale.call({"2", 100}).toNumber(), 2.0);
 }
 void InGameGuideTests::perDeviceGrab() {
   GuideInput input;

@@ -95,5 +95,10 @@
     "volume": 0.72,
     "muted": false
   },
-  "capture": {}
+  "capture": {
+    "replay": {
+      "seconds": 30
+    }
+  },
+  "cursor": "replay"
 }

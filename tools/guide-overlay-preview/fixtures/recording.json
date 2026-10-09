@@ -95,5 +95,10 @@
     "volume": 0.72,
     "muted": false
   },
-  "capture": {}
+  "capture": {
+    "recording": {
+      "seconds": 72
+    }
+  },
+  "cursor": "record"
 }

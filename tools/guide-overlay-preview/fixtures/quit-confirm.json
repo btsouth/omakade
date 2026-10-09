@@ -95,5 +95,7 @@
     "volume": 0.72,
     "muted": false
   },
-  "capture": {}
+  "capture": {},
+  "confirm": true,
+  "cursor": "quit"
 }

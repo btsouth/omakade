@@ -1,32 +1,31 @@
 #!/usr/bin/env python3
-"""Generic capture paths and read-only metrics. No Omakade dependency."""
+"""Readings and capture actions for the guide card. No Omakade dependency.
+
+  status                 CPU/GPU load and temperature, running recorder processes
+  screenshot OUTPUT      save OUTPUT's current frame where Omasnap saves screenshots
+  record OUTPUT          record OUTPUT next to a running replay buffer
+  record-stop PID        stop a recording started by `record`
+  replay-save PID        save the replay buffer of gpu-screen-recorder PID
+
+Capture actions report through Omarchy notifications, and only after the file exists.
+"""
 import configparser
-import ctypes
-import fcntl
-import hashlib
-import math
-import struct
-import time
 import datetime
 import json
 import os
-from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import time
+from pathlib import Path
 
 home = Path.home()
 config = Path(os.environ.get('XDG_CONFIG_HOME', home / '.config'))
 state = Path(os.environ.get('XDG_STATE_HOME', home / '.local/state')) / 'omarchy/guide'
-state.mkdir(parents=True, exist_ok=True)
-settings_path = state / 'settings.json'
-if not settings_path.exists():
-    try:
-        with settings_path.open('x') as stream:
-            stream.write('{}\n')
-    except FileExistsError:
-        pass
+recorder = 'gpu-screen-recorder'
+
 
 def xdg(name, default):
     try:
@@ -38,14 +37,146 @@ def xdg(name, default):
         pass
     return str(home / default)
 
-settings = configparser.ConfigParser(interpolation=None)
-settings.read(config / 'omasnap/omasnap.conf')
-shots = Path(os.environ.get('OMASNAP_SCREENSHOT_DIR') or os.environ.get('OMARCHY_SCREENSHOT_DIR') or settings.get('output', 'directory', fallback='').strip() or str(Path(xdg('PICTURES', 'Pictures')) / 'Screenshots')).expanduser()
-videos = Path(os.environ.get('OMARCHY_SCREENRECORD_DIR') or xdg('VIDEOS', 'Videos'))
-for directory in (shots, videos):
-    directory.mkdir(parents=True, exist_ok=True)
 
-def screenshot():
+def notify(headline, description='', image=''):
+    command = ['omarchy-notification-send']
+    if image:
+        command += ['--image', image]
+    command += [headline] + ([description] if description else [])
+    try:
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def refresh_indicators():
+    try:
+        subprocess.run(['omarchy-shell', '-q', 'omarchy.indicators', 'refresh'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def read(path):
+    try:
+        return Path(path).read_text()
+    except OSError:
+        return None
+
+
+def number(path, divisor=1):
+    text = read(path)
+    try:
+        return round(int(text) / divisor) if text is not None else None
+    except ValueError:
+        return None
+
+
+# ------------------------------------------------------------------ readings
+
+def cpu_ticks():
+    ticks = list(map(int, Path('/proc/stat').read_text().splitlines()[0].split()[1:]))
+    return ticks[3] + ticks[4], sum(ticks[:8])
+
+
+def cpu_load():
+    # Load since the previous poll; a fresh open takes its own short sample.
+    sample = state / 'cpu.json'
+    idle, total = cpu_ticks()
+    previous = None
+    try:
+        if time.time() - sample.stat().st_mtime < 5:
+            previous = json.loads(sample.read_text())
+    except (OSError, ValueError):
+        pass
+    if not previous or total <= previous[1]:
+        previous = (idle, total)
+        time.sleep(0.15)
+        idle, total = cpu_ticks()
+    try:
+        state.mkdir(parents=True, exist_ok=True)
+        sample.write_text(json.dumps([idle, total]))
+    except OSError:
+        pass
+    if total <= previous[1]:
+        return None
+    return round(100 * max(0, min(1, 1 - (idle - previous[0]) / (total - previous[1]))))
+
+
+def cpu_temperature():
+    for sensor in Path('/sys/class/hwmon').glob('hwmon*'):
+        if (read(sensor / 'name') or '').strip() in ('coretemp', 'k10temp', 'zenpower'):
+            value = number(sensor / 'temp1_input', 1000)
+            if value is not None:
+                return value
+    return None
+
+
+def gpu_readings():
+    # Only driver-provided counters; a missing sensor stays absent.
+    for device in sorted(Path('/sys/class/drm').glob('card[0-9]*/device')):
+        busy = number(device / 'gpu_busy_percent')
+        if busy is None:
+            continue
+        temperature = None
+        for hwmon in (device / 'hwmon').glob('hwmon*'):
+            temperature = number(hwmon / 'temp1_input', 1000)
+            if temperature is not None:
+                break
+        return busy, temperature
+    return None, None
+
+
+def recorders():
+    boot = None
+    for line in (read('/proc/stat') or '').splitlines():
+        if line.startswith('btime '):
+            boot = int(line.split()[1])
+    ticks = os.sysconf('SC_CLK_TCK')
+    found = []
+    for entry in Path('/proc').iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            args = (entry / 'cmdline').read_bytes().split(b'\0')
+        except OSError:
+            continue
+        if not args or os.path.basename(args[0].decode(errors='replace')) != recorder:
+            continue
+        args = [a.decode(errors='replace') for a in args if a]
+        stat = read(entry / 'stat') or ''
+        fields = stat[stat.rfind(')') + 2:].split()
+        started = boot + int(fields[19]) / ticks if boot is not None and len(fields) > 19 else None
+        option = lambda name: args[args.index(name) + 1] if name in args[:-1] else None
+        found.append(dict(pid=int(entry.name), started=started, replay=option('-r'), output=option('-o')))
+    return found
+
+
+def status():
+    busy, gpu_temperature = gpu_readings()
+    result = dict(cpu=cpu_load(), cpuTemp=cpu_temperature(), gpu=busy, gpuTemp=gpu_temperature,
+                  recording=None, replay=None)
+    for process in recorders():
+        if process['replay']:
+            try:
+                seconds = int(process['replay'])
+            except ValueError:
+                seconds = None
+            result['replay'] = dict(pid=process['pid'], seconds=seconds)
+        elif result['recording'] is None:
+            result['recording'] = dict(pid=process['pid'], started=process['started'])
+    return {key: value for key, value in result.items() if value is not None}
+
+
+# ------------------------------------------------------------------ capture
+
+def screenshot_path():
+    settings = configparser.ConfigParser(interpolation=None)
+    settings.read(config / 'omasnap/omasnap.conf')
+    shots = Path(os.environ.get('OMASNAP_SCREENSHOT_DIR') or os.environ.get('OMARCHY_SCREENSHOT_DIR')
+                 or settings.get('output', 'directory', fallback='').strip()
+                 or str(Path(xdg('PICTURES', 'Pictures')) / 'Screenshots')).expanduser()
+    shots.mkdir(parents=True, exist_ok=True)
     now = datetime.datetime.now()
     name = settings.get('output', 'filename', fallback='screenshot-{date}_{time}-{app}')
     for joined in ('-{app}', '_{app}', ' {app}', '{app}-', '{app}_', '{app} ', '{app}'):
@@ -59,202 +190,103 @@ def screenshot():
     while path.exists():
         path = shots / (name + '-' + str(suffix) + '.png')
         suffix += 1
-    return str(path)
+    return path
 
-def clip_metadata(path, thumb, thumbnailer, ffmpeg, ffprobe):
-    deadline = time.monotonic() + 3
 
-    def run(command):
-        try:
-            return subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                  timeout=max(.01, deadline - time.monotonic()), check=True).stdout
-        except (OSError, subprocess.SubprocessError):
-            return None
-
-    if not thumb.is_file() or not thumb.stat().st_size:
-        # Publish atomically so overlapping readers never see a partial JPEG.
-        temporary = thumb.with_name(thumb.stem + '.' + str(os.getpid()) + '.jpg')
-        generated = False
-        try:
-            if thumbnailer:
-                for seek in ('00:00:01', '00:00:00'):
-                    result = run([thumbnailer, '-i', str(path), '-o', str(temporary), '-s', '480', '-t', seek, '-c', 'jpeg'])
-                    if result is not None and temporary.is_file() and temporary.stat().st_size:
-                        generated = True
-                        break
-                    if time.monotonic() >= deadline:
-                        break
-            if not generated and ffmpeg and time.monotonic() < deadline:
-                for seek in ('1', '0'):
-                    result = run([ffmpeg, '-nostdin', '-loglevel', 'error', '-y', '-ss', seek,
-                                  '-i', str(path), '-frames:v', '1', '-vf', 'scale=480:-2', str(temporary)])
-                    if result is not None and temporary.is_file() and temporary.stat().st_size:
-                        generated = True
-                        break
-                    if time.monotonic() >= deadline:
-                        break
-            if generated and temporary.is_file() and temporary.stat().st_size:
-                temporary.replace(thumb)
-        finally:
-            temporary.unlink(missing_ok=True)
-    result = dict(thumb=thumb.as_uri() if thumb.is_file() and thumb.stat().st_size else '')
-    known = thumb.with_suffix('.txt')
-    if known.is_file():
-        duration = known.read_text().strip()
-        if duration:
-            result['duration'] = duration
-        return result
-    if ffprobe and time.monotonic() < deadline:
-        output = run([ffprobe, '-v', 'error', '-show_entries', 'format=duration',
-                      '-of', 'default=noprint_wrappers=1:nokey=1', str(path)])
-        try:
-            seconds = float(output)
-            if math.isfinite(seconds) and seconds >= 0:
-                minutes, seconds = divmod(int(seconds), 60)
-                result['duration'] = f'{minutes}:{seconds:02d}'
-                known.write_text(result['duration'])
-        except (TypeError, ValueError):
-            pass
-    return result
-
-def scan():
-    files = []
-    for folder in (shots, videos):
-        files += [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in ('.png', '.jpg', '.mp4', '.mkv')]
-    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    recent = []
-    thumbs = state / 'thumbs'
-    thumbs.mkdir(exist_ok=True)
-    referenced = set()
-    thumbnailer, ffmpeg, ffprobe = (shutil.which(tool) for tool in ('ffmpegthumbnailer', 'ffmpeg', 'ffprobe'))
-    for f in files[:12]:
-        shot = f.suffix.lower() in ('.png', '.jpg')
-        modified = f.stat()
-        item = dict(path=str(f), thumb=f.as_uri() if shot else '', kind='Screenshot' if shot else 'Clip', age=datetime.datetime.fromtimestamp(modified.st_mtime).strftime('%H:%M'))
-        if not shot:
-            key = hashlib.sha1((str(f.resolve()) + '\0' + str(modified.st_mtime_ns)).encode()).hexdigest()
-            thumb = thumbs / (key + '.jpg')
-            referenced.add(thumb.name)
-            item.update(clip_metadata(f, thumb, thumbnailer, ffmpeg, ffprobe))
-        recent.append(item)
-    for thumb in thumbs.glob('*'):
-        if re.fullmatch(r'[0-9a-f]{40}\.(jpg|txt)', thumb.name) and thumb.with_suffix('.jpg').name not in referenced:
-            thumb.unlink(missing_ok=True)
-    pads = []
-    seen = set()
-    for event in (Path(os.environ.get('OMAKADE_GUIDE_SYSFS', '/sys')) / 'class/input').glob('event*'):
-        try:
-            device = event / 'device'
-            chunks = (device / 'capabilities/key').read_text().split()
-            bits = sum(int(word, 16) << (64 * i) for i, word in enumerate(reversed(chunks)))
-            chunks = (device / 'capabilities/abs').read_text().split()
-            axes = sum(int(word, 16) << (64 * i) for i, word in enumerate(reversed(chunks)))
-            # Same rule as the guide button: pad buttons and a stick or hat, but no letter keys.
-            # Virtual keyboards from streaming tools declare every key code, gamepad buttons included.
-            if not any(bits & (1 << code) for code in (0x130, 0x120)) or bits & (1 << 30):
-                continue
-            if not any(axes & (1 << code) for code in (0x00, 0x01, 0x03, 0x04, 0x10)):
-                continue
-            identity = str(device.resolve())
-            if identity in seen:
-                continue
-            seen.add(identity)
-            name = (device / 'name').read_text().strip()
-            family = 'playstation' if re.search('dual|sony|playstation', name, re.I) else 'nintendo' if re.search('nintendo|switch|joy-con', name, re.I) else 'deck' if re.search('steam', name, re.I) else 'xbox' if re.search('xbox|x-box|xinput|microsoft', name, re.I) else 'generic'
-            node = Path('/dev/input') / event.name
-            try:
-                chunks = (device / 'capabilities/ff').read_text().split()
-                effects = sum(int(word, 16) << (64 * i) for i, word in enumerate(reversed(chunks)))
-            except OSError:
-                effects = 0
-            pads.append(dict(name=name, id=identity, node=str(node), family=family, identifiable=bool(effects & (1 << 0x50)) and os.access(node, os.W_OK)))
-        except OSError:
-            pass
-    # Steam Input mirrors each pad through uinput (/devices/virtual/input). Bluetooth pads
-    # also live under /devices/virtual (misc/uhid), so only uinput copies are dropped.
-    if any('/devices/virtual/input/' not in pad['id'] for pad in pads):
-        pads = [pad for pad in pads if '/devices/virtual/input/' not in pad['id']]
-    return dict(omakadeInstalled=bool(shutil.which("omakade")), shots=str(shots), videos=str(videos), recent=recent, pads=pads, settingsPath=str(state / 'settings.json'))
-
-def stats():
-    ticks = list(map(int, Path('/proc/stat').read_text().splitlines()[0].split()[1:]))
-    idle, total = ticks[3] + ticks[4], sum(ticks[:8])
-    sample = state / 'cpu.json'
-    cpu = None
+def screenshot(output):
+    path = screenshot_path()
+    command = ['grim'] + (['-o', output] if output else []) + [str(path)]
     try:
-        old_idle, old_total = json.loads(sample.read_text())
-        if total > old_total:
-            cpu = max(0, min(1, 1 - (idle - old_idle) / (total - old_total)))
-    except (OSError, ValueError):
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=True)
+    except (OSError, subprocess.SubprocessError):
         pass
-    sample.write_text(json.dumps([idle, total]))
-    memory = {}
-    for line in Path('/proc/meminfo').read_text().splitlines():
-        key, value = line.split(':', 1)
-        memory[key] = int(value.strip().split()[0])
-    used = memory['MemTotal'] - memory['MemAvailable']
-    result = [dict(label='RAM', value=f'{used / 1048576:.1f} / {memory["MemTotal"] / 1048576:.1f} GB', progress=used / memory['MemTotal'])]
-    if cpu is not None:
-        result.insert(0, dict(label='CPU', value=f'{cpu * 100:.0f}%', progress=cpu))
-    for sensor in Path('/sys/class/hwmon').glob('hwmon*'):
-        try:
-            if (sensor / 'name').read_text().strip() in ('coretemp', 'k10temp'):
-                value = int((sensor / 'temp1_input').read_text()) / 1000
-                result.append(dict(label='CPU temperature', value=f'{value:.0f}°C', progress=0))
-        except OSError:
-            pass
-    # Expose only driver-provided counters. Missing sensors remain absent.
-    for device in Path('/sys/class/drm').glob('card[0-9]*/device'):
-        for field, label, unit, divisor in [('gpu_busy_percent', 'GPU', '%', 1), ('mem_info_vram_used', 'VRAM', ' GB', 1073741824)]:
-            try:
-                value = int((device / field).read_text()) / divisor
-                result.append(dict(label=label, value=f'{value:.0f}{unit}' if unit == '%' else f'{value:.1f}{unit}', progress=value / 100 if unit == '%' else 0))
-            except OSError:
-                pass
-        for hwmon in (device / 'hwmon').glob('hwmon*'):
-            for field, label, divisor, unit in [('temp1_input', 'GPU temperature', 1000, '°C'), ('power1_average', 'GPU power', 1000000, ' W')]:
-                try:
-                    value = int((hwmon / field).read_text()) / divisor
-                    result.append(dict(label=label, value=f'{value:.0f}{unit}', progress=0))
-                except OSError:
-                    pass
-    return result
+    if path.is_file() and path.stat().st_size:
+        notify('Screenshot saved', path.name, str(path))
+        print(path)
+        return 0
+    path.unlink(missing_ok=True)
+    notify('Screenshot failed', 'The game frame could not be captured')
+    return 1
 
-def identify(path):
-    # Native Linux input.h layout, including pointer alignment on 32/64 bit hosts.
-    class Envelope(ctypes.Structure):
-        _fields_ = [('attack_length', ctypes.c_ushort), ('attack_level', ctypes.c_ushort), ('fade_length', ctypes.c_ushort), ('fade_level', ctypes.c_ushort)]
-    class Periodic(ctypes.Structure):
-        _fields_ = [('waveform', ctypes.c_ushort), ('period', ctypes.c_ushort), ('magnitude', ctypes.c_short), ('offset', ctypes.c_short), ('phase', ctypes.c_ushort), ('envelope', Envelope), ('custom_len', ctypes.c_uint), ('custom_data', ctypes.c_void_p)]
-    class Rumble(ctypes.Structure):
-        _fields_ = [('strong', ctypes.c_ushort), ('weak', ctypes.c_ushort)]
-    class EffectData(ctypes.Union):
-        _fields_ = [('periodic', Periodic), ('rumble', Rumble)]
-    class Effect(ctypes.Structure):
-        _fields_ = [('type', ctypes.c_ushort), ('id', ctypes.c_short), ('direction', ctypes.c_ushort), ('trigger_button', ctypes.c_ushort), ('trigger_interval', ctypes.c_ushort), ('length', ctypes.c_ushort), ('delay', ctypes.c_ushort), ('effect', EffectData)]
-    if not re.fullmatch(r'/dev/input/event[0-9]+', path):
-        raise ValueError('Invalid controller node')
-    effect = Effect()
-    effect.type, effect.id, effect.length = 0x50, -1, 500
-    effect.effect.rumble.strong = 0x7000
-    effect.effect.rumble.weak = 0x7000
-    fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+
+def videos():
+    path = Path(os.environ.get('OMARCHY_SCREENRECORD_DIR') or xdg('VIDEOS', 'Videos')).expanduser()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def record(output):
+    path = videos() / ('screenrecording-' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.mp4')
+    command = [recorder, '-w', output, '-k', 'auto', '-f', '60', '-fm', 'cfr', '-fallback-cpu-encoding', 'yes',
+               '-a', 'default_output', '-ac', 'aac', '-o', str(path)]
     try:
-        payload = bytearray(bytes(effect))
-        fcntl.ioctl(fd, (1 << 30) | (ctypes.sizeof(Effect) << 16) | (ord('E') << 8) | 0x80, payload, True)
-        effect_id = Effect.from_buffer_copy(payload).id
-        os.write(fd, struct.pack('llHHi', 0, 0, 0x15, effect_id, 1))
-        time.sleep(.55)
-    finally:
-        # Closing the uploader fd removes its effect, even on errors or process exit.
-        os.close(fd)
-    print('identified')
+        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        notify('Recording failed', 'Install gpu-screen-recorder to record clips')
+        return 1
+    deadline = time.monotonic() + 5
+    while process.poll() is None and not path.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    if process.poll() is not None or not path.exists():
+        notify('Recording failed', 'The recorder could not start')
+        return 1
+    refresh_indicators()
+    return 0
 
-if sys.argv[1] == 'identify':
-    identify(sys.argv[2])
-elif sys.argv[1] == 'screenshot':
-    print(screenshot())
-elif sys.argv[1] == 'stats':
-    print(json.dumps(stats()))
+
+def own_recorder(pid):
+    args = (read('/proc/%d/cmdline' % pid) or '').split('\0')
+    return args if args and os.path.basename(args[0]) == recorder else None
+
+
+def record_stop(pid):
+    args = own_recorder(pid)
+    if not args:
+        return 1
+    path = Path(args[args.index('-o') + 1]) if '-o' in args[:-1] else None
+    os.kill(pid, signal.SIGINT)
+    deadline = time.monotonic() + 5
+    while own_recorder(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    refresh_indicators()
+    if path and path.is_file() and path.stat().st_size:
+        notify('Screen recording saved', path.name)
+        return 0
+    notify('Recording failed', 'No video was saved')
+    return 1
+
+
+def replay_save(pid):
+    args = own_recorder(pid)
+    if not args or '-r' not in args:
+        return 1
+    folder = Path(args[args.index('-o') + 1]) if '-o' in args[:-1] else videos()
+    before = {f: f.stat().st_mtime for f in folder.glob('*') if f.is_file()} if folder.is_dir() else {}
+    os.kill(pid, signal.SIGUSR1)
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        time.sleep(0.2)
+        for f in folder.glob('*') if folder.is_dir() else []:
+            try:
+                fresh = f.is_file() and f.stat().st_size and f.stat().st_mtime != before.get(f)
+            except OSError:
+                fresh = False
+            if fresh and f.suffix.lower() in ('.mp4', '.mkv', '.webm', '.flv'):
+                time.sleep(0.3)
+                notify('Replay saved', f.name)
+                return 0
+    notify('Replay could not be saved', 'The replay buffer did not write a file')
+    return 1
+
+
+command = sys.argv[1] if len(sys.argv) > 1 else 'status'
+if command == 'screenshot':
+    sys.exit(screenshot(sys.argv[2] if len(sys.argv) > 2 else ''))
+elif command == 'record':
+    sys.exit(record(sys.argv[2]))
+elif command == 'record-stop':
+    sys.exit(record_stop(int(sys.argv[2])))
+elif command == 'replay-save':
+    sys.exit(replay_save(int(sys.argv[2])))
 else:
-    print(json.dumps(scan()))
+    print(json.dumps(status()))

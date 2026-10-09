@@ -1,63 +1,29 @@
-# In-game guide design preview
+# Guide card previews
 
-This is a standalone QML prototype. It does not load Omakade, control a game,
-change audio, capture the desktop, or write to disk. Session, capture,
-controller and music data are fixtures. Integration follows design acceptance.
-
-Run every preview and export inside omabox. Use the active desktop's font and
-corner radius, as `OmarchyTheme` does, rather than selecting a new design palette:
+Render the `omakade.guide` card over a still "game" inside an omabox box, never
+on a real desktop:
 
 ```sh
-omabox up --net isolated
-omabox hyprctl getoption decoration:rounding -j
-omabox run -- fc-match monospace -f '%{family}\n'
-omabox run -d --wait -- /usr/lib/qt6/bin/qml tools/guide-overlay-preview/Preview.qml -- --theme=osaka-jade --radius=12 --font='JetBrainsMono Nerd Font'
+omabox up --plugin "$PWD/omarchy-plugin"
+tools/guide-overlay-preview/render-plugin.sh OUT_DIR apple-dark gruvbox catppuccin-latte
 ```
 
-Pass the radius and first font family reported by those queries. The example
-values are not defaults. `gen-themes.py` reads the installed Omarchy palettes;
-`themes.js` is their preview snapshot. Theme changes cross-fade a frozen previous
-render into the new render over 500 ms.
+Each theme gets one full-screen shot per fixture in `fixtures/`, named
+`THEME-FIXTURE.png`. `FIXTURES="lantern-road recording"` picks fixtures, `PAD`
+the button names (`xbox`, `playstation`, `nintendo`, `deck`, `keyboard`),
+`SCALE` the couch scale and `OMABOX_BOX` the box. Use `omabox up --size 1280x720` or `2560x1440` for other
+screen sizes.
 
-Use arrows as D-pad, Enter as A, Escape as B, G as Guide, and T to cycle themes.
-The small numbers show focus order. Up/down follows the visual order through
-actions and captures. Left/right moves between capture actions, thumbnails and
-music transport controls.
-A opens Controls & more; left/right or A changes its settings. B returns to the
-main page. Quit defaults to Keep
-playing and requires a second selection. `--page=tools`, `--focus=3`,
-`--variant=emulator`, `--backdrop=game2.jpg` and `--closed` select preview states.
+A fixture is the card's data without the backend: `game` as Omakade sends it,
+`performance` (`fps`, `frametime`), `stats` (`cpu`, `cpuTemp`, `gpu`,
+`gpuTemp`), `audio` (`volume`, `muted`, `outputs: [{name, current}]`), `pads` (battery
+percentages), `capture` (`recording: {seconds}`,
+`replay: {seconds}`), plus `clock`, `cursor` (the focused row), `confirm` (the quit question open)
+and `view: "achievements"` with `achIndex` (the list open). `"@/..."` paths
+point into this folder, where the achievement pictures live. Actions in fixture mode change the fixture and are
+logged as `GUIDE_ACT`.
 
-The glass has a saturated blurred frame, fine grain below the protective tint,
-soft shadow and a one-pixel edge. A translucent rim surrounds one continuous
-protected text surface, preserving the game without weakening text contrast.
-The game header combines landscape art, an overlapping cover and a large title.
-Resume is the primary action, with paired capture controls directly beneath it.
-Controls & more uses large performance values, a sound/display group and compact
-music transport beside the track. Supporting groups have no borders or shadows;
-only purposeful action tiles receive a faint outline. Focus uses an accent light
-bar and glow, with no flat accent fill.
-
-`Contrast.js` is shared by the preview and audit. It keeps the 0.6 base and the
-original role floors, choosing the clearest tint in 0.01 steps from 0.55 to 1.00.
-It includes 8-bit blend rounding in its bounds. The audit covers steady themes;
-transition animation does not establish text contrast at every intermediate frame.
-
-To export all 22 themes, create an output directory in the box HOME and pass
-`--export=/home/sbx/themes`. Each screenshot follows a rendered frame; QML exits
-when the set is complete. Copy results from `$(omabox path)/home/themes` into an
-external evidence directory. `--audit` prints the shared contrast audit and exits.
-Export a second pair of sets over pure black and white PNG contrast fixtures,
-then run:
-
-```sh
-python3 tools/guide-overlay-preview/audit-contrast.py AUDIT_LOG BLACK_DIR WHITE_DIR EXTERNAL_OUTPUT_DIR
-```
-
-That report checks all four roles over both frames, samples empty patches of the
-actual 1920×1080 glass, and produces JSON, CSV and a Markdown table. Export the
-same black/white pair with `--page=tools` and pass `--page=tools` to the audit
-script to check the settings composition too.
-Keep renders, reports and review evidence outside the repository. D-pad checks
-in omabox prove the prototype flow; physical controller routing and action
-integrations belong to subsequent implementation milestones.
+`omarchy-shell shell call omakade.guide state ""` returns the card's state,
+including the geometry of the card and its rows and the colours it draws.
+`contrast.py STATE.json...` reports their WCAG contrast over a black and a
+white game frame.
