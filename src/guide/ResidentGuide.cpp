@@ -16,6 +16,7 @@
 #include <QtConcurrent>
 #include <memory>
 #include <unistd.h>
+#include <chrono>
 
 namespace {
 struct Snapshot { QVariantMap session, metadata; QString output; GameModeWindow window; bool locked = false; };
@@ -163,7 +164,9 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   else if (action == "publish") { m_published = data.value("sessions").toArray(); refresh(); }
   else if (action == "close") m_guide.close();
   else if (action == "shortcut" || action == "toggle") {
-    qInfo("Guide timing: resident request origin=%s", qPrintable(action));
+    const auto requested = data.value("requestNs").toString().toLongLong();
+    const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
     if (action == "shortcut" && !m_guide.opened() && (!m_guide.hasGame() || !m_guide.usable())) return {{"result", "fallback"}};

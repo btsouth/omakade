@@ -15,6 +15,7 @@
 #include <QTimer>
 
 #include <unistd.h>
+#include <chrono>
 
 namespace {
 constexpr int kHyprctlTimeoutMs = 5000;
@@ -151,14 +152,17 @@ int main(int argc, char* argv[]) {
 
   GuideListener listener(parser.value(devDir), parser.value(sysDir));
   const QString toggleCommand = parser.value(command);
-  QObject::connect(&listener, &GuideListener::preparing, &application, [&application](const QString&, const QString&) {
+  QObject::connect(&listener, &GuideListener::preparing, &application, [&application](const QString& node, const QString&) {
+    qInfo("Guide timing: Home down mono_ns=%lld node=%s", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()), qPrintable(node));
     // Preserve release/chord safety while preparing the cached game snapshot on down.
     GuideClient::request({{"action", "prepare"}}, &application);
   });
   QObject::connect(&listener, &GuideListener::pressed, &application,
                    [&application, toggleCommand](const QString& node, const QString& name) {
     qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)").arg(node, name);
-    GuideClient::request({{"action", "shortcut"}, {"node", node}}, &application,
+    const auto now = qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    qInfo("Guide timing: Home release mono_ns=%lld node=%s", now, qPrintable(node));
+    GuideClient::request({{"action", "shortcut"}, {"node", node}, {"requestNs", QString::number(now)}}, &application,
                         [&application, toggleCommand, node](const QString& result, const QJsonObject&) {
       if (result == "fallback")
         toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback").replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node, &application);
