@@ -10,9 +10,7 @@
     "paused": true
   },
   "performance": {
-    "mangohud": true,
-    "fps": 58,
-    "frametime": 17.2
+    "mangohud": false
   },
   "stats": {
     "cpu": 41,

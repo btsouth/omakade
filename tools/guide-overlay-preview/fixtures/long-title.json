@@ -2,10 +2,10 @@
   "pad": "xbox",
   "clock": "9:47 PM",
   "game": {
-    "title": "Lantern Road",
+    "title": "Unexpectedly Long Chronicles of the Lantern Road Ferryman II",
     "source": "Steam",
     "kind": "steam",
-    "sessionMinutes": 42,
+    "sessionMinutes": 135,
     "pauseWhileOpen": true,
     "paused": true
   },

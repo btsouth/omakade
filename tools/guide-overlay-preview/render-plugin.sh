@@ -1,44 +1,54 @@
 #!/usr/bin/env bash
-# Render the omakade.guide shell plugin inside an omabox box over a still "game".
+# Render the omakade.guide card inside an omabox box over a still "game".
 #   omabox up --plugin "$PWD/omarchy-plugin"
 #   tools/guide-overlay-preview/render-plugin.sh OUT_DIR [THEME...]
-# For each theme (or the current one): one full-screen shot per tab.
+# One full-screen shot per theme and fixture, named THEME-FIXTURE.png.
+# FIXTURES picks fixtures by name (default: all of them), PAD the button names,
+# OMABOX_BOX the box (passed as -b).
 set -euo pipefail
 out=${1:?output directory}; shift
 here=$(cd "$(dirname "$0")" && pwd)
-fixture=${FIXTURE:-$here/fixtures/lantern-road.json}
 pad=${PAD:-xbox}
-scale=${SCALE:-1.25}
-tabs=${TABS:-"game capture performance audio controllers system"}
+fixtures=${FIXTURES:-$(cd "$here/fixtures" && ls *.json | sed 's/\.json$//' | tr '\n' ' ')}
+box=()
+[ -n "${OMABOX_BOX:-}" ] && box=(-b "$OMABOX_BOX")
 mkdir -p "$out"
 
-if ! omabox windows 2>/dev/null | grep -q 'Fake game'; then
-  omabox run -d --wait -- /usr/lib/qt6/bin/qml "$here/FakeGame.qml" >/dev/null
+ob() { omabox "${box[@]}" "$@"; }
+
+if ! ob windows 2>/dev/null | grep -q 'Fake game'; then
+  ob run -d --wait -- /usr/lib/qt6/bin/qml "$here/FakeGame.qml" >/dev/null
 fi
-# A game covers the bar: make the still frame truly fullscreen.
-if ! omabox hyprctl -j activewindow | grep -q '"fullscreen": 2'; then
-  omabox hyprctl dispatch focuswindow 'title:Fake game' >/dev/null
-  omabox hyprctl dispatch fullscreen 0 >/dev/null
-  omabox wait still >/dev/null || true
-fi
+# A game covers the bar: keep the still frame truly fullscreen (a theme switch
+# can drop it), and keep the pointer out of the shots.
+fullscreen() {
+  if ! ob hyprctl -j activewindow | grep -q '"fullscreen": 2'; then
+    ob hyprctl dispatch focuswindow 'title:Fake game' >/dev/null
+    ob hyprctl dispatch fullscreen 0 >/dev/null
+    ob wait still >/dev/null || true
+  fi
+}
+ob lua 'hl.config({cursor={invisible=true}})' >/dev/null 2>&1 || true
+ob pointer -- move 4 4 >/dev/null 2>&1 || true
 
 shoot() {
   local name=$1
-  omabox run -- omarchy-shell shell hide omakade.guide >/dev/null || true
-  omabox wait still >/dev/null || true
-  for tab in $tabs; do
-    omabox run -- omarchy-shell shell summon omakade.guide \
-      "{\"fixture\":\"$fixture\",\"pad\":\"$pad\",\"scale\":$scale,\"tab\":\"$tab\",\"audit\":\"$name\"}" >/dev/null
-    omabox wait cmd -- bash -c 'test "$(omarchy-shell omakade.guide ready)" = ready' >/dev/null
-    omabox wait still >/dev/null || true
-    omabox shot -o "$out/$name-$tab.png" >/dev/null
+  for fixture in $fixtures; do
+    ob run -- omarchy-shell shell hide omakade.guide >/dev/null || true
+    fullscreen
+    ob run -- omarchy-shell shell summon omakade.guide \
+      "{\"fixture\":\"$here/fixtures/$fixture.json\",\"pad\":\"$pad\"}" >/dev/null
+    ob wait cmd -- bash -c 'test "$(omarchy-shell omakade.guide ready)" = ready' >/dev/null
+    ob wait still >/dev/null || true
+    ob shot -o "$out/$name-$fixture.png" >/dev/null
   done
+  ob run -- omarchy-shell shell hide omakade.guide >/dev/null || true
 }
 
 if [ $# -eq 0 ]; then shoot current; else
   for theme in "$@"; do
-    omabox run -- omarchy-theme-set "$theme" >/dev/null
-    omabox wait still >/dev/null || true
+    ob run -- omarchy-theme-set "$theme" >/dev/null
+    ob wait still >/dev/null || true
     shoot "$theme"
   done
 fi
