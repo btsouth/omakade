@@ -56,7 +56,8 @@ class GameModeStartupTests(unittest.TestCase):
         config = root / "config/omakade"
         config.mkdir(parents=True)
         (config / "game-mode.json").write_text(json.dumps({"silence_notifications": False}))
-        self.log = open(root / "app.log", "w+")
+        self.log_path = root / "app.log"
+        self.log = self.log_path.open("a")
         self.primary = None
         self.game = None
         # Keep real resident IPC in these legacy fallback ownership tests. Its
@@ -126,9 +127,7 @@ class GameModeStartupTests(unittest.TestCase):
             if self.primary.poll() is not None:
                 break
             time.sleep(0.02)
-        self.log.flush()
-        self.log.seek(0)
-        details = self.log.read()[-4000:]
+        details = self.log_path.read_text()[-4000:]
         for name in ("state", "fixture"):
             path = getattr(self, name, None)
             if path and path.exists():
@@ -373,9 +372,8 @@ class GameModeStartupTests(unittest.TestCase):
         # Exercise resume directly; the shortcut broker is covered separately.
         self.command("--game-mode")
         def recovered_content():
-            self.log.flush()
-            self.log.seek(0)
-            log = self.log.read()
+            # A separate reader must not seek the apps' inherited output handle.
+            log = self.log_path.read_text()
             return "did not hide" in log and "Game Mode presentation: opacity=1 retained=true" in log
         self.wait_for(recovered_content, "Retained failure kept startup content transparent")
         self.assertIsNone(self.primary.poll())
