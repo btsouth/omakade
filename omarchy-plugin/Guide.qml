@@ -170,6 +170,8 @@ Item {
     var rows = [resumeRow, screenshotRow, recordRow, replayRow, volumeRow, quitRow]
     return {card: box(card), rows: {resume: box(resumeRow), screenshot: box(screenshotRow), record: box(recordRow),
       replay: box(replayRow), volume: box(volumeRow), quit: box(quitRow)},
+      icons: {resume: box(resumeRow.iconItem), screenshot: box(screenshotRow.iconItem), record: box(recordRow.iconItem),
+      replay: box(replayRow.iconItem), volume: box(volumeRow.iconItem), quit: box(quitRow.iconItem)},
       fits: card.height >= card.contentTopInset + content.implicitHeight + card.contentBottomInset,
       truncated: rows.filter(function(r) { return r.visible && r.truncated }).map(function(r) { return r.label }),
       perfLines: perf.visible ? perf.lines : 0}

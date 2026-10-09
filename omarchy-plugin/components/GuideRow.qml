@@ -37,6 +37,7 @@ BorderSurface {
   // the value on the right and the card's header and hint line share.
   readonly property int iconBox: Style.space(36)
   readonly property bool truncated: labelText.truncated
+  readonly property Item iconItem: glyph
   readonly property int inset: Style.space(8) + Math.round((iconBox - Style.font.iconLarge) / 2)
 
   height: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
