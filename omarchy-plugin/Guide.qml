@@ -52,6 +52,10 @@ Item {
   // the card needs to fit the screen without scrolling.
   property real couchScale: 1
   property real zoom: 1
+  // Design prototype to draw instead of the card ("a", "b" or "c"), from the
+  // summon payload. Empty is the current card.
+  property string design: ""
+  property string designCursor: ""
   function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
 
   readonly property var game: root.model.game || null
@@ -122,8 +126,23 @@ Item {
   readonly property var icons: ({
     resume: "\u{f040a}", desktop: "\u{f0379}", library: "\u{f0570}", screenshot: "\u{f0100}",
     record: "\u{f044a}", replay: "\u{f02da}", achievements: "\u{f0538}", volume: "\u{f057e}",
-    volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}", quit: "\u{f0343}"
+    volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}", quit: "\u{f0343}",
+    stop: "\u{f04db}", gamepad: "\u{f0297}"
   })
+
+  // The readings the designs show as labelled numbers; missing ones are left out.
+  function known(v) { return v !== undefined && v !== null && isFinite(Number(v)) }
+  function loadReadout(label, load, temp) {
+    if (!root.known(load) && !root.known(temp)) return null
+    if (!root.known(load)) return {label: label, value: Math.round(temp) + "°", unit: ""}
+    return {label: label, value: Math.round(load) + "%", unit: root.known(temp) ? " " + Math.round(temp) + "°" : ""}
+  }
+  readonly property var readouts: [
+    root.known(root.performance.fps) ? {label: "FPS", value: String(Math.round(root.performance.fps)), unit: ""} : null,
+    root.known(root.performance.frametime) ? {label: "FRAME", value: Number(root.performance.frametime).toFixed(1), unit: " ms"} : null,
+    root.loadReadout("CPU", root.stats.cpu, root.stats.cpuTemp),
+    root.loadReadout("GPU", root.stats.gpu, root.stats.gpuTemp)
+  ].filter(function(r) { return r !== null })
 
   // ------------------------------------------------------------ backend socket
 
@@ -252,6 +271,8 @@ Item {
       root.family = "keyboard"
     }
     if (p.pad) root.family = p.pad
+    if (p.design !== undefined) root.setDesign(String(p.design || ""))
+    root.designCursor = p.cursor || ""
     if (p.version === undefined) root.setCouchScale(p.scale)
     if (root.opened) return
     root.now = new Date()
@@ -293,9 +314,10 @@ Item {
   // Lower the zoom until the card fits: its size is proportional to the zoom,
   // so one measurement says how far.
   function fitZoom() {
-    var natural = (card.contentTopInset + content.implicitHeight + card.contentBottomInset) / root.zoom
+    var d = designLoader.item
+    var natural = (d ? d.contentHeight : card.contentTopInset + content.implicitHeight + card.contentBottomInset) / root.zoom
     var room = Math.min((window.height - Style.gapsOut * 2) / natural,
-                        (window.width - Style.gapsOut * 2) / Style.space(380))
+                        (window.width - Style.gapsOut * 2) / Style.space(d ? d.baseWidth : 380))
     var next = window.height > 1 ? Math.min(root.couchScale, Math.floor(room * 20) / 20) : root.couchScale
     next = Math.max(0.5, next)
     if (Math.abs(next - root.zoom) > 0.001) root.zoom = next
@@ -317,7 +339,8 @@ Item {
       try { root.model = JSON.parse(text().replace(/"@\//g, '"file://' + base)) } catch (e) { console.warn("omakade.guide: bad fixture", e) }
       root.family = root.fixturePad || root.model.pad || "keyboard"
       // A fixture stands for a fresh open: the cursor starts on the first row.
-      root.cursor = root.rows.indexOf(root.model.cursor) >= 0 ? root.model.cursor : root.rows[0]
+      var wanted = root.designCursor || root.model.cursor
+      root.cursor = root.rows.indexOf(wanted) >= 0 ? wanted : root.rows[0]
       root.achIndex = root.model.achIndex || 0
       root.view = root.model.confirm ? "confirm" : root.model.view === "achievements" && root.hasAchievements ? "achievements" : "main"
     }
@@ -433,6 +456,7 @@ Item {
       else if (action === "y") root.activate("screenshot")
       return "ok"
     }
+    if (designLoader.item && ["up", "down", "left", "right"].indexOf(action) >= 0 && designLoader.item.navigate(action)) return "ok"
     switch (action) {
     case "up": root.move(-1); break
     case "down": root.move(1); break
@@ -727,12 +751,32 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: Commons.Color.menu.scrim
+        color: designLoader.item && designLoader.item.scrim !== undefined ? designLoader.item.scrim : Commons.Color.menu.scrim
       }
 
       MouseArea {
         anchors.fill: parent
         onClicked: root.close()
+      }
+
+      Item {
+        id: keys
+        focus: true
+        Keys.onPressed: function(event) {
+          var a = root.keyAction(event)
+          if (a === "") return
+          if (root.family !== "keyboard") { root.family = "keyboard"; root.notify("input-family", "keyboard") }
+          root.input(a)
+          event.accepted = true
+        }
+      }
+
+      // A design prototype in place of the card: it draws its own surface.
+      Loader {
+        id: designLoader
+        anchors.fill: parent
+        opacity: card.opacity
+        onLoaded: Qt.callLater(root.fitZoom)
       }
 
       BorderSurface {
@@ -750,6 +794,7 @@ Item {
         borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
         padding: card.pad
         opacity: 0
+        visible: root.design === ""
 
         NumberAnimation on opacity {
           id: fadeIn
@@ -761,18 +806,6 @@ Item {
         }
 
         MouseArea { anchors.fill: parent }
-
-        Item {
-          id: keys
-          focus: true
-          Keys.onPressed: function(event) {
-            var a = root.keyAction(event)
-            if (a === "") return
-            if (root.family !== "keyboard") { root.family = "keyboard"; root.notify("input-family", "keyboard") }
-            root.input(a)
-            event.accepted = true
-          }
-        }
 
         Column {
           id: content
@@ -1018,6 +1051,14 @@ Item {
         }
       }
     }
+  }
+
+  function setDesign(name) {
+    name = name.toLowerCase()
+    if (name === root.design) return
+    root.design = name
+    if (name === "") designLoader.source = ""
+    else designLoader.setSource(Qt.resolvedUrl("designs/Design" + name.toUpperCase() + ".qml"), {g: root})
   }
 
   function hover(key, source, mouse) {

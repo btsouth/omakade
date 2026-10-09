@@ -5,6 +5,7 @@
     "title": "Unexpectedly Long Chronicles of the Lantern Road Ferryman II",
     "source": "Steam",
     "kind": "steam",
+    "cover": "@/cover.jpg",
     "sessionMinutes": 135,
     "pauseWhileOpen": true,
     "paused": true,

@@ -5,6 +5,7 @@
     "title": "Lantern Road",
     "source": "Steam",
     "kind": "steam",
+    "cover": "@/cover.jpg",
     "sessionMinutes": 42,
     "pauseWhileOpen": true,
     "paused": true,
