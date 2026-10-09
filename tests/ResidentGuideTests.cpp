@@ -333,14 +333,22 @@ void ResidentGuideTests::reconnectRefreshesEnvironment() {
 
 void ResidentGuideTests::preparingDeadlineOwnsDecision() {
   Fixture fixture;
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanupGame = qScopeGuard([&] { game.kill(); game.waitForFinished(); });
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+  const auto clients = QJsonDocument(QJsonArray{QJsonObject{{"pid", game.processId()}, {"address", "0x123"}, {"monitor", 0}}}).toJson(QJsonDocument::Compact);
   // Two serial reconciliations take 1.9 s. The late second snapshot must not
   // process the request after the 1.5 s preparing response.
-  QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\nsleep .95\n[ \"$2\" = activewindow ] && echo '{}' || echo '[]'\n", true));
+  QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\nsleep .95\ncase \"$2\" in\nclients) echo '" + clients + "';;\nactivewindow) echo '{}';;\n*) echo '[]';;\nesac\n", true));
   const auto shellLog = fixture.root.filePath("shell.log");
   QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho \"$@\" >> '" + shellLog.toUtf8() + "'\necho ok\n", true));
   QProcess daemon; daemon.setProcessEnvironment(fixture.environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
   QVERIFY(daemon.waitForStarted()); const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
   QTRY_VERIFY(QFileInfo::exists(fixture.endpoint()));
+  QLocalSocket publish; publish.connectToServer(fixture.endpoint()); QVERIFY(publish.waitForConnected());
+  publish.write(QJsonDocument(QJsonObject{{"action", "publish"}, {"sessions", QJsonArray{QJsonObject{{"pid", game.processId()}, {"procStart", start}, {"source", "Fixture"}, {"path", "test"}}}}}).toJson(QJsonDocument::Compact) + '\n'); publish.flush();
+  QVERIFY(publish.waitForReadyRead());
   QLocalSocket socket; socket.connectToServer(fixture.endpoint()); QVERIFY(socket.waitForConnected());
   QElapsedTimer elapsed; elapsed.start(); socket.write("{\"action\":\"shortcut\"}\n"); socket.flush();
   QVERIFY(socket.waitForReadyRead(1900));

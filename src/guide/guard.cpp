@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QScopeGuard>
 #include <csignal>
 #include <poll.h>
 #include <unistd.h>
@@ -25,6 +26,7 @@ int main(int argc, char** argv) {
   QString anrToken;
   const auto environment = QProcessEnvironment::systemEnvironment();
   const auto resume = [&] { paused.resume(); GuideAnr::release(anrToken, environment); anrToken.clear(); };
+  const auto cleanup = qScopeGuard(resume);
   QByteArray pending;
   while (!interrupted) {
     pollfd input{STDIN_FILENO, POLLIN | POLLHUP, 0};
