@@ -349,12 +349,15 @@ class GameModeStartupTests(unittest.TestCase):
         self.phase("active")
         self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 2,
                       "Initial handoff did not settle")
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
         self.command("--game-mode-desktop")
         self.phase("parked")
-        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xdd",
-                      "Game did not park")
+        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xdd"
+                      and json.loads(self.fixture.read_text()).get("refreshes", 0) > refreshes,
+                      "Park handoff did not settle before fault injection")
         self.fixture_update(fail_resume=True, hide_fails=True)
-        self.command("--game-mode-toggle")
+        # Exercise resume directly; the shortcut broker is covered separately.
+        self.command("--game-mode")
         def recovered_content():
             self.log.flush()
             self.log.seek(0)
