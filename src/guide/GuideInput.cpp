@@ -146,6 +146,7 @@ struct GuideInput::Device {
   int fd = -1;
   QString family, node, name, id, group;
   bool virtualDevice = false, dropping = false, monotonic = false;
+  bool steamMirror = false, ignoreNavigation = false;
   qint64 attachedAt = 0;
   QStringList pending;
   bool grabbed = false;
@@ -174,7 +175,7 @@ GuideInput::GuideInput(QObject* parent) : QObject(parent) {
   connect(&m_repeat, &QTimer::timeout, this, [this] {
     const auto now = clockMs();
     for (const auto& device : m_devices)
-      if (m_groups.value(device->group).primary == device->node)
+      if (!device->ignoreNavigation && m_groups.value(device->group).primary == device->node)
         device->pending.append(device->mapping.repeat(now));
     for (const auto& action : m_injected.repeat(now)) emit this->action(action, "xbox");
     if (!m_dispatch.isActive()) m_dispatch.start(0);
@@ -211,6 +212,10 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   auto device = std::make_unique<Device>();
   device->node = "/dev/input/" + pad.node;
   device->name = pad.name; device->id = pad.id; device->virtualDevice = pad.virtualDevice;
+  device->steamMirror = pad.virtualDevice &&
+      (pad.vendor == 0x28de || (pad.vendor == 0x045e && pad.product == 0x028e)) &&
+      QRegularExpression("^Microsoft X-Box 360 pad(?: [0-9]+)?$",
+                         QRegularExpression::CaseInsensitiveOption).match(pad.name).hasMatch();
   if (m_access.open) device->fd = m_access.open(pad.node);
   else {
     device->fd = ::open(QFile::encodeName(device->node).constData(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
@@ -287,12 +292,29 @@ void GuideInput::sample(Device& device) {
 }
 
 void GuideInput::regroup() {
+  // Steam presents PlayStation/Nintendo hardware as Xbox uinput devices, with
+  // no stable per-physical pairing identifier. Once a non-Xbox physical pad is
+  // grabbed, use the physical sources for navigation and only grab/drain Steam
+  // mirrors. This also avoids Steam's Nintendo layout remapping the same press.
+  // Virtual-only input remains usable when no such physical source is handled.
+  const bool physicalNavigation = std::any_of(m_devices.begin(), m_devices.end(), [](const auto& device) {
+    return !device->virtualDevice && device->grabbed && device->family != "xbox";
+  });
+  for (const auto& device : m_devices) {
+    const bool ignored = physicalNavigation && device->steamMirror;
+    if (ignored != device->ignoreNavigation) {
+      device->pending.clear();
+      device->mapping.suppressUntilNeutral();
+    }
+    device->ignoreNavigation = ignored;
+  }
   QHash<QString, QStringList> physical;
   for (const auto& device : m_devices)
     if (!device->virtualDevice) physical[controllerName(device->name)].append(device->id);
   for (auto& ids : physical) { ids.removeDuplicates(); ids.sort(); }
   QSet<QString> live;
   for (const auto& device : m_devices) {
+    if (device->ignoreNavigation) continue;
     QString group = device->id;
     if (device->virtualDevice) {
       const auto ids = physical.value(controllerName(device->name));
@@ -308,7 +330,7 @@ void GuideInput::regroup() {
     auto& state = m_groups[group];
     Device* primary = nullptr;
     for (const auto& device : m_devices) {
-      if (device->group != group) continue;
+      if (device->ignoreNavigation || device->group != group) continue;
       if (!primary || (primary->virtualDevice && !device->virtualDevice)) primary = device.get();
     }
     if (primary && state.primary != primary->node) {
@@ -317,7 +339,7 @@ void GuideInput::regroup() {
     }
     for (const int key : {BTN_SOUTH, BTN_EAST, BTN_WEST, BTN_NORTH, BTN_MODE}) {
       for (const auto& device : m_devices)
-        if (device->group == group && device->mapping.heldPosition(key)) state.latched.insert(key);
+        if (!device->ignoreNavigation && device->group == group && device->mapping.heldPosition(key)) state.latched.insert(key);
     }
   }
 }
@@ -368,12 +390,14 @@ void GuideInput::read(Device& device) {
 }
 
 void GuideInput::dispatch() {
+  for (const auto& device : m_devices)
+    if (device->ignoreNavigation) device->pending.clear();
   struct Intent { QString action, family; };
   QList<Intent> intents;
   for (auto it = m_groups.begin(); it != m_groups.end(); ++it) {
     auto& group = it.value();
     for (const auto& device : m_devices) {
-      if (device->group != it.key()) continue;
+      if (device->ignoreNavigation || device->group != it.key()) continue;
       const auto pending = std::exchange(device->pending, {});
       for (const auto& action : pending) {
         if (direction(action)) {
@@ -390,7 +414,7 @@ void GuideInput::dispatch() {
     for (const int key : {BTN_SOUTH, BTN_EAST, BTN_WEST, BTN_NORTH, BTN_MODE}) {
       bool held = false;
       for (const auto& device : m_devices)
-        if (device->group == it.key() && device->mapping.heldPosition(key)) held = true;
+        if (!device->ignoreNavigation && device->group == it.key() && device->mapping.heldPosition(key)) held = true;
       if (!held) { group.latched.remove(key); if (key == BTN_MODE) group.homeArmed = true; }
       else { group.latched.insert(key); if (key == BTN_MODE) group.homeArmed = false; }
     }

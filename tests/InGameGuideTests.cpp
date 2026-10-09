@@ -50,6 +50,8 @@ private slots:
   void axes();
   void reportArbitrationAndRepeat();
   void mirroredReportsAndRecovery();
+  void nonXboxMirrors_data();
+  void nonXboxMirrors();
   void families();
   void guardResumesOnOwnerDeath();
   void guardTreeAndIdentity();
@@ -581,6 +583,52 @@ void InGameGuideTests::mirroredReportsAndRecovery() {
   QTRY_COMPARE(actions.size(), 8); QCOMPARE(actions.last().first().toString(), "x");
   report("event15", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
   report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 8);
+  input.release(); for (const int fd : writers) ::close(fd);
+}
+
+void InGameGuideTests::nonXboxMirrors_data() {
+  QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
+  QTest::addColumn<QString>("family"); QTest::addColumn<int>("mirrorButton");
+  QTest::newRow("playstation") << QString("Sony DualSense") << QString("hid-playstation") << QString("playstation") << BTN_Y;
+  QTest::newRow("nintendo-layout") << QString("Nintendo Switch Pro Controller") << QString("hid-nintendo") << QString("nintendo") << BTN_X;
+}
+
+void InGameGuideTests::nonXboxMirrors() {
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(QString, family); QFETCH(int, mirrorButton);
+  GuideInput input; QHash<QString, int> writers;
+  QList<GuideListener::Controller> pads{
+      {"event15", "physical", name, false, driver},
+      {"event16", "mirror", "Microsoft X-Box 360 pad 0", true, {}, 0x045e, 0x028e}};
+  GuideInput::Access access;
+  access.scan = [&] { return pads; };
+  access.open = [&](const QString& node) { int fds[2]; if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC)) return -1; writers[node] = fds[1]; return fds[0]; };
+  access.grab = [](int) { return true; }; access.ungrab = [](int) {};
+  input.setAccess(access); input.grab("event15", nullptr, nullptr);
+  QCOMPARE(input.grabbedCount(), size_t(2));
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto report = [&](const QString& node, int key, int value) {
+    input_event events[2]{}; events[0].type = EV_KEY; events[0].code = key; events[0].value = value;
+    events[1].type = EV_SYN; events[1].code = SYN_REPORT;
+    QCOMPARE(::write(writers[node], events, sizeof(events)), ssize_t(sizeof(events)));
+  };
+  QTest::qWait(20);
+  report("event15", BTN_DPAD_DOWN, 1); QTest::qWait(20);
+  report("event16", BTN_DPAD_DOWN, 1); QTest::qWait(20);
+  QCOMPARE(actions.size(), 1); QCOMPARE(actions.first().at(1).toString(), family);
+  report("event15", BTN_DPAD_DOWN, 0); report("event16", BTN_DPAD_DOWN, 0); QTest::qWait(20);
+  // Nintendo's mirror can disagree on X/Y, so latching by action is insufficient.
+  report("event15", BTN_NORTH, 1); QTest::qWait(20);
+  report("event16", mirrorButton, 1); QTest::qWait(20);
+  QCOMPARE(actions.size(), 2); QCOMPARE(actions.last().first().toString(), "y");
+  QCOMPARE(actions.last().at(1).toString(), family);
+  report("event15", BTN_NORTH, 0); report("event16", mirrorButton, 0); QTest::qWait(20);
+  // Other virtual controllers are not globally discarded.
+  pads.append({"event17", "remote", "Remote gamepad", true}); input.rescan();
+  report("event17", BTN_SOUTH, 1); QTest::qWait(20); QCOMPARE(actions.size(), 3);
+  // Once hardware disappears, the known Steam mirror is usable by itself.
+  pads.removeFirst(); ::close(writers.take("event15")); QTest::qWait(20); input.rescan();
+  report("event16", BTN_SOUTH, 1); QTest::qWait(20);
+  QCOMPARE(actions.size(), 4); QCOMPARE(actions.last().at(1).toString(), "xbox");
   input.release(); for (const int fd : writers) ::close(fd);
 }
 
