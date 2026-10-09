@@ -326,7 +326,9 @@ Item {
   property bool surfaceShown: false
 
   function showSurface() {
-    if (window.width <= 1 && window.height <= 1) { root.surfaceShown = true; return }
+    // Newer Omarchy maps a fresh window and exposes contentReady. Older shells
+    // park at 1x1, so keep their configure handoff without delaying a fresh map.
+    if (window.contentReady !== undefined || (window.width <= 1 && window.height <= 1)) { root.surfaceShown = true; return }
     parkWait.restart()
   }
 
@@ -338,12 +340,14 @@ Item {
 
   Connections {
     target: window
+    ignoreUnknownSignals: true
+    function onContentReadyChanged() { root.surfaceSized() }
     function onWidthChanged() { root.surfaceSized(); Qt.callLater(root.fitZoom) }
     function onHeightChanged() { root.surfaceSized(); Qt.callLater(root.fitZoom) }
   }
 
   function surfaceSized() {
-    var sized = window.width > 1 && window.height > 1
+    var sized = window.width > 1 && window.height > 1 && (window.contentReady === undefined || window.contentReady)
     // Not from inside the resize itself: a show requested while the 1x1
     // configure is being applied is never answered with a full-size one.
     if (root.opened && !root.surfaceShown && !sized) { parkWait.stop(); Qt.callLater(root.showParked) }
@@ -365,7 +369,7 @@ Item {
 
   onSurfaceShownChanged: {
     if (!surfaceShown) return
-    if (window.width > 1 && window.height > 1) root.present()
+    if (window.width > 1 && window.height > 1 && (window.contentReady === undefined || window.contentReady)) root.present()
     else sizeWatch.restart()
   }
 

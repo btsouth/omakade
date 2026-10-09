@@ -21,6 +21,7 @@
 #include <linux/input.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <QScopeGuard>
 #include <unistd.h>
 
 class InGameGuideTests final : public QObject {
@@ -96,6 +97,9 @@ void InGameGuideTests::telemetryRequiresRealFreshReadings() {
 }
 
 void InGameGuideTests::desktopRetainsPauseAndIdentity() {
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
   QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
   const auto pid = game.processId();
   QFile stat(QStringLiteral("/proc/%1/stat").arg(pid)); QVERIFY(stat.open(QIODevice::ReadOnly));
