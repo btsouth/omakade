@@ -79,6 +79,12 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
         QSqlQuery query(database); query.prepare("SELECT games.title, installations.cover_path, installations.hero_path, installations.logo_path FROM games JOIN installations USING(app_id) WHERE app_id = ?"); query.addBindValue(id);
         if (query.exec() && query.next()) { result.metadata = {{"title", query.value(0)}, {"appId", id}, {"coverPath", query.value(1)}, {"heroPath", query.value(2)}, {"logoPath", query.value(3)}}; result.session.insert("name", query.value(0)); }
         else result.session.clear(); // Exact library installation required, as before.
+        if (!result.session.isEmpty()) {
+          QSqlQuery tags(database); tags.prepare("SELECT tags_json FROM game_organization WHERE source = 'Steam' AND app_id = ?"); tags.addBindValue(id);
+          QStringList values;
+          if (tags.exec()) while (tags.next()) for (const auto& value : QJsonDocument::fromJson(tags.value(0).toByteArray()).array()) values.append(value.toString());
+          result.metadata.insert("tags", values);
+        }
       }
     }
   }
@@ -90,7 +96,8 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
     for (const auto& value : clients) if (value.toObject().value("pid").toInteger() == session.value("pid").toLongLong()) { result.session = session; break; }
     if (!result.session.isEmpty()) break;
   }
-  if (result.metadata.isEmpty()) result.metadata = result.session.value("metadata").toMap();
+  const auto publishedMetadata = result.session.value("metadata").toMap();
+  for (auto it = publishedMetadata.cbegin(); it != publishedMetadata.cend(); ++it) result.metadata.insert(it.key(), it.value());
   if (!result.session.isEmpty() && !result.session.contains("path"))
     result.session.insert("path", result.session.value("source") == "Steam" ? result.session.value("appId") : result.session.value("installPath"));
   for (const auto& value : clients) {
@@ -174,7 +181,8 @@ void ResidentGuide::refresh() {
     auto* process = new QProcess(this);
     auto done = std::make_shared<bool>(false);
     const auto complete = [this, process, queries, query, done] {
-      if (*done) return; *done = true;
+      if (*done) return;
+      *done = true;
       const auto document = QJsonDocument::fromJson(process->readAllStandardOutput());
       if (query == "activewindow") queries->active = document.object();
       else if (query == "clients") queries->clients = document.array(); else queries->monitors = document.array();

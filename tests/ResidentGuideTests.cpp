@@ -8,6 +8,8 @@
 #include <QLocalSocket>
 #include <QSqlQuery>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <QScopeGuard>
 
 class ResidentGuideTests final : public QObject {
   Q_OBJECT

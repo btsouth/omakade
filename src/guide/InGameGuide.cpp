@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <chrono>
 #include <QFutureWatcher>
+#include <QScopeGuard>
 #include <QtConcurrent>
 
 namespace {
@@ -235,6 +236,7 @@ QJsonArray InGameGuide::achievementItems(const QString& appId, const QString& pa
   QJsonArray items;
   if (appId.isEmpty() || path.isEmpty() || !QFileInfo::exists(path)) return items;
   const auto connection = "omakade-guide-achievements-" + QUuid::createUuid().toString();
+  const auto cleanup = qScopeGuard([connection] { QSqlDatabase::removeDatabase(connection); });
   {
     auto database = QSqlDatabase::contains(connection) ? QSqlDatabase::database(connection, false)
                                                        : QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
@@ -262,7 +264,6 @@ QJsonArray InGameGuide::achievementItems(const QString& appId, const QString& pa
       items.append(item);
     }
   }
-  QSqlDatabase::removeDatabase(connection);
   return items;
 }
 

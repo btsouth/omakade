@@ -93,6 +93,7 @@ QString GuideInputMap::cardinal(bool held) const {
 
 QStringList GuideInputMap::report(qint64 now, bool stale) {
   auto actions = std::exchange(m_pending, {});
+  if (stale) actions.clear();
   const auto next = cardinal(!m_direction.isEmpty() || m_needsNeutral);
   if (next.isEmpty()) { m_direction.clear(); m_needsNeutral = false; }
   else if (stale) { m_direction.clear(); m_needsNeutral = true; }
@@ -119,6 +120,7 @@ struct GuideInput::Device {
   int fd = -1;
   QString family, node, name, id, group;
   bool virtualDevice = false, dropping = false, monotonic = false;
+  qint64 attachedAt = 0;
   QStringList pending;
   bool grabbed = false;
   int effect = -1;
@@ -207,6 +209,7 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   device->family = GuidePayload::padFamily(pad.name);
   const int clock = CLOCK_MONOTONIC;
   device->monotonic = ::ioctl(device->fd, EVIOCSCLOCKID, &clock) == 0;
+  device->attachedAt = clockMs(device->monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME);
   sample(*device);
   auto* reader = device.get();
   device->notifier = std::make_unique<QSocketNotifier>(device->fd, QSocketNotifier::Read);
@@ -303,6 +306,7 @@ void GuideInput::regroup() {
 
 void GuideInput::read(Device& device) {
   input_event events[64];
+  int staleReports = 0;
   for (;;) {
     const auto size = ::read(device.fd, events, sizeof(events));
     if (size < 0 && errno == EINTR) continue;
@@ -331,13 +335,17 @@ void GuideInput::read(Device& device) {
       const auto at = qint64(event.input_event_sec) * 1000 + event.input_event_usec / 1000;
       const bool stale = at > 0 && clockMs(device.monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME) - at > 100;
       auto actions = device.mapping.report(clockMs(), stale);
+      // The Home that opened the guide may still be queued on a mirror. Kernel time,
+      // not callback order, prevents that pre-grab press from closing the new guide.
+      if (at > 0 && at < device.attachedAt) actions.removeAll("guide");
       if (stale) {
         device.pending.clear(); // Discard older intents already read in this queue drain too.
-        qInfo("Guide input: dropped stale report node=%s", qPrintable(device.node));
+        ++staleReports;
       }
       device.pending.append(actions);
     }
   }
+  if (staleReports) qInfo("Guide input: dropped stale reports node=%s count=%d", qPrintable(device.node), staleReports);
   if (!m_dispatch.isActive()) m_dispatch.start(0);
 }
 
@@ -365,6 +373,7 @@ void GuideInput::dispatch() {
       for (const auto& device : m_devices)
         if (device->group == it.key() && device->mapping.held(key)) held = true;
       if (!held) { group.latched.remove(key); if (key == BTN_MODE) group.homeArmed = true; }
+      else { group.latched.insert(key); if (key == BTN_MODE) group.homeArmed = false; }
     }
   }
   // Closing may release every device. Dispatch only after the device walk.

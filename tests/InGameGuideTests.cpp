@@ -219,6 +219,10 @@ void InGameGuideTests::mirroredReportsAndRecovery() {
     if (age) { const auto at = QDateTime::currentMSecsSinceEpoch() - age; for (auto& event : events) { event.input_event_sec = at / 1000; event.input_event_usec = (at % 1000) * 1000; } }
     QCOMPARE(::write(writers[node], events, sizeof(events)), ssize_t(sizeof(events)));
   };
+  QTest::qWait(20);
+  report("event16", EV_KEY, BTN_MODE, 1, 40); // delayed copy of the opening Home, before grab
+  QTest::qWait(20); QCOMPARE(actions.size(), 0);
+  report("event16", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
   report("event15", EV_KEY, BTN_DPAD_DOWN, 1); report("event16", EV_KEY, BTN_DPAD_DOWN, 1);
   QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
   report("event15", EV_KEY, BTN_DPAD_DOWN, 0); report("event16", EV_KEY, BTN_DPAD_DOWN, 0);
