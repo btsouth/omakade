@@ -49,6 +49,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   env.insert("XDG_CONFIG_HOME", config); env.insert("XDG_DATA_HOME", data); env.insert("XDG_STATE_HOME", root.path() + "/state");
   // Any accidental QGuiApplication path fails. The shortcut must use Qt Core alone.
   env.insert("QT_QPA_PLATFORM", "invalid-platform-for-resident-test");
+  env.insert("QT_FORCE_STDERR_LOGGING", "1");
   QProcess daemon; daemon.setProcessEnvironment(env); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
   QVERIFY(daemon.waitForStarted());
   const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
@@ -94,10 +95,10 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QTRY_VERIFY(([&] { QFile events(shellLog); return events.open(QIODevice::ReadOnly) && events.readAll().count("shell summon omakade.guide") == 2; })());
   QCOMPARE(control("close").value("result").toString(), "handled");
   QByteArray messages;
-  QTRY_VERIFY(([&] {
+  QTRY_VERIFY2(([&] {
     messages += daemon.readAllStandardError();
     return messages.contains("summon dispatched") && messages.contains("opened elapsed_ms=") && messages.contains("closed elapsed_ms=");
-  })());
+  })(), qPrintable(QString::fromUtf8(messages + daemon.readAllStandardOutput())));
   // A missing resident endpoint also exits cheaply and never creates a GUI.
   daemon.kill(); QVERIFY(daemon.waitForFinished());
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--guide-toggle"});
