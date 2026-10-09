@@ -91,9 +91,13 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   database.close(); database = {}; QSqlDatabase::removeDatabase("resident-test-miss");
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"});
   QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
+  QTRY_VERIFY(([&] { QFile events(shellLog); return events.open(QIODevice::ReadOnly) && events.readAll().count("shell summon omakade.guide") == 2; })());
   QCOMPARE(control("close").value("result").toString(), "handled");
-  const auto messages = daemon.readAllStandardError();
-  QVERIFY(messages.contains("summon dispatched")); QVERIFY(messages.contains("opened elapsed_ms=")); QVERIFY(messages.contains("closed elapsed_ms="));
+  QByteArray messages;
+  QTRY_VERIFY(([&] {
+    messages += daemon.readAllStandardError();
+    return messages.contains("summon dispatched") && messages.contains("opened elapsed_ms=") && messages.contains("closed elapsed_ms=");
+  })());
   // A missing resident endpoint also exits cheaply and never creates a GUI.
   daemon.kill(); QVERIFY(daemon.waitForFinished());
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--guide-toggle"});
