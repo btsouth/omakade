@@ -30,6 +30,7 @@ private slots:
   void justStartedResidentIsNotRestarted();
   void staleResidentIsRestarted();
   void ambiguousEnvironmentIsUnavailable();
+  void gameLaunchCancelsRescan();
 };
 
 void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
@@ -441,6 +442,38 @@ void ResidentGuideTests::ambiguousEnvironmentIsUnavailable() {
   QVERIFY(writeTestFile(fixture.runtime + "/hypr/second/hyprland.lock", "999999999\nwayland-second\n"));
   resolved = GuideEnvironment::resolve(environment);
   QCOMPARE(resolved.value("HYPRLAND_INSTANCE_SIGNATURE"), "test"); QCOMPARE(resolved.value("WAYLAND_DISPLAY"), "test");
+  QVERIFY(writeTestFile(fixture.runtime + "/hypr/second/hyprland.lock", QByteArray::number(::getpid()) + "\nwayland-second\n"));
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\nexit 1\n", true));
+  QProcess daemon; daemon.setProcessEnvironment(environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
+  QVERIFY(daemon.waitForStarted()); const auto cleanupDaemon = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
+  QTRY_VERIFY(QFileInfo::exists(fixture.endpoint()));
+  QLocalSocket shortcut; shortcut.connectToServer(fixture.endpoint()); QVERIFY(shortcut.waitForConnected());
+  QElapsedTimer elapsed; elapsed.start(); shortcut.write("{\"action\":\"shortcut\"}\n"); shortcut.flush();
+  QVERIFY(shortcut.waitForReadyRead(500));
+  QCOMPARE(QJsonDocument::fromJson(shortcut.readAll()).object().value("result").toString(), "fallback");
+  QVERIFY(elapsed.elapsed() < 500);
+}
+
+void ResidentGuideTests::gameLaunchCancelsRescan() {
+  Fixture fixture;
+  QFile::remove(fixture.config + "/omarchy/shell.json");
+  const auto log = fixture.root.filePath("shell.log"), clientsFile = fixture.root.filePath("clients.json");
+  QVERIFY(writeTestFile(clientsFile, "[]"));
+  QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\ncase \"$2\" in\nclients) cat '" + clientsFile.toUtf8() + "';;\nactivewindow) echo '{}';;\n*) echo '[]';;\nesac\n", true));
+  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\n[ \"$2\" = ping ] && { sleep .3; echo ok; exit; }\necho unknown\n", true));
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanupGame = qScopeGuard([&] { game.kill(); game.waitForFinished(); });
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+  QProcess daemon; daemon.setProcessEnvironment(fixture.environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
+  QVERIFY(daemon.waitForStarted()); const auto cleanupDaemon = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
+  QTRY_VERIFY(QFileInfo::exists(log));
+  QVERIFY(writeTestFile(clientsFile, QJsonDocument(QJsonArray{QJsonObject{{"pid", game.processId()}, {"address", "0x123"}}}).toJson(QJsonDocument::Compact)));
+  QLocalSocket publish; publish.connectToServer(fixture.endpoint()); QVERIFY(publish.waitForConnected());
+  publish.write(QJsonDocument(QJsonObject{{"action", "publish"}, {"sessions", QJsonArray{QJsonObject{{"pid", game.processId()}, {"procStart", start}, {"source", "Fixture"}, {"path", "test"}}}}}).toJson(QJsonDocument::Compact) + '\n'); publish.flush();
+  QVERIFY(publish.waitForReadyRead());
+  QTest::qWait(700);
+  QFile calls(log); QVERIFY(calls.open(QIODevice::ReadOnly)); QVERIFY(!calls.readAll().contains("rescanPlugins"));
 }
 
 QTEST_GUILESS_MAIN(ResidentGuideTests)

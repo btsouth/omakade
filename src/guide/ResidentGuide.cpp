@@ -157,7 +157,7 @@ bool calmDesktop(const QProcessEnvironment& environment, const QJsonArray& publi
   for (const auto& query : {QString("clients"), QString("activewindow")}) {
     QProcess process; process.setProcessEnvironment(environment);
     process.start("hyprctl", {"-j", query});
-    if (!process.waitForFinished(300)) { process.kill(); process.waitForFinished(); return false; }
+    if (!process.waitForFinished(300)) { process.kill(); process.waitForFinished(100); return false; }
     const auto document = QJsonDocument::fromJson(process.readAllStandardOutput());
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0 || document.isNull()) return false;
     if (query == "clients") clients = document.array(); else active = document.object();
@@ -194,7 +194,8 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
         };
         const auto action = data.value("action").toString();
         const bool reconcile = action == "shortcut" && !m_guide.showing() && !m_guide.hasGame();
-        if ((!m_ready || reconcile) && (action == "shortcut" || action == "toggle")) {
+        if ((!m_ready || reconcile) && !m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty() &&
+            (action == "shortcut" || action == "toggle")) {
           // A cache miss is reconciled from queries started after this request. An
           // already-running stale poll must not turn a newly launched game into GUI fallback.
           const int needed = m_refreshGeneration + (reconcile ? 1 : 0);
@@ -259,6 +260,7 @@ void ResidentGuide::connectEvents() {
   m_resolving = true;
   auto* watcher = new QFutureWatcher<QProcessEnvironment>(this);
   connect(watcher, &QFutureWatcher<QProcessEnvironment>::finished, this, [this, watcher] {
+    if (m_environment != watcher->result()) ++*m_desktopGeneration;
     m_environment = watcher->result(); watcher->deleteLater(); m_resolving = false;
     m_guide.setDesktopEnvironment(m_environment);
     const auto signature = m_environment.value("HYPRLAND_INSTANCE_SIGNATURE");
@@ -324,7 +326,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
 }
 void ResidentGuide::refresh() {
   if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) {
-    m_ready = false; emit snapshotReady(); return;
+    ++m_refreshGeneration; m_ready = false; emit snapshotReady(); return;
   }
   if (m_guide.showing()) return;
   if (m_refreshing) { m_refreshPending = true; return; }
@@ -358,7 +360,8 @@ void ResidentGuide::refresh() {
         emit snapshotReady();
         if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }
         // This is the only provisioning path. Never mutate a plugin directory mid-game.
-        const bool provision = !m_provisioned && !m_provisioning && m_provisionRetry->attempts < 3 && result.session.isEmpty();
+        const bool provision = !m_provisioned && !m_provisioning && m_provisionRetry->attempts < 3 && result.session.isEmpty() &&
+                               !m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty();
         if (provision) {
           m_provisioning = true;
           GuidePlugin::ensureAsync(GuidePlugin::defaultPaths(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
