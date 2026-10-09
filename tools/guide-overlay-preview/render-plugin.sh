@@ -19,8 +19,8 @@ ob() { omabox "${box[@]}" "$@"; }
 if ! ob windows 2>/dev/null | grep -q 'Fake game'; then
   ob run -d --wait -- /usr/lib/qt6/bin/qml "$here/FakeGame.qml" >/dev/null
 fi
-# A game covers the bar: keep the still frame truly fullscreen (a theme switch
-# can drop it), and keep the pointer out of the shots.
+# Keep the still frame truly fullscreen (a theme switch can drop it) and the
+# pointer out of the shots.
 fullscreen() {
   if ! ob hyprctl -j activewindow | grep -q '"fullscreen": 2'; then
     ob hyprctl dispatch focuswindow 'title:Fake game' >/dev/null
@@ -28,6 +28,8 @@ fullscreen() {
     ob wait still >/dev/null || true
   fi
 }
+# Hide the bar the way omarchy-toggle-bar does: a game owns the whole screen.
+ob run -- bash -c 'mkdir -p ~/.local/state/omarchy/toggles && touch ~/.local/state/omarchy/toggles/bar-off && omarchy-shell omarchy.bar syncHidden' >/dev/null 2>&1 || true
 ob lua 'hl.config({cursor={invisible=true}})' >/dev/null 2>&1 || true
 ob pointer -- move 4 4 >/dev/null 2>&1 || true
 
