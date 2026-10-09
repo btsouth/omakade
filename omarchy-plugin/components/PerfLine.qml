@@ -19,6 +19,10 @@ Item {
   property color quiet: Color.menu.text
   property string fontFamily: Style.font.menuFamily
 
+  // Couch scale: one multiplier on the card's Omarchy tokens.
+  property real zoom: 1
+  function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
+
   function known(v) { return v !== undefined && v !== null && isFinite(Number(v)) }
 
   function load(label, value, temperature) {
@@ -41,12 +45,12 @@ Item {
 
   property int lines: 1
   readonly property int lineHeight: Math.ceil(metrics.height)
-  readonly property int gap: Style.space(16)
+  readonly property int gap: root.sized(Style.space(16))
 
   FontMetrics {
     id: metrics
     font.family: root.fontFamily
-    font.pixelSize: Style.font.body
+    font.pixelSize: root.sized(Style.font.body)
   }
 
   function arrange() {
@@ -92,7 +96,7 @@ Item {
           text: modelData[0]
           color: modelData[1] ? root.quiet : root.text
           font.family: root.fontFamily
-          font.pixelSize: Style.font.body
+          font.pixelSize: root.sized(Style.font.body)
         }
       }
     }

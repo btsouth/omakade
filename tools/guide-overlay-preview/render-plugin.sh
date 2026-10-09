@@ -4,11 +4,13 @@
 #   tools/guide-overlay-preview/render-plugin.sh OUT_DIR [THEME...]
 # One full-screen shot per theme and fixture, named THEME-FIXTURE.png.
 # FIXTURES picks fixtures by name (default: all of them), PAD the button names,
+# SCALE the couch scale,
 # OMABOX_BOX the box (passed as -b).
 set -euo pipefail
 out=${1:?output directory}; shift
 here=$(cd "$(dirname "$0")" && pwd)
 pad=${PAD:-xbox}
+scale=${SCALE:-1}
 fixtures=${FIXTURES:-$(cd "$here/fixtures" && ls *.json | sed 's/\.json$//' | tr '\n' ' ')}
 box=()
 [ -n "${OMABOX_BOX:-}" ] && box=(-b "$OMABOX_BOX")
@@ -39,7 +41,7 @@ shoot() {
     ob run -- omarchy-shell shell hide omakade.guide >/dev/null || true
     fullscreen
     ob run -- omarchy-shell shell summon omakade.guide \
-      "{\"fixture\":\"$here/fixtures/$fixture.json\",\"pad\":\"$pad\"}" >/dev/null
+      "{\"fixture\":\"$here/fixtures/$fixture.json\",\"pad\":\"$pad\",\"scale\":$scale}" >/dev/null
     ob wait cmd -- bash -c 'test "$(omarchy-shell omakade.guide ready)" = ready' >/dev/null
     ob wait still >/dev/null || true
     ob shot -o "$out/$name-$fixture.png" >/dev/null

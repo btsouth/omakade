@@ -36,6 +36,13 @@ Item {
   // The card steps aside while a screenshot is taken.
   property bool capturing: false
   property date now: new Date()
+  // Couch scale from the payload (`scale`, set by Omakade in couch mode): one
+  // multiplier on every size and gap of the card. 1 is exactly the Omarchy
+  // menu. `zoom` is what is drawn: the requested scale, lowered only as far as
+  // the card needs to fit the screen without scrolling.
+  property real couchScale: 1
+  property real zoom: 1
+  function sized(v) { return v > 0 ? Math.max(1, Math.round(v * root.zoom)) : 0 }
 
   readonly property var game: root.model.game || null
   readonly property bool forceReady: !!(root.game && root.game.forceReady)
@@ -139,6 +146,7 @@ Item {
     root.model = p.data
     root.family = p.pad
     root.outputName = p.output
+    if (p.scale !== undefined) root.setCouchScale(p.scale)
     return "ok"
   }
 
@@ -200,6 +208,7 @@ Item {
       root.family = "keyboard"
     }
     if (p.pad) root.family = p.pad
+    if (p.version === undefined) root.setCouchScale(p.scale)
     if (root.opened) return
     root.now = new Date()
     root.cursor = root.rows[0]
@@ -225,6 +234,23 @@ Item {
     card.opacity = 0
     fadeIn.stop()
     if (was) root.notify("closed", null)
+  }
+
+  function setCouchScale(value) {
+    var n = Number(value)
+    root.couchScale = isFinite(n) && n > 0 ? Math.max(1, Math.min(3, n)) : 1
+    root.fitZoom()
+  }
+
+  // Lower the zoom until the card fits: its size is proportional to the zoom,
+  // so one measurement says how far.
+  function fitZoom() {
+    var natural = (card.contentTopInset + content.implicitHeight + card.contentBottomInset) / root.zoom
+    var room = Math.min((window.height - Style.gapsOut * 2) / natural,
+                        (window.width - Style.gapsOut * 2) / Style.space(380))
+    var next = window.height > 1 ? Math.min(root.couchScale, Math.floor(room * 20) / 20) : root.couchScale
+    next = Math.max(0.5, next)
+    if (Math.abs(next - root.zoom) > 0.001) root.zoom = next
   }
 
   function gameScreen() {
@@ -268,8 +294,8 @@ Item {
 
   Connections {
     target: window
-    function onWidthChanged() { root.surfaceSized() }
-    function onHeightChanged() { root.surfaceSized() }
+    function onWidthChanged() { root.surfaceSized(); Qt.callLater(root.fitZoom) }
+    function onHeightChanged() { root.surfaceSized(); Qt.callLater(root.fitZoom) }
   }
 
   function surfaceSized() {
@@ -555,15 +581,15 @@ Item {
 
       BorderSurface {
         id: card
-        readonly property int pad: Style.spacing.panelPadding
+        readonly property int pad: root.sized(Style.spacing.panelPadding)
         // Header, readings and hint sit on the row fill's edges, as the menu's
         // title does; rows inset their own icon and value.
         readonly property int inset: 0
-        width: Math.min(Style.space(380), window.width - Style.gapsOut * 2)
+        width: Math.min(root.sized(Style.space(380)), window.width - Style.gapsOut * 2)
         height: Math.min(card.contentTopInset + content.implicitHeight + card.contentBottomInset, window.height - Style.gapsOut * 2)
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.max(Style.gapsOut, Math.round((window.height - card.height) / 2))
-        radius: Style.cornerRadius
+        radius: root.sized(Style.cornerRadius)
         color: Color.menu.background
         borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.space(2)))
         padding: card.pad
@@ -594,6 +620,7 @@ Item {
 
         Column {
           id: content
+          onImplicitHeightChanged: Qt.callLater(root.fitZoom)
           x: card.contentLeftInset
           y: card.contentTopInset
           width: card.width - card.contentLeftInset - card.contentRightInset
@@ -604,16 +631,16 @@ Item {
             id: header
             x: card.inset
             width: parent.width - card.inset * 2
-            height: Math.max(title.height, clockText.height) + (detail.visible ? Style.space(2) + detail.height : 0)
+            height: Math.max(title.height, clockText.height) + (detail.visible ? root.sized(Style.space(2)) + detail.height : 0)
 
             Text {
               id: title
               textFormat: Text.PlainText
-              width: Math.min(implicitWidth, parent.width - clockText.width - Style.space(16))
+              width: Math.min(implicitWidth, parent.width - clockText.width - root.sized(Style.space(16)))
               text: root.game ? root.game.title : "No game running"
               color: root.text
               font.family: root.fontFamily
-              font.pixelSize: Style.font.heading
+              font.pixelSize: root.sized(Style.font.heading)
               font.weight: Font.Medium
               wrapMode: Text.Wrap
             }
@@ -626,27 +653,28 @@ Item {
               text: root.clock
               color: root.quiet
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: root.sized(Style.font.body)
             }
 
             Text {
               id: detail
               textFormat: Text.PlainText
-              y: title.height + Style.space(2)
+              y: title.height + root.sized(Style.space(2))
               width: parent.width
               visible: text.length > 0
               text: root.sessionText()
               color: root.quiet
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: root.sized(Style.font.body)
               wrapMode: Text.Wrap
             }
           }
 
-          Item { width: 1; height: Style.spacing.md; visible: perf.visible }
+          Item { width: 1; height: root.sized(Style.spacing.md); visible: perf.visible }
 
           PerfLine {
             id: perf
+            zoom: root.zoom
             x: card.inset
             width: parent.width - card.inset * 2
             text: root.text
@@ -660,14 +688,15 @@ Item {
             gpuTemp: root.stats.gpuTemp
           }
 
-          Divider { color: root.text }
+          Divider { zoom: root.zoom; color: root.text }
 
           Column {
             width: parent.width
-            spacing: Style.spacing.xs
+            spacing: root.sized(Style.spacing.xs)
 
             GuideRow {
               id: resumeRow
+              zoom: root.zoom
               selectedInk: root.selectedInk
               urgentInk: root.urgentInk
               edge: root.needsEdge
@@ -685,6 +714,7 @@ Item {
 
             GuideRow {
               id: screenshotRow
+              zoom: root.zoom
               selectedInk: root.selectedInk
               urgentInk: root.urgentInk
               edge: root.needsEdge
@@ -699,6 +729,7 @@ Item {
 
             GuideRow {
               id: recordRow
+              zoom: root.zoom
               selectedInk: root.selectedInk
               urgentInk: root.urgentInk
               edge: root.needsEdge
@@ -716,6 +747,7 @@ Item {
 
             GuideRow {
               id: replayRow
+              zoom: root.zoom
               selectedInk: root.selectedInk
               urgentInk: root.urgentInk
               edge: root.needsEdge
@@ -731,6 +763,7 @@ Item {
 
             GuideRow {
               id: volumeRow
+              zoom: root.zoom
               selectedInk: root.selectedInk
               urgentInk: root.urgentInk
               edge: root.needsEdge
@@ -749,10 +782,11 @@ Item {
               onSliderMoved: v => { root.cursor = "volume"; root.act("volume", v) }
             }
 
-            Divider { color: root.text; visible: root.rows.indexOf("quit") >= 0 }
+            Divider { zoom: root.zoom; color: root.text; visible: root.rows.indexOf("quit") >= 0 }
 
             GuideRow {
               id: quitRow
+              zoom: root.zoom
               selectedInk: root.selectedInk
               urgentInk: root.urgentInk
               edge: root.needsEdge
@@ -769,7 +803,7 @@ Item {
           }
 
           // Room for the hint line, which sits above the quit question's scrim.
-          Item { width: 1; height: Style.spacing.xl + hintLine.height }
+          Item { width: 1; height: root.sized(Style.spacing.xl) + hintLine.height }
         }
 
         // What the buttons do. Above the quit question's scrim, so it stays
@@ -780,7 +814,7 @@ Item {
           x: card.contentLeftInset + card.inset
           y: card.height - card.contentBottomInset - height
           width: content.width - card.inset * 2
-          spacing: Style.space(16)
+          spacing: root.sized(Style.space(16))
 
           Repeater {
             model: root.hint
@@ -791,14 +825,14 @@ Item {
                 text: modelData[0] + " "
                 color: root.text
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                font.pixelSize: root.sized(Style.font.body)
               }
               Text {
                 textFormat: Text.PlainText
                 text: modelData[1]
                 color: root.quiet
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                font.pixelSize: root.sized(Style.font.body)
               }
             }
           }
@@ -807,8 +841,14 @@ Item {
         ConfirmDialog {
           id: confirm
           // Inside the card's border, which stays drawn around the question.
-          anchors.fill: parent
-          anchors.margins: card.borderTop
+          // Omarchy's dialog sizes itself from the shell's tokens, so the couch
+          // scale reaches it as a transform.
+          x: card.borderLeft
+          y: card.borderTop
+          width: (card.width - card.borderLeft - card.borderRight) / root.zoom
+          height: (card.height - card.borderTop - card.borderBottom) / root.zoom
+          scale: root.zoom
+          transformOrigin: Item.TopLeft
           opened: root.confirming
           z: 10
           message: root.forceReady
@@ -834,7 +874,7 @@ Item {
         Binding {
           target: confirm.children[0]
           property: "radius"
-          value: Math.max(0, card.radius - card.borderTop)
+          value: Math.max(0, card.radius - card.borderTop) / root.zoom
         }
       }
     }
