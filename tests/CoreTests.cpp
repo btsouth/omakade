@@ -5286,10 +5286,12 @@ void CoreTests::manualGamesImportEditLaunchAndRemove() {
              qPrintable(error));
     QVERIFY(launcher.gameRunning());
     const QString output = directory.path() + QStringLiteral("/launch-result.txt");
-    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(output), 3000);
-    QFile result(output);
-    QVERIFY(result.open(QIODevice::ReadOnly));
-    QCOMPARE(result.readAll(), directory.path().toUtf8() + "\ntwo words\n\n$literal\n");
+    // The script creates the file before it has written to it: wait for the whole output.
+    const auto launched = [&output] {
+      QFile result(output);
+      return result.open(QIODevice::ReadOnly) ? result.readAll() : QByteArray{};
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(launched(), directory.path().toUtf8() + "\ntwo words\n\n$literal\n", 3000);
     QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
     QVERIFY(library.get(0).value(QStringLiteral("lastPlayed")).toLongLong() > 0);
     draft = manual.get(id);
