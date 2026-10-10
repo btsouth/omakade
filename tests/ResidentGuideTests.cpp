@@ -59,7 +59,18 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QVERIFY(write(bin + "/systemctl", "#!/bin/sh\n[ \"$2\" = show-environment ] || exit 1\necho HYPRLAND_INSTANCE_SIGNATURE=late-test\necho WAYLAND_DISPLAY=wayland-test\n", true));
   QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\n[ \"$HYPRLAND_INSTANCE_SIGNATURE\" = late-test ] || exit 1\necho \"$@\" >> '" + queryLog.toUtf8() + "'\nif [ \"$1\" = eval ]; then echo ok; exit; fi\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\neval) echo ok;;\nesac\n", true));
   const auto summonFile = root.path() + "/summon.json", shellLog = root.path() + "/shell.log";
-  QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + ".tmp' && mv '" + summonFile.toUtf8() + ".tmp' '" + summonFile.toUtf8() + "'\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\necho ok\n", true));
+  const auto slowSummon = root.path() + "/slow-summon";
+  QVERIFY(write(bin + "/omarchy-shell", QString(R"(#!/bin/sh
+if [ "$2" = summon ]; then
+  {
+    [ ! -e '%3' ] || sleep 0.1
+    printf '%s\n' "$4"
+  } > '%1.tmp' || exit 1
+  mv '%1.tmp' '%1' || exit 1
+fi
+printf '%s %s %s\n' "$1" "$2" "$3" >> '%2'
+echo ok
+)").arg(summonFile, shellLog, slowSummon).toUtf8(), true));
   auto env = QProcessEnvironment::systemEnvironment();
   env.remove("HYPRLAND_INSTANCE_SIGNATURE"); env.remove("WAYLAND_DISPLAY");
   env.insert("PATH", bin + ':' + env.value("PATH")); env.insert("XDG_RUNTIME_DIR", runtime); env.insert("TMPDIR", runtime);
@@ -178,10 +189,19 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QCOMPARE(control("shortcut").value("result").toString(), "fallback");
   QTRY_VERIFY(!stopped());
   QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[{"id":"omakade.guide"}]})"));
+  // Force a scheduling gap while the next payload is being written. Observing
+  // the summon log must imply that its complete payload has been published.
+  QVERIFY(write(slowSummon, ""));
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"}); QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
   QTRY_VERIFY(([&] { QFile calls(shellLog); return calls.open(QIODevice::ReadOnly) && calls.readAll().count("shell summon omakade.guide") == 3; })());
   QFile thirdSummon(summonFile); QVERIFY(thirdSummon.open(QIODevice::ReadOnly));
-  const auto thirdBackend = QJsonDocument::fromJson(thirdSummon.readAll()).object().value("backend").toObject();
+  QJsonParseError payloadError;
+  const auto thirdPayload = QJsonDocument::fromJson(thirdSummon.readAll(), &payloadError).object();
+  QCOMPARE(payloadError.error, QJsonParseError::NoError);
+  const auto thirdBackend = thirdPayload.value("backend").toObject();
+  QCOMPARE(thirdBackend.value("socket"), backend.value("socket"));
+  QVERIFY(!thirdBackend.value("token").toString().isEmpty());
+  QVERIFY(thirdBackend.value("token") != secondBackend.value("token"));
   QLocalSocket thirdPlugin; thirdPlugin.connectToServer(thirdBackend.value("socket").toString()); QVERIFY(thirdPlugin.waitForConnected());
   for (const auto& action : {QString("opened"), QString("library")}) {
     thirdPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", thirdBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
