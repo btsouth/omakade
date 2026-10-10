@@ -1,23 +1,29 @@
 # In-game guide
 
 Press the controller Home button or Super + Ctrl + G over a known running game.
-One Omarchy card opens over it, with your theme's colors, type and spacing.
-Resume starts the game again. B or Escape backs out of a list or confirmation
-first, then resumes. With no game, Home and the shortcut keep the existing
-Game Mode behavior.
+A panel opens at the right edge of the screen, with your theme's colors, type
+and spacing. Resume starts the game again. B or Escape backs out of a
+confirmation first, then resumes. With no game, Home and the shortcut keep the
+existing Game Mode behavior.
 
-The card has Resume, Return to desktop, Game library, Screenshot, Record clip,
-Volume and Quit. Steam games with achievement data get an in-card list, with
-recent unlocks first. Sound output cycles available outputs. Save last N seconds
-appears while a replay buffer runs. The header shows session time, the clock,
-controller batteries reported by UPower, and available performance readings.
-Unknown readings stay absent.
+The panel shows the game's art, session and total time, the clock and any
+controller battery UPower reports. Below that: Resume, Screenshot and Record
+clip, sound volume and output, the performance readings that are available, and
+Quit, which asks before it acts. Save last N seconds appears while a replay
+buffer runs. Unknown readings stay absent.
 
-Return to desktop parks the game and follows its pause preference. Home restores
-the game and opens the guide with the same preference; B or Resume returns to play. A managed
-Game Mode session uses the same park and resume path as the Game Mode button.
-Games launched outside Game Mode retain their verified window and pause guard.
-Game library opens Omakade and resumes the game.
+In Game Mode the panel adds **Desktop**, which parks the session exactly as
+Home did before the guide: the game is hidden and muted and keeps running.
+Home on the desktop brings it back. Holding Home for half a second does the
+same from inside a game, without opening the guide.
+
+RetroArch games add **RetroArch menu**, which opens RetroArch's own menu.
+RetroArch's controller profiles bind Home to that menu, so when Omakade starts
+RetroArch it moves the menu off Home for that run. Your `retroarch.cfg` is left
+as it was. A menu button you chose yourself is kept.
+
+To keep Home exactly as it was before the guide, set **Home button in games**
+to **Game Mode** in Omakade's settings.
 
 ## Setup
 
@@ -35,13 +41,13 @@ plugin directory and enable it there.
 
 Pause defaults on; games tagged online or multiplayer default to running.
 Existing per-game pause preferences are respected. The card reports the actual
-pause state. Return to desktop follows the same preference, so online games
-keep running. Library-initiated Game Mode parking never adds a guide pause.
-Resuming through Game Mode also releases any pause retained by the guide.
+pause state. Desktop keeps the pause only until Game Mode has hidden the game,
+then lets it run, as a Game Mode park always has.
 
 The guide pins verified process identities with pidfds. Its guard stops only the
 processes it owns and resumes them on Resume, normal exit, or backend death.
-Parking retains that guard until Home and Resume, or backend exit. A pad that
+After the panel closes, each pad stays grabbed until its buttons and sticks are
+back at rest, so the press that closed it never reaches the game. A pad that
 cannot be grabbed produces a notification; available readers keep working.
 
 One controller gesture moves one row. Hats, sticks and buttons share a report;

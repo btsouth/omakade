@@ -85,8 +85,8 @@ appear automatically. Use `omakade --demo` to try a fictional library.
 | Arrow keys / Enter | Navigate / open details |
 | Escape | Go back |
 | F11 / controller Start | Toggle Couch Mode |
-| `Super+Ctrl+G` | Return to the desktop / resume Game Mode (add in Settings) |
-| Controller Home button | Same as `Super+Ctrl+G` (turn on in Settings) |
+| `Super+Ctrl+G` | In-game guide over a game; otherwise return to the desktop / resume Game Mode (add in Settings) |
+| Controller Home button | Same as `Super+Ctrl+G`; hold it to switch Game Mode and the desktop (turn on in Settings) |
 | `Ctrl+D` | Settings and source diagnostics |
 | `Ctrl+M` | Toggle reduced motion |
 

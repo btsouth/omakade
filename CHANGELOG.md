@@ -2,17 +2,19 @@
 
 ## 1.16.0
 
-Press Home or Super + Ctrl + G over a running game to open one theme-matched
-Omarchy card. Resume, see achievements, take screenshots and clips, adjust sound
-or quit from the same place.
+Press Home or Super + Ctrl + G over a running game to open the in-game guide, a
+theme-matched panel at the edge of the screen. Resume, take a screenshot or clip,
+change the sound or quit without leaving the game.
 
-- Return to desktop parks the game while paused. Home brings it back under the
-  guide; B or Resume starts it again. With no game, Home keeps Game Mode.
-- Steam achievements open inside the card, with recent unlocks first.
-- Screenshot and Record clip step aside before capture. Save the last seconds
-  while a replay buffer runs, or switch the sound output.
-- Couch Mode scales the card to read from a sofa. The header shows available
-  controller batteries and performance readings.
+- In Game Mode, Desktop parks the session as Home did before. Holding Home for half
+  a second does the same from inside a game, and Home brings the game back.
+- RetroArch games get a RetroArch menu button. When Omakade starts RetroArch, its
+  menu moves off Home for that run, so Home opens only the guide.
+- After the guide closes, a controller is held until its buttons are released, so
+  the press that closed it never reaches the game.
+- Game Mode opens straight onto its own workspace at full size. The desktop no
+  longer rearranges around it, and leaving no longer flashes an empty workspace.
+- Prefer the old Home button? Set Home button in games to Game Mode in Settings.
 - The guide comes with the package. Disable `omakade.guide` to turn it off.
 
 [Install Omakade](https://github.com/btsouth/omakade#installation) ·

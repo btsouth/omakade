@@ -84,9 +84,14 @@ the game visible and explains why Return to Desktop could not complete.
 ## Use a controller's Home button
 
 Turn on **Controller Home button** in **Settings → Controls**. A short press of the
-Xbox, PlayStation or Home button on any connected controller then starts Game Mode,
-returns to the desktop, and resumes, exactly like Super + Ctrl + G. It works while a
-game has focus and when Omakade is closed.
+Xbox, PlayStation or Home button on any connected controller then does what
+Super + Ctrl + G does: with no game it starts Game Mode, returns to the desktop and
+resumes; over a running game it opens the [in-game guide](GAME-GUIDE.md). Holding
+the button for half a second always switches between Game Mode and the desktop,
+without the guide. It works while a game has focus and when Omakade is closed.
+
+To have a short press switch Game Mode and the desktop as before the guide, set
+**Home button in games** to **Game Mode**.
 
 Turning it on starts a small user service, `omakade-guide-button`, and adds it to your
 desktop session's startup. Turning it off stops the service and removes it from startup.
@@ -106,8 +111,8 @@ no root access or extra permissions.
 
 A press counts when it is short, alone and new:
 
-- Holding the button for a second or more does nothing, so holding the Xbox button to
-  switch a controller off does not toggle Game Mode.
+- Holding the button counts once, as a hold, after half a second. Holding on to switch
+  a controller off does nothing more.
 - Pressing it together with another button, the D-pad or a trigger does nothing, whichever
   goes down first. Those are hotkeys for Steam or an emulator.
 - The press that switches a wireless controller on, or a button already held when a
@@ -128,7 +133,8 @@ Settings** and turn off:
 Steam Input can stay on. These are Steam's settings for every game: the button no longer
 brings up Steam, and Guide button chords stop working. Omakade does not change Steam's
 settings for you. A game or emulator that uses the Home button for its own menu still
-gets the press as well.
+gets the press as well. RetroArch started by Omakade is the exception: its menu moves
+off Home for that run, and the guide opens it instead.
 
 ### If a controller does nothing
 
