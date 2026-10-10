@@ -21,23 +21,23 @@ def ratio(a, b):
     la, lb = lum(a), lum(b)
     return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 
-print('| theme | text | quiet text | selected ink on fill | quit ink on fill | fill vs card | focus edge vs card | recording mark |')
-print('|---|---|---|---|---|---|---|---|')
+print('| theme | text | dim text | quiet text | accent ink on its tint | urgent ink on its tint | focus ring vs card |')
+print('|---|---|---|---|---|---|---|')
 for path in sys.argv[1:]:
     p = json.load(open(path))['palette']
     rows = {}
     for frame in ([0, 0, 0], [1, 1, 1]):
         card = over(parse(p['background']), frame)
-        fill = over(parse(p['selectedBackground']), card)
+        accent, urgent = parse(p['accentInk']), parse(p['urgentInk'])
+        accent_tint = over((accent[0], 0.12), card)
+        urgent_tint = over((urgent[0], 0.08), card)
         vals = dict(text=ratio(over(parse(p['text']), card), card),
+                    dim=ratio(over(parse(p['dim']), card), card),
                     quiet=ratio(over(parse(p['quiet']), card), card),
-                    sel=ratio(over(parse(p['selectedInk']), fill), fill),
-                    quit=ratio(over(parse(p['urgentInk']), fill), fill),
-                    fill=ratio(fill, card),
-                    edge=ratio(over(parse(p['focusEdge']), card), card) if p.get('focusEdge') else None,
-                    rec=min(ratio(over(parse(p['recording']), card), card), ratio(over(parse(p['recording']), fill), fill)))
+                    accent=ratio(over(accent, accent_tint), accent_tint),
+                    urgent=ratio(over(urgent, urgent_tint), urgent_tint),
+                    ring=ratio(over((accent[0], 0.85), card), card))
         for k, v in vals.items():
-            if v is not None: rows[k] = min(rows.get(k, 99), v)
+            rows[k] = min(rows.get(k, 99), v)
     name = path.rsplit('/', 1)[-1].rsplit('.', 1)[0]
-    edge = f"{rows['edge']:.1f}" if 'edge' in rows else 'not drawn'
-    print(f"| {name} | {rows['text']:.1f} | {rows['quiet']:.1f} | {rows['sel']:.1f} | {rows['quit']:.1f} | {rows['fill']:.2f} | {edge} | {rows['rec']:.1f} |")
+    print(f"| {name} | {rows['text']:.1f} | {rows['dim']:.1f} | {rows['quiet']:.1f} | {rows['accent']:.1f} | {rows['urgent']:.1f} | {rows['ring']:.1f} |")
