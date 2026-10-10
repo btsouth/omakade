@@ -435,6 +435,14 @@ void InGameGuide::setContext(const QJsonObject& context) {
   else if (m_returnParked && context.contains("gameModeParked")) { m_returnTo = {}; m_returnParked = false; }
 }
 
+void InGameGuide::reopen(const QString& node) {
+  if (showing() || !hasGame() || !usable()) return;
+  const auto window = gameWindow(m_session);
+  const auto open = [this, node] { if (!showing() && hasGame()) toggle(node, false); };
+  if (window.valid() && m_compositor) { m_compositor->focusWindow(window.address); open(); }
+  else restoreWindow([open](bool) { open(); });
+}
+
 bool InGameGuide::returnPending() const {
   return !m_returnTo.isEmpty() && m_context.value("gameModeParked").toBool() &&
          ProcFs::processAlive(m_returnTo.value("pid").toLongLong(), m_returnTo.value("procStart").toLongLong());

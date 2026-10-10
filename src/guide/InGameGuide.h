@@ -54,6 +54,9 @@ public:
   void setContext(const QJsonObject& context);
   // The guide's Desktop parked this game and it is still parked: Home should come back to it.
   bool returnPending() const;
+  // Game Mode has resumed after the guide's Desktop: put the game in front of the library,
+  // the way closing the guide does, then open the guide over it.
+  void reopen(const QString& node);
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
   void changed();

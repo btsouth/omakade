@@ -297,7 +297,7 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
   else if (action == "close") m_guide.close();
   else if (action == "reopen") {
     // Game Mode has resumed with the game in front; never park or fall back from here.
-    if (!m_guide.showing() && m_guide.hasGame() && m_guide.usable()) m_guide.toggle(data.value("node").toString(), false);
+    m_guide.reopen(data.value("node").toString());
   }
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
