@@ -42,8 +42,9 @@ ApplicationWindow {
     }
     Connections {
         target: RecoveryController
-        function onKeyRequested(key, modifiers) { root.navigate(key) }
-        function onFocusDirectionRequested(key) { root.navigate(key) }
+        function onAcceptRequested() { if (RecoveryController.inputEnabled && root.active) root.navigate(Qt.Key_Return) }
+        function onBackRequested() { if (RecoveryController.inputEnabled && root.active) root.navigate(Qt.Key_Escape) }
+        function onFocusDirectionRequested(key) { if (RecoveryController.inputEnabled && root.active) root.navigate(key) }
     }
     component RecoveryButton: Button {
         implicitHeight: 46 * root.uiScale

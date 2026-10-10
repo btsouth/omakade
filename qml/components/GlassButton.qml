@@ -33,13 +33,16 @@ Button {
 
     // Qt only presses a Button on Return or Enter when the platform theme says so. Controller
     // and keyboard confirm must work on every desktop, so handle both keys here.
-    Keys.onReturnPressed: function(event) {
+
+    function acceptInput(event) {
         if (enabled) {
             if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) secondaryClicked()
             else clicked()
         }
         event.accepted = true
     }
+    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+    Keys.onReturnPressed: event => acceptInput(event)
     Keys.onEnterPressed: function(event) {
         if (enabled) {
             if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) secondaryClicked()

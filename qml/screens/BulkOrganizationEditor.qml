@@ -211,7 +211,10 @@ Rectangle {
                         placeholderTextColor: Theme.mutedText
                         font.family: Theme.fontFamily
                         font.pixelSize: 13 * editor.uiScale
-                        Keys.onReturnPressed: function(event) { if (TextEntry.keyboardNeeded) editor.textEntryRequested(tags, "TAGS"); event.accepted = true }
+
+                        function acceptInput(event) { if (TextEntry.keyboardNeeded) editor.textEntryRequested(tags, "TAGS"); event.accepted = true }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) { if (TextEntry.keyboardNeeded) editor.textEntryRequested(tags, "TAGS"); event.accepted = true }
                     }
                     RowLayout {
@@ -233,7 +236,10 @@ Rectangle {
                         placeholderTextColor: Theme.mutedText
                         font.family: Theme.fontFamily
                         font.pixelSize: 13 * editor.uiScale
-                        Keys.onReturnPressed: function(event) { if (TextEntry.keyboardNeeded) editor.textEntryRequested(collection, "COLLECTION"); event.accepted = true }
+
+                        function acceptInput(event) { if (TextEntry.keyboardNeeded) editor.textEntryRequested(collection, "COLLECTION"); event.accepted = true }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) { if (TextEntry.keyboardNeeded) editor.textEntryRequested(collection, "COLLECTION"); event.accepted = true }
                     }
                     RowLayout {

@@ -34,12 +34,8 @@ public:
 
   [[nodiscard]] bool connected() const;
   [[nodiscard]] bool driving() const { return m_driving; }
-  // Real input from the window system arrives spontaneously, and so do the controller's own
-  // presses (deliverKey). Those are marked while they are delivered, so only real keyboard and
-  // mouse input puts the controller down.
+  // Real keyboard and mouse input puts the controller down.
   bool eventFilter(QObject* watched, QEvent* event) override;
-  // A controller press, delivered as a real key would be (input/KeyDelivery.h).
-  void deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers);
   [[nodiscard]] QString name() const;
   [[nodiscard]] int controllerCount() const;
   [[nodiscard]] QString primaryGlyph() const;
@@ -62,7 +58,8 @@ signals:
   void toolbarRequested();
   void startRequested();
   void focusDirectionRequested(int key);
-  void keyRequested(int key, int modifiers);
+  void acceptRequested();
+  void backRequested();
 
 private:
   struct InitResult {
@@ -96,7 +93,6 @@ private:
   bool m_sdlReady = false;
   bool m_focusNavigation = false;
   bool m_driving = false;
-  bool m_deliveringKeys = false;
   void setDriving(bool driving);
   bool m_inputEnabled = true;
 };

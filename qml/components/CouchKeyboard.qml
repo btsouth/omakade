@@ -205,21 +205,32 @@ FocusScope {
                     currentIndex = best
                 }
 
-                Keys.onLeftPressed: function(event) {
+                function navigateLeftInput(event) {
                     if (currentIndex % root.columns > 0) {
                         currentIndex--
                     }
                     event.accepted = true
                 }
-                Keys.onRightPressed: function(event) {
+                function controllerLeft() { const action = { accepted: false }; navigateLeftInput(action); return action.accepted }
+                Keys.onLeftPressed: event => navigateLeftInput(event)
+
+                function navigateRightInput(event) {
                     if (currentIndex % root.columns < root.columns - 1
                             && currentIndex + 1 < count) {
                         currentIndex++
                     }
                     event.accepted = true
                 }
-                Keys.onUpPressed: function(event) { moveVertical(-1); event.accepted = true }
-                Keys.onDownPressed: function(event) { moveVertical(1); event.accepted = true }
+                function controllerRight() { const action = { accepted: false }; navigateRightInput(action); return action.accepted }
+                Keys.onRightPressed: event => navigateRightInput(event)
+
+                function navigateUpInput(event) { moveVertical(-1); event.accepted = true }
+                function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+                Keys.onUpPressed: event => navigateUpInput(event)
+
+                function navigateDownInput(event) { moveVertical(1); event.accepted = true }
+                function controllerDown() { const action = { accepted: false }; navigateDownInput(action); return action.accepted }
+                Keys.onDownPressed: event => navigateDownInput(event)
                 Keys.onTabPressed: function(event) {
                     currentIndex = (currentIndex + 1) % count
                     event.accepted = true
@@ -228,10 +239,13 @@ FocusScope {
                     currentIndex = (currentIndex + count - 1) % count
                     event.accepted = true
                 }
-                Keys.onReturnPressed: function(event) {
+
+                function acceptInput(event) {
                     root.activateKey(currentIndex)
                     event.accepted = true
                 }
+                function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                Keys.onReturnPressed: event => acceptInput(event)
                 Keys.onEnterPressed: function(event) {
                     root.activateKey(currentIndex)
                     event.accepted = true

@@ -27,7 +27,10 @@ ColumnLayout {
             id: server; objectName: "rommServerField"; Layout.fillWidth: true
             text: Preferences.rommUrl; placeholderText: "https://romm.example"; Accessible.name: "RomM server address"
             property bool controllerNavigation: root.host && root.host.couchMode
-            Keys.onReturnPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,server,"ROMM SERVER",false,placeholderText) }
+
+            function acceptInput(event) { if(root.host) root.host.handleCouchTextEntry(event,server,"ROMM SERVER",false,placeholderText) }
+            function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+            Keys.onReturnPressed: event => acceptInput(event)
             Keys.onEnterPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,server,"ROMM SERVER",false,placeholderText) }
         }
         RowLayout {
@@ -36,7 +39,10 @@ ColumnLayout {
                 id: folder; objectName: "rommFolderField"; Layout.fillWidth: true
                 text: Preferences.rommLibraryRoot; placeholderText: "Mounted library folder"; Accessible.name: "RomM mounted library folder"
                 property bool controllerNavigation: root.host && root.host.couchMode
-                Keys.onReturnPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,folder,"LIBRARY FOLDER",false,placeholderText) }
+
+                function acceptInput(event) { if(root.host) root.host.handleCouchTextEntry(event,folder,"LIBRARY FOLDER",false,placeholderText) }
+                function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                Keys.onReturnPressed: event => acceptInput(event)
                 Keys.onEnterPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,folder,"LIBRARY FOLDER",false,placeholderText) }
             }
             GlassButton { text: "BROWSE"; compact: true; onClicked: folderPicker.open() }
@@ -45,7 +51,10 @@ ColumnLayout {
             id: token; objectName: "rommTokenField"; Layout.fillWidth: true
             echoMode: TextInput.Password; placeholderText: root.service && root.service.hasToken ? "Token saved securely; leave blank to reuse" : "Client API Token"; Accessible.name: "RomM Client API Token"
             property bool controllerNavigation: root.host && root.host.couchMode
-            Keys.onReturnPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,token,"ROMM TOKEN",true,placeholderText) }
+
+            function acceptInput(event) { if(root.host) root.host.handleCouchTextEntry(event,token,"ROMM TOKEN",true,placeholderText) }
+            function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+            Keys.onReturnPressed: event => acceptInput(event)
             Keys.onEnterPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,token,"ROMM TOKEN",true,placeholderText) }
         }
         Flow {

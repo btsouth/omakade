@@ -1174,7 +1174,8 @@ Item {
                                               ? Theme.accent
                                               : root.alpha(Theme.foreground, 0.15)
                             }
-                            Keys.onReturnPressed: function(event) {
+
+                            function acceptInput(event) {
                                 if (TextEntry.keyboardNeeded) {
                                     root.textEntryRequested(tagsField, "EDIT TAGS", false,
                                                             tagsField.placeholderText)
@@ -1183,6 +1184,8 @@ Item {
                                     root.tagsRequested(text)
                                 }
                             }
+                            function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                            Keys.onReturnPressed: event => acceptInput(event)
                             Keys.onEnterPressed: function(event) {
                                 if (TextEntry.keyboardNeeded) {
                                     root.textEntryRequested(tagsField, "EDIT TAGS", false,
@@ -1300,7 +1303,8 @@ Item {
                                               ? Theme.accent
                                               : root.alpha(Theme.foreground, 0.15)
                             }
-                            Keys.onReturnPressed: {
+
+                            function acceptInput(event) {
                                 if (TextEntry.keyboardNeeded) {
                                     root.textEntryRequested(collectionField, "NEW COLLECTION",
                                                             false, collectionField.placeholderText)
@@ -1309,6 +1313,8 @@ Item {
                                     clear()
                                 }
                             }
+                            function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                            Keys.onReturnPressed: event => acceptInput(event)
                             Keys.onEnterPressed: {
                                 if (TextEntry.keyboardNeeded) {
                                     root.textEntryRequested(collectionField, "NEW COLLECTION",

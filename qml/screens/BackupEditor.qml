@@ -121,7 +121,10 @@ Rectangle {
                 placeholderTextColor: Theme.mutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: 13 * editor.uiScale
-                Keys.onReturnPressed: function(event) { if (TextEntry.keyboardNeeded) { editor.textEntryRequested(pathField, "BACKUP FILE PATH"); event.accepted = true } }
+
+                function acceptInput(event) { if (TextEntry.keyboardNeeded) { editor.textEntryRequested(pathField, "BACKUP FILE PATH"); event.accepted = true } }
+                function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                Keys.onReturnPressed: event => acceptInput(event)
                 Keys.onEnterPressed: function(event) { if (TextEntry.keyboardNeeded) { editor.textEntryRequested(pathField, "BACKUP FILE PATH"); event.accepted = true } }
                 background: Rectangle { color: Theme.darkerBackground; radius: 5; border.color: parent.activeFocus ? Theme.accent : Theme.mutedText }
             }
