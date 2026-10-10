@@ -1,6 +1,6 @@
 #include "app/CouchNavigationContract.h"
 #include "input/ControllerInput.h"
-#include "input/KeyDelivery.h"
+#include "app/KeyboardTestInput.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -119,7 +119,7 @@ private:
 };
 
 void keyboard(QQuickWindow* window, int key, Qt::KeyboardModifiers mods = Qt::NoModifier) {
-  deliverKey(window, key, mods);
+  deliverKeyboardTestKey(window, key, mods);
   settle();
 }
 } // namespace

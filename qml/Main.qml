@@ -232,8 +232,6 @@ ApplicationWindow {
         return null
     }
 
-    // A control that adjusts a value with Left and Right (a slider) sets
-    // controllerVerticalNavigation, so Up and Down still move between controls.
     // Pad commands choose one surface and one control. They never enter Qt's key path.
     function controllerCommand(action) {
         if (!Controller.inputEnabled || (!root.active && !gameModeOverlay.active)) return
@@ -243,7 +241,11 @@ ApplicationWindow {
             if (overlay) {
                 if (overlayHost.activeActionMenu) overlayHost.activeActionMenu.close()
                 else root.hideGameModeOverlay()
-            } else root.goBack()
+            } else {
+                const combo = root.openControllerCombo()
+                if (combo) combo.popup.close()
+                else root.goBack()
+            }
             return
         }
         if (action === "accept") {
@@ -419,6 +421,7 @@ ApplicationWindow {
             }
     }
 
+    // Sliders use Left and Right for their value and Up and Down to leave the control.
     function arrowNavigationEnabled(key) {
         const current = root.activeFocusItem
         if (root.navigationContainer() === null) return false
@@ -1840,8 +1843,7 @@ ApplicationWindow {
     Binding {
         target: Controller
         property: "focusNavigation"
-        // The overlay receives controller keys through its own focused window, just as
-        // physical keyboard input. The main window may still have an editor open.
+        // Describes whether focus is navigating between controls rather than within one.
         value: !gameModeOverlay.visible && !root.couchTextEntryOpen
                && (!root.activeFocusItem || root.activeFocusItem.controllerNavigation !== false)
                && (root.repairOpen || root.backupEditorOpen || root.bulkOrganizationOpen || root.savedFiltersOpen || root.artworkEditorOpen || root.manualEditorOpen || root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
