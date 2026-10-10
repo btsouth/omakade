@@ -34,6 +34,20 @@ QString shellReply(const Paths& paths, const QStringList& arguments, const QProc
   return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
 }
 
+bool restartShell(const Paths& paths, const QProcessEnvironment& environment) {
+  const QString program = QStandardPaths::findExecutable(paths.restartProgram, environment.value("PATH").split(':'));
+  if (program.isEmpty()) return false;
+  QProcess process;
+  process.setProcessEnvironment(environment);
+  process.start(program, {});
+  if (!process.waitForFinished(15000)) {
+    process.kill();
+    process.waitForFinished(100);
+    return false;
+  }
+  return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+}
+
 }  // namespace
 
 Paths defaultPaths(const QString& configRoot, const QString& stateRoot, const QString& applicationDir) {
@@ -83,8 +97,9 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     if (!QFile::link(paths.bundledDir, link)) qWarning("Guide: could not link %s", qPrintable(link));
   }
   if (!QFileInfo::exists(link + QStringLiteral("/manifest.json"))) return false;
-  // The shell keeps a plugin's QML in memory. After an upgrade it would go on showing the
-  // old guide, so a changed plugin is reloaded once, here, while nothing is playing.
+  // The shell keeps a plugin's compiled QML until it restarts, even across its own plugin
+  // reload. After an upgrade it would go on showing the old guide, so a changed plugin
+  // restarts the shell once, here, while nothing is playing.
   const QString loadedPath = paths.markerPath + QStringLiteral(".loaded");
   const QByteArray current = fingerprint(link);
   const auto recordLoaded = [&] {
@@ -95,11 +110,11 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     QFile loaded(loadedPath);
     const QByteArray recorded = loaded.open(QIODevice::ReadOnly) ? loaded.readAll().trimmed() : QByteArray{};
     if (recorded == current) return;
-    if (state->rescanned) { recordLoaded(); return; } // That rescan loaded these files.
-    if (shellReply(paths, {"shell", "ping"}, environment) == "ok" && (!calm || calm())) {
-      shellReply(paths, {"shell", "rescanPlugins"}, environment);
+    // A first enable loads the plugin for the first time: nothing old is in memory.
+    if (state->rescanned) { recordLoaded(); return; }
+    if (shellReply(paths, {"shell", "ping"}, environment) == "ok" && (!calm || calm()) &&
+        restartShell(paths, environment))
       recordLoaded();
-    }
   };
   if (QFileInfo::exists(paths.markerPath)) {
     if (!usable(paths)) return false;

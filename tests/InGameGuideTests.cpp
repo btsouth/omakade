@@ -890,6 +890,7 @@ struct PluginFixture {
     paths.bundledDir = base + "/bundled";
     paths.markerPath = base + "/state/omakade/guide-plugin-enabled";
     paths.shellProgram = base + "/omarchy-shell";
+    paths.restartProgram = base + "/omarchy-restart-shell";
     log = base + "/shell.log";
     QDir().mkpath(base + "/config/omarchy");
   }
@@ -905,6 +906,10 @@ struct PluginFixture {
     }
     script.write(body.toUtf8()); script.close();
     QFile::setPermissions(paths.shellProgram, QFile::permissions(paths.shellProgram) | QFile::ExeOwner);
+    QFile restart(paths.restartProgram);
+    QVERIFY(restart.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    restart.write(("#!/bin/sh\necho restart >> '" + log + "'\n").toUtf8()); restart.close();
+    QFile::setPermissions(paths.restartProgram, QFile::permissions(paths.restartProgram) | QFile::ExeOwner);
   }
   QStringList calls() const { QFile f(log); return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList{}; }
 };
@@ -933,11 +938,11 @@ void InGameGuideTests::pluginReloadsWhenItsFilesChange() {
   QCOMPARE(fixture.calls().size(), 3); // ping, rescan, enable: that rescan loaded these files
   QVERIFY(GuidePlugin::ensure(fixture.paths));
   QCOMPARE(fixture.calls().size(), 3);
-  // An upgrade changes the files: the shell reloads its plugins once.
+  // An upgrade changes the files: the shell restarts once, since a reload keeps old QML.
   QFile qml(fixture.paths.bundledDir + "/Guide.qml");
   QVERIFY(qml.open(QIODevice::WriteOnly)); qml.write("// new card\n"); qml.close();
   QVERIFY(GuidePlugin::ensure(fixture.paths));
-  QCOMPARE(fixture.calls().mid(3), (QStringList{"shell ping", "shell rescanPlugins"}));
+  QCOMPARE(fixture.calls().mid(3), (QStringList{"shell ping", "restart"}));
   QVERIFY(GuidePlugin::ensure(fixture.paths));
   QCOMPARE(fixture.calls().size(), 5);
   // Already enabled in the shell but never recorded, as after a reinstall: reload too.
@@ -945,7 +950,7 @@ void InGameGuideTests::pluginReloadsWhenItsFilesChange() {
   QFile config(enabled.paths.shellConfig);
   QVERIFY(config.open(QIODevice::WriteOnly)); config.write(R"({"plugins":[{"id":"omakade.guide"}]})"); config.close();
   QVERIFY(GuidePlugin::ensure(enabled.paths));
-  QCOMPARE(enabled.calls(), (QStringList{"shell ping", "shell rescanPlugins"}));
+  QCOMPARE(enabled.calls(), (QStringList{"shell ping", "restart"}));
 }
 
 void InGameGuideTests::pluginKeepsUserCopyAndWaitsForShell() {

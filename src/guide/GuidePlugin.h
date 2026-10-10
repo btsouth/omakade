@@ -19,6 +19,8 @@ struct Paths {
   QString bundledDir;                              // <prefix>/share/omakade/omarchy-plugin
   QString markerPath;                              // set once the plugin has been enabled
   QString shellProgram = QStringLiteral("omarchy-shell");
+  // Reloading plugins keeps their compiled QML, so a changed guide needs a shell restart.
+  QString restartProgram = QStringLiteral("omarchy-restart-shell");
 };
 
 Paths defaultPaths(const QString& configRoot, const QString& stateRoot, const QString& applicationDir);
