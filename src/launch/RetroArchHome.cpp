@@ -1,6 +1,10 @@
 #include "launch/RetroArchHome.h"
 
+#include <QCryptographicHash>
+#include <algorithm>
+#include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -11,12 +15,7 @@
 namespace RetroArchHome {
 namespace {
 
-const QRegularExpression& bindLine() {
-  static const QRegularExpression line(
-      QStringLiteral(R"re(^\s*input_menu_toggle_btn\s*=\s*"?([^"]*)"?\s*$)re"));
-  return line;
-}
-
+const QString kKey = QStringLiteral("joypad_autoconfig_dir");
 const QString kMissing = QStringLiteral("#missing");
 
 bool write(const QString& path, const QByteArray& data) {
@@ -25,10 +24,19 @@ bool write(const QString& path, const QByteArray& data) {
   return file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit();
 }
 
-// The bind's line and value, or -1 when retroarch.cfg leaves it out.
+QStringList read(const QString& path, bool* ok = nullptr) {
+  QFile file(path);
+  const bool opened = file.open(QIODevice::ReadOnly);
+  if (ok) *ok = opened;
+  return opened ? QString::fromUtf8(file.readAll()).split(QLatin1Char('\n')) : QStringList{};
+}
+
+// The setting's line and value, or -1 when retroarch.cfg leaves it out.
 int find(const QStringList& lines, QString* value) {
+  static const QRegularExpression line(
+      QStringLiteral(R"re(^\s*joypad_autoconfig_dir\s*=\s*"?([^"]*)"?\s*$)re"));
   for (int index = 0; index < lines.size(); ++index) {
-    const auto match = bindLine().match(lines.at(index));
+    const auto match = line.match(lines.at(index));
     if (match.hasMatch()) {
       if (value) *value = match.captured(1).trimmed();
       return index;
@@ -37,11 +45,44 @@ int find(const QStringList& lines, QString* value) {
   return -1;
 }
 
-QStringList read(const QString& path, bool* ok = nullptr) {
-  QFile file(path);
-  const bool opened = file.open(QIODevice::ReadOnly);
-  if (ok) *ok = opened;
-  return opened ? QString::fromUtf8(file.readAll()).split(QLatin1Char('\n')) : QStringList{};
+QString quoted(const QString& path) {
+  return kKey + QStringLiteral(" = \"") + path + QLatin1Char('"');
+}
+
+// Names, sizes and times of every profile: a different set means a fresh copy.
+QByteArray fingerprint(const QString& directory) {
+  QStringList entries{directory};
+  QDirIterator files(directory, QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+  while (files.hasNext()) {
+    const QFileInfo file(files.next());
+    entries.append(QStringLiteral("%1 %2 %3").arg(file.filePath().mid(directory.size()))
+                       .arg(file.size()).arg(file.lastModified().toMSecsSinceEpoch()));
+  }
+  entries.sort();
+  return QCryptographicHash::hash(entries.join(QLatin1Char('\n')).toUtf8(), QCryptographicHash::Sha1).toHex();
+}
+
+// Copies the profiles without their menu binds. Every other line stays as it was.
+bool copyProfiles(const QString& source, const QString& target) {
+  const QByteArray stamp = fingerprint(source);
+  QFile recorded(target + QStringLiteral("/.omakade-source"));
+  if (recorded.open(QIODevice::ReadOnly) && recorded.readAll().trimmed() == stamp) return true;
+  recorded.close();
+  static const QRegularExpression menu(QStringLiteral(R"re(^\s*input_menu_toggle_(btn|axis)\s*=)re"));
+  const QString staging = target + QStringLiteral(".new");
+  QDir(staging).removeRecursively();
+  QDirIterator files(source, QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+  while (files.hasNext()) {
+    const QString path = files.next();
+    QStringList lines = read(path);
+    lines.erase(std::remove_if(lines.begin(), lines.end(),
+                               [](const QString& line) { return menu.match(line).hasMatch(); }),
+                lines.end());
+    if (!write(staging + path.mid(source.size()), lines.join(QLatin1Char('\n')).toUtf8())) return false;
+  }
+  if (!write(staging + QStringLiteral("/.omakade-source"), stamp + '\n')) return false;
+  QDir(target).removeRecursively();
+  return QDir().rename(staging, target);
 }
 
 } // namespace
@@ -53,30 +94,42 @@ Paths paths(bool flatpak) {
     return {app + QStringLiteral("/config/retroarch/retroarch.cfg"),
             app + QStringLiteral("/cache/omakade-home.cfg"),
             QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
-                QStringLiteral("/omakade/retroarch-home-flatpak")};
+                QStringLiteral("/omakade/retroarch-home-flatpak"),
+            app + QStringLiteral("/cache/omakade-autoconfig"),
+            app + QStringLiteral("/config/retroarch/autoconfig")};
   }
-  return {QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
-              QStringLiteral("/retroarch/retroarch.cfg"),
+  const QString config = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+  const QString own = config + QStringLiteral("/retroarch/autoconfig");
+  return {config + QStringLiteral("/retroarch/retroarch.cfg"),
           QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) +
               QStringLiteral("/omakade/retroarch-home.cfg"),
           QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) +
-              QStringLiteral("/omakade/retroarch-home")};
+              QStringLiteral("/omakade/retroarch-home"),
+          QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) +
+              QStringLiteral("/omakade/retroarch-autoconfig"),
+          QDir(own).exists() ? own : QStringLiteral("/usr/share/libretro/autoconfig")};
 }
 
 QString prepare(const Paths& paths) {
   const QStringList lines = read(paths.config);
   QString value;
   const int index = find(lines, &value);
-  const bool unset = index < 0 || value.isEmpty() || value == QStringLiteral("nul");
-  const bool ours = value == QLatin1String(kUnusedButton) && QFileInfo::exists(paths.marker);
-  if (!unset && !ours) return {};
-  // Keep the first recorded original if an earlier session was never repaired.
+  // An earlier session that was never repaired already points at the copy.
+  const bool ours = value == paths.profiles && QFileInfo::exists(paths.marker);
+  QString source = ours || value.isEmpty() || value == QStringLiteral("default") ? paths.fallbackProfiles : value;
+  if (ours) {
+    QFile marker(paths.marker);
+    if (marker.open(QIODevice::ReadOnly)) {
+      static const QRegularExpression original(QStringLiteral(R"re(=\s*"?([^"]*)"?\s*$)re"));
+      const auto match = original.match(QString::fromUtf8(marker.readAll()).trimmed());
+      if (match.hasMatch() && !match.captured(1).trimmed().isEmpty()) source = match.captured(1).trimmed();
+    }
+  }
+  if (!QDir(source).exists() || !copyProfiles(source, paths.profiles)) return {};
   if (!QFileInfo::exists(paths.marker) &&
       !write(paths.marker, (index < 0 ? kMissing : lines.at(index)).toUtf8() + '\n'))
     return {};
-  if (!write(paths.override,
-             QByteArrayLiteral("input_menu_toggle_btn = \"") + kUnusedButton + "\"\n"))
-    return {};
+  if (!write(paths.override, quoted(paths.profiles).toUtf8() + '\n')) return {};
   return paths.override;
 }
 
@@ -89,8 +142,8 @@ void repair(const Paths& paths) {
   QStringList lines = read(paths.config, &ok);
   QString value;
   const int index = ok ? find(lines, &value) : -1;
-  // Anything but our value is the user's newer choice, or RetroArch did not save.
-  if (index >= 0 && value == QLatin1String(kUnusedButton)) {
+  // Anything but the copy is the user's newer choice, or RetroArch did not save.
+  if (index >= 0 && value == paths.profiles) {
     if (original == kMissing) lines.removeAt(index);
     else lines[index] = original;
     if (!write(paths.config, lines.join(QLatin1Char('\n')).toUtf8())) return;

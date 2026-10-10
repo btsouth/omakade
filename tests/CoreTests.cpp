@@ -4318,6 +4318,8 @@ void CoreTests::retroArchLaunchLeavesHomeToTheGuide() {
   qputenv("PATH", bin.toUtf8() + ':' + previousPath);
   QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("config/retroarch"))));
   writeFile(directory.filePath(QStringLiteral("config/retroarch/retroarch.cfg")), "input_menu_toggle_btn = \"nul\"\n");
+  QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("config/retroarch/autoconfig/udev"))));
+  writeFile(directory.filePath(QStringLiteral("config/retroarch/autoconfig/udev/pad.cfg")), "input_menu_toggle_btn = \"8\"\n");
   const QString content = directory.filePath(QStringLiteral("GoldenEye 007 (USA).z64"));
   const QString core = directory.filePath(QStringLiteral("mupen64plus_next_libretro.so"));
   writeFile(content, "rom");
@@ -5631,35 +5633,48 @@ void CoreTests::homeButtonSettingAndRetroArchMenuOverride() {
     QFile file(path);
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
   };
+  const QString source = directory.filePath(QStringLiteral("system-autoconfig"));
+  QVERIFY(QDir().mkpath(source + QStringLiteral("/udev")));
+  QVERIFY(write(source + QStringLiteral("/udev/Xbox 360 pad.cfg"),
+                "input_device = \"Microsoft X-Box 360 pad\"\ninput_menu_toggle_btn = \"8\"\ninput_a_btn = \"0\"\n"));
   const RetroArchHome::Paths paths{directory.filePath(QStringLiteral("retroarch.cfg")),
                                    directory.filePath(QStringLiteral("cache/home.cfg")),
-                                   directory.filePath(QStringLiteral("data/marker"))};
-  // An unset bind falls back to the pad profile's Home button: override it.
-  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"nul\"\n"));
+                                   directory.filePath(QStringLiteral("data/marker")),
+                                   directory.filePath(QStringLiteral("cache/autoconfig")),
+                                   directory.filePath(QStringLiteral("missing-autoconfig"))};
+  const QByteArray chosen = "joypad_autoconfig_dir = \"" + source.toUtf8() + "\"";
+  // Every port reads the profiles' menu bind; the copy leaves those binds out.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\n" + chosen + "\n"));
   QCOMPARE(RetroArchHome::prepare(paths), paths.override);
-  QCOMPARE(read(paths.override), QByteArray("input_menu_toggle_btn = \"99\"\n"));
-  // RetroArch saves the appended value on exit; the next launch keeps the first original.
-  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"99\"\n"));
+  QCOMPARE(read(paths.override), "joypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n");
+  QCOMPARE(read(paths.profiles + QStringLiteral("/udev/Xbox 360 pad.cfg")),
+           QByteArray("input_device = \"Microsoft X-Box 360 pad\"\ninput_a_btn = \"0\"\n"));
+  // RetroArch saves the appended value on exit; the next launch still copies the original.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
   QCOMPARE(RetroArchHome::prepare(paths), paths.override);
   RetroArchHome::repair(paths);
-  QCOMPARE(read(paths.config), QByteArray("video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"nul\"\n"));
+  QCOMPARE(read(paths.config), "video_driver = \"vulkan\"\n" + chosen + "\n");
   QVERIFY(!QFileInfo::exists(paths.marker));
-  // A bind RetroArch never wrote is removed again.
+  // Without the setting, the copy is of the profiles RetroArch uses by default.
+  RetroArchHome::Paths unset = paths;
+  unset.fallbackProfiles = source;
   QVERIFY(write(paths.config, "video_driver = \"vulkan\"\n"));
-  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
-  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"99\"\n"));
-  RetroArchHome::repair(paths);
+  QCOMPARE(RetroArchHome::prepare(unset), paths.override);
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
+  RetroArchHome::repair(unset);
   QCOMPARE(read(paths.config), QByteArray("video_driver = \"vulkan\"\n"));
-  // A menu button the user chose stands, and a newer choice is never reverted.
-  QVERIFY(write(paths.config, "input_menu_toggle_btn = \"3\"\n"));
-  QVERIFY(RetroArchHome::prepare(paths).isEmpty());
-  QVERIFY(write(paths.config, "input_menu_toggle_btn = \"nul\"\n"));
+  // A newer choice made while RetroArch ran is never reverted.
+  QVERIFY(write(paths.config, chosen + "\n"));
   QCOMPARE(RetroArchHome::prepare(paths), paths.override);
-  QVERIFY(write(paths.config, "input_menu_toggle_btn = \"5\"\n"));
+  QVERIFY(write(paths.config, "joypad_autoconfig_dir = \"/elsewhere\"\n"));
   RetroArchHome::repair(paths);
-  QCOMPARE(read(paths.config), QByteArray("input_menu_toggle_btn = \"5\"\n"));
+  QCOMPARE(read(paths.config), QByteArray("joypad_autoconfig_dir = \"/elsewhere\"\n"));
   QVERIFY(!QFileInfo::exists(paths.marker));
+  // No profiles to copy: nothing is appended.
+  QVERIFY(write(paths.config, "joypad_autoconfig_dir = \"/no/such/dir\"\n"));
+  QVERIFY(RetroArchHome::prepare(paths).isEmpty());
 }
+
 
 void CoreTests::singleInstanceForwardsPlayAndQuitCommands() {
   const QString name = QStringLiteral("omakade-test-") + QUuid::createUuid().toString();

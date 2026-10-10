@@ -3,9 +3,10 @@
 #include <QString>
 
 // Home opens Omakade's guide. RetroArch's controller profiles bind the same button to its
-// own menu, and a menu bind left unset in retroarch.cfg falls back to the profile, so a
-// Home press would open both. A launch from Omakade points the bind at a button no pad
-// has, through --appendconfig, unless the user chose a menu button themselves.
+// own menu, and RetroArch reads that profile bind for every port whose own menu bind is
+// unset, which is every port but the first. A launch from Omakade therefore points
+// RetroArch at a copy of its profiles without the menu binds, through --appendconfig.
+// The user's own menu key or button is untouched.
 //
 // RetroArch writes appended settings back into retroarch.cfg when it saves on exit, so
 // the original line is recorded at launch and put back once RetroArch has exited.
@@ -14,16 +15,14 @@ namespace RetroArchHome {
 struct Paths {
   QString config;   // retroarch.cfg
   QString override; // the file passed to --appendconfig
-  QString marker;   // the original bind, while an override may be in retroarch.cfg
+  QString marker;   // the original setting, while an override may be in retroarch.cfg
+  QString profiles; // the copy of RetroArch's controller profiles
+  QString fallbackProfiles; // RetroArch's profiles when retroarch.cfg names none
 };
 
 [[nodiscard]] Paths paths(bool flatpak);
 
-// The value written over the profile's bind. RetroArch's udev and SDL pads have fewer
-// buttons, so it is never pressed.
-inline constexpr const char* kUnusedButton = "99";
-
-// Returns the file to append, or empty when the user's own bind stands.
+// Returns the file to append, or empty when the profiles cannot be copied.
 [[nodiscard]] QString prepare(const Paths& paths);
 
 // Restores retroarch.cfg after RetroArch exits. Call only while RetroArch is not running.
