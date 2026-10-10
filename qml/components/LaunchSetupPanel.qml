@@ -64,7 +64,10 @@ ColumnLayout {
                 Layout.fillWidth: true
                 ThemedTextField { id: core; objectName: "launchCorePath"; Layout.fillWidth: true; placeholderText: "Optional libretro core path"; Accessible.name: placeholderText
                     property bool controllerNavigation: TextEntry.keyboardNeeded
-                    Keys.onReturnPressed: event => { if(TextEntry.keyboardNeeded){root.textEntryRequested(core,"CORE PATH",false,placeholderText);event.accepted=true} }
+
+                    function acceptInput(event) { if(TextEntry.keyboardNeeded){root.textEntryRequested(core,"CORE PATH",false,placeholderText);event.accepted=true} }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: event => { if(TextEntry.keyboardNeeded){root.textEntryRequested(core,"CORE PATH",false,placeholderText);event.accepted=true} }
                 }
                 GlassButton { text: "CORE"; compact: true; onClicked: { filePicker.forCore=true;filePicker.open() } }
@@ -73,7 +76,10 @@ ColumnLayout {
                 Layout.fillWidth: true
                 ThemedTextField { id: location; objectName: "launchGamePath"; Layout.fillWidth: true; placeholderText: root.installation.installPath || "Game location override"; Accessible.name: "Game file location"
                     property bool controllerNavigation: TextEntry.keyboardNeeded
-                    Keys.onReturnPressed: event => { if(TextEntry.keyboardNeeded){root.textEntryRequested(location,"GAME PATH",false,placeholderText);event.accepted=true} }
+
+                    function acceptInput(event) { if(TextEntry.keyboardNeeded){root.textEntryRequested(location,"GAME PATH",false,placeholderText);event.accepted=true} }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: event => { if(TextEntry.keyboardNeeded){root.textEntryRequested(location,"GAME PATH",false,placeholderText);event.accepted=true} }
                 }
                 GlassButton { text: "LOCATE"; compact: true; onClicked: {filePicker.forCore=false;filePicker.open()} }

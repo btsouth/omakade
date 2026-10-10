@@ -29,7 +29,17 @@ ColumnLayout {
         snapMode: Slider.SnapAlways
         Accessible.name: root.couch ? "Couch grid cover size" : "Library cover size"
         onMoved: root.apply(value)
-        Keys.onReturnPressed: root.editingFinished()
+        function controllerNavigate(key) {
+            if (key !== Qt.Key_Left && key !== Qt.Key_Right) return false
+            if (key === Qt.Key_Left) decrease()
+            else increase()
+            root.apply(value)
+            return true
+        }
+
+        function acceptInput(event) { root.editingFinished() }
+        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+        Keys.onReturnPressed: event => acceptInput(event)
         Keys.onEnterPressed: root.editingFinished()
         background: Rectangle {
             x: sizeSlider.leftPadding

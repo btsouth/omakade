@@ -172,12 +172,6 @@ FocusScope {
         else libraryModel.toggleSource(value)
         filtersChanged()
     }
-    Connections {
-        target: Controller
-        function onFavoriteRequested() {
-            if (root.visible && optionList.activeFocus) root.toggleSourceOption(optionList.currentIndex)
-        }
-    }
     function clearFilters() {
         libraryModel.mode = 0
         libraryModel.sortMode = 0
@@ -322,11 +316,14 @@ FocusScope {
 
                     onCurrentIndexChanged: root.categoryIndex = currentIndex
 
-                    Keys.onRightPressed: function(event) {
+                    function navigateRightInput(event) {
                         optionList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
                     }
-                    Keys.onUpPressed: function(event) {
+                    function controllerRight() { const action = { accepted: false }; navigateRightInput(action); return action.accepted }
+                    Keys.onRightPressed: event => navigateRightInput(event)
+
+                    function navigateUpInput(event) {
                         if (currentIndex === 0) {
                             clearButton.forceActiveFocus(Qt.TabFocusReason)
                             event.accepted = true
@@ -334,10 +331,15 @@ FocusScope {
                             event.accepted = false
                         }
                     }
-                    Keys.onReturnPressed: function(event) {
+                    function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+                    Keys.onUpPressed: event => navigateUpInput(event)
+
+                    function acceptInput(event) {
                         optionList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
                     }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: function(event) {
                         optionList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
@@ -397,11 +399,16 @@ FocusScope {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
 
-                    Keys.onLeftPressed: function(event) {
+                    function navigateLeftInput(event) {
                         categoryList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
                     }
-                    Keys.onUpPressed: function(event) {
+                    function controllerLeft() { const action = { accepted: false }; navigateLeftInput(action); return action.accepted }
+                    function secondaryAction() { root.toggleSourceOption(currentIndex) }
+
+                    Keys.onLeftPressed: event => navigateLeftInput(event)
+
+                    function navigateUpInput(event) {
                         if (currentIndex === 0) {
                             doneButton.forceActiveFocus(Qt.TabFocusReason)
                             event.accepted = true
@@ -409,11 +416,16 @@ FocusScope {
                             event.accepted = false
                         }
                     }
-                    Keys.onReturnPressed: function(event) {
+                    function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+                    Keys.onUpPressed: event => navigateUpInput(event)
+
+                    function acceptInput(event) {
                         if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) root.toggleSourceOption(currentIndex)
                         else root.applyOption(currentIndex)
                         event.accepted = true
                     }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: function(event) {
                         if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) root.toggleSourceOption(currentIndex)
                         else root.applyOption(currentIndex)

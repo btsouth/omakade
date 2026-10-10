@@ -11,6 +11,35 @@ ComboBox {
     property bool spatialFocusDestination: true
     Keys.onReturnPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
     Keys.onEnterPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
+    property int controllerIndex: -1
+    Connections {
+        target: Controller
+        function onDrivingChanged() {
+            if (Controller.driving && control.popup.visible)
+                control.controllerIndex = control.highlightedIndex >= 0 ? control.highlightedIndex : control.currentIndex
+        }
+    }
+    function controllerAccept() {
+        if (!popup.visible) {
+            popup.open()
+        } else if (controllerIndex >= 0 && optionEnabled(controllerIndex)) {
+            currentIndex = controllerIndex
+            activated(currentIndex)
+            popup.close()
+        }
+    }
+    function optionEnabled(index) {
+        return !availabilityRole || !!model[index][availabilityRole]
+    }
+    function controllerNavigate(key) {
+        if (!popup.visible) return false
+        const step = key === Qt.Key_Up ? -1 : key === Qt.Key_Down ? 1 : 0
+        if (step === 0) return true
+        let next = controllerIndex + step
+        while (next >= 0 && next < count && !optionEnabled(next)) next += step
+        if (next >= 0 && next < count) controllerIndex = next
+        return true
+    }
     implicitWidth: 180 * uiScale
     implicitHeight: 40 * uiScale
     spacing: 8 * uiScale
@@ -54,7 +83,7 @@ ComboBox {
         required property int index
         width: control.width
         height: 40 * control.uiScale
-        highlighted: control.highlightedIndex === index
+        highlighted: (Controller.driving ? control.controllerIndex : control.highlightedIndex) === index
         enabled: !control.availabilityRole || !!control.model[index][control.availabilityRole]
         opacity: enabled ? 1 : 0.5
 
@@ -74,6 +103,7 @@ ComboBox {
     }
 
     popup: Popup {
+        onAboutToShow: control.controllerIndex = control.currentIndex
         y: control.height
         width: control.width
         implicitHeight: Math.min(listView.contentHeight, 8 * 40 * control.uiScale) + 2
@@ -85,7 +115,7 @@ ComboBox {
             clip: true
             implicitHeight: contentHeight
             model: control.popup.visible ? control.delegateModel : null
-            currentIndex: control.highlightedIndex
+            currentIndex: Controller.driving ? control.controllerIndex : control.highlightedIndex
             ScrollIndicator.vertical: ScrollIndicator {}
         }
 

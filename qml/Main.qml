@@ -232,8 +232,209 @@ ApplicationWindow {
         return null
     }
 
-    // A control that adjusts a value with Left and Right (a slider) sets
-    // controllerVerticalNavigation, so Up and Down still move between controls.
+    // Pad commands choose one surface and one control. They never enter Qt's key path.
+    function controllerCommand(action) {
+        if (!Controller.inputEnabled || (!root.active && !gameModeOverlay.active)) return
+        const overlay = gameModeOverlay.visible
+        const focused = overlay ? gameModeOverlay.activeFocusItem : root.activeFocusItem
+        if (action === "back") {
+            if (overlay) {
+                if (overlayHost.activeActionMenu) overlayHost.activeActionMenu.close()
+                else root.hideGameModeOverlay()
+            } else {
+                const combo = root.openControllerCombo()
+                if (combo) combo.popup.close()
+                else root.goBack()
+            }
+            return
+        }
+        if (action === "accept") {
+            const combo = !overlay ? root.openControllerCombo() : null
+            if (combo) { combo.controllerAccept(); return }
+            for (let control = focused; control; control = control.parent) {
+                if (!control.visible || !control.enabled) return
+                if (typeof control.controllerAccept === "function") { control.controllerAccept(); return }
+                if (typeof control.clicked === "function") {
+                    if (control.checkable) control.toggle()
+                    control.clicked()
+                    return
+                }
+            }
+            return
+        }
+        if (action === "start") {
+            if (overlay) return
+            if (root.couchTextEntryOpen) root.closeCouchTextEntry(true)
+            else if (root.couchMode && couchLibraryView.searchOpen) couchLibraryView.closeSearch(true)
+            else root.toggleCouchMode()
+            return
+        }
+        if (action === "toolbar") {
+            if (overlay) return
+            const keyboard = root.couchTextEntryOpen ? couchTextEntryKeyboard
+                           : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
+            if (keyboard) { keyboard.appendText(" "); return }
+            root.toggleLibraryControls()
+            return
+        }
+        if (action === "favorite") {
+            if (overlay) return
+            const keyboard = root.couchTextEntryOpen ? couchTextEntryKeyboard
+                           : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
+            if (keyboard) { keyboard.activateKey(40); return }
+            const focused = root.activeFocusItem
+            if (focused && typeof focused.secondaryAction === "function" && focused.visible) {
+                focused.secondaryAction()
+                return
+            }
+            if (focused && focused.sourceName !== undefined && focused.visible) {
+                // On a source chip the favorite button means "add or remove this source".
+                focused.secondaryClicked()
+                return
+            }
+            if (root.activeActionMenu && root.activeActionMenu.opened) return
+            if (root.detailOpen && !root.diagnosticsOpen && !root.linkDialogOpen
+                    && !root.collectionDeleteOpen) {
+                Library.toggleFavorite(root.selectedIndex)
+                root.refreshAfterOrganization()
+            } else if (root.couchMode && !root.detailOpen
+                       && root.navigationContainer() === null
+                       && !couchLibraryView.searchOpen
+                       && !couchLibraryView.browseOpen
+                       && couchLibraryView.currentIndex >= 0) {
+                Library.toggleFavorite(couchLibraryView.currentIndex)
+                couchLibraryView.refreshCurrentGame()
+            } else if (!root.detailOpen && root.navigationContainer() === null
+                       && libraryView.gridFocused && libraryView.currentIndex >= 0) {
+                Library.toggleFavorite(libraryView.currentIndex)
+            }
+
+            return
+        }
+        const key = action
+        if (overlay) {
+            const menu = overlayHost.activeActionMenu
+            overlayHost.handleArrowKey(menu ? menu.contentItem : overlayHost, { key: key, accepted: false })
+            return
+        }
+        // Dropdown delegates take focus away from the ComboBox while its popup is open.
+        const combo = root.openControllerCombo()
+        if (combo) { combo.controllerNavigate(key); return }
+        const container = root.navigationContainer()
+        if (container) {
+            // A field's driving binding can update after the first pad command. Keep
+            // that command in its editor; only value controls consume horizontal input.
+            const valueControl = focused && focused.controllerVerticalNavigation === true
+                              && (key === Qt.Key_Left || key === Qt.Key_Right)
+            if (valueControl && typeof focused.controllerNavigate === "function")
+                focused.controllerNavigate(key)
+            else root.focusSpatial(container, key)
+            return
+        }
+        const method = key === Qt.Key_Up ? "controllerUp" : key === Qt.Key_Down ? "controllerDown"
+                     : key === Qt.Key_Left ? "controllerLeft" : "controllerRight"
+        let view = null
+        for (let control = focused; control; control = control.parent) {
+            if (typeof control[method] === "function" && control[method]()) return
+            if (typeof control.controllerNavigate === "function" && control.controllerNavigate(key)) return
+            if (control.count !== undefined && control.currentIndex !== undefined) { view = control; break }
+        }
+        if (!root.couchMode && !libraryView.gridFocused) {
+            if (!root.focusSpatial(librarySurface, key) && key === Qt.Key_Down) libraryView.focusGrid()
+        } else if (view) {
+            // GridView/ListView's built-in keyboard movement becomes an explicit pad command.
+            if (view.orientation !== undefined) {
+                const vertical = key === Qt.Key_Up || key === Qt.Key_Down
+                if (vertical !== (view.orientation === ListView.Vertical)) return
+            }
+            const columns = view.columnCount !== undefined ? view.columnCount
+                          : view.columns !== undefined ? view.columns : 1
+            const step = key === Qt.Key_Up ? -columns : key === Qt.Key_Down ? columns
+                       : key === Qt.Key_Left ? -1 : 1
+            const next = view.currentIndex + step
+            if (next >= 0 && next < view.count) {
+                view.currentIndex = next
+                if (typeof view.positionViewAtIndex === "function") view.positionViewAtIndex(next, GridView.Contain)
+            }
+        } else if (root.couchMode && focused) {
+            couchLibraryView.navigateControls(focused, { key: key, accepted: false })
+        }
+    }
+
+    function openControllerCombo() {
+        function find(item) {
+            if (!item || !item.visible || !item.enabled) return null
+            if (item.popup && item.popup.visible && typeof item.controllerNavigate === "function") return item
+            for (let child of item.children) { const found = find(child); if (found) return found }
+            return null
+        }
+        return find(root.contentItem)
+    }
+
+    function goBack() {
+        const focusedPopup = root.activeFocusItem ? root.activeFocusItem.popup : null
+        if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
+            // An open dropdown closes first; the panel it sits in stays.
+            focusedPopup.close()
+        } else if (activeActionMenu && activeActionMenu.opened) {
+            activeActionMenu.close()
+        } else if (coverSizePopup.opened) {
+            coverSizePopup.close()
+        } else if (root.couchTextEntryOpen) {
+            root.closeCouchTextEntry(false)
+        } else if (root.backupEditorOpen) {
+            backupEditor.dismiss()
+        } else if (root.bulkOrganizationOpen) {
+            root.dismissLibraryEditor("bulk")
+        } else if (root.savedFiltersOpen) {
+            root.dismissLibraryEditor("saved")
+        } else if (root.repairOpen && !root.artworkEditorOpen) {
+            LibraryRepair.pause()
+            root.repairOpen = false
+            Qt.callLater(root.focusCurrentSurface)
+        } else if (root.artworkEditorOpen) {
+            root.dismissEditor("artwork")
+        } else if (root.manualEditorOpen) {
+            root.dismissEditor("manual")
+        } else if (root.filterPickerOpen) {
+            root.filterPickerOpen = false
+        } else if (root.couchMode && couchLibraryView.searchOpen) {
+            couchLibraryView.closeSearch(false)
+        } else if (root.couchMode && couchLibraryView.browseOpen) {
+            couchLibraryView.closeBrowse()
+        } else if (root.linkDialogOpen) {
+            root.linkDialogOpen = false
+        } else if (root.collectionDeleteOpen) {
+            root.collectionDeleteOpen = false
+            root.pendingCollectionDelete = ""
+        } else if (root.diagnosticsOpen) {
+            settingsOverlay.back()
+        } else if (root.detailOpen && detailsLoader.item
+                   && detailsLoader.item.collectionEditorOpen) {
+            // The window shortcut sees Escape before the details page does.
+            detailsLoader.item.closeCollectionEditor()
+        } else if (root.detailOpen) {
+            root.closeDetails()
+        } else if (root.statsOpen && statsLoader.item && statsLoader.item.cardPreviewOpen) {
+            // The preview owns the screen while it is open, so Escape closes it rather than the
+            // whole destination: the window shortcut sees Escape before the focused item does.
+            statsLoader.item.closeCardPreview()
+        } else if (root.statsOpen) {
+            root.statsOpen = false
+            Qt.callLater(root.focusLibrary)
+        } else if (root.homeOpen) {
+            root.homeOpen = false
+            Qt.callLater(root.focusLibrary)
+        } else if (root.stepBackFilter()) {
+            if (!root.couchMode) {
+                libraryView.focusGrid()
+            }
+        } else if (root.couchMode || !libraryView.gridFocused) {
+            root.focusLibrary()
+        }
+    }
+
+    // Sliders use Left and Right for their value and Up and Down to leave the control.
     function arrowNavigationEnabled(key) {
         const current = root.activeFocusItem
         if (root.navigationContainer() === null) return false
@@ -1649,75 +1850,13 @@ ApplicationWindow {
         // Qt also offers this window's shortcuts to the Game Mode overlay, its transient
         // child. Every shortcut here stands aside while it is up; it handles its own keys.
         enabled: !gameModeOverlay.visible
-        onActivated: {
-            const focusedPopup = root.activeFocusItem ? root.activeFocusItem.popup : null
-            if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
-                // An open dropdown closes first; the panel it sits in stays.
-                focusedPopup.close()
-            } else if (activeActionMenu && activeActionMenu.opened) {
-                activeActionMenu.close()
-            } else if (coverSizePopup.opened) {
-                coverSizePopup.close()
-            } else if (root.couchTextEntryOpen) {
-                root.closeCouchTextEntry(false)
-            } else if (root.backupEditorOpen) {
-                backupEditor.dismiss()
-            } else if (root.bulkOrganizationOpen) {
-                root.dismissLibraryEditor("bulk")
-            } else if (root.savedFiltersOpen) {
-                root.dismissLibraryEditor("saved")
-            } else if (root.repairOpen && !root.artworkEditorOpen) {
-                LibraryRepair.pause()
-                root.repairOpen = false
-                Qt.callLater(root.focusCurrentSurface)
-            } else if (root.artworkEditorOpen) {
-                root.dismissEditor("artwork")
-            } else if (root.manualEditorOpen) {
-                root.dismissEditor("manual")
-            } else if (root.filterPickerOpen) {
-                root.filterPickerOpen = false
-            } else if (root.couchMode && couchLibraryView.searchOpen) {
-                couchLibraryView.closeSearch(false)
-            } else if (root.couchMode && couchLibraryView.browseOpen) {
-                couchLibraryView.closeBrowse()
-            } else if (root.linkDialogOpen) {
-                root.linkDialogOpen = false
-            } else if (root.collectionDeleteOpen) {
-                root.collectionDeleteOpen = false
-                root.pendingCollectionDelete = ""
-            } else if (root.diagnosticsOpen) {
-                settingsOverlay.back()
-            } else if (root.detailOpen && detailsLoader.item
-                       && detailsLoader.item.collectionEditorOpen) {
-                // The window shortcut sees Escape before the details page does.
-                detailsLoader.item.closeCollectionEditor()
-            } else if (root.detailOpen) {
-                root.closeDetails()
-            } else if (root.statsOpen && statsLoader.item && statsLoader.item.cardPreviewOpen) {
-                // The preview owns the screen while it is open, so Escape closes it rather than the
-                // whole destination: the window shortcut sees Escape before the focused item does.
-                statsLoader.item.closeCardPreview()
-            } else if (root.statsOpen) {
-                root.statsOpen = false
-                Qt.callLater(root.focusLibrary)
-            } else if (root.homeOpen) {
-                root.homeOpen = false
-                Qt.callLater(root.focusLibrary)
-            } else if (root.stepBackFilter()) {
-                if (!root.couchMode) {
-                    libraryView.focusGrid()
-                }
-            } else if (root.couchMode || !libraryView.gridFocused) {
-                root.focusLibrary()
-            }
-        }
+        onActivated: root.goBack()
     }
 
     Binding {
         target: Controller
         property: "focusNavigation"
-        // The overlay receives controller keys through its own focused window, just as
-        // physical keyboard input. The main window may still have an editor open.
+        // Describes whether focus is navigating between controls rather than within one.
         value: !gameModeOverlay.visible && !root.couchTextEntryOpen
                && (!root.activeFocusItem || root.activeFocusItem.controllerNavigation !== false)
                && (root.repairOpen || root.backupEditorOpen || root.bulkOrganizationOpen || root.savedFiltersOpen || root.artworkEditorOpen || root.manualEditorOpen || root.detailOpen || root.diagnosticsOpen || root.linkDialogOpen
@@ -1978,7 +2117,10 @@ ApplicationWindow {
                                                         ? recentModeButton : narrowRecentModeButton
                     property Item controllerRightTarget: searchFieldClear.visible ? searchFieldClear : null
                     FieldClearButton { id: searchFieldClear; field: searchField }
-                    Keys.onReturnPressed: event => root.handleCouchTextEntry(event, searchField, "SEARCH GAMES", false, "Search games")
+
+                    function acceptInput(event) { root.handleCouchTextEntry(event, searchField, "SEARCH GAMES", false, "Search games") }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: event => root.handleCouchTextEntry(event, searchField, "SEARCH GAMES", false, "Search games")
                     Accessible.name: "Search games"
                     Accessible.description: "Search the current game library"
@@ -1994,10 +2136,13 @@ ApplicationWindow {
                         libraryView.focusGrid()
                         event.accepted = true
                     }
-                    Keys.onDownPressed: function(event) {
+
+                    function navigateDownInput(event) {
                         libraryView.focusGrid()
                         event.accepted = true
                     }
+                    function controllerDown() { const action = { accepted: false }; navigateDownInput(action); return action.accepted }
+                    Keys.onDownPressed: event => navigateDownInput(event)
 
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
@@ -2576,17 +2721,21 @@ ApplicationWindow {
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 onTextChanged: root.linkResults = Library.linkCandidates(root.selectedIndex, text)
-                Keys.onReturnPressed: function(event) {
+
+                function acceptInput(event) {
                     root.handleCouchTextEntry(event, linkSearch,
                                               "SEARCH INSTALLATIONS", false,
                                               linkSearch.placeholderText)
                 }
+                function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                Keys.onReturnPressed: event => acceptInput(event)
                 Keys.onEnterPressed: function(event) {
                     root.handleCouchTextEntry(event, linkSearch,
                                               "SEARCH INSTALLATIONS", false,
                                               linkSearch.placeholderText)
                 }
-                Keys.onDownPressed: function(event) {
+
+                function navigateDownInput(event) {
                     if (candidateList.count > 0) {
                         candidateList.currentIndex = 0
                         const candidate = candidateList.itemAtIndex(0)
@@ -2596,6 +2745,8 @@ ApplicationWindow {
                         event.accepted = true
                     }
                 }
+                function controllerDown() { const action = { accepted: false }; navigateDownInput(action); return action.accepted }
+                Keys.onDownPressed: event => navigateDownInput(event)
                 background: Rectangle {
                     radius: Math.max(5, Theme.cornerRadius)
                     color: root.alpha(Theme.foreground, 0.05)
@@ -2621,10 +2772,13 @@ ApplicationWindow {
                     focusPolicy: Qt.StrongFocus
                     Accessible.name: "Link " + modelData.title + " from " + modelData.source
                     onClicked: root.linkCandidate(modelData)
-                    Keys.onReturnPressed: function(event) {
+
+                    function acceptInput(event) {
                         root.linkCandidate(modelData)
                         event.accepted = true
                     }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: function(event) {
                         root.linkCandidate(modelData)
                         event.accepted = true
@@ -3679,62 +3833,11 @@ ApplicationWindow {
                 Qt.callLater(root.focusCurrentSurface)
             }
         }
-        function onFocusDirectionRequested(key) {
-            if (!Controller.inputEnabled || !root.active) return
-            const container = root.navigationContainer()
-            if (!root.couchMode && !container && !libraryView.gridFocused
-                    && !root.focusSpatial(librarySurface, key)
-                    && key === Qt.Key_Down) {
-                libraryView.focusGrid()
-            }
-            if (container) {
-                root.focusSpatial(container, key)
-            }
-        }
-        function onStartRequested() {
-            if (!Controller.inputEnabled || !root.active) return
-            if (root.couchTextEntryOpen) root.closeCouchTextEntry(true)
-            else if (root.couchMode && couchLibraryView.searchOpen) couchLibraryView.closeSearch(true)
-            else root.toggleCouchMode()
-        }
-        function onToolbarRequested() {
-            if (!Controller.inputEnabled || !root.active) return
-            const keyboard = root.couchTextEntryOpen ? couchTextEntryKeyboard
-                           : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
-            if (keyboard) { keyboard.appendText(" "); return }
-            root.toggleLibraryControls()
-        }
-        function onFavoriteRequested() {
-            if (!Controller.inputEnabled || !root.active) return
-            const keyboard = root.couchTextEntryOpen ? couchTextEntryKeyboard
-                           : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
-            if (keyboard) { keyboard.activateKey(40); return }
-            const focused = root.activeFocusItem
-            if (focused && typeof focused.secondaryAction === "function" && focused.visible) {
-                focused.secondaryAction()
-                return
-            }
-            if (focused && focused.sourceName !== undefined && focused.visible) {
-                // On a source chip the favorite button means "add or remove this source".
-                focused.secondaryClicked()
-                return
-            }
-            if (root.activeActionMenu && root.activeActionMenu.opened) return
-            if (root.detailOpen && !root.diagnosticsOpen && !root.linkDialogOpen
-                    && !root.collectionDeleteOpen) {
-                Library.toggleFavorite(root.selectedIndex)
-                root.refreshAfterOrganization()
-            } else if (root.couchMode && !root.detailOpen
-                       && root.navigationContainer() === null
-                       && !couchLibraryView.searchOpen
-                       && !couchLibraryView.browseOpen
-                       && couchLibraryView.currentIndex >= 0) {
-                Library.toggleFavorite(couchLibraryView.currentIndex)
-                couchLibraryView.refreshCurrentGame()
-            } else if (!root.detailOpen && root.navigationContainer() === null
-                       && libraryView.gridFocused && libraryView.currentIndex >= 0) {
-                Library.toggleFavorite(libraryView.currentIndex)
-            }
-        }
+        function onFocusDirectionRequested(key) { root.controllerCommand(key) }
+        function onAcceptRequested() { root.controllerCommand("accept") }
+        function onBackRequested() { root.controllerCommand("back") }
+        function onStartRequested() { root.controllerCommand("start") }
+        function onToolbarRequested() { root.controllerCommand("toolbar") }
+        function onFavoriteRequested() { root.controllerCommand("favorite") }
     }
 }

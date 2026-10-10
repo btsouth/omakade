@@ -25,7 +25,10 @@ ColumnLayout {
         Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: SaveProtection.busy ? "Checking save coverage…" : root.entries.length+" installations · "+(SaveProtection.storageBytes/(1024*1024)).toFixed(1)+" MiB in backups (shared sets counted once)"; color: Theme.foreground }
         ThemedTextField { id: search; Layout.fillWidth: true; placeholderText: "Find a game"; Accessible.name: placeholderText; onTextChanged: root.page=0
             property bool controllerNavigation: TextEntry.keyboardNeeded
-                    Keys.onReturnPressed: event => {if(root.host)root.host.handleCouchTextEntry(event,search,"FIND GAME",false,placeholderText)}
+
+                    function acceptInput(event) {if(root.host)root.host.handleCouchTextEntry(event,search,"FIND GAME",false,placeholderText)}
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
             Keys.onEnterPressed: event => {if(root.host)root.host.handleCouchTextEntry(event,search,"FIND GAME",false,placeholderText)}
         }
         Repeater {
@@ -51,7 +54,10 @@ ColumnLayout {
             Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Custom layout: choose explicit save files. Preview the selection before applying. No game saves are changed by configuration.";color:Theme.mutedText }
             ThemedTextArea { id: customFiles; objectName: "customSaveFiles"; Layout.fillWidth:true; implicitHeight:80; placeholderText:"One save-file path per line"; Accessible.name:placeholderText; onTextChanged:root.preview=({})
                 property bool controllerNavigation: TextEntry.keyboardNeeded
-                    Keys.onReturnPressed: event => {if(TextEntry.keyboardNeeded && root.host)root.host.handleCouchTextEntry(event,customFiles,"SAVE FILES",false,placeholderText)}
+
+                    function acceptInput(event) {if(TextEntry.keyboardNeeded && root.host)root.host.handleCouchTextEntry(event,customFiles,"SAVE FILES",false,placeholderText)}
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                 Keys.onEnterPressed: event => {if(TextEntry.keyboardNeeded && root.host)root.host.handleCouchTextEntry(event,customFiles,"SAVE FILES",false,placeholderText)}
             }
             ThemedCheckBox { id: shared; text:"These files are shared by multiple games"; onCheckedChanged:root.preview=({}) }

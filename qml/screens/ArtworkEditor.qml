@@ -185,9 +185,12 @@ Rectangle {
                                 font.family: Theme.fontFamily
                                 font.pixelSize: UiMetrics.body * editor.uiScale
                                 placeholderTextColor: Theme.mutedText
-                                Keys.onReturnPressed: function(event) {
+
+                                function acceptInput(event) {
                                     if (TextEntry.keyboardNeeded) { editor.textEntryRequested(pathField, modelData.title + " IMAGE PATH"); event.accepted = true }
                                 }
+                                function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                                Keys.onReturnPressed: event => acceptInput(event)
                                 Keys.onEnterPressed: function(event) {
                                     if (TextEntry.keyboardNeeded) { editor.textEntryRequested(pathField, modelData.title + " IMAGE PATH"); event.accepted = true }
                                 }
