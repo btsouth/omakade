@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Controller buttons now navigate and activate controls directly, avoiding duplicate
+  presses and actions reaching the wrong control. Keyboard controls stay the same.
+
 ## 1.16.1
 
 - The in-game guide's Record clip action now uses its own recorder. A screen recording you

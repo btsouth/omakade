@@ -4,8 +4,5 @@
 
 class QWindow;
 
-// Delivers a key press and release through Qt's platform input path, the one a real keyboard
-// uses. A key a window shortcut takes is consumed there; sent with QCoreApplication::sendEvent
-// instead, it also reached the focused control, so one press could act twice. Every key Omakade
-// sends on the controller's behalf, and every key a self-test presses, goes through here.
+// Real keyboard input for the app's keyboard self-tests. Controller commands never use this.
 void deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers = Qt::NoModifier);

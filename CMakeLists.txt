@@ -51,8 +51,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Concurrent Core DBus Gui Network Qml Quick QuickControls2 Sql Test)
-# GuiPrivate provides Qt's platform input path, which controller presses use (see
-# src/input/KeyDelivery.h), and the Wayland window interface used by the idle inhibitor.
+# GuiPrivate provides the Wayland window interface used by the idle inhibitor
+# and the real keyboard input path used by the app's self-tests.
 find_package(Qt6 6.8 REQUIRED COMPONENTS GuiPrivate)
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -184,8 +184,6 @@ add_library(omakade_core STATIC
   src/input/ControllerFocusGuard.cpp
   src/input/ControllerFocusGuard.h
   src/input/ControllerInput.cpp
-  src/input/KeyDelivery.cpp
-  src/input/KeyDelivery.h
   src/input/ControllerInput.h
   src/input/CouchCursorManager.cpp
   src/input/CouchCursorManager.h
@@ -341,7 +339,6 @@ add_library(omakade_core STATIC
 )
 
 target_include_directories(omakade_core PUBLIC src)
-target_link_libraries(omakade_core PRIVATE Qt6::GuiPrivate)
 target_link_libraries(omakade_core PUBLIC
   omakade_guide_runtime
   omakade_tracking
@@ -367,6 +364,8 @@ target_link_libraries(omakade-sessiond PRIVATE omakade_core)
 
 qt_add_executable(omakade
   src/app/main.cpp
+  src/input/KeyDelivery.cpp
+  src/input/KeyDelivery.h
   src/app/CouchNavigationContract.cpp
   src/app/CouchNavigationContract.h
   src/app/CardExport.cpp

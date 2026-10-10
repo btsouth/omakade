@@ -11,6 +11,27 @@ ComboBox {
     property bool spatialFocusDestination: true
     Keys.onReturnPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
     Keys.onEnterPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
+    function controllerAccept() {
+        if (!popup.visible) {
+            popup.open()
+        } else if (highlightedIndex >= 0 && optionEnabled(highlightedIndex)) {
+            currentIndex = highlightedIndex
+            activated(currentIndex)
+            popup.close()
+        }
+    }
+    function optionEnabled(index) {
+        return !availabilityRole || !!model[index][availabilityRole]
+    }
+    function controllerNavigate(key) {
+        if (!popup.visible) return false
+        const step = key === Qt.Key_Up ? -1 : key === Qt.Key_Down ? 1 : 0
+        if (step === 0) return true
+        let next = highlightedIndex + step
+        while (next >= 0 && next < count && !optionEnabled(next)) next += step
+        if (next >= 0 && next < count) highlightedIndex = next
+        return true
+    }
     implicitWidth: 180 * uiScale
     implicitHeight: 40 * uiScale
     spacing: 8 * uiScale

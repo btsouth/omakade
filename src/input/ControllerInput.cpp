@@ -1,5 +1,4 @@
 #include "input/ControllerInput.h"
-#include "input/KeyDelivery.h"
 
 #include <QCoreApplication>
 #include <QEvent>
@@ -22,7 +21,8 @@ ControllerInput::ControllerInput(QObject* parent) : QObject(parent) {
   }
   // Follow the signals rather than the places that raise them. These are emitted from outside
   // this class as well, to stand in for the controller, and those count just the same.
-  connect(this, &ControllerInput::keyRequested, this, [this] { setDriving(true); });
+  connect(this, &ControllerInput::acceptRequested, this, [this] { setDriving(true); });
+  connect(this, &ControllerInput::backRequested, this, [this] { setDriving(true); });
   connect(this, &ControllerInput::focusDirectionRequested, this, [this] { setDriving(true); });
   connect(this, &ControllerInput::favoriteRequested, this, [this] { setDriving(true); });
   connect(this, &ControllerInput::toolbarRequested, this, [this] { setDriving(true); });
@@ -243,12 +243,12 @@ void ControllerInput::handleButtonPressed(int button) {
   // SDL names these by position; Nintendo labels A/B/X/Y are east/south/north/west.
   switch (button) {
   case SDL_GAMEPAD_BUTTON_SOUTH:
-    emit keyRequested(nintendoFaceButtons() ? Qt::Key_Escape : Qt::Key_Return,
-                      Qt::NoModifier);
+    if (nintendoFaceButtons()) emit backRequested();
+    else emit acceptRequested();
     break;
   case SDL_GAMEPAD_BUTTON_EAST:
-    emit keyRequested(nintendoFaceButtons() ? Qt::Key_Return : Qt::Key_Escape,
-                      Qt::NoModifier);
+    if (nintendoFaceButtons()) emit acceptRequested();
+    else emit backRequested();
     break;
   case SDL_GAMEPAD_BUTTON_WEST:
     if (nintendoFaceButtons()) emit toolbarRequested();
@@ -309,11 +309,7 @@ void ControllerInput::setDpadPressed(int key, bool pressed) {
 
 void ControllerInput::emitDirection(int key) {
   if (!m_inputEnabled) return;
-  if (m_focusNavigation) {
-    emit focusDirectionRequested(key);
-  } else {
-    emit keyRequested(key, Qt::NoModifier);
-  }
+  emit focusDirectionRequested(key);
 }
 
 void ControllerInput::updateAxisKey() {
@@ -392,17 +388,9 @@ void ControllerInput::setDriving(bool driving) {
   emit drivingChanged();
 }
 
-void ControllerInput::deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers) {
-  m_deliveringKeys = true;
-  ::deliverKey(window, key, modifiers);
-  m_deliveringKeys = false;
-}
-
 bool ControllerInput::eventFilter(QObject* watched, QEvent* event) {
-  // Only genuine input from the window system counts as the person reaching for something else.
-  // Key events sent on the controller's behalf are either not spontaneous or marked while they
-  // are delivered, so they do not put the controller down.
-  if (event->spontaneous() && !m_deliveringKeys) {
+  // Commands never enter the window system, so spontaneous input is always genuine.
+  if (event->spontaneous()) {
     switch (event->type()) {
     case QEvent::KeyPress:
     case QEvent::MouseButtonPress:

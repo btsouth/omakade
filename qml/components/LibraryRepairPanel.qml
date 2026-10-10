@@ -716,13 +716,16 @@ Rectangle {
                         property Item controllerDownTarget: relocationCancelButton
                         KeyNavigation.right: controllerRightTarget
                         KeyNavigation.down: relocationCancelButton
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             if (TextEntry.keyboardNeeded) {
                                 root.textEntryRequested(relocationPathField, "NEW GAME PATH", false,
                                                         placeholderText)
                                 event.accepted = true
                             }
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             if (TextEntry.keyboardNeeded) {
                                 root.textEntryRequested(relocationPathField, "NEW GAME PATH", false,

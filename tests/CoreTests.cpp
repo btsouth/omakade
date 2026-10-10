@@ -6079,7 +6079,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   controller.start();
   QTRY_VERIFY_WITH_TIMEOUT(controller.connected(), 1000);
   const int connectedCount = controller.controllerCount();
-  QSignalSpy keys(&controller, &ControllerInput::keyRequested);
+  QSignalSpy accepts(&controller, &ControllerInput::acceptRequested);
+  QSignalSpy backs(&controller, &ControllerInput::backRequested);
   QSignalSpy focusDirections(&controller, &ControllerInput::focusDirectionRequested);
   QSignalSpy favorites(&controller, &ControllerInput::favoriteRequested);
   QSignalSpy toolbar(&controller, &ControllerInput::toolbarRequested);
@@ -6088,8 +6089,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(joystick != nullptr);
   QVERIFY(SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH, true));
   SDL_UpdateJoysticks();
-  QTRY_VERIFY_WITH_TIMEOUT(!keys.isEmpty(), 1000);
-  QCOMPARE(keys.first().at(0).toInt(), static_cast<int>(Qt::Key_Return));
+  QTRY_VERIFY_WITH_TIMEOUT(!accepts.isEmpty(), 1000);
+  QCOMPARE(accepts.size(), 1);
 
   char* originalMapping = SDL_GetGamepadMappingForID(id);
   QVERIFY(originalMapping != nullptr);
@@ -6101,23 +6102,24 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
       SDL_GetGamepadStringForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO) + ",";
   QVERIFY(SDL_SetGamepadMapping(id, nintendo.constData()));
   QTest::qWait(50);
-  keys.clear();
+  accepts.clear();
+  backs.clear();
   SDL_Event face{};
   face.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
   face.gbutton.which = id;
   face.gbutton.button = SDL_GAMEPAD_BUTTON_SOUTH;
   QVERIFY(SDL_PushEvent(&face));
-  QTRY_VERIFY_WITH_TIMEOUT(!keys.isEmpty(), 1000);
-  QCOMPARE(keys.last().at(0).toInt(), int(Qt::Key_Escape));
+  QTRY_COMPARE_WITH_TIMEOUT(backs.size(), 1, 1000);
   QCOMPARE(controller.primaryGlyph(), QStringLiteral("A"));
   QCOMPARE(controller.backGlyph(), QStringLiteral("B"));
   QCOMPARE(controller.favoriteGlyph(), QStringLiteral("X"));
   QCOMPARE(controller.toolbarGlyph(), QStringLiteral("Y"));
-  keys.clear();
+  accepts.clear();
+  backs.clear();
   face.gbutton.button = SDL_GAMEPAD_BUTTON_EAST;
   QVERIFY(SDL_PushEvent(&face));
-  QTRY_VERIFY_WITH_TIMEOUT(!keys.isEmpty(), 1000);
-  QCOMPARE(keys.last().at(0).toInt(), int(Qt::Key_Return));
+  QTRY_VERIFY_WITH_TIMEOUT(!accepts.isEmpty(), 1000);
+  QCOMPARE(accepts.size(), 1);
   face.gbutton.button = SDL_GAMEPAD_BUTTON_NORTH;
   QVERIFY(SDL_PushEvent(&face));
   QTRY_COMPARE_WITH_TIMEOUT(favorites.size(), 1, 1000);
@@ -6148,13 +6150,16 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QCOMPARE(controller.favoriteGlyph(), QStringLiteral("X"));
   QCOMPARE(controller.toolbarGlyph(), QStringLiteral("Y"));
 
-  keys.clear();
+  accepts.clear();
+  backs.clear();
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 20000));
   SDL_UpdateJoysticks();
-  QTRY_VERIFY_WITH_TIMEOUT(!keys.isEmpty(), 1000);
-  QCOMPARE(keys.first().at(0).toInt(), static_cast<int>(Qt::Key_Right));
+  QTRY_VERIFY_WITH_TIMEOUT(!focusDirections.isEmpty(), 1000);
+  QCOMPARE(focusDirections.first().at(0).toInt(), static_cast<int>(Qt::Key_Right));
+  focusDirections.clear();
 
-  keys.clear();
+  accepts.clear();
+  backs.clear();
   controller.setFocusNavigation(true);
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 0));
   SDL_UpdateJoysticks();
@@ -6162,7 +6167,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   SDL_UpdateJoysticks();
   QTRY_VERIFY_WITH_TIMEOUT(!focusDirections.isEmpty(), 1000);
   QCOMPARE(focusDirections.first().at(0).toInt(), static_cast<int>(Qt::Key_Left));
-  QVERIFY(keys.isEmpty());
+  QVERIFY(accepts.isEmpty());
+  QVERIFY(backs.isEmpty());
 
   focusDirections.clear();
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 0));
@@ -6221,7 +6227,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(SDL_PushEvent(&dpadDown));
   QTRY_VERIFY_WITH_TIMEOUT(focusDirections.size() > leftDirectionsAfterRelease, 700);
   controller.setInputEnabled(false);
-  keys.clear();
+  accepts.clear();
+  backs.clear();
   focusDirections.clear();
   favorites.clear();
   toolbar.clear();
@@ -6237,7 +6244,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 20000));
   SDL_UpdateJoysticks();
   QTest::qWait(400);
-  QVERIFY(keys.isEmpty());
+  QVERIFY(accepts.isEmpty());
+  QVERIFY(backs.isEmpty());
   QVERIFY(focusDirections.isEmpty());
   QVERIFY(favorites.isEmpty());
   QVERIFY(toolbar.isEmpty());
@@ -6246,7 +6254,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(SDL_PushEvent(&favorite));
   controller.setInputEnabled(true);
   QTest::qWait(350);
-  QVERIFY(keys.isEmpty());
+  QVERIFY(accepts.isEmpty());
+  QVERIFY(backs.isEmpty());
   QVERIFY(focusDirections.isEmpty());
   QVERIFY(favorites.isEmpty());
   QVERIFY(toolbar.isEmpty());
@@ -6260,9 +6269,11 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(SDL_PushEvent(&removed));
   QVERIFY(SDL_DetachVirtualJoystick(id));
   QTRY_COMPARE_WITH_TIMEOUT(controller.controllerCount(), connectedCount - 1, 1000);
-  keys.clear();
+  accepts.clear();
+  backs.clear();
   QTest::qWait(400);
-  QVERIFY(keys.isEmpty());
+  QVERIFY(accepts.isEmpty());
+  QVERIFY(backs.isEmpty());
 
   const SDL_JoystickID reconnectedId = SDL_AttachVirtualJoystick(&description);
   QVERIFY2(reconnectedId != 0, SDL_GetError());
@@ -6272,8 +6283,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(reconnectedJoystick != nullptr);
   QVERIFY(SDL_SetJoystickVirtualButton(reconnectedJoystick, SDL_GAMEPAD_BUTTON_SOUTH, true));
   SDL_UpdateJoysticks();
-  QTRY_VERIFY_WITH_TIMEOUT(!keys.isEmpty(), 1000);
-  QCOMPARE(keys.first().at(0).toInt(), static_cast<int>(Qt::Key_Return));
+  QTRY_VERIFY_WITH_TIMEOUT(!accepts.isEmpty(), 1000);
+  QCOMPARE(accepts.size(), 1);
   SDL_CloseJoystick(reconnectedJoystick);
   QVERIFY(SDL_DetachVirtualJoystick(reconnectedId));
   QTRY_COMPARE_WITH_TIMEOUT(controller.controllerCount(), connectedCount - 1, 1000);

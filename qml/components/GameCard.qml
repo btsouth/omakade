@@ -44,10 +44,12 @@ FocusScope {
                             + (!root.installed ? ", not installed" : "")
     Accessible.role: Accessible.ListItem
 
-    Keys.onReturnPressed: function(event) {
+    function acceptInput(event) {
         root.activated()
         event.accepted = true
     }
+    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+    Keys.onReturnPressed: event => acceptInput(event)
     Keys.onEnterPressed: function(event) {
         root.activated()
         event.accepted = true

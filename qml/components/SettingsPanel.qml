@@ -192,7 +192,10 @@ import QtQuick.Layouts
                         text: modelData.label.toUpperCase(); selected: settingsOverlay.section === modelData.section
                         onClicked: settingsOverlay.chooseSection(modelData.section)
                         property Item controllerRightTarget: null
-                        Keys.onRightPressed: event => { host.focusWithin(settingsScroll, true); event.accepted = true }
+
+                        function navigateRightInput(event) { host.focusWithin(settingsScroll, true); event.accepted = true }
+                        function controllerRight() { const action = { accepted: false }; navigateRightInput(action); return action.accepted }
+                        Keys.onRightPressed: event => navigateRightInput(event)
                         property Item controllerUpTarget: index === 0 ? closeSettings : null
                     }
                 }
@@ -289,7 +292,10 @@ import QtQuick.Layouts
                         border.color: sourceSearchField.activeFocus ? Theme.accent : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
                     }
                     property bool controllerNavigation: host.couchMode || (Controller !== null && Controller.driving)
-                    Keys.onReturnPressed: event => host.handleCouchTextEntry(event, sourceSearchField, "SEARCH SOURCES", false, placeholderText)
+
+                    function acceptInput(event) { host.handleCouchTextEntry(event, sourceSearchField, "SEARCH SOURCES", false, placeholderText) }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: event => host.handleCouchTextEntry(event, sourceSearchField, "SEARCH SOURCES", false, placeholderText)
                 
                     rightPadding: sourceSearchFieldClear.visible ? sourceSearchFieldClear.reservedWidth : 12
@@ -711,10 +717,13 @@ import QtQuick.Layouts
                         font.family: Theme.fontFamily
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         font.pixelSize: 13 * settingsPanel.uiScale
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, gogLibraryPathField, "GOG FOLDER", false,
                                                       gogLibraryPathField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, gogLibraryPathField, "GOG FOLDER", false,
                                                       gogLibraryPathField.placeholderText)
@@ -1030,7 +1039,10 @@ import QtQuick.Layouts
                         border.color: gridKeyField.activeFocus ? Theme.accent : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
                     }
                     property bool controllerNavigation: host.couchMode || (Controller !== null && Controller.driving)
-                        Keys.onReturnPressed: event => host.handleCouchTextEntry(event, gridKeyField, "STEAMGRIDDB KEY", true, placeholderText)
+
+                        function acceptInput(event) { host.handleCouchTextEntry(event, gridKeyField, "STEAMGRIDDB KEY", true, placeholderText) }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: event => host.handleCouchTextEntry(event, gridKeyField, "STEAMGRIDDB KEY", true, placeholderText)
                     
                         rightPadding: gridKeyFieldClear.visible ? gridKeyFieldClear.reservedWidth : 12
@@ -1078,10 +1090,13 @@ import QtQuick.Layouts
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         font.family: Theme.fontFamily
                         inputMethodHints: Qt.ImhDigitsOnly
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, steamIdField, "STEAM ID", false,
                                                       steamIdField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, steamIdField, "STEAM ID", false,
                                                       steamIdField.placeholderText)
@@ -1119,10 +1134,13 @@ import QtQuick.Layouts
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         echoMode: TextInput.Password
                         font.family: Theme.fontFamily
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, apiKeyField, "STEAM WEB API KEY", true,
                                                       apiKeyField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, apiKeyField, "STEAM WEB API KEY", true,
                                                       apiKeyField.placeholderText)
@@ -1217,11 +1235,14 @@ import QtQuick.Layouts
                         color: Theme.foreground
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         font.family: Theme.fontFamily
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, retroAchievementsUsernameField,
                                                       "RETROACHIEVEMENTS USERNAME", false,
                                                       retroAchievementsUsernameField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, retroAchievementsUsernameField,
                                                       "RETROACHIEVEMENTS USERNAME", false,
@@ -1258,11 +1279,14 @@ import QtQuick.Layouts
                         color: Theme.foreground
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         echoMode: TextInput.Password
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, retroAchievementsKeyField,
                                                       "RETROACHIEVEMENTS API KEY", true,
                                                       retroAchievementsKeyField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, retroAchievementsKeyField,
                                                       "RETROACHIEVEMENTS API KEY", true,
@@ -1344,11 +1368,14 @@ import QtQuick.Layouts
                         color: Theme.foreground
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         font.family: Theme.fontFamily
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, igdbClientIdField,
                                                       "TWITCH CLIENT ID", false,
                                                       igdbClientIdField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, igdbClientIdField,
                                                       "TWITCH CLIENT ID", false,
@@ -1381,11 +1408,14 @@ import QtQuick.Layouts
                         color: Theme.foreground
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
                         echoMode: TextInput.Password
-                        Keys.onReturnPressed: function(event) {
+
+                        function acceptInput(event) {
                             host.handleCouchTextEntry(event, igdbSecretField,
                                                       "TWITCH CLIENT SECRET", true,
                                                       igdbSecretField.placeholderText)
                         }
+                        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                        Keys.onReturnPressed: event => acceptInput(event)
                         Keys.onEnterPressed: function(event) {
                             host.handleCouchTextEntry(event, igdbSecretField,
                                                       "TWITCH CLIENT SECRET", true,
