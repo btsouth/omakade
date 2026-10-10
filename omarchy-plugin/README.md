@@ -42,9 +42,9 @@ total play time Omakade knows. Desktop appears for Game Mode games, the
 RetroArch menu when Omakade can open it. Record clip turns into Stop clip with
 the clip's running time. The performance boxes leave out what is not
 available: frame rate and frame time come from an existing game telemetry file
-through Omakade, CPU and GPU load and temperature from the drivers; with none
-the section is not shown. The output row cycles the outputs. Quit asks in
-Quit's place, starting on Keep playing. Sections that do not apply are left out.
+through Omakade, CPU and GPU load and temperature from the drivers (nvidia-smi
+on NVIDIA); with none the section is not shown. The output row cycles the
+outputs. Quit asks in Quit's place, starting on Keep playing. Sections that do not apply are left out.
 
 Layout is `components/GuideCard.qml`; the cursor's moves are `GuideFocus.js`;
 what each control does is `activate()` and `act()` in `Guide.qml`.

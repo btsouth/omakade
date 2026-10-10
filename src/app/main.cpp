@@ -3686,6 +3686,18 @@ int main(int argc, char* argv[]) {
             qCritical() << "Full queue removal lost its neighboring game";
             application.exit(EXIT_FAILURE); return;
           }
+          // Up to the toolbar from far down the page brings the top of the page back.
+          const qreal pageTop = pageScroll->property("originY").toReal();
+          const qreal pageBottom = pageScroll->property("maximumScrollY").toReal();
+          QMetaObject::invokeMethod(screen, "stopWheelScroll");
+          pageScroll->setProperty("contentY", pageBottom);
+          QMetaObject::invokeMethod(screen, "focusHome");
+          QCoreApplication::processEvents();
+          if (pageBottom <= pageTop + 1 || pageScroll->property("contentY").toReal() != pageTop) {
+            qCritical() << "Returning to the Home toolbar left the page scrolled down"
+                        << pageTop << pageBottom << pageScroll->property("contentY");
+            application.exit(EXIT_FAILURE); return;
+          }
           quickWindow->setProperty("fullQueueChecked", true);
         }, Qt::ConnectionType(Qt::QueuedConnection | Qt::SingleShotConnection));
       }

@@ -124,7 +124,27 @@ def gpu_readings():
             if temperature is not None:
                 break
         return busy, temperature
-    return None, None
+    return nvidia_readings()
+
+
+def nvidia_readings():
+    # NVIDIA's driver has no busy counter in sysfs; nvidia-smi reports both.
+    tool = shutil.which('nvidia-smi')
+    if not tool:
+        return None, None
+    try:
+        text = subprocess.run([tool, '--query-gpu=utilization.gpu,temperature.gpu',
+                               '--format=csv,noheader,nounits'],
+                              capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    values = []
+    for field in (text.splitlines() or [''])[0].split(','):
+        try:
+            values.append(round(float(field)))
+        except ValueError:
+            values.append(None)
+    return tuple((values + [None, None])[:2])
 
 
 def recorders():

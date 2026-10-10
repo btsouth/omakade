@@ -117,7 +117,10 @@ FocusScope {
     signal browseRequested(string kind, string value)
     readonly property var featured: Home.recent.length ? Home.recent[0] : ({})
     readonly property var nextGame: Home.queue.length ? Home.queue[0] : Home.suggestions.length ? Home.suggestions[0] : ({})
+    // The toolbar sits above the page, so going back to it shows the top of the page too.
     function focusHome() {
+        scroll.stopWheelScroll("focus-home")
+        scroll.contentY = scroll.originY
         if (root.couchMode) libraryButton.forceActiveFocus()
         else homeAppHeader.homeButton.forceActiveFocus()
     }
