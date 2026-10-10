@@ -320,6 +320,11 @@ ApplicationWindow {
         // Dropdown delegates take focus away from the ComboBox while its popup is open.
         const combo = root.openControllerCombo()
         if (combo) { combo.controllerNavigate(key); return }
+        const container = root.navigationContainer()
+        if (container && root.arrowNavigationEnabled(key)) {
+            root.focusSpatial(container, key)
+            return
+        }
         const method = key === Qt.Key_Up ? "controllerUp" : key === Qt.Key_Down ? "controllerDown"
                      : key === Qt.Key_Left ? "controllerLeft" : "controllerRight"
         let view = null
@@ -328,10 +333,7 @@ ApplicationWindow {
             if (typeof control.controllerNavigate === "function" && control.controllerNavigate(key)) return
             if (control.count !== undefined && control.currentIndex !== undefined) { view = control; break }
         }
-        const container = root.navigationContainer()
-        if (container) {
-            root.focusSpatial(container, key)
-        } else if (!root.couchMode && !libraryView.gridFocused) {
+        if (!root.couchMode && !libraryView.gridFocused) {
             if (!root.focusSpatial(librarySurface, key) && key === Qt.Key_Down) libraryView.focusGrid()
         } else if (view) {
             // GridView/ListView's built-in keyboard movement becomes an explicit pad command.
