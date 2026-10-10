@@ -172,12 +172,6 @@ FocusScope {
         else libraryModel.toggleSource(value)
         filtersChanged()
     }
-    Connections {
-        target: Controller
-        function onFavoriteRequested() {
-            if (root.visible && optionList.activeFocus) root.toggleSourceOption(optionList.currentIndex)
-        }
-    }
     function clearFilters() {
         libraryModel.mode = 0
         libraryModel.sortMode = 0
@@ -410,6 +404,8 @@ FocusScope {
                         event.accepted = true
                     }
                     function controllerLeft() { const action = { accepted: false }; navigateLeftInput(action); return action.accepted }
+                    function secondaryAction() { root.toggleSourceOption(currentIndex) }
+
                     Keys.onLeftPressed: event => navigateLeftInput(event)
 
                     function navigateUpInput(event) {

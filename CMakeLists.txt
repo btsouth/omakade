@@ -364,8 +364,8 @@ target_link_libraries(omakade-sessiond PRIVATE omakade_core)
 
 qt_add_executable(omakade
   src/app/main.cpp
-  src/input/KeyDelivery.cpp
-  src/input/KeyDelivery.h
+  src/app/KeyboardTestInput.cpp
+  src/app/KeyboardTestInput.h
   src/app/CouchNavigationContract.cpp
   src/app/CouchNavigationContract.h
   src/app/CardExport.cpp
