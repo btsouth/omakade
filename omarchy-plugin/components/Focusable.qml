@@ -3,11 +3,15 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// A cursor target drawn as Omarchy's ConfirmDialog draws its choices: the
-// menu's selected fill and a border in the selected colour (the urgent colour
-// for a destructive choice). At rest a bordered chip keeps a faint border, as
-// ButtonGroup options do; a row has none.
-BorderSurface {
+// A cursor target. At rest a button keeps a faint fill and edge in the text
+// colour; under the cursor it takes a tint and a firm ring in the theme's
+// selected colour, or in the urgent colour for a destructive choice. `tone`
+// says how it rests:
+//   "plain"   faint fill and edge (buttons and tiles)
+//   "outline" no fill, an edge in the urgent colour (Quit)
+//   "tint"    a wash and an edge in the urgent colour (a clip running)
+//   "row"     nothing (the sound rows); its ring reaches `outsetX` past it
+Item {
   id: root
 
   property var g
@@ -17,9 +21,11 @@ BorderSurface {
   property string name: key
   property bool current: g.cursor === key && g.view === "main"
   property bool urgent: false
-  property bool bordered: false
-  readonly property color ink: root.current ? (root.urgent ? g.urgentInk : g.selectedInk) : g.text
-  readonly property int edgeWidth: Math.max(1, Style.normalBorderWidth)
+  property string tone: "plain"
+  property int outsetX: 0
+  property int outsetY: 0
+  readonly property color ink: root.urgent ? g.urgentInk : g.text
+  readonly property color ring: root.urgent ? g.urgentInk : g.accentInk
   // Set by each kind of control, for layout checks.
   property Item iconItem: null
   property bool truncated: false
@@ -27,10 +33,22 @@ BorderSurface {
   signal activated()
   signal hovered(Item source, var mouse)
 
-  radius: g.sized(Style.cornerRadius)
-  color: root.current ? Commons.Color.menu.selectedBackground : "transparent"
-  borderSpec: root.current ? Border.flat(root.ink, root.edgeWidth)
-    : root.bordered ? Border.flat(Util.alpha(g.text, 0.38), root.edgeWidth) : Border.none()
+  BorderSurface {
+    anchors.fill: parent
+    anchors.leftMargin: -root.outsetX
+    anchors.rightMargin: -root.outsetX
+    anchors.topMargin: -root.outsetY
+    anchors.bottomMargin: -root.outsetY
+    radius: root.g.sized(Style.cornerRadius)
+    color: root.current ? Util.alpha(root.ring, 0.12)
+      : root.tone === "plain" ? root.g.fill
+      : root.tone === "tint" ? Util.alpha(root.g.urgentInk, 0.08) : "transparent"
+    borderSpec: root.current ? Border.flat(Util.alpha(root.ring, 0.85), Math.max(2, root.g.sized(Style.space(2))))
+      : root.tone === "plain" ? Border.flat(root.g.edge, Math.max(1, root.g.sized(1)))
+      : root.tone === "outline" ? Border.flat(Util.alpha(root.g.urgentInk, 0.35), Math.max(1, root.g.sized(1)))
+      : root.tone === "tint" ? Border.flat(Util.alpha(root.g.urgentInk, 0.5), Math.max(1, root.g.sized(1)))
+      : Border.none()
+  }
 
   Component.onCompleted: if (root.name) root.g.register(root.name, root)
   Component.onDestruction: if (root.name) root.g.unregister(root.name, root)
