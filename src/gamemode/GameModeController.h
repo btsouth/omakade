@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
+#include <QSize>
 #include <functional>
 
 struct GameModeSettings {
@@ -99,6 +100,11 @@ public:
     m_windowVisibility = std::move(callback);
   }
 
+  // Optional short frame fence. A missed callback must never prevent entry.
+  void setFramePreparation(std::function<bool(const QSize&)> callback) {
+    m_framePreparation = std::move(callback);
+  }
+
   // Runs after recording game presentation, before returning the desktop. Nonblocking.
   void setBeforeParkRestore(std::function<void()> callback) {
     m_beforeParkRestore = std::move(callback);
@@ -154,5 +160,7 @@ private:
   bool m_parked = false;
   bool m_temporaryWindow = false;
   std::function<void(bool)> m_windowVisibility;
+  std::function<bool(const QSize&)> m_framePreparation;
+  void prepareFrame(const QString& output) const;
   std::function<void()> m_beforeParkRestore;
 };

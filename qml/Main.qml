@@ -970,6 +970,32 @@ ApplicationWindow {
 
     // Holds Omakade's place in the desktop layout while its window is in Game Mode, so the
     // other windows stay put and Omakade returns to the same spot.
+    property url gameModeEntrySnapshotSource
+    property bool gameModeEntrySnapshotVisible: false
+    Window {
+        objectName: "gameModeEntrySnapshot"
+        title: "Omakade Game Mode Entry Snapshot"
+        transientParent: null
+        visible: root.gameModeEntrySnapshotVisible
+        width: 640
+        height: 480
+        onVisibleChanged: {
+            if (visible) {
+                width = root.width
+                height = root.height
+            } else {
+                root.gameModeEntrySnapshotSource = ""
+            }
+        }
+        color: "transparent"
+        Image {
+            anchors.fill: parent
+            source: root.gameModeEntrySnapshotSource
+            cache: false
+            asynchronous: false
+        }
+    }
+
     property bool gameModePlaceholderVisible: false
     Window {
         id: gameModePlaceholder

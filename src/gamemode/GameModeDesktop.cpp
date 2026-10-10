@@ -93,6 +93,8 @@ QVector<GameModeOutput> HyprlandGameModeCompositor::parseOutputs(const QByteArra
     output.focused = monitor.value(QLatin1String("focused")).toBool();
     output.width = monitor.value(QLatin1String("width")).toInt();
     output.height = monitor.value(QLatin1String("height")).toInt();
+    output.scale = monitor.value(QLatin1String("scale")).toDouble(1);
+    output.transform = monitor.value(QLatin1String("transform")).toInt();
     if (output.enabled) {
       output.workspace =
           workspaceSelector(monitor.value(QLatin1String("activeWorkspace")).toObject());
@@ -120,6 +122,8 @@ GameModeWindow HyprlandGameModeCompositor::parseWindow(const QByteArray& clients
         !client.value(QLatin1String("mapped")).toBool()) {
       continue;
     }
+    if (client.value(QLatin1String("title")).toString().startsWith(
+            QStringLiteral("Omakade Game Mode Entry Snapshot"))) continue;
     // Qt adds the application name to the title, so it is matched by its start.
     if (client.value(QLatin1String("title")).toString().startsWith(placeholderTitle()) !=
         placeholder) {
@@ -189,15 +193,118 @@ QString HyprlandGameModeCompositor::holdScript() {
 }
 
 QString HyprlandGameModeCompositor::coldWindowScript() {
-  // Only a temporary Game Mode root carries this initial title. Warm library
-  // windows keep their ordinary desktop animation and placement rules.
+  // A floating surface below one 8-bit opacity step keeps the desktop visible while Qt commits
+  // the final-size opaque scene. It is on a visible workspace, never suspended.
   return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-startup\", "
-                        "match = { initial_title = \"^Omakade Game Mode Startup.*\", "
-                        "class = \"^io.github.tsouth89.Omakade$\" }, no_anim = true })");
+      "match = { title = \"^Omakade Game Mode (Startup|Presentation).*$\", "
+      "class = \"^io.github.tsouth89.Omakade$\" }, float = true, "
+      "size = { \"monitor_w\", \"monitor_h\" }, move = { \"0\", \"0\" }, "
+      "fullscreen_state = \"0 2\", suppress_event = \"fullscreen fullscreenoutput\", "
+      "no_initial_focus = true, tag = \"+omakade-entry-tiled\", "
+      "no_anim = true, no_dim = true, opacity = \"0.000015 override 0.000015 override 0.000015 override\" })");
 }
 
 bool HyprlandGameModeCompositor::prepareColdWindow(QString* error) {
   return eval(coldWindowScript(), error);
+}
+
+bool HyprlandGameModeCompositor::prepareSnapshotWindow(const QString& address,
+                                                       const QString& workspace,
+                                                       const QString& output, QString* error) {
+  if (!validAddress(address) || workspace.isEmpty() || output.isEmpty()) return false;
+  return eval(QStringLiteral(
+      "local w = hl.get_window(%1)\n"
+      "local m = hl.get_monitor(%2)\n"
+      "omakade_entry_snapshot_owner = %1\n"
+      "hl.window_rule({ name = \"omakade-game-mode-preparation\", "
+      "match = { class = \"^io.github.tsouth89.Omakade$\", tag = \"omakade-entry-preparing\" }, "
+      "no_anim = true, no_dim = true, opacity = \"0.000015 override 0.000015 override 0.000015 override\" })\n"
+      "if not omakade_entry_snapshot_hook then\n"
+      " omakade_entry_snapshot_hook = true\n"
+      " hl.on(\"window.open\", function(snapshot)\n"
+      "  if snapshot.class == \"io.github.tsouth89.Omakade\" and string.find(snapshot.title, \"Omakade Game Mode Entry Snapshot\", 1, true) then\n"
+      "   local owner = hl.get_window(omakade_entry_snapshot_owner)\n"
+      "   if owner then\n"
+      "    hl.dispatch(hl.dsp.window.tag({ window = omakade_entry_snapshot_owner, tag = \"+omakade-entry-preparing\" }))\n"
+      "    hl.dispatch(hl.dsp.window.set_prop({ window = omakade_entry_snapshot_owner, prop = \"opacity\", value = \"0.000015\" }))\n"
+      "   end\n"
+      "  end\n end)\nend\n"
+      "hl.window_rule({ name = \"omakade-game-mode-entry-snapshot\", "
+      "match = { title = \"^Omakade Game Mode Entry Snapshot.*\", class = \"^io.github.tsouth89.Omakade$\" }, "
+      "workspace = %3, monitor = %2, float = true, size = { w.size.x, w.size.y }, "
+      "move = { w.at.x - m.x, w.at.y - m.y }, "
+      "no_initial_focus = true, no_focus = true, no_anim = true, no_dim = true, "
+      "no_blur = true, no_shadow = true, border_size = 0, "
+      "opacity = \"1 override 1 override 1 override\" })")
+      .arg(luaString(QStringLiteral("address:") + address), luaString(output),
+           luaString(workspace + QStringLiteral(" silent"))), error);
+}
+
+QString HyprlandGameModeCompositor::prepareScript(const QString& address,
+                                                  const QString& visibleWorkspace,
+                                                  const QString& output,
+                                                  const QString& placeholder) {
+  const QString window = luaString(QStringLiteral("address:") + address);
+  QString script = QStringLiteral(
+      "local w = hl.get_window(%1)\n"
+      "local m = hl.get_monitor(%2)\n"
+      "omakade_entry_geometry = omakade_entry_geometry or {}\n"
+      "if w.floating then omakade_entry_geometry[%1] = { x = w.at.x, y = w.at.y, width = w.size.x, height = w.size.y } end\n"
+      "if not w.floating then hl.dispatch(hl.dsp.window.tag({ window = %1, tag = \"+omakade-entry-tiled\" })) end\n"
+      "hl.dispatch(hl.dsp.window.tag({ window = %1, tag = \"+omakade-entry-preparing\" }))\n"
+      "hl.window_rule({ name = \"omakade-game-mode-preparation\", "
+      "match = { class = \"^io.github.tsouth89.Omakade$\", tag = \"omakade-entry-preparing\" }, "
+      "no_anim = true, no_dim = true, no_blur = true, no_shadow = true, border_size = 0, "
+      "opacity = \"0.000015 override 0.000015 override 0.000015 override\" })\n"
+      "hl.window_rule({ name = \"omakade-game-mode-presentation\", "
+      "match = { class = \"^io.github.tsouth89.Omakade$\", workspace = \"name:omakade\" }, "
+      "no_anim = true, no_dim = true, opacity = \"1 override 1 override 1 override\" })\n"
+      "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 }))\n")
+      .arg(window, luaString(output));
+  if (!placeholder.isEmpty())
+    script += QStringLiteral("omakade_entry_placeholder = %2\n"
+        "hl.dispatch(hl.dsp.window.tag({ window = %2, tag = \"+omakade-entry-preparing\" }))\n"
+        "hl.dispatch(hl.dsp.window.swap({ window = %1, target = %2 }))\n")
+        .arg(window, luaString(QStringLiteral("address:") + placeholder));
+  // Nonzero opacity keeps the surface eligible for compositor frame callbacks.
+  // Floating client fullscreen avoids hiding the desktop under internal fullscreen.
+  // Resize also clears the suspension left by a hidden placeholder swap.
+  script += QStringLiteral(
+      "hl.dispatch(hl.dsp.window.set_prop({ window = %1, prop = \"opacity\", value = \"0.000015\" }))\n"
+      "if not hl.get_window(%1).floating then hl.dispatch(hl.dsp.window.float({ window = %1 })) end\n"
+      "hl.dispatch(hl.dsp.window.move({ window = %1, workspace = %2, follow = false }))\n"
+      "hl.dispatch(hl.dsp.window.resize({ window = %1, x = m.width / m.scale, y = m.height / m.scale, relative = false }))\n"
+      "hl.dispatch(hl.dsp.window.move({ window = %1, x = m.x, y = m.y, relative = false }))\n"
+      "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 2 }))")
+      .arg(window, luaString(visibleWorkspace));
+  return script;
+}
+
+namespace {
+QString finishPlaceholder() {
+  return QStringLiteral(
+      "if omakade_entry_placeholder and hl.get_window(omakade_entry_placeholder) then\n"
+      " hl.dispatch(hl.dsp.window.tag({ window = omakade_entry_placeholder, tag = \"-omakade-entry-preparing\" }))\n"
+      "end\nomakade_entry_placeholder = nil\n");
+}
+QString finishPreparation(const QString& window) {
+  return finishPlaceholder() + QStringLiteral(
+      "hl.dispatch(hl.dsp.window.set_prop({ window = %1, prop = \"opacity\", value = \"1\" }))\n"
+      "hl.dispatch(hl.dsp.window.tag({ window = %1, tag = \"-omakade-entry-preparing\" }))\n"
+      "for _, tag in ipairs(hl.get_window(%1).tags) do\n"
+      " if tag == \"omakade-entry-tiled\" or tag == \"omakade-entry-tiled*\" then\n"
+      "  hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 }))\n"
+      "  if hl.get_window(%1).floating then hl.dispatch(hl.dsp.window.float({ window = %1 })) end\n"
+      "  hl.dispatch(hl.dsp.window.tag({ window = %1, tag = \"-omakade-entry-tiled\" }))\n"
+      "  if omakade_entry_geometry then omakade_entry_geometry[%1] = nil end\n"
+      " end\nend\n"
+      "local geometry = omakade_entry_geometry and omakade_entry_geometry[%1]\n"
+      "if geometry then\n"
+      " hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 }))\n"
+      " hl.dispatch(hl.dsp.window.resize({ window = %1, x = geometry.width, y = geometry.height, relative = false }))\n"
+      " hl.dispatch(hl.dsp.window.move({ window = %1, x = geometry.x, y = geometry.y, relative = false }))\n"
+      " omakade_entry_geometry[%1] = nil\nend\n").arg(window);
+}
 }
 
 QString HyprlandGameModeCompositor::placeScript(const QString& address, const QString& workspace,
@@ -217,16 +324,20 @@ QString HyprlandGameModeCompositor::placeScript(const QString& address, const QS
   // exposing the window, rather than waiting for the GUI completion callback.
   return trade + QStringLiteral("hl.dispatch(hl.dsp.focus({ monitor = %1 }))\n"
                                 "hl.dispatch(hl.dsp.window.move({ window = %2, workspace = %3, follow = false }))\n"
+                                "hl.dispatch(hl.dsp.workspace.move({ workspace = %3, monitor = %1 }))\n"
+                                "%4"
+                                "hl.dispatch(hl.dsp.window.set_prop({ window = %2, prop = \"opacity\", value = \"1\" }))\n"
                                 "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %2, internal = 2, client = 2 }))\n"
                                 "hl.dispatch(hl.dsp.focus({ window = %2 }))")
-                     .arg(luaString(output), window, luaString(workspace));
+                     .arg(luaString(output), window, luaString(workspace),
+                          (finishPlaceholder() + QStringLiteral("hl.dispatch(hl.dsp.window.tag({ window = %1, tag = \"-omakade-entry-preparing\" }))\n").arg(window)));
 }
 
 QString HyprlandGameModeCompositor::tradeScript(const QString& address,
                                                 const QString& placeholder) {
   const QString window = luaString(QStringLiteral("address:") + address);
   // Hyprland refuses to swap a fullscreen window, and Couch Mode is fullscreen.
-  return QStringLiteral(
+  return finishPreparation(window) + QStringLiteral(
              "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 "
              "}))\n"
              "hl.dispatch(hl.dsp.window.swap({ window = %1, target = %2 }))")
@@ -234,9 +345,10 @@ QString HyprlandGameModeCompositor::tradeScript(const QString& address,
 }
 
 QString HyprlandGameModeCompositor::returnScript(const QString& address, const QString& workspace) {
-  return QStringLiteral(
+  const QString window = luaString(QStringLiteral("address:") + address);
+  return finishPreparation(window) + QStringLiteral(
              "hl.dispatch(hl.dsp.window.move({ window = %1, workspace = %2, follow = false }))")
-      .arg(luaString(QStringLiteral("address:") + address), luaString(workspace));
+      .arg(window, luaString(workspace));
 }
 
 bool HyprlandGameModeCompositor::eval(const QString& script, QString* error) {
@@ -348,6 +460,15 @@ bool HyprlandGameModeCompositor::placeWindow(const QString& address, const QStri
   return validAddress(address) && !workspace.isEmpty() && !output.isEmpty() &&
          (placeholder.isEmpty() || validAddress(placeholder)) &&
          eval(placeScript(address, workspace, output, placeholder), error);
+}
+
+bool HyprlandGameModeCompositor::prepareWindow(const QString& address,
+                                               const QString& visibleWorkspace,
+                                               const QString& output, const QString& placeholder,
+                                               QString* error) {
+  return validAddress(address) && !visibleWorkspace.isEmpty() && !output.isEmpty() &&
+         (placeholder.isEmpty() || validAddress(placeholder)) &&
+         eval(prepareScript(address, visibleWorkspace, output, placeholder), error);
 }
 
 bool HyprlandGameModeCompositor::returnWindow(const QString& address, const QString& workspace,

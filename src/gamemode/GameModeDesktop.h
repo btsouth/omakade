@@ -31,9 +31,16 @@ public:
   [[nodiscard]] GameModeWindow placeholderForPid(qint64 pid) override;
   bool holdPlaceholder(QString* error = nullptr) override;
   bool prepareColdWindow(QString* error = nullptr);
+  bool prepareSnapshotWindow(const QString& address, const QString& workspace,
+                             const QString& output, QString* error = nullptr);
   [[nodiscard]] static QString coldWindowScript();
   bool placeWindow(const QString& address, const QString& workspace, const QString& output,
                    const QString& placeholder, QString* error = nullptr) override;
+  bool prepareWindow(const QString& address, const QString& visibleWorkspace,
+                     const QString& output, const QString& placeholder,
+                     QString* error = nullptr) override;
+  [[nodiscard]] static QString prepareScript(const QString& address, const QString& visibleWorkspace,
+                                              const QString& output, const QString& placeholder = {});
   bool returnWindow(const QString& address, const QString& workspace, const QString& placeholder,
                     QString* error = nullptr) override;
   bool focusWindow(const QString& address, QString* error = nullptr) override;

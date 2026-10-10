@@ -1,4 +1,5 @@
 #include "gamemode/GameModeController.h"
+#include "gamemode/GameModeFrame.h"
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/GameModeShortcut.h"
@@ -213,7 +214,7 @@ public:
         held.isEmpty()
             ? QStringLiteral("place %1 %2 %3").arg(address, workspace, target)
             : QStringLiteral("place %1 %2 %3 holding %4").arg(address, workspace, target, held));
-    if (placeFails) {
+    if (placeFails || (workspace == GameModeController::workspace() && moveWorkspaceFails)) {
       return false;
     }
     if (!held.isEmpty()) {
@@ -228,6 +229,18 @@ public:
         entry.workspace = workspace;
       }
     }
+    return true;
+  }
+  bool prepareWindow(const QString& address, const QString& visibleWorkspace,
+                     const QString& target, const QString& held, QString*) override {
+    if (beforePlace) beforePlace();
+    log.append(held.isEmpty() ? QStringLiteral("prepare %1 %2 %3").arg(address, visibleWorkspace, target)
+                             : QStringLiteral("prepare %1 %2 %3 holding %4").arg(address, visibleWorkspace, target, held));
+    if (placeFails) return false;
+    if (!held.isEmpty()) placeholder.workspace = window.workspace;
+    window.workspace = visibleWorkspace;
+    window.output = target;
+    currentFocus = {target, visibleWorkspace, address};
     return true;
   }
   bool returnWindow(const QString& address, const QString& workspace, const QString& held,
@@ -1967,7 +1980,7 @@ private slots:
     const auto entered = game.enter({}, 100);
     QVERIFY2(entered.ok, qPrintable(entered.error));
     QVERIFY(game.state().placeholder);
-    QVERIFY(m_compositor.log.contains(QStringLiteral("place %1 name:omakade %2 holding %3")
+    QVERIFY(m_compositor.log.contains(QStringLiteral("prepare %1 3 %2 holding %3")
                                           .arg(kAddress, kDesk, kPlaceholderAddress)));
     // The placeholder now sits where Omakade was.
     QCOMPARE(m_compositor.placeholder.workspace, QStringLiteral("3"));
@@ -2476,6 +2489,9 @@ private slots:
 
     // The placeholder shares the window class and is told apart by its title.
     const QByteArray withPlaceholder = R"([
+      {"address":"0xaaa1","mapped":true,"pid":100,"class":"io.github.tsouth89.Omakade",
+       "title":"Omakade Game Mode Entry Snapshot — Omakade","monitor":0,
+       "workspace":{"id":3,"name":"3"}},
       {"address":"0xeee5","mapped":true,"pid":100,"class":"io.github.tsouth89.Omakade",
        "title":"Omakade Game Mode Placeholder — Omakade","fullscreen":2,"monitor":0,
        "workspace":{"id":-98,"name":"special:omakade"}},
@@ -2492,6 +2508,74 @@ private slots:
     QCOMPARE(held.workspace, QStringLiteral("special:omakade"));
     QVERIFY(held.fullscreen);
     QVERIFY(!HyprlandGameModeCompositor::parseWindow(clients, outputs, 100, true).valid());
+    QVERIFY(!HyprlandGameModeCompositor::parseWindow(R"([
+      {"address":"0xaaa1","mapped":true,"pid":100,"class":"io.github.tsouth89.Omakade",
+       "title":"Omakade Game Mode Entry Snapshot — Omakade","monitor":0,
+       "workspace":{"id":3,"name":"3"}}])", outputs, 100).valid());
+  }
+
+  void entryAndResumePrepareOnVisibleWorkspaceBeforeFinalMove() {
+    deskAndTv(true);
+    auto game = controller();
+    int frames = 0;
+    bool visible = true;
+    game.setFramePreparation([&](const QSize&) {
+      ++frames;
+      visible = visible && m_compositor.window.workspace == m_compositor.list[1].workspace;
+      m_compositor.log.append("frame-ready");
+      return true;
+    });
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+    QVERIFY(m_compositor.log.indexOf("frame-ready") <
+            m_compositor.log.indexOf(QStringLiteral("place %1 %2 %3")
+                                    .arg(kAddress, GameModeController::workspace(), kTv)));
+    QVERIFY(game.park(100).ok);
+    m_compositor.log.clear();
+    QVERIFY(game.resume(tvSettings(), 100).ok);
+    QCOMPARE(frames, 2);
+    QVERIFY(visible);
+    QVERIFY(m_compositor.log.indexOf("frame-ready") <
+            m_compositor.log.indexOf(QStringLiteral("place %1 %2 %3")
+                                    .arg(kAddress, GameModeController::workspace(), kTv)));
+    QVERIFY(game.exit(100).ok);
+  }
+
+  void hiddenWindowWithoutFrameCallbacksDoesNotStallEntry() {
+    deskAndTv(true);
+    // A warm library begins on a workspace that the output is not showing.
+    m_compositor.window.workspace = "hidden-library";
+    auto game = controller();
+    game.setFramePreparation([&](const QSize&) {
+      GameModeFrameRequest request;
+      // No producer releases this request, as with a suspended Wayland surface.
+      return request.wait();
+    });
+    QElapsedTimer elapsed;
+    elapsed.start();
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+    QVERIFY2(elapsed.elapsed() < 1000, "Frame starvation stalled entry");
+    QCOMPARE(m_compositor.window.workspace, GameModeController::workspace());
+    QVERIFY(game.park(100).ok);
+    elapsed.restart();
+    QVERIFY(game.resume(tvSettings(), 100).ok);
+    QVERIFY2(elapsed.elapsed() < 1000, "Frame starvation stalled resume");
+    QVERIFY(game.exit(100).ok);
+  }
+
+  void visiblePreparationNeverRequestsHiddenRendering() {
+    const auto script = HyprlandGameModeCompositor::prepareScript(
+        "0xddd4", "3", "HDMI-A-2", kPlaceholderAddress);
+    QVERIFY(script.contains("no_anim = true"));
+    QVERIFY(script.contains("no_dim = true"));
+    QVERIFY(script.contains("1 override 1 override 1 override"));
+    QVERIFY(!script.contains("render_unfocused"));
+    QVERIFY(script.indexOf("window.swap") < script.indexOf("window.move"));
+    QVERIFY(script.contains("workspace = \"3\", follow = false"));
+    QVERIFY(script.contains("x = m.width / m.scale"));
+    QVERIFY(script.indexOf("window.resize") < script.indexOf("internal = 0, client = 2"));
+    QVERIFY(script.contains("0.000015 override 0.000015 override 0.000015 override"));
+    QVERIFY(!script.contains("focus({ workspace"));
+    QVERIFY(!script.contains("focus({ window"));
   }
 
   void scriptsQuoteEveryName() {
@@ -2506,8 +2590,10 @@ private slots:
     QVERIFY(HyprlandGameModeCompositor::holdScript().contains(
         QStringLiteral("title = \"^Omakade Game Mode Placeholder.*\"")));
     const auto cold = HyprlandGameModeCompositor::coldWindowScript();
-    QVERIFY(cold.contains("initial_title = \"^Omakade Game Mode Startup.*\""));
+    QVERIFY(cold.contains("title = \"^Omakade Game Mode (Startup|Presentation).*$\""));
     QVERIFY(cold.contains("class = \"^io.github.tsouth89.Omakade$\""));
+    QVERIFY(cold.contains("fullscreen_state = \"0 2\""));
+    QVERIFY(cold.contains("no_initial_focus = true"));
     QVERIFY(cold.contains("no_anim = true"));
     const QString place =
         HyprlandGameModeCompositor::placeScript("0xddd4", "name:omakade", "HDMI-A-2");

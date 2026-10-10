@@ -77,6 +77,10 @@ public:
   void setSilenceNotifications(bool value);
   [[nodiscard]] const GameModeSettings& settings() const { return m_settings; }
 
+  void setFramePreparation(std::function<bool(const QSize&)> callback) {
+    m_controller.setFramePreparation(std::move(callback));
+  }
+
   // Rereads the connected displays and sound outputs. Also undoes a session that an
   // earlier run left behind, the first time it is called.
   Q_INVOKABLE void refresh();

@@ -52,6 +52,7 @@
 #include "guide/InGameGuide.h"
 #include "guide/GuideClient.h"
 #include "gamemode/GameModeSession.h"
+#include "gamemode/GameModeFrame.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
 #include "streaming/SunshineIntegration.h"
@@ -7022,8 +7023,40 @@ int main(int argc, char* argv[]) {
   if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {
+    const auto entrySnapshotDirectory = std::make_shared<QTemporaryDir>();
     const auto windowStateBeforePreparation =
         std::make_shared<Qt::WindowState>(rootWindow->windowState());
+    gameMode.setFramePreparation([rootWindow, &gameMode](const QSize& size) {
+      const auto request = std::make_shared<GameModeFrameRequest>();
+      QMetaObject::invokeMethod(rootWindow, [rootWindow, &gameMode, request, size] {
+        if (!request->pending()) return;
+        auto* quick = qobject_cast<QQuickWindow*>(rootWindow);
+        if (!quick) { request->complete(); return; }
+        // Fullscreen on the visible desktop first. Never wait for a callback
+        // after moving the surface to a hidden workspace.
+        quick->contentItem()->setOpacity(1);
+        QMetaObject::invokeMethod(rootWindow, gameMode.parked() ? "restoreGameModeNavigation"
+                                                               : "focusCurrentSurface");
+        const auto connection = std::make_shared<QMetaObject::Connection>();
+        const auto frames = std::make_shared<int>(0);
+        *connection = QObject::connect(quick, &QQuickWindow::frameSwapped, quick,
+            [quick, request, size, connection, frames] {
+          if (size.isEmpty() || quick->size() == size) ++*frames;
+          else *frames = 0;
+          if (!request->pending() || *frames >= 2) {
+            QObject::disconnect(*connection);
+            request->complete();
+          } else quick->update();
+        }, Qt::QueuedConnection);
+        QTimer::singleShot(GameModeFrameRequest::timeoutMs, quick, [connection] {
+          QObject::disconnect(*connection);
+        });
+        quick->update();
+      }, Qt::QueuedConnection);
+      const bool ready = request->wait();
+      qInfo("Game Mode preparation: final-size frame ready=%s", ready ? "true" : "false");
+      return ready;
+    });
     QObject::connect(&gameMode, &GameModeSession::windowVisibilityRequested, rootWindow,
                      [rootWindow, &gameModeCompositor, presentationGeneration](bool visible) {
                        // The controller snapshots desktop focus before asking to map
@@ -7033,24 +7066,51 @@ int main(int argc, char* argv[]) {
                          rootWindow->setTitle(QStringLiteral("Omakade Game Mode Startup"));
                          (void)gameModeCompositor.prepareColdWindow();
                          // Wayland's fullscreen configure arrives after mapping.
-                         // Size the first buffer now and keep its content hidden
-                         // until placement and the prepared scene have rendered.
+                         // The initial committed buffer must be a complete opaque
+                         // library, since this workspace is already visible.
                          if (QGuiApplication::platformName() == "wayland" && rootWindow->screen())
                            rootWindow->resize(rootWindow->screen()->size());
                          if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow))
-                           quick->contentItem()->setOpacity(0);
+                           quick->contentItem()->setOpacity(1);
                        }
                        if (visible) rootWindow->setWindowState(Qt::WindowFullScreen);
                        rootWindow->setVisible(visible);
                      });
     QObject::connect(&gameMode, &GameModeSession::preparing, rootWindow,
-                     [rootWindow, windowStateBeforePreparation](bool retainNavigation) {
+                     [rootWindow, &gameModeCompositor, windowStateBeforePreparation,
+                      entrySnapshotDirectory](bool retainNavigation) {
                        *windowStateBeforePreparation = rootWindow->windowState();
+                       GameModeDesktopFocus desktop;
+                       const auto window = gameModeCompositor.windowForPid(QCoreApplication::applicationPid());
+                       if (rootWindow->isVisible() && window.valid() &&
+                           gameModeCompositor.desktopFocus(&desktop, nullptr) &&
+                           desktop.workspace == window.workspace && desktop.output == window.output) {
+                         auto* quick = qobject_cast<QQuickWindow*>(rootWindow);
+                         auto* snapshot = rootWindow->findChild<QQuickWindow*>("gameModeEntrySnapshot");
+                         const QString path = entrySnapshotDirectory->filePath("entry.png");
+                         if (quick && snapshot && quick->grabWindow().save(path) &&
+                             gameModeCompositor.prepareSnapshotWindow(window.address, window.workspace, window.output)) {
+                           rootWindow->setProperty("gameModeEntrySnapshotSource", QUrl::fromLocalFile(path));
+                           // Keep the old library frame in its original desktop bounds.
+                           // This surface is visible; its short fence never depends on a hidden workspace.
+                           QEventLoop frame;
+                           const auto ready = QObject::connect(snapshot, &QQuickWindow::frameSwapped,
+                                                               &frame, &QEventLoop::quit, Qt::QueuedConnection);
+                           QTimer::singleShot(GameModeFrameRequest::timeoutMs, &frame, &QEventLoop::quit);
+                           rootWindow->setProperty("gameModeEntrySnapshotVisible", true);
+                           snapshot->update();
+                           frame.exec();
+                           QObject::disconnect(ready);
+                         }
+                       }
+                       (void)gameModeCompositor.prepareColdWindow();
+                       rootWindow->setTitle(QStringLiteral("Omakade Game Mode Presentation"));
                        QMetaObject::invokeMethod(rootWindow, "prepareGameModeLayout",
                                                  Q_ARG(QVariant, QVariant(retainNavigation)));
                      });
     QObject::connect(&gameMode, &GameModeSession::preparationCancelled, rootWindow,
                      [&gameMode, rootWindow, windowStateBeforePreparation] {
+      rootWindow->setProperty("gameModeEntrySnapshotVisible", false);
       QMetaObject::invokeMethod(rootWindow, "cancelGameModeLayout");
       // A failed cold entry is shown as an ordinary library by the failure
       // handler. A parked resume failure keeps its hidden fullscreen session.
@@ -7059,6 +7119,7 @@ int main(int argc, char* argv[]) {
     QObject::connect(&gameMode, &GameModeSession::resumed, rootWindow, [rootWindow, revealGameMode] {
       QMetaObject::invokeMethod(rootWindow, "resumeGameMode");
       revealGameMode();
+      rootWindow->setProperty("gameModeEntrySnapshotVisible", false);
     });
     QObject::connect(&gameMode, &GameModeSession::parking, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "captureGameModeNavigation");
@@ -7076,6 +7137,7 @@ int main(int argc, char* argv[]) {
       rootWindow->setVisible(true);
       rootWindow->requestActivate();
       revealGameMode();
+      rootWindow->setProperty("gameModeEntrySnapshotVisible", false);
     });
     QObject::connect(&gameMode, &GameModeSession::leaving, rootWindow, [rootWindow](bool retainNavigation) {
       QMetaObject::invokeMethod(rootWindow, "leaveGameMode",
@@ -7797,7 +7859,7 @@ int main(int argc, char* argv[]) {
             mappedWrongPresentation = mappedWrongPresentation ||
                 !rootWindow->property("couchMode").toBool() ||
                 rootWindow->windowState() != Qt::WindowFullScreen ||
-                qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() != 0;
+                qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() != 1;
           });
       for (int cycle = 0; cycle < 3; ++cycle) {
         gameMode.enter();

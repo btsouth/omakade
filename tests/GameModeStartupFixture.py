@@ -97,9 +97,10 @@ with open(str(path) + ".lock", "w") as lock:
                 state["owner_workspace"] = "1" if state["owner_workspace"] == "name:omakade" else "special:omakade"
             elif "window.move" in line and 'address:0xaa' in line:
                 match = re.search(r'workspace = "([^"]+)"', line)
-                state["owner_workspace"] = match.group(1)
-                if "follow = false" not in line:
-                    state["workspace"] = match.group(1)
+                if match:
+                    state["owner_workspace"] = match.group(1)
+                    if "follow = false" not in line:
+                        state["workspace"] = match.group(1)
             elif "dsp.focus" in line:
                 match = re.search(r'window = "address:([^"]+)"', line)
                 if match:

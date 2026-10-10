@@ -447,13 +447,14 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     }
   }
 
-  if (compositor && window.valid() && window.workspace != workspace()) {
+  if (compositor && window.valid()) {
     QString error;
     // A tiled window that is simply moved away and back lands wherever the layout puts a
     // new window. A placeholder keeps its exact place instead. A floating window keeps its
     // own position, so it needs none. The compositor clears fullscreen before swapping.
     GameModeWindow placeholder;
-    if (!state.temporaryWindow && m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
+    if (window.workspace != workspace() && !state.temporaryWindow && m_placeholder &&
+        !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
@@ -471,7 +472,7 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     if (!save(state)) {
       return fail(QStringLiteral("Could not record Game Mode's window position."));
     }
-    if (!m_compositor->placeWindow(window.address, workspace(), state.output, placeholder.address,
+    if (!m_compositor->prepareWindow(window.address, state.outputWorkspace, state.output, placeholder.address,
                                    &error)) {
       return fail(QStringLiteral("Could not move Omakade to the Game Mode display."));
     }
@@ -500,6 +501,12 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     result.notes.append(
         QStringLiteral("Recovery storage is unavailable; no desktop settings were changed."));
   }
+  if (compositor && window.valid()) {
+    prepareFrame(state.output);
+    QString error;
+    if (!m_compositor->placeWindow(window.address, workspace(), state.output, {}, &error))
+      return fail(QStringLiteral("Could not show Omakade on the Game Mode workspace."));
+  }
   m_state = state;
   m_sessionSettings = settings;
   m_active = true;
@@ -511,6 +518,20 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
 void GameModeController::visibility(bool visible) const {
   if (m_windowVisibility)
     m_windowVisibility(visible);
+}
+
+void GameModeController::prepareFrame(const QString& output) const {
+  if (!m_framePreparation) return;
+  QSize size;
+  for (const auto& candidate : m_compositor->outputs())
+    if (candidate.name == output) {
+      const double scale = candidate.scale > 0 ? candidate.scale : 1;
+      size = QSize(qRound(candidate.width / scale), qRound(candidate.height / scale));
+      if (candidate.transform % 2) size.transpose();
+    }
+  // The opaque scene is mapped on the visible output. A missing frame callback falls
+  // through to the atomic move/focus, rather than rolling back or waiting seconds.
+  (void)m_framePreparation(size);
 }
 
 bool GameModeController::captureDesktop(GameModeState* state, QString* error) {
@@ -1031,13 +1052,16 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
     }
     m_state.placeholder = placeholder.valid();
     m_state.windowPlaced = true;
-    if (!save(m_state) || !m_compositor->placeWindow(window.address, workspace(), chosen,
-                                                     placeholder.address, &error))
+    if (!save(m_state) || !m_compositor->prepareWindow(window.address, m_state.outputWorkspace, chosen,
+                                                       placeholder.address, &error))
       return fail(QStringLiteral("Omakade's session window could not be restored."));
   }
-  // Move the existing game workspace: never enter a fresh library session over it.
-  if (!m_compositor->moveWorkspace(workspace(), chosen, &error) ||
-      !m_compositor->focusWorkspace(workspace(), &error))
+  else if (!m_compositor->prepareWindow(window.address, m_state.outputWorkspace, chosen, {}, &error))
+    return fail(QStringLiteral("Omakade's session window could not be prepared."));
+  prepareFrame(chosen);
+  // Placement creates an empty library workspace if parking removed it, or
+  // relocates the retained game workspace in the same compositor transaction.
+  if (!m_compositor->placeWindow(window.address, workspace(), chosen, {}, &error))
     return fail(QStringLiteral("The retained game workspace could not be restored: %1").arg(error));
   if (settings.silenceNotifications && m_notifications && m_notifications->available()) {
     bool silenced = false;
