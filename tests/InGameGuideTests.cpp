@@ -294,13 +294,15 @@ void InGameGuideTests::pluginFocus() {
     for (const auto& row : rows.toVariant().toList()) out << row.toStringList().join(',');
     return out;
   };
-  const QVariantMap full{{"game", true}, {"achievements", true}, {"volume", true}, {"outputs", 1}};
+  const QVariantMap full{{"game", true}, {"volume", true}, {"outputs", 1}};
   const auto rows = grid(full);
-  QCOMPARE(keys(rows), (QStringList{"screenshot,record", "achievements", "volume", "resume,quit"}));
+  QCOMPARE(keys(rows), (QStringList{"resume", "screenshot,record", "volume", "quit"}));
   QCOMPARE(global.property("home").call({rows}).toString(), QStringLiteral("resume"));
-  auto replay = full; replay.insert("replay", true); replay.insert("outputs", 3);
-  QCOMPARE(keys(grid(replay)), (QStringList{"screenshot,record,replay", "achievements", "volume", "output", "resume,quit"}));
-  QCOMPARE(keys(grid({{"game", true}})), (QStringList{"screenshot,record", "resume,quit"}));
+  auto all = full; all.insert("desktop", true); all.insert("retroarch", true); all.insert("replay", true); all.insert("outputs", 3);
+  QCOMPARE(keys(grid(all)), (QStringList{"resume", "desktop,retroarch", "screenshot,record,replay", "volume", "output", "quit"}));
+  auto desktop = full; desktop.insert("desktop", true);
+  QCOMPARE(keys(grid(desktop)), (QStringList{"resume", "desktop", "screenshot,record", "volume", "quit"}));
+  QCOMPARE(keys(grid({{"game", true}})), (QStringList{"resume", "screenshot,record", "quit"}));
   QCOMPARE(keys(grid({})), (QStringList{"screenshot,record"}));
   QCOMPARE(global.property("home").call({grid({})}).toString(), QStringLiteral("screenshot"));
 
@@ -317,24 +319,27 @@ void InGameGuideTests::pluginFocus() {
     }
     return visited;
   };
-  QCOMPARE(walk(rows, {"up", "up", "up", "up"}), (QStringList{"volume", "achievements", "screenshot", "resume"}));
-  QCOMPARE(walk(rows, {"right", "left", "left", "down"}), (QStringList{"quit", "resume", "resume", "screenshot"}));
+  QCOMPARE(walk(rows, {"up", "up", "up", "up"}), (QStringList{"quit", "volume", "screenshot", "resume"}));
+  QCOMPARE(walk(rows, {"down", "down", "down", "down"}), (QStringList{"screenshot", "volume", "quit", "resume"}));
+  // Along a row and stopping at its ends.
+  QCOMPARE(walk(rows, {"down", "right", "right", "left", "left"}), (QStringList{"screenshot", "record", "record", "screenshot", "screenshot"}));
   // Left and right on a one-item row belong to the control there.
-  QCOMPARE(walk(rows, {"up", "left", "right"}), (QStringList{"volume", "-", "-"}));
+  QCOMPARE(walk(rows, {"left", "right"}), (QStringList{"-", "-"}));
+  QCOMPARE(walk(rows, {"down", "down", "left", "right"}), (QStringList{"screenshot", "volume", "-", "-"}));
+  QCOMPARE(walk(grid(desktop), {"down", "right", "down"}), (QStringList{"desktop", "-", "screenshot"}));
   // The position across the card holds through one-item rows.
-  QCOMPARE(walk(rows, {"down", "right", "right", "down", "down", "down", "up", "up", "up"}),
-           (QStringList{"screenshot", "record", "record", "achievements", "volume", "quit",
-                        "volume", "achievements", "record"}));
-  QCOMPARE(walk(rows, {"down", "down", "down", "down"}), (QStringList{"screenshot", "achievements", "volume", "resume"}));
-  // With three tiles the middle one leads to Resume, the right one to Quit.
-  const auto three = grid(replay);
-  QCOMPARE(walk(three, {"down", "right", "down", "down", "down", "down"}),
-           (QStringList{"screenshot", "record", "achievements", "volume", "output", "resume"}));
-  QCOMPARE(walk(three, {"down", "right", "right", "up"}), (QStringList{"screenshot", "record", "replay", "quit"}));
+  QCOMPARE(walk(rows, {"down", "right", "down", "down", "down", "down", "down"}),
+           (QStringList{"screenshot", "record", "volume", "quit", "resume", "record", "volume"}));
+  const auto every = grid(all);
+  QCOMPARE(walk(every, {"down", "right", "down", "right", "right", "down", "down", "down", "down", "down"}),
+           (QStringList{"desktop", "retroarch", "replay", "replay", "replay", "volume", "output", "quit", "resume", "retroarch"}));
+  // With three tiles the middle one leads to Desktop, the right one to the RetroArch menu.
+  QCOMPARE(walk(every, {"down", "down", "right", "up"}), (QStringList{"desktop", "screenshot", "record", "desktop"}));
+  QCOMPARE(walk(every, {"down", "down", "right", "right", "up"}), (QStringList{"desktop", "screenshot", "record", "replay", "retroarch"}));
   // One sweep of the D-pad reaches every control.
   QSet<QString> seen;
-  for (const auto& key : walk(three, {"down", "right", "right", "down", "down", "down", "down", "left", "down"})) seen << key;
-  QCOMPARE(seen.size(), 8);
+  for (const auto& key : walk(every, {"down", "right", "down", "left", "left", "down", "down", "down", "down"})) seen << key;
+  QCOMPARE(seen.size(), 9);
   // An unknown cursor (a control that went away) goes home.
   QCOMPARE(global.property("move").call({rows, QStringLiteral("replay"), QStringLiteral("down")}).property("key").toString(), QStringLiteral("resume"));
 }
