@@ -91,15 +91,19 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     QSaveFile loaded(loadedPath);
     if (loaded.open(QIODevice::WriteOnly) && loaded.write(current + '\n') > 0) loaded.commit();
   };
-  if (QFileInfo::exists(paths.markerPath)) {
-    if (!usable(paths)) return false;
+  const auto reloadIfChanged = [&] {
     QFile loaded(loadedPath);
     const QByteArray recorded = loaded.open(QIODevice::ReadOnly) ? loaded.readAll().trimmed() : QByteArray{};
-    if (recorded != current && shellReply(paths, {"shell", "ping"}, environment) == "ok" &&
-        (!calm || calm())) {
+    if (recorded == current) return;
+    if (state->rescanned) { recordLoaded(); return; } // That rescan loaded these files.
+    if (shellReply(paths, {"shell", "ping"}, environment) == "ok" && (!calm || calm())) {
       shellReply(paths, {"shell", "rescanPlugins"}, environment);
       recordLoaded();
     }
+  };
+  if (QFileInfo::exists(paths.markerPath)) {
+    if (!usable(paths)) return false;
+    reloadIfChanged();
     return true;
   }
 
@@ -129,7 +133,7 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     QDir().mkpath(QFileInfo(paths.markerPath).absolutePath());
     QFile marker(paths.markerPath);
     if (marker.open(QIODevice::WriteOnly)) marker.write("1\n");
-    if (state->rescanned) recordLoaded(); // That rescan loaded these files.
+    reloadIfChanged();
   }
   return enabled;
 }

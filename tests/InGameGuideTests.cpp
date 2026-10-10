@@ -63,6 +63,7 @@ private slots:
   void quitKeepsItsOriginalGame();
   void pluginLinksAndEnablesOnce();
   void pluginKeepsUserCopyAndWaitsForShell();
+  void pluginReloadsWhenItsFilesChange();
   void pluginFallsBackWhenSummonFails();
   void provisioningAndPauseDoNotBlock();
   void provisioningFailureIsBounded_data();
@@ -924,6 +925,27 @@ void InGameGuideTests::pluginLinksAndEnablesOnce() {
   QVERIFY(!GuidePlugin::ensure(fixture.paths));
   QVERIFY(!GuidePlugin::usable(fixture.paths));
   QCOMPARE(fixture.calls().size(), 3);
+}
+
+void InGameGuideTests::pluginReloadsWhenItsFilesChange() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().size(), 3); // ping, rescan, enable: that rescan loaded these files
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().size(), 3);
+  // An upgrade changes the files: the shell reloads its plugins once.
+  QFile qml(fixture.paths.bundledDir + "/Guide.qml");
+  QVERIFY(qml.open(QIODevice::WriteOnly)); qml.write("// new card\n"); qml.close();
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().mid(3), (QStringList{"shell ping", "shell rescanPlugins"}));
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().size(), 5);
+  // Already enabled in the shell but never recorded, as after a reinstall: reload too.
+  PluginFixture enabled; enabled.fakeShell("ok", true);
+  QFile config(enabled.paths.shellConfig);
+  QVERIFY(config.open(QIODevice::WriteOnly)); config.write(R"({"plugins":[{"id":"omakade.guide"}]})"); config.close();
+  QVERIFY(GuidePlugin::ensure(enabled.paths));
+  QCOMPARE(enabled.calls(), (QStringList{"shell ping", "shell rescanPlugins"}));
 }
 
 void InGameGuideTests::pluginKeepsUserCopyAndWaitsForShell() {
