@@ -78,7 +78,8 @@ private:
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   // The combo that opens RetroArch's menu, when the game is a RetroArch Omakade started.
   QString m_retroArchCombo;
-  QJsonObject m_context, m_lastPayload, m_returnTo;
+  QJsonObject m_context, m_lastPayload;
+  QVariantMap m_returnTo;
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
   GameModeSession* m_gameMode;
