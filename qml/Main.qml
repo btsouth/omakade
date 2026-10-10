@@ -321,8 +321,14 @@ ApplicationWindow {
         const combo = root.openControllerCombo()
         if (combo) { combo.controllerNavigate(key); return }
         const container = root.navigationContainer()
-        if (container && root.arrowNavigationEnabled(key)) {
-            root.focusSpatial(container, key)
+        if (container) {
+            // A field's driving binding can update after the first pad command. Keep
+            // that command in its editor; only value controls consume horizontal input.
+            const valueControl = focused && focused.controllerVerticalNavigation === true
+                              && (key === Qt.Key_Left || key === Qt.Key_Right)
+            if (valueControl && typeof focused.controllerNavigate === "function")
+                focused.controllerNavigate(key)
+            else root.focusSpatial(container, key)
             return
         }
         const method = key === Qt.Key_Up ? "controllerUp" : key === Qt.Key_Down ? "controllerDown"
