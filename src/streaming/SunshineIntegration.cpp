@@ -175,10 +175,15 @@ QString SunshineIntegration::serviceUnit() {
   return QStringLiteral("sunshine.service");
 }
 
-QString SunshineIntegration::shellQuote(const QString& value) {
+QString SunshineIntegration::commandArgument(const QString& value) {
+  // Sunshine runs commands without a shell. Boost.Process splits them on spaces and only
+  // understands double quotes, so single quotes would become part of the path.
+  if (!value.contains(QLatin1Char(' ')) && !value.contains(QLatin1Char('"'))) {
+    return value;
+  }
   QString quoted = value;
-  quoted.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
-  return QLatin1Char('\'') + quoted + QLatin1Char('\'');
+  quoted.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+  return QLatin1Char('"') + quoted + QLatin1Char('"');
 }
 
 QString SunshineIntegration::commandPrefix(bool flatpakSunshine) {
@@ -187,7 +192,7 @@ QString SunshineIntegration::commandPrefix(bool flatpakSunshine) {
     return QStringLiteral("flatpak-spawn --host omakade");
   }
   const QString executable = QStandardPaths::findExecutable(QStringLiteral("omakade"));
-  return executable.isEmpty() ? QStringLiteral("omakade") : shellQuote(executable);
+  return executable.isEmpty() ? QStringLiteral("omakade") : commandArgument(executable);
 }
 
 bool SunshineIntegration::isOmakadeEntry(const QJsonObject& entry) {
@@ -218,7 +223,7 @@ QJsonObject SunshineIntegration::gameEntry(const QString& title, const QString& 
   entry.insert(QStringLiteral("name"), title);
   entry.insert(QStringLiteral("cmd"), QStringLiteral(""));
   entry.insert(QStringLiteral("detached"),
-               QJsonArray{prefix + QStringLiteral(" --play ") + shellQuote(launchKey)});
+               QJsonArray{prefix + QStringLiteral(" --play ") + commandArgument(launchKey)});
   if (!imagePath.isEmpty()) {
     entry.insert(QStringLiteral("image-path"), imagePath);
   }
