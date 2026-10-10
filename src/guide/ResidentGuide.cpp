@@ -126,6 +126,15 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
     for (const auto& value : clients) if (value.toObject().value("pid").toInteger() == session.value("pid").toLongLong()) { result.session = session; break; }
     if (!result.session.isEmpty()) break;
   }
+  // A game the recorder found by its process still gets the library's title and art when the
+  // library launched that same process; otherwise a PS4 game reads as its title ID.
+  if (!result.session.isEmpty() && !result.session.contains("metadata")) for (const auto& candidate : published) {
+    const auto session = candidate.toObject().toVariantMap();
+    if (session.value("pid").toLongLong() != result.session.value("pid").toLongLong() ||
+        session.value("procStart").toLongLong() != result.session.value("procStart").toLongLong()) continue;
+    result.session.insert("metadata", session.value("metadata"));
+    break;
+  }
   const auto publishedMetadata = result.session.value("metadata").toMap();
   for (auto it = publishedMetadata.cbegin(); it != publishedMetadata.cend(); ++it) result.metadata.insert(it.key(), it.value());
   if (!result.session.isEmpty() && !result.session.contains("path"))

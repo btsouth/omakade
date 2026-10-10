@@ -217,8 +217,14 @@ echo ok
   QCOMPARE(control("shortcut", {{"node", "event29"}}).value("result").toString(), "handled");
   QTRY_VERIFY(queried("--game-mode-return"));
   QCOMPARE(summons(), 3);
-  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", inGameMode}}).value("result").toString(), "handled");
+  // The library's title wins over the name the recorder made from the game's path.
+  auto titled = published; titled.insert("metadata", QJsonObject{{"title", "Test Game"}});
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{titled}}, {"context", inGameMode}}).value("result").toString(), "handled");
   QTRY_COMPARE(summons(), 4);
+  {
+    QFile returnSummon(summonFile); QVERIFY(returnSummon.open(QIODevice::ReadOnly));
+    QCOMPARE(QJsonDocument::fromJson(returnSummon.readAll()).object().value("data").toObject().value("game").toObject().value("title").toString(), "Test Game");
+  }
   QTRY_VERIFY(stopped());
   QCOMPARE(control("close").value("result").toString(), "handled");
   QTRY_VERIFY(!stopped());
