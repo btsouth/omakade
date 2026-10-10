@@ -315,13 +315,34 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
       result.error = snapshotError;
       return result;
     }
-    if (state.temporaryWindow)
-      visibility(true);
     QString error;
     const QVector<GameModeOutput> outputs = m_compositor->outputs(&error);
     if (outputs.isEmpty()) {
       result.error = QStringLiteral("Hyprland did not report any displays.");
       return result;
+    }
+    if (state.temporaryWindow) {
+      // Open the cold root directly on the Game Mode workspace when its display is on.
+      // A display that still has to be turned on keeps the place-after-mapping path.
+      QString openOutput;
+      const int chosen = displayChosen
+          ? findOutput(outputs, settings.outputName, settings.outputDescription) : -1;
+      for (int candidate = 0; candidate < outputs.size(); ++candidate)
+        if (displayChosen ? candidate == chosen && outputs.at(candidate).enabled
+                          : outputs.at(candidate).focused)
+          openOutput = outputs.at(candidate).name;
+      if (!openOutput.isEmpty()) {
+        state.windowPlaced = true;
+        state.desktopPending = true;
+        if (!save(state) || !m_compositor->prepareOpen(workspace(), openOutput)) {
+          state.windowPlaced = false;
+          state.desktopPending = false;
+          (void)m_compositor->prepareOpen({}, {});
+        }
+      } else {
+        (void)m_compositor->prepareOpen({}, {});
+      }
+      visibility(true);
     }
     (void)waitFor(
         [&] {
@@ -919,8 +940,12 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
   m_state.windowPlaced = true;
   if (!save(m_state))
     return fail(QStringLiteral("Could not record desktop restoration state."));
-  if (m_state.temporaryWindow)
+  if (m_state.temporaryWindow) {
+    // Map straight onto the retained workspace; never tile on the desktop first.
+    if (!m_compositor->prepareOpen(workspace(), chosen))
+      (void)m_compositor->prepareOpen({}, {});
     visibility(true);
+  }
   GameModeWindow window;
   if (!waitFor(
           [&] {

@@ -6958,9 +6958,21 @@ int main(int argc, char* argv[]) {
                      [rootWindow](bool visible) {
                        // The controller snapshots desktop focus before asking to map
                        // a cold root. Request its native mode while it is still hidden.
+                       if (visible && !rootWindow->isVisible()) {
+                         // The compositor's open rule matches this initial title. Size the
+                         // first buffer for the display so it never shows at a smaller size.
+                         rootWindow->setTitle(HyprlandGameModeCompositor::openTitle());
+                         if (rootWindow->screen()) rootWindow->resize(rootWindow->screen()->size());
+                       }
                        if (visible) rootWindow->setWindowState(Qt::WindowFullScreen);
                        rootWindow->setVisible(visible);
                      });
+    // Once mapped, the root keeps its ordinary title for the rest of the session.
+    const auto restoreTitle = [rootWindow, title = rootWindow->title()] { rootWindow->setTitle(title); };
+    QObject::connect(&gameMode, &GameModeSession::entered, rootWindow, restoreTitle);
+    QObject::connect(&gameMode, &GameModeSession::resumed, rootWindow, restoreTitle);
+    QObject::connect(&gameMode, &GameModeSession::failed, rootWindow, restoreTitle);
+    QObject::connect(&gameMode, &GameModeSession::preparationCancelled, rootWindow, restoreTitle);
     QObject::connect(&gameMode, &GameModeSession::preparing, rootWindow,
                      [rootWindow, windowStateBeforePreparation](bool retainNavigation) {
                        *windowStateBeforePreparation = rootWindow->windowState();

@@ -116,6 +116,13 @@ public:
   [[nodiscard]] virtual GameModeWindow placeholderForPid(qint64 pid) = 0;
   // Makes the placeholder open out of sight, so mapping it does not disturb the layout.
   virtual bool holdPlaceholder(QString* error = nullptr) = 0;
+  // Make the next mapped Game Mode root open directly on `workspace`, fullscreen on
+  // `output`, instead of tiling on the current desktop first. An empty workspace
+  // withdraws the rule so the root maps as an ordinary window.
+  virtual bool prepareOpen(const QString&, const QString&, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Windows cannot open directly in Game Mode.");
+    return false;
+  }
   // Focuses `output`, moves the window to `workspace` there, and focuses the window. With
   // a `placeholder`, that window first takes the main window's exact place in the layout.
   virtual bool placeWindow(const QString& address, const QString& workspace, const QString& output,

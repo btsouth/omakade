@@ -187,6 +187,27 @@ QString HyprlandGameModeCompositor::holdScript() {
       .arg(luaString(QLatin1Char('^') + placeholderTitle() + QStringLiteral(".*")));
 }
 
+QString HyprlandGameModeCompositor::openTitle() {
+  return QStringLiteral("Omakade Game Mode Opening");
+}
+
+QString HyprlandGameModeCompositor::openScript(const QString& workspace, const QString& output) {
+  // Rules apply when a window maps: Hyprland creates the window on the workspace and
+  // switches to it in one step, so the desktop never retiles around a half-size root.
+  // Only a root shown for Game Mode carries this initial title.
+  const QString match = QStringLiteral("match = { class = \"^io\\.github\\.tsouth89\\.Omakade$\", "
+                                       "initial_title = %1 }")
+                            .arg(luaString(QLatin1Char('^') + openTitle() + QStringLiteral(".*")));
+  if (workspace.isEmpty())
+    return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-open\", %1, enabled = false })")
+        .arg(match);
+  // Focusing the output first makes the workspace open there, not wherever focus was.
+  return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-open\", %1, workspace = %2, "
+                        "fullscreen = true, no_anim = true })\n"
+                        "hl.dispatch(hl.dsp.focus({ monitor = %3 }))")
+      .arg(match, luaString(workspace), luaString(output));
+}
+
 QString HyprlandGameModeCompositor::placeScript(const QString& address, const QString& workspace,
                                                 const QString& output, const QString& placeholder) {
   const QString window = luaString(QStringLiteral("address:") + address);
@@ -308,6 +329,11 @@ GameModeWindow HyprlandGameModeCompositor::placeholderForPid(qint64 pid) {
 
 bool HyprlandGameModeCompositor::holdPlaceholder(QString* error) {
   return eval(holdScript(), error);
+}
+
+bool HyprlandGameModeCompositor::prepareOpen(const QString& workspace, const QString& output,
+                                             QString* error) {
+  return (workspace.isEmpty() || !output.isEmpty()) && eval(openScript(workspace, output), error);
 }
 
 bool HyprlandGameModeCompositor::placeWindow(const QString& address, const QString& workspace,

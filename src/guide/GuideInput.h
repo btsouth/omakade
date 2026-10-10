@@ -23,6 +23,8 @@ public:
   bool held(int code) const { return m_keys.contains(code); }
   bool heldPosition(int code) const;
   void suppressUntilNeutral();
+  // No button held and the tracked sticks and hats at rest.
+  bool neutral() const;
   void reset();
 private:
   struct Axis { int minimum = -32768, maximum = 32767, flat = 4096; double value = 0; };
@@ -56,6 +58,8 @@ public:
   };
   void setAccess(Access access) { m_access = std::move(access); }
   size_t deviceCount() const { return m_devices.size(); }
+  // Controllers still held after release() because a button or axis was not at rest.
+  size_t holdingCount() const { return m_holding.size(); }
   size_t grabbedCount() const;
 signals:
   void action(const QString& action, const QString& family);
@@ -66,6 +70,9 @@ private:
   void drop(const QString& node);
   QList<GuideListener::Controller> scan() const;
   void read(Device& device);
+  void drain(Device& device);
+  bool settled(Device& device) const;
+  void finishHolding();
   void sample(Device& device);
   void regroup();
   void dispatch();
@@ -74,6 +81,10 @@ private:
   QFileSystemWatcher m_watcher;
   QTimer m_rescan;
   std::vector<std::unique_ptr<Device>> m_devices;
+  // After the guide closes, a pad keeps its grab until everything is released, so the
+  // press that closed the guide, and its release, never reach the game.
+  std::vector<std::unique_ptr<Device>> m_holding;
+  QTimer m_holdDeadline;
   GuideInputMap m_injected;
   QTimer m_repeat;
   QTimer m_dispatch;

@@ -163,6 +163,12 @@ QStringList GuideInputMap::repeat(qint64 now) {
   m_nextRepeat = now + (now - m_started >= 1000 ? 80 : 100);
   return {m_direction};
 }
+bool GuideInputMap::neutral() const {
+  if (!m_keys.isEmpty()) return false;
+  for (auto it = m_axes.cbegin(); it != m_axes.cend(); ++it)
+    if (std::abs(it.value().value) >= 0.25) return false;
+  return true;
+}
 QStringList GuideInputMap::heldDirections() const { return m_direction.isEmpty() ? QStringList{} : QStringList{m_direction}; }
 void GuideInputMap::suppressUntilNeutral() { m_pending.clear(); m_direction.clear(); m_needsNeutral = !cardinal(true).isEmpty(); }
 void GuideInputMap::reset() {
@@ -175,7 +181,12 @@ struct GuideInput::Device {
   QString family, node, name, id, group;
   bool virtualDevice = false, dropping = false, monotonic = false;
   bool steamMirror = false, ignoreNavigation = false;
+  bool holding = false, released = false;
   qint64 attachedAt = 0;
+  // What the game last saw: the pad's keys and axes when the guide took it.
+  std::array<unsigned char, (KEY_MAX + 8) / 8> restKeys{};
+  bool restKnown = false;
+  std::vector<std::pair<int, input_absinfo>> restAxes;
   QStringList pending;
   bool grabbed = false;
   std::function<void(int)> ungrab;
@@ -198,6 +209,14 @@ GuideInput::GuideInput(QObject* parent) : QObject(parent) {
   connect(&m_watcher, &QFileSystemWatcher::directoryChanged, &m_rescan, qOverload<>(&QTimer::start));
   m_dispatch.setSingleShot(true);
   connect(&m_dispatch, &QTimer::timeout, this, &GuideInput::dispatch);
+  // A drifting stick or a stuck button must not keep the game's pad forever.
+  m_holdDeadline.setSingleShot(true);
+  m_holdDeadline.setInterval(2500);
+  connect(&m_holdDeadline, &QTimer::timeout, this, [this] {
+    if (!m_holding.empty())
+      qInfo("Guide: returning %d controller(s) still not at rest", int(m_holding.size()));
+    m_holding.clear();
+  });
   m_repeat.setInterval(10);
   m_repeat.setTimerType(Qt::PreciseTimer);
   connect(&m_repeat, &QTimer::timeout, this, [this] {
@@ -209,7 +228,7 @@ GuideInput::GuideInput(QObject* parent) : QObject(parent) {
     if (!m_dispatch.isActive()) m_dispatch.start(0);
   });
 }
-GuideInput::~GuideInput() { release(); }
+GuideInput::~GuideInput() { release(); m_holding.clear(); }
 
 QList<GuideListener::Controller> GuideInput::scan() const {
   return m_access.scan ? m_access.scan() : GuideListener::scan("/dev/input", "/sys/class/input");
@@ -217,6 +236,9 @@ QList<GuideListener::Controller> GuideInput::scan() const {
 
 bool GuideInput::grab(const QString& preferredNode, QString* family, QString* error) {
   release();
+  // A pad still held from the last close is grabbed again below.
+  m_holdDeadline.stop();
+  m_holding.clear();
   if (error) error->clear();
   bool preferredFound = preferredNode.isEmpty();
   QStringList warnings;
@@ -263,6 +285,17 @@ bool GuideInput::attach(const GuideListener::Controller& pad, QStringList* warni
   device->ungrab = m_access.ungrab ? m_access.ungrab : [](int fd) { ::ioctl(fd, EVIOCGRAB, 0); };
   device->family = GuidePayload::padFamily(pad.name);
   device->mapping.setController(pad.name, pad.driver, pad.vendor, pad.product, pad.compactHidButtons);
+  if (device->grabbed &&
+      ::ioctl(device->fd, EVIOCGKEY(device->restKeys.size()), device->restKeys.data()) >= 0) {
+    device->restKnown = true;
+    std::array<unsigned char, (ABS_MAX + 8) / 8> axes{};
+    if (::ioctl(device->fd, EVIOCGBIT(EV_ABS, axes.size()), axes.data()) >= 0)
+      for (int code = 0; code <= ABS_MAX; ++code) {
+        input_absinfo info{};
+        if ((axes[code / 8] & (1 << (code % 8))) && ::ioctl(device->fd, EVIOCGABS(code), &info) == 0)
+          device->restAxes.emplace_back(code, info);
+      }
+  }
   const int clock = CLOCK_MONOTONIC;
   device->monotonic = ::ioctl(device->fd, EVIOCSCLOCKID, &clock) == 0;
   device->attachedAt = clockMs(device->monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME);
@@ -298,9 +331,59 @@ void GuideInput::release() {
   m_repeat.stop();
   m_dispatch.stop();
   m_groups.clear();
+  for (auto& device : m_devices) {
+    if (!device->grabbed || !device->notifier || settled(*device)) continue;
+    device->holding = true;
+    device->pending.clear();
+    m_holding.push_back(std::move(device));
+  }
   m_devices.clear();
   m_injected.reset();
+  if (!m_holding.empty()) {
+    qInfo("Guide: holding %d controller(s) until released", int(m_holding.size()));
+    m_holdDeadline.start();
+  }
+}
 
+bool GuideInput::settled(Device& device) const {
+  std::array<unsigned char, (KEY_MAX + 8) / 8> keys{};
+  // Test devices have no kernel state; their translated state stands in for it.
+  if (!device.restKnown || ::ioctl(device.fd, EVIOCGKEY(keys.size()), keys.data()) < 0)
+    return device.mapping.neutral();
+  // Settled means the game's last view is true again: nothing pressed that was not
+  // pressed when the guide took the pad, and every axis back where it was.
+  for (size_t byte = 0; byte < keys.size(); ++byte)
+    if (keys[byte] & ~device.restKeys[byte]) return false;
+  for (const auto& [code, rest] : device.restAxes) {
+    input_absinfo now{};
+    if (::ioctl(device.fd, EVIOCGABS(code), &now) != 0) continue;
+    const int slack = std::max(rest.flat, (rest.maximum - rest.minimum) / 8);
+    if (std::abs(now.value - rest.value) > slack) return false;
+  }
+  return true;
+}
+
+void GuideInput::drain(Device& device) {
+  input_event events[64];
+  for (;;) {
+    const auto size = ::read(device.fd, events, sizeof(events));
+    if (size < 0 && errno == EINTR) continue;
+    if (size < 0 && errno == EAGAIN) break;
+    if (size <= 0 || size % sizeof(input_event) != 0) { device.released = true; break; }
+    for (size_t i = 0; i < size / sizeof(input_event); ++i)
+      device.mapping.event(events[i].type, events[i].code, events[i].value);
+  }
+  if (!device.released && !settled(device)) return;
+  device.released = true;
+  device.notifier->setEnabled(false);
+  QTimer::singleShot(0, this, &GuideInput::finishHolding);
+}
+
+void GuideInput::finishHolding() {
+  m_holding.erase(std::remove_if(m_holding.begin(), m_holding.end(),
+                                 [](const auto& device) { return device->released; }),
+                  m_holding.end());
+  if (m_holding.empty()) m_holdDeadline.stop();
 }
 
 void GuideInput::sample(Device& device) {
@@ -373,6 +456,7 @@ void GuideInput::regroup() {
 }
 
 void GuideInput::read(Device& device) {
+  if (device.holding) { drain(device); return; }
   input_event events[64];
   int staleReports = 0;
   for (;;) {
