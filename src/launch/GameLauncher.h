@@ -173,6 +173,8 @@ private:
   std::function<bool()> m_retroArchHomeOwner;
   // The command, with RetroArch's menu moved off Home when it starts RetroArch itself.
   [[nodiscard]] LaunchCommand withRetroArchHome(LaunchCommand command) const;
+  // The command, with RetroArch's menu moved off Home when it starts RetroArch itself.
+  [[nodiscard]] LaunchCommand withRetroArchHome(LaunchCommand command) const;
   void repairRetroArchHome() const;
   QList<TrackedProcess> m_trackedProcesses;
   QVariantMap m_launchIdentity;

@@ -420,6 +420,24 @@ void GameLauncher::setRetroArchHomeOwner(std::function<bool()> owner) {
   repairRetroArchHome(); // A session that ended while Omakade was closed.
 }
 
+LaunchCommand GameLauncher::withRetroArchHome(LaunchCommand command) const {
+  const bool flatpak = command.program == QStringLiteral("flatpak") &&
+                       command.arguments.value(1) == QStringLiteral("org.libretro.RetroArch");
+  if ((command.program != QStringLiteral("retroarch") && !flatpak) || !m_retroArchHomeOwner ||
+      !m_retroArchHomeOwner())
+    return command;
+  const QString override = RetroArchHome::prepare(RetroArchHome::paths(flatpak));
+  qInfo().noquote() << (override.isEmpty() ? QStringLiteral("RetroArch: its own menu button is kept")
+                                           : QStringLiteral("RetroArch: Home is left to the guide"));
+  if (!override.isEmpty()) {
+    // Flatpak's own arguments come first: run org.libretro.RetroArch.
+    const int at = flatpak ? 2 : 0;
+    command.arguments.insert(at, QStringLiteral("--appendconfig"));
+    command.arguments.insert(at + 1, override);
+  }
+  return command;
+}
+
 void GameLauncher::repairRetroArchHome() const {
   if (RetroArchHome::retroArchRunning()) return;
   RetroArchHome::repair(RetroArchHome::paths(false));
@@ -1171,18 +1189,7 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
     setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
   }
-  LaunchCommand launch = command;
-  if (usesRetroArch && !manageOnly && m_retroArchHomeOwner && m_retroArchHomeOwner()) {
-    const QString override = RetroArchHome::prepare(RetroArchHome::paths(flatpak));
-    qInfo().noquote() << (override.isEmpty() ? QStringLiteral("RetroArch: its own menu button is kept")
-                                             : QStringLiteral("RetroArch: Home is left to the guide"));
-    // Flatpak's own arguments come first: run org.libretro.RetroArch.
-    if (!override.isEmpty()) {
-      const int at = command.program == QStringLiteral("flatpak") ? 2 : 0;
-      launch.arguments.insert(at, QStringLiteral("--appendconfig"));
-      launch.arguments.insert(at + 1, override);
-    }
-  }
+  const LaunchCommand launch = manageOnly ? command : withRetroArchHome(command);
   if (!manageOnly && m_saveBackups) {
     const int coreArgument=command.arguments.indexOf("-L");
     const QString core=coreArgument>=0 && coreArgument+1<command.arguments.size()?command.arguments.at(coreArgument+1):corePath;
