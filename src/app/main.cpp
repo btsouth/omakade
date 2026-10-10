@@ -7876,6 +7876,28 @@ int main(int argc, char* argv[]) {
         fail(QStringLiteral("Main Game Mode controls did not finish closing"));
         return;
       }
+      // Home's DESKTOP goes to the desktop as holding Home does, without the controls menu.
+      {
+        rootWindow->setProperty("homeOpen", true);
+        auto* homeDesktop = rootWindow->findChild<QQuickItem*>(QStringLiteral("homeCouchDesktopButton"));
+        if (!homeDesktop || !settled([homeDesktop] { return homeDesktop->isVisible() && homeDesktop->isEnabled(); })) {
+          fail(QStringLiteral("Home DESKTOP is not available in Game Mode"));
+          return;
+        }
+        QMetaObject::invokeMethod(homeDesktop, "clicked");
+        if (!settled([&gameMode] { return gameMode.parked() && !gameMode.busy(); }) ||
+            (mainPanel && mainPanel->property("visible").toBool())) {
+          fail(QStringLiteral("Home DESKTOP did not go straight to the desktop"));
+          return;
+        }
+        gameMode.enter();
+        if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
+          fail(QStringLiteral("Game Mode did not resume after Home DESKTOP"));
+          return;
+        }
+        rootWindow->setProperty("homeOpen", false);
+        QCoreApplication::processEvents();
+      }
       rootWindow->setProperty("diagnosticsOpen", true);
       // Let the main editor finish its deferred focus before opening another window.
       QCoreApplication::processEvents();

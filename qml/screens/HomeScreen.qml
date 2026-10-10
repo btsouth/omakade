@@ -602,7 +602,12 @@ FocusScope {
                 GlassButton { id: libraryButton; objectName: "homeLibraryButton"; text: "LIBRARY"; compact: true; onActiveFocusChanged: if (activeFocus) root.focusedIdentity = ""; onClicked: root.libraryRequested() }
                 GlassButton { objectName: "homeCouchSearchButton"; text: "SEARCH"; compact: true; onClicked: root.Window.window.openLibrarySearch() }
                 GlassButton { objectName: "homeCouchSettingsButton"; text: "SETTINGS"; compact: true; onClicked: root.Window.window.diagnosticsOpen = true }
-                GlassButton { objectName: "homeCouchDesktopButton"; text: "DESKTOP"; compact: true; onClicked: root.Window.window.setCouchMode(false) }
+                // In Game Mode this goes to the desktop as holding Home does, keeping the session.
+                GlassButton {
+                    objectName: "homeCouchDesktopButton"; text: "DESKTOP"; compact: true
+                    enabled: !GameMode.busy
+                    onClicked: GameMode.active ? GameMode.park() : root.Window.window.setCouchMode(false)
+                }
             }
         }
         Flickable {
