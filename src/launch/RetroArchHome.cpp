@@ -15,7 +15,8 @@
 namespace RetroArchHome {
 namespace {
 
-const QString kKey = QStringLiteral("joypad_autoconfig_dir");
+const QString kProfilesKey = QStringLiteral("joypad_autoconfig_dir");
+const QString kCommandsKey = QStringLiteral("stdin_cmd_enable");
 const QString kMissing = QStringLiteral("#missing");
 
 bool write(const QString& path, const QByteArray& data) {
@@ -32,9 +33,8 @@ QStringList read(const QString& path, bool* ok = nullptr) {
 }
 
 // The setting's line and value, or -1 when retroarch.cfg leaves it out.
-int find(const QStringList& lines, QString* value) {
-  static const QRegularExpression line(
-      QStringLiteral(R"re(^\s*joypad_autoconfig_dir\s*=\s*"?([^"]*)"?\s*$)re"));
+int find(const QStringList& lines, const QString& key, QString* value) {
+  const QRegularExpression line(QStringLiteral(R"re(^\s*%1\s*=\s*"?([^"]*)"?\s*$)re").arg(key));
   for (int index = 0; index < lines.size(); ++index) {
     const auto match = line.match(lines.at(index));
     if (match.hasMatch()) {
@@ -54,8 +54,23 @@ bool samePath(const QString& left, const QString& right) {
   return !left.isEmpty() && expanded(left) == expanded(right);
 }
 
-QString quoted(const QString& path) {
-  return kKey + QStringLiteral(" = \"") + path + QLatin1Char('"');
+QString quoted(const QString& key, const QString& value) {
+  return key + QStringLiteral(" = \"") + value + QLatin1Char('"');
+}
+
+// What a launch appended, as RetroArch may have saved it back.
+bool appended(const Paths& paths, const QString& key, const QString& value) {
+  return key == kProfilesKey ? samePath(value, paths.profiles) : value == QStringLiteral("true");
+}
+
+// The recorded original lines: key, then the line or #missing.
+QList<QPair<QString, QString>> originals(const Paths& paths) {
+  QList<QPair<QString, QString>> result;
+  for (const QString& entry : read(paths.marker)) {
+    const int tab = entry.indexOf(QLatin1Char('\t'));
+    if (tab > 0) result.append({entry.left(tab), entry.mid(tab + 1)});
+  }
+  return result;
 }
 
 // Names, sizes and times of every profile: a different set means a fresh copy.
@@ -119,44 +134,57 @@ Paths paths(bool flatpak) {
           QDir(own).exists() ? own : QStringLiteral("/usr/share/libretro/autoconfig")};
 }
 
+QString commandPipe() {
+  return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) +
+         QStringLiteral("/omakade-retroarch-commands");
+}
+
 QString prepare(const Paths& paths) {
   const QStringList lines = read(paths.config);
   QString value;
-  const int index = find(lines, &value);
-  // An earlier session that was never repaired already points at the copy.
-  const bool ours = samePath(value, paths.profiles) && QFileInfo::exists(paths.marker);
-  QString source = ours || value.isEmpty() || value == QStringLiteral("default") ? paths.fallbackProfiles : expanded(value);
-  if (ours) {
-    QFile marker(paths.marker);
-    if (marker.open(QIODevice::ReadOnly)) {
-      static const QRegularExpression original(QStringLiteral(R"re(=\s*"?([^"]*)"?\s*$)re"));
-      const auto match = original.match(QString::fromUtf8(marker.readAll()).trimmed());
-      if (match.hasMatch() && !match.captured(1).trimmed().isEmpty()) source = expanded(match.captured(1).trimmed());
+  const int index = find(lines, kProfilesKey, &value);
+  // An earlier session that was never repaired already points at the copy: copy the
+  // profiles it recorded instead.
+  QString source = value.isEmpty() || value == QStringLiteral("default") ? paths.fallbackProfiles : expanded(value);
+  if (samePath(value, paths.profiles)) {
+    source = paths.fallbackProfiles;
+    for (const auto& [key, original] : originals(paths)) {
+      QString recorded;
+      if (key == kProfilesKey && find({original}, kProfilesKey, &recorded) == 0 && !recorded.isEmpty())
+        source = expanded(recorded);
     }
   }
   if (!QDir(source).exists() || !copyProfiles(source, paths.profiles)) return {};
-  if (!QFileInfo::exists(paths.marker) &&
-      !write(paths.marker, (index < 0 ? kMissing : lines.at(index)).toUtf8() + '\n'))
+  if (!QFileInfo::exists(paths.marker)) {
+    QStringList record;
+    for (const QString& key : {kProfilesKey, kCommandsKey}) {
+      const int at = find(lines, key, nullptr);
+      record.append(key + QLatin1Char('\t') + (at < 0 ? kMissing : lines.at(at)));
+    }
+    if (!write(paths.marker, record.join(QLatin1Char('\n')).toUtf8() + '\n')) return {};
+  }
+  if (!write(paths.override, (quoted(kProfilesKey, paths.profiles) + QLatin1Char('\n') +
+                              quoted(kCommandsKey, QStringLiteral("true")) + QLatin1Char('\n')).toUtf8()))
     return {};
-  if (!write(paths.override, quoted(paths.profiles).toUtf8() + '\n')) return {};
   return paths.override;
 }
 
 void repair(const Paths& paths) {
-  QFile marker(paths.marker);
-  if (!marker.open(QIODevice::ReadOnly)) return;
-  const QString original = QString::fromUtf8(marker.readAll()).trimmed();
-  marker.close();
+  if (!QFileInfo::exists(paths.marker)) return;
+  const auto recorded = originals(paths);
   bool ok = false;
   QStringList lines = read(paths.config, &ok);
-  QString value;
-  const int index = ok ? find(lines, &value) : -1;
-  // Anything but the copy is the user's newer choice, or RetroArch did not save.
-  if (index >= 0 && samePath(value, paths.profiles)) {
+  bool changed = false;
+  for (const auto& [key, original] : recorded) {
+    QString value;
+    const int index = ok ? find(lines, key, &value) : -1;
+    // Anything but what was appended is the user's newer choice, or RetroArch did not save.
+    if (index < 0 || !appended(paths, key, value)) continue;
     if (original == kMissing) lines.removeAt(index);
     else lines[index] = original;
-    if (!write(paths.config, lines.join(QLatin1Char('\n')).toUtf8())) return;
+    changed = true;
   }
+  if (changed && !write(paths.config, lines.join(QLatin1Char('\n')).toUtf8())) return;
   QFile::remove(paths.marker);
 }
 

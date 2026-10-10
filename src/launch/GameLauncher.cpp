@@ -1,5 +1,7 @@
 #include "launch/GameLauncher.h"
 #include "launch/RetroArchHome.h"
+
+#include <sys/stat.h>
 #include "saves/SaveBackups.h"
 #include "library/ManualGameModel.h"
 
@@ -429,13 +431,21 @@ LaunchCommand GameLauncher::withRetroArchHome(LaunchCommand command) const {
   const QString override = RetroArchHome::prepare(RetroArchHome::paths(flatpak));
   qInfo().noquote() << (override.isEmpty() ? QStringLiteral("RetroArch: its own menu button is kept")
                                            : QStringLiteral("RetroArch: Home is left to the guide"));
-  if (!override.isEmpty()) {
-    // Flatpak's own arguments come first: run org.libretro.RetroArch.
-    const int at = flatpak ? 2 : 0;
-    command.arguments.insert(at, QStringLiteral("--appendconfig"));
-    command.arguments.insert(at + 1, override);
-  }
-  return command;
+  if (override.isEmpty()) return command;
+  // Flatpak's own arguments come first: run org.libretro.RetroArch.
+  const int at = flatpak ? 2 : 0;
+  command.arguments.insert(at, QStringLiteral("--appendconfig"));
+  command.arguments.insert(at + 1, override);
+  // RetroArch reads its commands from standard input: connect that to Omakade's pipe.
+  // Opened read-write, the pipe never blocks the launch and never reads end of file.
+  const QString pipe = RetroArchHome::commandPipe();
+  const QByteArray name = QFile::encodeName(pipe);
+  struct stat info {};
+  if (::stat(name.constData(), &info) != 0 && ::mkfifo(name.constData(), 0600) != 0) return command;
+  if (::stat(name.constData(), &info) != 0 || !S_ISFIFO(info.st_mode)) return command;
+  return {QStringLiteral("sh"),
+          QStringList{QStringLiteral("-c"), QStringLiteral("exec 3<>\"$1\"; shift; exec \"$@\" <&3"),
+                      QStringLiteral("omakade-retroarch"), pipe, command.program} + command.arguments};
 }
 
 void GameLauncher::repairRetroArchHome() const {
