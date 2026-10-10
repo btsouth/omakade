@@ -11,6 +11,8 @@ Capture actions report through Omarchy notifications, and only after the file ex
 """
 import configparser
 import datetime
+import fcntl
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -183,7 +185,24 @@ def process_start(pid):
 clip_record = state / 'recording.json'
 
 
+@contextmanager
+def clip_lock():
+    state.mkdir(parents=True, exist_ok=True)
+    # Keep the lock inode: unlinking it would let waiters lock different files.
+    with (state / 'recording.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def own_clip():
+    try:
+        with clip_lock():
+            return locked_clip()
+    except OSError:
+        return None
+
+
+def locked_clip():
     try:
         clip = json.loads(clip_record.read_text())
         pid = int(clip['pid'])
@@ -260,9 +279,28 @@ def videos():
 
 
 def record(output):
-    if own_clip():
+    try:
+        with clip_lock():
+            return start_clip(output)
+    except OSError:
+        notify('Recording failed', 'The recording state could not be saved')
+        return 1
+
+
+def terminate_recorder(process):
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def start_clip(output):
+    if locked_clip():
         return 0
-    path = videos() / ('screenrecording-' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.mp4')
+    path = videos() / ('screenrecording-' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f') + '.mp4')
     # By full path: Omarchy finds its own recording with `pgrep -f "^gpu-screen-recorder"`,
     # and stops it with the same pattern, so a clip started this way is never taken for it.
     command = [shutil.which(recorder) or recorder, '-w', output, '-k', 'auto', '-f', '60', '-fm', 'cfr', '-fallback-cpu-encoding', 'yes',
@@ -276,10 +314,15 @@ def record(output):
     while process.poll() is None and not path.exists() and time.monotonic() < deadline:
         time.sleep(0.1)
     if process.poll() is not None or not path.exists():
+        terminate_recorder(process)
         notify('Recording failed', 'The recorder could not start')
         return 1
-    state.mkdir(parents=True, exist_ok=True)
-    clip_record.write_text(json.dumps(dict(pid=process.pid, start=process_start(process.pid), path=str(path))))
+    try:
+        clip_record.write_text(json.dumps(dict(pid=process.pid, start=process_start(process.pid), path=str(path))))
+    except OSError:
+        terminate_recorder(process)
+        notify('Recording failed', 'The recording state could not be saved')
+        return 1
     refresh_indicators()
     return 0
 
@@ -290,15 +333,23 @@ def own_recorder(pid):
 
 
 def record_stop(pid):
-    clip = own_clip()
+    with clip_lock():
+        return stop_clip(pid)
+
+
+def stop_clip(pid):
+    clip = locked_clip()
     args = own_recorder(pid) if clip and clip['pid'] == pid else None
     if not args:
         return 1
     path = Path(args[args.index('-o') + 1]) if '-o' in args[:-1] else None
     os.kill(pid, signal.SIGINT)
     deadline = time.monotonic() + 5
-    while own_recorder(pid) and time.monotonic() < deadline:
+    while own_recorder(pid) and process_start(pid) == clip['start'] and time.monotonic() < deadline:
         time.sleep(0.1)
+    if own_recorder(pid) and process_start(pid) == clip['start']:
+        notify('Recording still stopping', 'Try stopping the clip again')
+        return 1
     clip_record.unlink(missing_ok=True)
     refresh_indicators()
     if path and path.is_file() and path.stat().st_size:
