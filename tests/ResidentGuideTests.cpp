@@ -174,20 +174,24 @@ echo ok
   QFile secondSummon(summonFile); QVERIFY(secondSummon.open(QIODevice::ReadOnly));
   const auto secondBackend = QJsonDocument::fromJson(secondSummon.readAll()).object().value("backend").toObject();
   QLocalSocket secondPlugin; secondPlugin.connectToServer(secondBackend.value("socket").toString()); QVERIFY(secondPlugin.waitForConnected());
-  for (const auto& action : {QString("opened"), QString("desktop")}) {
-    secondPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", secondBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
-    QVERIFY(secondPlugin.waitForBytesWritten()); QTest::qWait(30);
-  }
+  secondPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", secondBackend.value("token")}, {"action", "opened"}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(secondPlugin.waitForBytesWritten());
   const auto stopped = [&] {
     QFile state(QStringLiteral("/proc/%1/stat").arg(game.processId()));
     if (!state.open(QIODevice::ReadOnly)) return false;
     const auto raw = state.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).startsWith('T');
   };
   QTRY_VERIFY(stopped());
-  QTest::qWait(100);
+  QCOMPARE(control("close").value("result").toString(), "handled");
+  QTRY_VERIFY(!stopped());
+  // A disabled plugin returns Home to its 1.15 Game Mode behavior.
   QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[]})"));
   QCOMPARE(control("shortcut").value("result").toString(), "fallback");
-  QTRY_VERIFY(!stopped());
+  // So does a parked Game Mode session, so Home resumes it exactly as before.
+  QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[{"id":"omakade.guide"}]})"));
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", QJsonObject{{"gameModeParked", true}}}}).value("result").toString(), "handled");
+  QCOMPARE(control("shortcut").value("result").toString(), "fallback");
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", QJsonObject{{"gameModeParked", false}}}}).value("result").toString(), "handled");
   QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[{"id":"omakade.guide"}]})"));
   // Force a scheduling gap while the next payload is being written. Observing
   // the summon log must imply that its complete payload has been published.
@@ -203,11 +207,8 @@ echo ok
   QVERIFY(!thirdBackend.value("token").toString().isEmpty());
   QVERIFY(thirdBackend.value("token") != secondBackend.value("token"));
   QLocalSocket thirdPlugin; thirdPlugin.connectToServer(thirdBackend.value("socket").toString()); QVERIFY(thirdPlugin.waitForConnected());
-  for (const auto& action : {QString("opened"), QString("library")}) {
-    thirdPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", thirdBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
-    QVERIFY(thirdPlugin.waitForBytesWritten()); QTest::qWait(30);
-  }
-  QTRY_VERIFY(([&] { QFile output(queryLog); return output.open(QIODevice::ReadOnly) && output.readAll().contains("hl.exec_cmd("); })());
+  thirdPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", thirdBackend.value("token")}, {"action", "opened"}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(thirdPlugin.waitForBytesWritten()); QTest::qWait(30);
   QCOMPARE(control("close").value("result").toString(), "handled");
   QByteArray messages;
   QTRY_VERIFY2(([&] {

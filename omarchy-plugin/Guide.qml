@@ -118,7 +118,7 @@ Item {
 
   // Material Design glyphs from the Nerd Font: one set, one weight.
   readonly property var icons: ({
-    resume: "\u{f040a}", desktop: "\u{f0379}", library: "\u{f0570}", screenshot: "\u{f0100}",
+    resume: "\u{f040a}", screenshot: "\u{f0100}",
     record: "\u{f044a}", replay: "\u{f02da}", achievements: "\u{f0538}", volume: "\u{f057e}",
     volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}", quit: "\u{f0343}",
     stop: "\u{f04db}", gamepad: "\u{f0297}"
@@ -473,8 +473,6 @@ Item {
     switch (key) {
     // The play triangle draws a third less ink than its neighbours.
     case "resume": return {icon: root.icons.resume, iconScale: 1.3, label: "Resume"}
-    case "desktop": return {icon: root.icons.desktop, label: "Return to desktop"}
-    case "library": return {icon: root.icons.library, label: "Game library"}
     case "screenshot": return {icon: root.icons.screenshot, label: "Screenshot"}
     // The bar's recording colour while a clip runs.
     case "record": return root.recording ? {icon: root.icons.record, iconColor: root.recordingInk, label: "Stop recording", value: root.recordingTime}
@@ -520,8 +518,6 @@ Item {
   function activate(key) {
     switch (key) {
     case "resume": root.close(); break
-    case "desktop": root.act("desktop"); break
-    case "library": root.act("library"); break
     case "achievements": root.view = "achievements"; break
     case "output": root.act("output", 1); break
     case "screenshot": root.act("screenshot"); break
@@ -549,7 +545,7 @@ Item {
         var list = root.outputs, at = Math.max(0, list.indexOf(root.currentOutput))
         var next = (at + value + list.length) % list.length
         root.setFixture("audio", Object.assign({}, root.model.audio, {outputs: list.map(function(o, i) { return {name: o.name, current: i === next} })}))
-      } else if (name === "record" || name === "desktop" || name === "library") root.close()
+      } else if (name === "record") root.close()
       return
     }
     switch (name) {
@@ -561,12 +557,6 @@ Item {
       else capture.toggleRecording()
       break
     case "save-replay": capture.saveReplay(); break
-    // Omakade parks the game on the desktop, or opens its library, and closes
-    // the guide itself.
-    case "desktop": case "library":
-      if (root.backend) root.notify(name, null)
-      else root.close()
-      break
     case "output": audio.cycleOutput(Number(value) < 0 ? -1 : 1); break
     case "volume": audio.setVolume(Number(value)); break
     case "mute": audio.toggleMute(); break

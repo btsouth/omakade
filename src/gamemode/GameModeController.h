@@ -42,7 +42,6 @@ struct GameModeState {
   int windowFullscreenClient = -1;
   // Set before the window is moved, so a move that fails halfway still gets focus put back.
   bool windowPlaced = false;
-  bool libraryPresented = false; // a parked library owns its desktop restoration
   // A placeholder window holds the main window's place in the layout.
   bool placeholder = false;
   QString previousSink;
@@ -90,7 +89,6 @@ public:
   [[nodiscard]] Result enter(const GameModeSettings& settings, qint64 windowPid);
   [[nodiscard]] Result exit(qint64 windowPid);
   [[nodiscard]] Result park(qint64 windowPid);
-  [[nodiscard]] Result showLibrary(qint64 windowPid);
   [[nodiscard]] Result resume(const GameModeSettings& settings, qint64 windowPid);
   [[nodiscard]] Result refreshParked();
   [[nodiscard]] bool focusRetainedGame();

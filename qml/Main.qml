@@ -916,7 +916,6 @@ ApplicationWindow {
 
     function openGameModeControls() {
         root.diagnosticsOpen = false
-        if (InGameGuide.usable() && InGameGuide.toggle()) return
         if (root.showGameModeOverlay())
             return
         if (gameModeControlsLoader.item) gameModeControlsLoader.item.openControls()
@@ -949,7 +948,6 @@ ApplicationWindow {
             root.hideGameModeOverlay()
     }
     function hideGameModeOverlay() {
-        if (InGameGuide.opened) InGameGuide.close()
         if (!gameModeOverlay.visible)
             return
         overlayGameModePanel.closeAll()

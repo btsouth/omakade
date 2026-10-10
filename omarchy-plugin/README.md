@@ -12,7 +12,7 @@ so it follows the active theme's menu colours, font, corner radius and spacing.
 │   FPS      FRAME      CPU         GPU        │
 │   58       17.2 ms    41% 67°     88% 71°    │
 ├──────────────────────────────────────────────┤
-│ [Screenshot] [Record] [Desktop] [Library]    │  (+ [Save 30 s] while a replay buffer runs)
+│ [Screenshot]  [Record]                       │  (+ [Save 30 s] while a replay buffer runs)
 ├──────────────────────────────────────────────┤
 │ ACHIEVEMENTS                         23 / 63 │
 │ ◇  ━━━━━━━━━━━━━──────────────────────       │
@@ -44,9 +44,8 @@ A payload `scale` (1.7 in Omakade's Couch Mode) multiplies every size and gap of
 card, so it reads from a couch; 1 is exactly Omarchy's sizes. Where the scaled
 card would not fit the screen it shrinks only as far as it must.
 
-Return to desktop parks the game while paused. Home restores it under the guide;
-B or Resume then starts it again. With no game, Home and Super + Ctrl + G keep
-Game Mode. Game library opens Omakade.
+With no game, or while Game Mode is parked on the desktop, Home and
+Super + Ctrl + G keep their Game Mode behavior.
 
 ## Input
 
@@ -61,7 +60,7 @@ The cursor starts on Resume each time the card opens. Up and down move between
 rows (the tiles, achievements, volume, output, Resume and Quit) and wrap; left
 and right move along the tiles and between Resume and Quit. Moving between
 rows keeps the cursor's place across the card, through the one-control rows
-too, so Library and down three times lands on Quit. On volume left and right
+too, so Record and down three times lands on Quit. On volume left and right
 change the level, on the output row they pick the next output. A activates, B
 backs out of the list or the quit question first and then resumes. Y takes a
 screenshot. Keyboard: arrows, Enter or Space (A), Escape (B), Y, G or Home

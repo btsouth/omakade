@@ -3,7 +3,6 @@
 
 #include <QCoreApplication>
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -82,7 +81,6 @@ QJsonObject GameModeState::toJson() const {
           {"window_fullscreen", windowFullscreen},
           {"window_fullscreen_client", windowFullscreenClient},
           {"window_placed", windowPlaced},
-          {"library_presented", libraryPresented},
           {"placeholder", placeholder},
           {"previous_sink", previousSink},
           {"session_sink", sessionSink},
@@ -154,7 +152,6 @@ bool GameModeState::fromJson(const QJsonObject& object, GameModeState* state) {
       (state->windowFullscreen < 0) != (state->windowFullscreenClient < 0))
     return false;
   state->windowPlaced = object.value("window_placed").toBool();
-  state->libraryPresented = object.value("library_presented").toBool();
   state->placeholder = object.value("placeholder").toBool();
   state->previousSink = object.value("previous_sink").toString();
   state->sessionSink = object.value("session_sink").toString();
@@ -239,26 +236,18 @@ void GameModeController::forget() const {
 
 bool GameModeController::waitFor(const std::function<bool()>& ready, int timeoutMs,
                                  int stepMs) const {
-  QElapsedTimer elapsed;
-  elapsed.start();
-  int slept = 0;
-  for (;;) {
+  for (int waited = 0;; waited += stepMs) {
     if (ready()) {
       return true;
     }
-    // Compositor/audio queries take time too, especially when a helper stalls.
-    // Injected sleeps can advance a test's clock without actually blocking.
-    const qint64 remaining = timeoutMs - qMax<qint64>(slept, elapsed.elapsed());
-    if (remaining <= 0) {
+    if (waited >= timeoutMs) {
       return false;
     }
-    const int delay = static_cast<int>(qMin<qint64>(stepMs, remaining));
     if (m_sleep) {
-      m_sleep(delay);
+      m_sleep(stepMs);
     } else {
-      QThread::msleep(delay);
+      QThread::msleep(stepMs);
     }
-    slept += delay;
   }
 }
 
@@ -453,7 +442,7 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     // new window. A placeholder keeps its exact place instead. A floating window keeps its
     // own position, so it needs none. The compositor clears fullscreen before swapping.
     GameModeWindow placeholder;
-    if (!state.temporaryWindow && m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
+    if (m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
@@ -713,9 +702,8 @@ bool GameModeController::finishRetention(qint64 windowPid, QStringList* notes) {
       m_state.games.removeAt(index);
   // A partial park can still own a window, focus, sink, notifications or TV power.
   // Restore those first so the final exposure is on a surviving, accessible display.
-  const bool libraryPresented = m_state.libraryPresented;
   const bool desktopRestored = restore(m_state, windowPid, false, notes, true);
-  const bool exposed = m_state.games.isEmpty() || exposeGames(notes, !libraryPresented);
+  const bool exposed = m_state.games.isEmpty() || exposeGames(notes, true);
   const bool audioRestored = exposed && unmuteGames(notes);
   if (!desktopRestored || !exposed || !audioRestored) {
     (void)save(m_state);
@@ -820,76 +808,6 @@ GameModeController::Result GameModeController::park(qint64 windowPid) {
   return result;
 }
 
-GameModeController::Result GameModeController::showLibrary(qint64 windowPid) {
-  Result result;
-  result.output = m_state.output;
-  if (!m_parked || m_state.retentionEnding) {
-    result.error = QStringLiteral("No parked Game Mode library is available.");
-    return result;
-  }
-  if (m_state.libraryPresented) {
-    const auto window = m_compositor->windowForPid(windowPid);
-    if (window.valid() && window.workspace == QStringLiteral("name:omakade-library")) {
-      result.ok = m_compositor->focusWindow(window.address);
-      return result;
-    }
-    if (!restore(m_state, windowPid, false, &result.notes, true)) {
-      result.error = QStringLiteral("The guide library's desktop state needs recovery.");
-      return result;
-    }
-  }
-  QString error;
-  // Own the presentation before mapping or changing the restored desktop window.
-  // Resume must undo it before taking a fresh desktop snapshot.
-  if (!captureDesktop(&m_state, &error)) {
-    result.error = error;
-    return result;
-  }
-  const auto desktopWindow = m_compositor->windowForPid(windowPid);
-  if (!m_state.temporaryWindow && desktopWindow.valid()) {
-    m_state.windowWorkspace = desktopWindow.workspace;
-    m_state.windowFullscreen = desktopWindow.fullscreenMode;
-    m_state.windowFullscreenClient = desktopWindow.fullscreenClient;
-  }
-  m_state.libraryPresented = true;
-  m_state.windowPlaced = true;
-  m_state.desktopPending = true;
-  if (!save(m_state)) {
-    m_state.libraryPresented = false;
-    m_state.windowPlaced = false;
-    m_state.desktopPending = false;
-    result.error = QStringLiteral("Could not record the guide library presentation.");
-    return result;
-  }
-  if (m_state.temporaryWindow) visibility(true);
-  GameModeWindow window;
-  const bool mapped = waitFor([&] {
-    window = m_compositor->windowForPid(windowPid);
-    return window.valid();
-  }, kWindowWaitMs);
-  GameModeWindow placeholder;
-  if (mapped && !m_state.temporaryWindow && m_placeholder && !window.floating &&
-      m_compositor->holdPlaceholder()) {
-    showPlaceholder(true);
-    (void)waitFor([&] {
-      placeholder = m_compositor->placeholderForPid(windowPid);
-      return placeholder.valid();
-    }, kPlaceholderWaitMs, kPlaceholderStepMs);
-    if (!placeholder.valid()) showPlaceholder(false);
-  }
-  m_state.placeholder = placeholder.valid();
-  // The retained game's workspace stays hidden, with its fullscreen unchanged.
-  if (!save(m_state) || !mapped ||
-      !m_compositor->placeWindow(window.address, QStringLiteral("name:omakade-library"),
-                                m_state.focusedOutput, placeholder.address, &error)) {
-    (void)restore(m_state, windowPid, false, &result.notes, true);
-    result.error = QStringLiteral("The guide library could not be placed: %1").arg(error);
-    return result;
-  }
-  result.ok = true;
-  return result;
-}
-
 GameModeController::Result GameModeController::resume(const GameModeSettings& settings,
                                                       qint64 windowPid) {
   Result result;
@@ -901,10 +819,6 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
   const auto refreshed = refreshParked();
   if (!refreshed.ok || !m_parked)
     return refreshed;
-  if (m_state.libraryPresented && !restore(m_state, windowPid, false, &result.notes, true)) {
-    result.error = QStringLiteral("The guide library's desktop state could not be restored.");
-    return result;
-  }
   const GameModeState parkedState = m_state;
   QString error;
   GameModeState next = m_state;
@@ -1018,7 +932,7 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
   // The warm window may have moved while parked; this cycle owns its current home.
   if (window.workspace != workspace()) {
     GameModeWindow placeholder;
-    if (!m_state.temporaryWindow && m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
+    if (m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
@@ -1122,8 +1036,7 @@ GameModeController::Result GameModeController::refreshParked() {
       if (m_compositor && !m_compositor->processAlive(m_state.mutedStreams.at(index).process))
         m_state.mutedStreams.removeAt(index); // Never touch a dead or reused stream owner.
     const bool audioRestored = unmuteGames(&result.notes);
-    const bool desktopRestored = m_state.libraryPresented ||
-        restore(m_state, m_state.ownerPid, false, &result.notes, true);
+    const bool desktopRestored = restore(m_state, m_state.ownerPid, false, &result.notes, true);
     result.ok = audioRestored && desktopRestored && save(m_state);
     if (!result.ok)
       result.error =
@@ -1258,8 +1171,7 @@ bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ow
     bool returned = true;
     if (!ownerGone && !state.temporaryWindow && windowPid > 0 && !state.windowWorkspace.isEmpty()) {
       const auto window = m_compositor->windowForPid(windowPid);
-      if (window.valid() && (window.workspace == workspace() ||
-          (state.libraryPresented && window.workspace == QStringLiteral("name:omakade-library")))) {
+      if (window.valid() && window.workspace == workspace()) {
         const auto placeholder =
             state.placeholder ? m_compositor->placeholderForPid(windowPid) : GameModeWindow{};
         const bool traded =
@@ -1307,7 +1219,6 @@ bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ow
     }
     if (returned) {
       state.windowPlaced = false;
-      state.libraryPresented = false;
       state.placeholder = false;
       record();
     }

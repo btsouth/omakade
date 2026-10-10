@@ -24,7 +24,6 @@ private:
   std::shared_ptr<GuidePlugin::RetryState> m_provisionRetry = std::make_shared<GuidePlugin::RetryState>();
   std::shared_ptr<std::atomic_uint> m_desktopGeneration = std::make_shared<std::atomic_uint>(0);
   void connectEvents();
-  void launchLibrary(bool fallback);
   QJsonArray m_published;
   int m_refreshGeneration = 0;
   bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false, m_provisioning = false;

@@ -51,7 +51,6 @@ public:
   std::function<void()> beforeGameScan;
   std::function<void()> beforeWindowFocus;
   std::function<void()> beforeWorkspaceCheck;
-  std::function<void()> beforeWindowLookup;
   bool usable = true;
   bool enableFails = false;
   int disableFailuresRemaining = 0;
@@ -123,11 +122,7 @@ public:
     }
     return true;
   }
-  GameModeWindow windowForPid(qint64) override {
-    if (beforeWindowLookup)
-      beforeWindowLookup();
-    return windowMapped ? window : GameModeWindow{};
-  }
+  GameModeWindow windowForPid(qint64) override { return windowMapped ? window : GameModeWindow{}; }
   int otherWindowsOn(const QString& workspace, qint64) override {
     if (beforeWorkspaceCheck)
       beforeWorkspaceCheck();
@@ -765,75 +760,6 @@ private slots:
     QVERIFY(game.exit(100).ok);
   }
 
-  void guideLibraryMovesBeforeFocus() {
-    deskAndTv(true);
-    m_compositor.others = {{"0x9a01", "3"}};
-    m_compositor.currentFocus = {kDesk, "7", {}};
-    QVERIFY(m_compositor.moveLibraryToDesktop(100, m_compositor.currentFocus));
-    QCOMPARE(m_compositor.window.workspace, "7");
-    QCOMPARE(m_compositor.currentFocus.address, kAddress);
-    QCOMPARE(m_compositor.others.first().workspace, "3");
-    QCOMPARE(m_compositor.log.first(), QString("return %1 7").arg(kAddress));
-    m_compositor.returnFails = true;
-    m_compositor.currentFocus = {kDesk, "8", {}};
-    QVERIFY(!m_compositor.moveLibraryToDesktop(100, m_compositor.currentFocus));
-    QVERIFY(m_compositor.currentFocus.address.isEmpty());
-  }
-
-  void guideLibraryPreservesWarmDesktop_data() {
-    QTest::addColumn<bool>("resume"); QTest::addColumn<bool>("withGame");
-    QTest::newRow("end-library") << false << false;
-    QTest::newRow("resume-library") << true << false;
-    QTest::newRow("end-game") << false << true;
-    QTest::newRow("resume-game") << true << true;
-  }
-
-  void guideLibraryPreservesWarmDesktop() {
-    QFETCH(bool, resume); QFETCH(bool, withGame);
-    deskAndTv(true);
-    m_compositor.currentFocus = {kDesk, "3", "0xd00d"};
-    auto game = controller();
-    QVERIFY(game.enter({}, 100).ok);
-    if (withGame) retainedGame();
-    QVERIFY(game.park(100).ok);
-    QCOMPARE(m_compositor.window.fullscreenMode, 0);
-    const auto shown = game.showLibrary(100);
-    QVERIFY2(shown.ok, qPrintable(shown.error));
-    QVERIFY(game.parked()); QVERIFY(game.state().libraryPresented);
-    QCOMPARE(m_compositor.window.workspace, "name:omakade-library");
-    QCOMPARE(game.state().windowFullscreen, 0);
-    QCOMPARE(game.state().focusedWindow, "0xd00d");
-    // The UI changes native mode only after the controller owns restoration.
-    m_compositor.window.fullscreenMode = 2;
-    m_compositor.window.fullscreenClient = 2;
-    QVERIFY(game.refreshParked().ok);
-    QVERIFY(game.state().libraryPresented);
-    if (withGame) QVERIFY(m_audio.inputs.first().muted);
-    GameModeState journal;
-    QVERIFY(GameModeState::fromJson(game.state().toJson(), &journal));
-    QVERIFY(journal.libraryPresented);
-    if (resume) {
-      QVERIFY(game.resume({}, 100).ok);
-      QCOMPARE(game.state().windowFullscreen, 0);
-      QCOMPARE(game.state().focusedWindow, "0xd00d");
-    }
-    QVERIFY(game.exit(100).ok);
-    QCOMPARE(m_compositor.window.workspace, "3");
-    QCOMPARE(m_compositor.window.fullscreenMode, 0);
-    QCOMPARE(m_compositor.window.fullscreenClient, 0);
-    QCOMPARE(m_compositor.currentFocus.address, "0xd00d");
-  }
-
-  void guideLibraryPlacementFailureRestoresDesktop() {
-    deskAndTv(true); auto game = controller();
-    QVERIFY(game.enter({}, 100).ok); QVERIFY(game.park(100).ok);
-    m_compositor.placeFails = true;
-    QVERIFY(!game.showLibrary(100).ok);
-    QVERIFY(!game.state().libraryPresented); QVERIFY(!game.state().windowPlaced);
-    QCOMPARE(m_compositor.window.workspace, "3");
-    QVERIFY(game.exit(100).ok);
-  }
-
   void parkWithoutGamesRequestsUiLeaveBeforeRetainingLibrary() {
     deskAndTv(true);
     auto game = controller();
@@ -1449,7 +1375,6 @@ private slots:
     deskAndTv(true);
     auto game = controller();
     game.setTemporaryWindow(true);
-    game.setPlaceholder([&](bool shown) { m_compositor.placeholderShown = shown; });
     QStringList visibility;
     game.setWindowVisibility([&](bool shown) {
       visibility.append(shown ? "show" : "hide");
@@ -1458,15 +1383,11 @@ private slots:
         m_compositor.currentFocus = {kTv, GameModeController::workspace(), kAddress};
     });
     QVERIFY(game.enter(tvSettings(), 100).ok);
-    QVERIFY(!m_compositor.placeholderShown);
-    QVERIFY(!game.state().placeholder);
     retainedGame();
     QVERIFY(game.park(100).ok);
     QCOMPARE(visibility, (QStringList{"show", "hide"}));
     m_compositor.currentFocus = {kDesk, QStringLiteral("8"), QStringLiteral("0xcafe")};
     QVERIFY(game.resume(tvSettings(), 100).ok);
-    QVERIFY(!m_compositor.placeholderShown);
-    QVERIFY(!game.state().placeholder);
     QVERIFY(game.park(100).ok);
     QCOMPARE(m_compositor.currentFocus.workspace, QStringLiteral("8"));
     QCOMPARE(m_compositor.currentFocus.address, QStringLiteral("0xcafe"));
@@ -2505,10 +2426,6 @@ private slots:
     // Hyprland matches a rule against the whole title, which Qt ends with " — Omakade".
     QVERIFY(HyprlandGameModeCompositor::holdScript().contains(
         QStringLiteral("title = \"^Omakade Game Mode Placeholder.*\"")));
-    const auto cold = HyprlandGameModeCompositor::coldWindowScript();
-    QVERIFY(cold.contains("initial_title = \"^Omakade Game Mode Startup.*\""));
-    QVERIFY(cold.contains("class = \"^io.github.tsouth89.Omakade$\""));
-    QVERIFY(cold.contains("no_anim = true"));
     const QString place =
         HyprlandGameModeCompositor::placeScript("0xddd4", "name:omakade", "HDMI-A-2");
     const QString heldPlace = HyprlandGameModeCompositor::placeScript(
@@ -2914,26 +2831,6 @@ private slots:
     QCOMPARE(loaded.outputDescription, kTvDescription);
     QCOMPARE(loaded.sinkName, kTvSink);
     QVERIFY(!loaded.silenceNotifications);
-  }
-  void slowWindowQueriesConsumeHideDeadline() {
-    deskAndTv(true);
-    auto game = controller();
-    game.setTemporaryWindow(true);
-    QVERIFY(game.enter(tvSettings(), 100).ok);
-    int queries = 0;
-    game.setWindowVisibility([&](bool visible) {
-      if (visible) return;
-      m_compositor.beforeWindowLookup = [&] {
-        QTest::qSleep(1000);
-        // An unmap arriving after the three-second deadline must stay pending.
-        if (++queries == 5) m_compositor.windowMapped = false;
-      };
-    });
-    const auto result = game.exit(100);
-    QVERIFY(!result.ok);
-    QVERIFY(result.notes.join(' ').contains("temporary window did not hide"));
-    QVERIFY(game.state().windowPlaced);
-    QVERIFY(QFile::exists(statePath()));
   }
 };
 

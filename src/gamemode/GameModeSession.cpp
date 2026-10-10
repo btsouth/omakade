@@ -344,17 +344,6 @@ void GameModeSession::park() {
   startChange();
 }
 
-void GameModeSession::showLibrary() {
-  if (m_busy) {
-    if (m_change == Change::RefreshParked || m_change == Change::Park) m_libraryAfterChange = true;
-    return;
-  }
-  if (!m_parked) return;
-  m_change = Change::ShowLibrary;
-  setBusy(true);
-  startChange();
-}
-
 void GameModeSession::refreshParked() {
   if (m_busy || !m_parked) return;
   m_change = Change::RefreshParked;
@@ -382,7 +371,6 @@ void GameModeSession::startChange() {
     case Change::Park: return m_controller.park(pid);
     case Change::Resume: return m_controller.resume(settings, pid);
     case Change::RefreshParked: return m_controller.refreshParked();
-    case Change::ShowLibrary: return m_controller.showLibrary(pid);
     }
     return GameModeController::Result{};
   }));
@@ -409,17 +397,14 @@ void GameModeSession::focusGame() {
       QThread::msleep(40);
     }
     if (!window.valid() || !m_compositor->setWindowMode(window.address, 2, 2)) {
-      emit gameFocused(false);
       emit failed(QStringLiteral("Game Mode's fullscreen window could not be restored. Its session is still available."));
       return;
     }
     if (!hasGame) {
-      emit gameFocused(m_compositor->focusWindow(window.address));
+      m_compositor->focusWindow(window.address);
       return;
     }
-    const bool focused = m_controller.focusRetainedGame();
-    emit gameFocused(focused);
-    if (!focused)
+    if (!m_controller.focusRetainedGame())
       emit failed(QStringLiteral("The retained game could not be focused. Its session is still available."));
   });
 }
@@ -490,7 +475,6 @@ void GameModeSession::finishChange() {
   } else if (m_active && (m_change == Change::Resume || wasParked)) {
     emit resumed();
   }
-  if (m_change == Change::ShowLibrary && result.ok) emit libraryShown();
   if (!hasSession() && (wasActive || wasParked)) emit exited();
   if (!result.ok && (m_change != Change::RefreshParked || failure != m_lastParkError)) {
     qWarning().noquote() << "Game Mode:" << failure;
@@ -501,15 +485,12 @@ void GameModeSession::finishChange() {
   if (result.ok && !notes.isEmpty()) emit notice(notes);
   if (notify) emit devicesChanged();
 
-  const bool library = m_libraryAfterChange;
-  m_libraryAfterChange = false;
   const bool resume = m_resumeAfterRefresh;
   const bool end = m_exitAfterChange;
   m_resumeAfterRefresh = false;
   m_exitAfterChange = false;
   if (end && hasSession()) exit();
   else if (resume && m_parked) enter();
-  else if (library && m_parked) showLibrary();
   else if (m_change != Change::RefreshParked) refresh();
 }
 

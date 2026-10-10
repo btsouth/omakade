@@ -781,8 +781,6 @@ int main(int argc, char* argv[]) {
   // `--game-mode-toggle` does whichever applies, which is what a key binding wants.
   const bool gameModeToggleRequest =
       guideFallback;
-  const bool guideToggleRequest = false;
-  const QString guideDevice = optionValue(application.arguments(), QStringLiteral("--guide-device"));
   bool gameModeRequest = application.arguments().contains(QStringLiteral("--game-mode"));
   bool gameModeExitRequest = application.arguments().contains(QStringLiteral("--game-mode-exit"));
   if (optionSupplied(application.arguments(), QStringLiteral("--render-screenshot")) &&
@@ -891,7 +889,6 @@ int main(int argc, char* argv[]) {
     qCritical() << "No running Game Mode session to return from.";
     return EXIT_FAILURE;
   }
-  if (guideToggleRequest && SingleInstance::sendCommand({}, "guide toggle " + guideDevice.toUtf8())) return EXIT_SUCCESS;
   if (gameModeToggleRequest) {
     if (SingleInstance::sendCommand({}, "game-mode toggle game-mode-fallback")) {
       return EXIT_SUCCESS;
@@ -921,7 +918,6 @@ int main(int argc, char* argv[]) {
   SingleInstance singleInstance;
   const QByteArray instanceCommand =
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
-      : application.arguments().contains("--guide-library") ? QByteArray("guide library")
       : gameModeRequest                  ? QByteArray("game-mode enter")
       : couchRequest                     ? QByteArray("activate stream")
                                          : QByteArray("activate");
@@ -1870,23 +1866,12 @@ int main(int argc, char* argv[]) {
                                   {"scale", couch ? 1.7 : 1.0}});
   };
   QObject::connect(&gameMode, &GameModeSession::stateChanged, &inGameGuide, publishGuideGames);
-  QObject::connect(&gameMode, &GameModeSession::parkedOnDesktop, &inGameGuide, [&inGameGuide] {
-    GuideClient::request({{"action", "parked"}, {"ok", true}}, &inGameGuide);
-  });
-  QObject::connect(&gameMode, &GameModeSession::failed, &inGameGuide, [&inGameGuide] {
-    GuideClient::request({{"action", "parked"}, {"ok", false}}, &inGameGuide);
-    GuideClient::request({{"action", "restored"}, {"ok", false}}, &inGameGuide);
-  });
-  QObject::connect(&gameMode, &GameModeSession::gameFocused, &inGameGuide, [&inGameGuide](bool ok) {
-    GuideClient::request({{"action", "restored"}, {"ok", ok}}, &inGameGuide);
-  });
   QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, publishGuideGames);
   if (!isolatedTest && onOmarchy) {
     guideSnapshotTimer.start();
     GuideClient::ensureResident(&inGameGuide);
     QObject::connect(&launcher, &GameLauncher::gameRunningChanged, &inGameGuide, publishGuideGames);
   }
-  const bool coldGuideRequest = false;
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);
   engine.rootContext()->setContextProperty("Stats", &stats);
@@ -2085,7 +2070,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("CouchModeRequested"),
                                            startInCouchMode);
   engine.rootContext()->setContextProperty(QStringLiteral("ColdGameModeRequested"),
-                                           gameModeRequest || coldGuideRequest);
+                                           gameModeRequest);
   engine.rootContext()->setContextProperty(
       QStringLiteral("CouchLibraryViewOverride"),
       renderOverlay.startsWith(QStringLiteral("couch-grid")) ? QStringLiteral("grid") : QString{});
@@ -2160,7 +2145,7 @@ int main(int argc, char* argv[]) {
                        QCoreApplication::sendEvent(target, &release);
                      });
   }
-  if (rootWindow != nullptr && startInCouchMode && !gameModeRequest && !coldGuideRequest && !renderMode && (!navigationTest || startupNavigationTest) && !smokeTest) {
+  if (rootWindow != nullptr && startInCouchMode && !gameModeRequest && !renderMode && (!navigationTest || startupNavigationTest) && !smokeTest) {
     // Couch mode fills the chosen display. Sunshine selects its configured output first.
     const QList<QScreen*> screens = QGuiApplication::screens();
     QStringList screenNames;
@@ -2177,7 +2162,7 @@ int main(int argc, char* argv[]) {
     }
     rootWindow->showFullScreen();
   }
-  if (rootWindow != nullptr && !gameModeRequest && !coldGuideRequest && !renderMode && (!navigationTest || startupNavigationTest)) {
+  if (rootWindow != nullptr && !gameModeRequest && !renderMode && (!navigationTest || startupNavigationTest)) {
     const auto activateWindow = [rootWindow, &gameMode] {
       if (gameMode.hasSession() || gameMode.busy()) return;
       rootWindow->requestActivate();
@@ -6965,81 +6950,14 @@ int main(int argc, char* argv[]) {
   });
   QObject::connect(&singleInstance, &SingleInstance::guideToggleRequested, &inGameGuide,
                    [&inGameGuide](const QString& node) { inGameGuide.toggle(node, true); });
-  const auto presentationGeneration = std::make_shared<quint64>(0);
-  const auto revealGameMode = [rootWindow, presentationGeneration] {
-    if (!rootWindow) return;
-    rootWindow->setTitle(QStringLiteral("Omakade"));
-    auto* quick = qobject_cast<QQuickWindow*>(rootWindow);
-    if (!quick || quick->contentItem()->opacity() != 0) return;
-    const auto generation = *presentationGeneration;
-    QObject::connect(quick, &QQuickWindow::frameSwapped, quick,
-                     [quick, presentationGeneration, generation] {
-      if (generation == *presentationGeneration) quick->contentItem()->setOpacity(1);
-    }, Qt::SingleShotConnection);
-    quick->update();
-  };
-  const auto showGuideLibrary = [rootWindow, &gameMode, &gameModeCompositor, &application,
-                                presentationGeneration, revealGameMode] {
-    if (!rootWindow) return;
-    ++*presentationGeneration;
-    // Parking has already hidden the game and retained its pause. Show the
-    // session's library without resuming or focusing that game.
-    if (gameMode.hasSession()) {
-      gameMode.showLibrary();
-      return;
-    }
-    GameModeDesktopFocus desktop;
-    const bool managed = gameModeCompositor.desktopFocus(&desktop, nullptr);
-    const auto pid = QCoreApplication::applicationPid();
-    // An already mapped library moves before activation can switch workspaces.
-    if (managed && gameModeCompositor.windowForPid(pid).valid() &&
-        !gameModeCompositor.moveLibraryToDesktop(pid, desktop)) return;
-    rootWindow->show();
-    if (!managed) rootWindow->requestActivate();
-    QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
-    revealGameMode();
-    QTimer::singleShot(150, &application, [&gameModeCompositor, desktop, managed, pid] {
-      // A cold library maps asynchronously. Keep the original landing workspace.
-      if (managed) (void)gameModeCompositor.moveLibraryToDesktop(pid, desktop);
-    });
-  };
-  QObject::connect(&gameMode, &GameModeSession::libraryShown, &application,
-                   [rootWindow, revealGameMode] {
-    if (rootWindow) {
-      QMetaObject::invokeMethod(rootWindow, "prepareGameModeLayout", Q_ARG(QVariant, QVariant(true)));
-      rootWindow->setWindowState(Qt::WindowFullScreen);
-      rootWindow->setProperty("gameModeNavigationRestoring", false);
-      rootWindow->showFullScreen();
-      QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
-      revealGameMode();
-    }
-  });
-  QObject::connect(&singleInstance, &SingleInstance::guideLibraryRequested, &application, showGuideLibrary);
-  QObject::connect(&inGameGuide, &GuideClient::libraryRequested, &application, showGuideLibrary);
-  if (application.arguments().contains("--guide-library"))
-    QTimer::singleShot(0, &application, showGuideLibrary);
-  if (coldGuideRequest) QTimer::singleShot(0, &inGameGuide, [&inGameGuide, guideDevice] { inGameGuide.toggle(guideDevice, true); });
-  if (coldGuideRequest) application.setQuitOnLastWindowClosed(false);
   gameMode.setTemporaryWindow(gameModeRequest);
   if (rootWindow != nullptr) {
     const auto windowStateBeforePreparation =
         std::make_shared<Qt::WindowState>(rootWindow->windowState());
     QObject::connect(&gameMode, &GameModeSession::windowVisibilityRequested, rootWindow,
-                     [rootWindow, &gameModeCompositor, presentationGeneration](bool visible) {
+                     [rootWindow](bool visible) {
                        // The controller snapshots desktop focus before asking to map
                        // a cold root. Request its native mode while it is still hidden.
-                       ++*presentationGeneration;
-                       if (visible && !rootWindow->isVisible()) {
-                         rootWindow->setTitle(QStringLiteral("Omakade Game Mode Startup"));
-                         (void)gameModeCompositor.prepareColdWindow();
-                         // Wayland's fullscreen configure arrives after mapping.
-                         // Size the first buffer now and keep its content hidden
-                         // until placement and the prepared scene have rendered.
-                         if (QGuiApplication::platformName() == "wayland" && rootWindow->screen())
-                           rootWindow->resize(rootWindow->screen()->size());
-                         if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow))
-                           quick->contentItem()->setOpacity(0);
-                       }
                        if (visible) rootWindow->setWindowState(Qt::WindowFullScreen);
                        rootWindow->setVisible(visible);
                      });
@@ -7056,9 +6974,8 @@ int main(int argc, char* argv[]) {
       // handler. A parked resume failure keeps its hidden fullscreen session.
       if (!gameMode.hasSession()) rootWindow->setWindowState(*windowStateBeforePreparation);
     });
-    QObject::connect(&gameMode, &GameModeSession::resumed, rootWindow, [rootWindow, revealGameMode] {
+    QObject::connect(&gameMode, &GameModeSession::resumed, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "resumeGameMode");
-      revealGameMode();
     });
     QObject::connect(&gameMode, &GameModeSession::parking, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "captureGameModeNavigation");
@@ -7071,11 +6988,10 @@ int main(int argc, char* argv[]) {
     QObject::connect(&gameMode, &GameModeSession::entering, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "captureGameModeDesktopMode");
     });
-    QObject::connect(&gameMode, &GameModeSession::entered, rootWindow, [rootWindow, revealGameMode] {
+    QObject::connect(&gameMode, &GameModeSession::entered, rootWindow, [rootWindow] {
       QMetaObject::invokeMethod(rootWindow, "enterGameMode");
       rootWindow->setVisible(true);
       rootWindow->requestActivate();
-      revealGameMode();
     });
     QObject::connect(&gameMode, &GameModeSession::leaving, rootWindow, [rootWindow](bool retainNavigation) {
       QMetaObject::invokeMethod(rootWindow, "leaveGameMode",
@@ -7103,14 +7019,6 @@ int main(int argc, char* argv[]) {
                              QVariantMap{}, 8000});
                          (void)QDBusConnection::sessionBus().asyncCall(notification, 2500);
                        }
-                       // A failed resume may also fail to unmap its temporary root.
-                       // Restore content even while the recovery session is retained.
-                       if (auto* quick = qobject_cast<QQuickWindow*>(rootWindow)) {
-                         quick->contentItem()->setOpacity(1);
-                         qInfo("Game Mode presentation: opacity=%g retained=%s",
-                               quick->contentItem()->opacity(), gameMode.hasSession() ? "true" : "false");
-                       }
-                       rootWindow->setTitle(QStringLiteral("Omakade"));
                        if (!gameMode.hasSession()) rootWindow->setVisible(true);
                      });
     QObject::connect(&gameMode, &GameModeSession::notice, rootWindow, toast);
@@ -7717,7 +7625,7 @@ int main(int argc, char* argv[]) {
     // Game Mode holds Couch Mode for its session. Every way of switching modes opens its
     // controls instead of leaving, and leaving returns the window to the mode it had.
     QTimer::singleShot(200, &application, [&application, rootWindow, &gameMode, &gameStop, &controller,
-                                         &gameModeTestCompositor, showGuideLibrary] {
+                                         &gameModeTestCompositor] {
       const auto fail = [&application](const QString& message) {
         qCritical().noquote() << message;
         application.exit(EXIT_FAILURE);
@@ -7796,8 +7704,7 @@ int main(int argc, char* argv[]) {
             ++mapped;
             mappedWrongPresentation = mappedWrongPresentation ||
                 !rootWindow->property("couchMode").toBool() ||
-                rootWindow->windowState() != Qt::WindowFullScreen ||
-                qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() != 0;
+                rootWindow->windowState() != Qt::WindowFullScreen;
           });
       for (int cycle = 0; cycle < 3; ++cycle) {
         gameMode.enter();
@@ -7808,12 +7715,6 @@ int main(int argc, char* argv[]) {
         }
         if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
           fail(QStringLiteral("Cold presentation fixture did not enter or resume"));
-          return;
-        }
-        if (!settled([rootWindow] {
-              return qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() == 1;
-            })) {
-          fail(QStringLiteral("Cold Game Mode did not reveal its completed first frame"));
           return;
         }
         gameMode.park();
@@ -7842,23 +7743,6 @@ int main(int argc, char* argv[]) {
       QObject::disconnect(mappingCheck);
       if (mappedWrongPresentation || mapped != 4) {
         fail(QStringLiteral("Cold root was exposed before couch layout and native fullscreen"));
-        return;
-      }
-      // A fast park can cancel the initial frame callback. Library activation
-      // must reveal its own complete scene even when that frame never appeared.
-      qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->setOpacity(0);
-      showGuideLibrary();
-      // Library placement now owns its desktop snapshot through the session's
-      // worker handoff. Check the complete presentation after that handoff.
-      if (!settled([&gameMode, &gameModeTestCompositor, rootWindow] {
-            return gameMode.parked() && !gameMode.busy() && rootWindow->isVisible() &&
-                rootWindow->property("couchMode").toBool() &&
-                rootWindow->windowState() == Qt::WindowFullScreen &&
-                gameModeTestCompositor.windowForPid(QCoreApplication::applicationPid()).workspace ==
-                    QStringLiteral("name:omakade-library") &&
-                qobject_cast<QQuickWindow*>(rootWindow)->contentItem()->opacity() == 1;
-          })) {
-        fail(QStringLiteral("Guide library resumed the game or failed to show the retained fullscreen library"));
         return;
       }
       gameMode.exit();

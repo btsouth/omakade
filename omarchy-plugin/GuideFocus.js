@@ -8,7 +8,7 @@
 function grid(shown) {
   var s = shown || {}
   return [
-    ["screenshot", "record"].concat(s.replay ? ["replay"] : [], s.game ? ["desktop", "library"] : []),
+    ["screenshot", "record"].concat(s.replay ? ["replay"] : []),
     s.achievements ? ["achievements"] : [],
     s.volume ? ["volume"] : [],
     (s.outputs || 0) > 1 ? ["output"] : [],
@@ -40,7 +40,7 @@ function settle(anchor, column, count) {
 // One D-pad step. Up and down change row and wrap at the ends; on a row of
 // several items left and right move along it and stop at its ends. `anchor` is
 // the horizontal position (0..1) the cursor last had on a row of several items:
-// moving through one-item rows keeps it, so Library, down to Achievements and
+// moving through one-item rows keeps it, so Record, down to Achievements and
 // Volume, then down again lands on Quit, below it. Returns {key, anchor}, or
 // null where the step is not a move: left and right on a one-item row belong to
 // that control (the volume level, the sound output).

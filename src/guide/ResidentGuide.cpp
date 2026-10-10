@@ -2,7 +2,6 @@
 #include "guide/GuideClient.h"
 #include "guide/GuideEnvironment.h"
 #include "gamemode/GameModeDesktop.h"
-#include "app/SingleInstance.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionDisplay.h"
 #include "tracking/ProcFs.h"
@@ -220,17 +219,6 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
     }
   });
   connect(&m_guide, &InGameGuide::summonFailed, this, &ResidentGuide::fallback);
-  connect(&m_guide, &InGameGuide::libraryRequested, this, [this] { launchLibrary(false); });
-  const auto libraryCommand = [this](const QByteArray& command) {
-    auto* socket = new QLocalSocket(this);
-    connect(socket, &QLocalSocket::connected, socket, [socket, command] { socket->write(command); socket->flush(); socket->disconnectFromServer(); });
-    connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
-    connect(socket, &QLocalSocket::errorOccurred, this, [this, socket] { m_guide.libraryUnavailable(); socket->deleteLater(); });
-    QTimer::singleShot(2000, socket, [this, socket] { socket->abort(); m_guide.libraryUnavailable(); socket->deleteLater(); });
-    socket->connectToServer(SingleInstance::defaultServerName());
-  };
-  connect(&m_guide, &InGameGuide::parkRequested, this, [libraryCommand] { libraryCommand("game-mode desktop"); });
-  connect(&m_guide, &InGameGuide::restoreRequested, this, [libraryCommand] { libraryCommand("game-mode enter"); });
   m_refresh.setInterval(5000);
   connect(&m_refresh, &QTimer::timeout, this, &ResidentGuide::refresh);
   m_debounce.setSingleShot(true); m_debounce.setInterval(40);
@@ -272,13 +260,13 @@ void ResidentGuide::connectEvents() {
   watcher->setFuture(QtConcurrent::run([environment = m_environment] { return GuideEnvironment::resolve(environment); }));
 }
 
-void ResidentGuide::launchLibrary(bool fallback) {
+void ResidentGuide::fallback() {
   const auto adjacent = QCoreApplication::applicationDirPath() + "/omakade";
   const auto executable = QFileInfo(adjacent).isExecutable() ? adjacent : QString("omakade");
   // Hyprland owns the launched library and its descendants, outside sessiond's
   // service cgroup. A recorder restart must never kill the user's game.
   auto quotedExecutable = executable; quotedExecutable.replace('\'', QString("'\\''"));
-  const auto command = "'" + quotedExecutable + "'" + (fallback ? " --game-mode-fallback" : " --guide-library");
+  const auto command = "'" + quotedExecutable + "' --game-mode-fallback";
   auto* process = new QProcess(this); process->setProcessEnvironment(m_environment);
   connect(process, &QProcess::finished, process, [process](int code, QProcess::ExitStatus status) {
     if (status != QProcess::NormalExit || code != 0 || process->readAllStandardOutput().trimmed() != "ok")
@@ -289,7 +277,6 @@ void ResidentGuide::launchLibrary(bool fallback) {
   QTimer::singleShot(2000, process, [process] { process->kill(); });
   process->start("hyprctl", {"eval", "hl.exec_cmd(" + HyprlandGameModeCompositor::luaString(command) + ")"});
 }
-void ResidentGuide::fallback() { launchLibrary(true); }
 QJsonObject ResidentGuide::command(const QJsonObject& data) {
   const auto action = data.value("action").toString();
   QJsonObject reply{{"result", "handled"}};
@@ -303,8 +290,6 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     m_published = published; m_guide.setContext(data.value("context").toObject());
     if (changed || !m_ready) refresh();
   }
-  else if (action == "parked") m_guide.parkComplete(data.value("ok").toBool());
-  else if (action == "restored") m_guide.restoreComplete(data.value("ok").toBool());
   else if (action == "close") m_guide.close();
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
@@ -313,12 +298,9 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
-    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable())) {
-      // A disabled plugin returns ownership to 1.15 Game Mode, including a
-      // guide-owned parked pause. Let its toggle restore the window exactly once.
-      if (m_guide.parked()) m_guide.close();
+    // No game, a disabled plugin or a parked Game Mode session: Home does what it did in 1.15.
+    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable() || m_guide.gameModeParked()))
       return {{"result", "fallback"}};
-    }
     if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");
   } else reply.insert("result", "unavailable");

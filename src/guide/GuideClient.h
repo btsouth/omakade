@@ -29,7 +29,6 @@ public:
 signals:
   void changed();
   void summonFailed();
-  void libraryRequested();
 private:
   bool m_enabled, m_opened = false, m_usable = false, m_hasGame = false;
 };

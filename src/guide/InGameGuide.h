@@ -33,8 +33,8 @@ public:
               HyprlandGameModeCompositor* compositor, GameLauncher* launcher, bool enabled, QObject* parent = nullptr);
   ~InGameGuide() override;
   bool opened() const { return m_opened; }
-  bool parked() const { return m_parked; }
   bool showing() const { return m_opened || m_opening; }
+  bool gameModeParked() const { return m_context.value("gameModeParked").toBool(); }
   bool available() const { return m_enabled; }
   bool hasGame();
   void prepare() { refreshGame(); }
@@ -52,15 +52,9 @@ public:
   void setInjectedInputEnabled(bool enabled);
   void setDesktopEnvironment(const QProcessEnvironment& environment) { m_environment = environment; }
   void setContext(const QJsonObject& context);
-  void restoreComplete(bool ok);
-  void libraryUnavailable();
-  void parkComplete(bool ok);
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
   void changed();
-  void libraryRequested();
-  void parkRequested();
-  void restoreRequested();
   // The shell could not show the guide. The game is already resumed and the pads released.
   void summonFailed();
 private:
@@ -75,18 +69,10 @@ private:
   void message(const QJsonObject& message);
   void send(const QJsonObject& message);
   void toast(const QString& title, const QString& detail = {});
-  void finishClose(bool hide, bool retainPause = false);
-  void parkNow();
-  void finishPark();
+  void finishClose(bool hide);
   void restoreWindow(std::function<void(bool)> done);
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   QJsonObject m_context, m_lastPayload;
-  bool m_parked = false, m_parking = false, m_restoring = false, m_managedRetained = false;
-  bool m_waitingManagedPark = false;
-  bool m_libraryAfterPark = false;
-  quint64 m_parkGeneration = 0, m_restoreGeneration = 0;
-  QString m_restoreNode;
-  bool m_restoreFallback = false;
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
   GameModeSession* m_gameMode;
@@ -105,7 +91,6 @@ private:
   int m_testPadWriter = -1;
   QPointer<QProcess> m_guard;
   QString m_anrToken;
-  bool m_restoreTookPause = false;
   QJsonArray m_guardPins;
   QElapsedTimer m_summonClock;
   bool m_refreshing = false;

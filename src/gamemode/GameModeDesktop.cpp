@@ -133,7 +133,6 @@ GameModeWindow HyprlandGameModeCompositor::parseWindow(const QByteArray& clients
     window.floating = client.value(QLatin1String("floating")).toBool();
     window.fullscreenMode = client.value(QLatin1String("fullscreen")).toInt();
     window.fullscreenClient = client.value(QLatin1String("fullscreenClient")).toInt();
-    window.xwayland = client.value(QLatin1String("xwayland")).toBool();
     window.fullscreen = window.fullscreenMode != 0;
     window.workspace = workspaceSelector(client.value(QLatin1String("workspace")).toObject());
     const int monitor = client.value(QLatin1String("monitor")).toInt(-1);
@@ -186,18 +185,6 @@ QString HyprlandGameModeCompositor::holdScript() {
   return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-placeholder\", "
                         "match = { title = %1 }, workspace = \"special:omakade silent\" })")
       .arg(luaString(QLatin1Char('^') + placeholderTitle() + QStringLiteral(".*")));
-}
-
-QString HyprlandGameModeCompositor::coldWindowScript() {
-  // Only a temporary Game Mode root carries this initial title. Warm library
-  // windows keep their ordinary desktop animation and placement rules.
-  return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-startup\", "
-                        "match = { initial_title = \"^Omakade Game Mode Startup.*\", "
-                        "class = \"^io.github.tsouth89.Omakade$\" }, no_anim = true })");
-}
-
-bool HyprlandGameModeCompositor::prepareColdWindow(QString* error) {
-  return eval(coldWindowScript(), error);
 }
 
 QString HyprlandGameModeCompositor::placeScript(const QString& address, const QString& workspace,
@@ -271,25 +258,6 @@ GameModeWindow HyprlandGameModeCompositor::windowForPid(qint64 pid) {
     return {};
   }
   return parseWindow(clients, outputs(), pid);
-}
-
-GameModeWindow HyprlandGameModeCompositor::windowForClass(const QString& windowClass) {
-  QByteArray clients;
-  if (windowClass.isEmpty() ||
-      !run(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")}, &clients)) {
-    return {};
-  }
-  for (const QJsonValue& value : QJsonDocument::fromJson(clients).array()) {
-    const QJsonObject client = value.toObject();
-    if (client.value(QLatin1String("class")).toString() != windowClass ||
-        !client.value(QLatin1String("mapped")).toBool()) {
-      continue;
-    }
-    const qint64 pid = client.value(QLatin1String("pid")).toVariant().toLongLong();
-    const GameModeWindow window = parseWindow(clients, outputs(), pid);
-    if (window.valid()) return window;
-  }
-  return {};
 }
 
 int HyprlandGameModeCompositor::otherWindowsOn(const QString& workspace, qint64 pid) {
@@ -732,13 +700,4 @@ bool PactlGameModeAudio::setStreamMuted(const GameModeStream& stream, bool muted
   }
   setError(error, QStringLiteral("The game audio stream changed before muting."));
   return false;
-}
-
-bool GameModeCompositor::moveLibraryToDesktop(qint64 pid, const GameModeDesktopFocus& desktop,
-                                              QString* error) {
-  const auto window = windowForPid(pid);
-  if (!window.valid() || desktop.workspace.isEmpty() || desktop.output.isEmpty()) return false;
-  if (window.workspace != desktop.workspace &&
-      !returnWindow(window.address, desktop.workspace, {}, error)) return false;
-  return focusWindow(window.address, error);
 }

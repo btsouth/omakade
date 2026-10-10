@@ -55,10 +55,6 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
                           GameLauncher* launcher, bool enabled, QObject* parent)
     : QObject(parent), m_sessions(sessions), m_library(library), m_gameMode(gameMode),
       m_launcher(launcher), m_compositor(compositor), m_enabled(enabled) {
-  if (m_gameMode) {
-    connect(m_gameMode, &GameModeSession::parkedOnDesktop, this, [this] { parkComplete(true); });
-    connect(m_gameMode, &GameModeSession::failed, this, [this] { parkComplete(false); });
-  }
   m_socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) +
                  QStringLiteral("/omakade-guide-%1").arg(::getuid());
   m_server.setSocketOptions(QLocalServer::UserAccessOption);
@@ -203,8 +199,6 @@ void InGameGuide::refreshGame() {
 
 void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& metadata,
                               const QString& output, const GameModeWindow& window) {
-  if (m_parked && ProcFs::processAlive(m_session.value("pid").toLongLong(), m_session.value("procStart").toLongLong())) return;
-  if (m_parked) { m_parked = false; m_managedRetained = false; stopGuard(); }
   if (m_opened || m_opening) return; // Pin the current guide to its original game.
   const bool changedGame = session.value("pid") != m_session.value("pid") || session.value("procStart") != m_session.value("procStart");
   auto nextMetadata = metadata;
@@ -335,7 +329,7 @@ bool InGameGuide::setPaused(bool paused) {
   auto pending = std::make_shared<QByteArray>();
   const auto failed = [this, guard] {
     if (m_guard != guard) return;
-    stopGuard(); m_pauseWhileOpen = false; m_parking = false;
+    stopGuard(); m_pauseWhileOpen = false;
     qWarning("Guide: pause unavailable; the game remains running.");
     if (m_opened) send({{"type", "update"}, {"payload", payload()}});
   };
@@ -356,7 +350,6 @@ bool InGameGuide::setPaused(bool paused) {
       } else if (reply.contains("ok")) {
         if (!reply.value("ok").toBool()) { failed(); return; }
         m_paused = true;
-        if (m_parking) parkNow();
         qInfo("Guide timing: paused elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0);
         if (m_opened) send({{"type", "update"}, {"payload", payload()}});
       }
@@ -397,17 +390,6 @@ void InGameGuide::stopGuard() {
 bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
-  if (m_restoring || m_waitingManagedPark) return true;
-  if (m_parked) {
-    m_restoreTookPause = !m_guard && !m_paused;
-    if (m_pauseWhileOpen) setPaused(true);
-    m_restoreNode = node; m_restoreFallback = fallback; m_restoring = true;
-    if (m_managedRetained) emit restoreRequested();
-    else restoreWindow([this](bool ok) { restoreComplete(ok); });
-    const auto generation = ++m_restoreGeneration;
-    QTimer::singleShot(8000, this, [this, generation] { if (m_restoring && generation == m_restoreGeneration) restoreComplete(false); });
-    return true;
-  }
   m_summonClock.start();
   qInfo("Guide timing: request mono_ns=%lld", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
   m_restoreFocus = true;
@@ -441,67 +423,6 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
 
 void InGameGuide::setContext(const QJsonObject& context) {
   m_context = context;
-  if (!showing() && !m_session.isEmpty() && context.value("gameModeParked").toBool()) {
-    m_parked = true; m_managedRetained = true;
-    // A library park never owns a pause guard. Only guide actions pause games.
-  } else if (m_parked && m_managedRetained && !m_restoring && !m_waitingManagedPark &&
-             !context.value("gameModeParked").toBool()) {
-    m_parked = false; m_managedRetained = false; stopGuard();
-  }
-}
-
-void InGameGuide::parkNow() {
-  m_parking = false; m_restoreFocus = false;
-  m_managedRetained = (m_gameMode && m_gameMode->active()) || m_context.value("gameModeActive").toBool();
-  // Retain the crash-safe pause guard and the exact game snapshot while out on the desktop.
-  m_parked = true;
-  finishClose(true, true);
-  if (m_gameMode && m_gameMode->active()) {
-    m_waitingManagedPark = true;
-    m_gameMode->park();
-  }
-  else if (m_managedRetained) {
-    m_waitingManagedPark = true;
-    const auto generation = ++m_parkGeneration;
-    emit parkRequested();
-    QTimer::singleShot(8000, this, [this, generation] { if (m_waitingManagedPark && generation == m_parkGeneration) parkComplete(false); });
-  }
-  else {
-    auto* process = new QProcess(this);
-    connect(process, &QProcess::finished, this, [this, process](int code, QProcess::ExitStatus status) {
-      process->deleteLater();
-      if (code != 0 || status != QProcess::NormalExit) {
-        m_libraryAfterPark = false;
-        restoreWindow([this](bool) { m_parked = false; stopGuard(); });
-      } else finishPark();
-    });
-    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
-      if (error == QProcess::FailedToStart) { m_libraryAfterPark = false; m_parked = false; stopGuard(); process->deleteLater(); }
-    });
-    QTimer::singleShot(2500, process, [process] { process->kill(); });
-    process->setProcessEnvironment(m_environment);
-    process->start("hyprctl", {"dispatch", "hl.dsp.focus({workspace=\"empty\"})"});
-  }
-}
-
-void InGameGuide::finishPark() {
-  if (!m_libraryAfterPark) return;
-  m_libraryAfterPark = false;
-  emit libraryRequested();
-}
-
-void InGameGuide::parkComplete(bool ok) {
-  if (!m_waitingManagedPark) return;
-  m_waitingManagedPark = false;
-  if (ok) { finishPark(); return; }
-  m_libraryAfterPark = false;
-  // Game Mode can refuse a park (for example, when audio cannot be silenced).
-  // Roll back our extra pause too, rather than leaving a paused, closed guide.
-  m_managedRetained = false;
-  restoreWindow([this](bool) {
-    m_parked = false; stopGuard();
-    toast("Return to desktop failed", "The game is running again");
-  });
 }
 
 void InGameGuide::restoreWindow(std::function<void(bool)> done) {
@@ -526,31 +447,9 @@ void InGameGuide::restoreWindow(std::function<void(bool)> done) {
   }));
 }
 
-void InGameGuide::restoreComplete(bool ok) {
-  if (!m_restoring) return;
-  m_restoring = false;
-  if (!ok) {
-    if (m_restoreTookPause) stopGuard();
-    m_restoreTookPause = false;
-    qWarning("Guide: the parked game could not be restored; Home can retry."); return;
-  }
-  m_restoreTookPause = false;
-  m_parked = false; m_managedRetained = false;
-  // Leave the existing guard attached: only B/Resume resumes the game.
-  toggle(m_restoreNode, m_restoreFallback);
-}
-
-void InGameGuide::libraryUnavailable() {
-  m_managedRetained = false;
-  m_context.insert("gameModeParked", false);
-  m_context.insert("gameModeActive", false);
-  parkComplete(false);
-  if (m_restoring) restoreWindow([this](bool ok) { restoreComplete(ok); });
-}
-
 void InGameGuide::close() { finishClose(true); }
 
-void InGameGuide::finishClose(bool hide, bool retainPause) {
+void InGameGuide::finishClose(bool hide) {
   const bool hadGuide = m_opened || m_opening;
   QElapsedTimer closeClock; closeClock.start();
   m_opened = m_opening = false;
@@ -559,7 +458,7 @@ void InGameGuide::finishClose(bool hide, bool retainPause) {
   m_polling = false;
   m_commands.clear();
   m_input.release();
-  if (!retainPause) { m_libraryAfterPark = false; m_parked = m_parking = m_restoring = m_managedRetained = m_waitingManagedPark = false; stopGuard(); }
+  stopGuard();
   m_lastPayload = {};
   emit changed();
   if (hadGuide) qInfo("Guide timing: closed elapsed_ms=%lld", closeClock.elapsed());
@@ -599,14 +498,6 @@ void InGameGuide::message(const QJsonObject& data) {
       m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
       if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
     }
-  } else if ((action == "desktop" || action == "library") && m_opened && !m_session.isEmpty()) {
-    m_libraryAfterPark = action == "library";
-    m_parking = true;
-    if (!m_pauseWhileOpen) { stopGuard(); parkNow(); }
-    else if (!setPaused(true)) { m_libraryAfterPark = false; m_parking = false; toast("Return to desktop unavailable", "The game could not be paused"); }
-    else if (m_paused) parkNow();
-  } else if (action == "library" && m_opened) {
-    m_restoreFocus = false; close(); emit libraryRequested();
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();
     if (action == "force-quit") {

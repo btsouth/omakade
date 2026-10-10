@@ -18,8 +18,6 @@ public:
   [[nodiscard]] QVector<GameModeOutput> outputs(QString* error = nullptr) override;
   bool setOutputEnabled(const QString& name, bool enabled, QString* error = nullptr) override;
   [[nodiscard]] GameModeWindow windowForPid(qint64 pid) override;
-  // Proton games: the tracked process is not always the window owner, the class is.
-  [[nodiscard]] GameModeWindow windowForClass(const QString& windowClass);
   [[nodiscard]] int otherWindowsOn(const QString& workspace, qint64 pid) override;
   [[nodiscard]] QStringList otherWindowAddressesOn(const QString& workspace, qint64 pid) override;
   bool gameWindows(const QString& workspace, qint64 owner, QVector<GameModeGameWindow>* windows,
@@ -30,8 +28,6 @@ public:
   [[nodiscard]] static QString moveWorkspaceScript(const QString& workspace, const QString& output);
   [[nodiscard]] GameModeWindow placeholderForPid(qint64 pid) override;
   bool holdPlaceholder(QString* error = nullptr) override;
-  bool prepareColdWindow(QString* error = nullptr);
-  [[nodiscard]] static QString coldWindowScript();
   bool placeWindow(const QString& address, const QString& workspace, const QString& output,
                    const QString& placeholder, QString* error = nullptr) override;
   bool returnWindow(const QString& address, const QString& workspace, const QString& placeholder,

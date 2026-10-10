@@ -33,13 +33,6 @@ private slots:
   void payloadRoundTrip();
   void changedPayloadKeepsStaticData();
   void telemetryRequiresRealFreshReadings();
-  void desktopRetainsPauseAndIdentity();
-  void libraryParksBeforeActivation_data();
-  void libraryParksBeforeActivation();
-  void outsideParkAndResume_data();
-  void outsideParkAndResume();
-  void restoreFailureReleasesNewPause();
-  void desktopUsesPausePreference();
   void surfaceFailureResumes();
   void openingDeadlineResumes();
   void pluginParser();
@@ -127,68 +120,6 @@ qint64 processStart(qint64 pid) {
 }
 }
 
-void InGameGuideTests::outsideParkAndResume_data() {
-  QTest::addColumn<bool>("pause");
-  QTest::newRow("single-player") << true;
-  QTest::newRow("online") << false;
-}
-void InGameGuideTests::outsideParkAndResume() {
-  QFETCH(bool, pause);
-  const auto oldPath = qgetenv("PATH");
-  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
-  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
-  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
-  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
-  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
-  guide.m_pauseWhileOpen = pause;
-  guide.setContext({{"gameModeParked", true}});
-  QVERIFY(guide.m_parked); QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
-  guide.setContext({{"gameModeParked", false}});
-  QVERIFY(!guide.m_parked); QVERIFY(processState(game.processId()) != 'T');
-  // A guide-owned pause also releases when the user resumes through the library,
-  // including while the plugin is unavailable.
-  guide.m_enabled = false;
-  guide.m_parked = true; guide.m_managedRetained = true;
-  QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
-  guide.setContext({{"gameModeParked", false}});
-  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_parked); QVERIFY(!guide.m_guard);
-}
-void InGameGuideTests::desktopUsesPausePreference() {
-  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
-  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
-  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
-  guide.m_pauseWhileOpen = false; guide.m_opened = true;
-  guide.setContext({{"gameModeActive", true}});
-  guide.message({{"action", "desktop"}});
-  QVERIFY(guide.m_parked); QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
-  guide.parkComplete(true); guide.m_enabled = true;
-  QSignalSpy restore(&guide, &InGameGuide::restoreRequested);
-  guide.toggle(); QCOMPARE(restore.count(), 1);
-  QVERIFY(!guide.m_guard); QVERIFY(processState(game.processId()) != 'T');
-  guide.restoreComplete(false); guide.close(); QVERIFY(processState(game.processId()) != 'T');
-}
-
-void InGameGuideTests::restoreFailureReleasesNewPause() {
-  const auto oldPath = qgetenv("PATH");
-  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
-  const auto restorePath = qScopeGuard([&] { qputenv("PATH", oldPath); });
-  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
-  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
-  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
-  guide.setContext({{"gameModeParked", true}}); guide.m_enabled = true;
-  QVERIFY(guide.toggle()); QTRY_COMPARE(processState(game.processId()), 'T');
-  guide.restoreComplete(false);
-  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_guard);
-  QVERIFY(guide.toggle()); QTRY_COMPARE(processState(game.processId()), 'T');
-  // No surviving library: fall back to the cached window. With no valid window
-  // this fails safely and the next Home uses the direct path rather than IPC.
-  guide.libraryUnavailable();
-  QTRY_VERIFY(!guide.m_restoring); QTRY_VERIFY(processState(game.processId()) != 'T');
-  QVERIFY(!guide.m_managedRetained); QVERIFY(!guide.m_guard);
-}
 void InGameGuideTests::surfaceFailureResumes() {
   const auto oldPath = qgetenv("PATH");
   qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
@@ -220,77 +151,6 @@ void InGameGuideTests::openingDeadlineResumes() {
   QTRY_COMPARE(processState(game.processId()), 'T'); QVERIFY(guide.showing());
   QTRY_VERIFY_WITH_TIMEOUT(!guide.showing(), 4000);
   QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_guard);
-}
-
-void InGameGuideTests::desktopRetainsPauseAndIdentity() {
-  const auto oldPath = qgetenv("PATH");
-  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
-  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
-  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
-  const auto pid = game.processId();
-  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid)); QVERIFY(stat.open(QIODevice::ReadOnly));
-  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong(); QVERIFY(start > 0);
-  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  guide.m_session = {{"pid", pid}, {"procStart", start}, {"source", "Manual"}};
-  guide.setContext({{"gameModeActive", true}, {"scale", 1.7}});
-  guide.m_opened = true; guide.m_token = "test";
-  QSignalSpy park(&guide, &InGameGuide::parkRequested), restore(&guide, &InGameGuide::restoreRequested);
-  guide.message({{"action", "desktop"}});
-  QTRY_VERIFY(guide.m_parked); QCOMPARE(park.count(), 1); QVERIFY(!guide.opened()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
-  QTRY_COMPARE(processState(pid), 'T');
-  guide.setSnapshot({{"pid", 123}, {"procStart", 456}}, {}, "OTHER"); QCOMPARE(guide.m_session.value("pid").toLongLong(), pid);
-  guide.parkComplete(true);
-  guide.m_enabled = true; QVERIFY(guide.toggle()); QCOMPARE(restore.count(), 1); QVERIFY(guide.m_paused);
-  guide.restoreComplete(false); QVERIFY(guide.m_parked); QVERIFY(guide.m_paused);
-  // A managed park refusal rolls back the retained guard as well.
-  guide.m_waitingManagedPark = true; guide.parkComplete(false);
-  QTRY_VERIFY(!guide.m_parked); QTRY_VERIFY(!guide.m_paused); QTRY_VERIFY(processState(pid) != 'T');
-  guide.close(); QTRY_VERIFY(!guide.m_paused); QVERIFY(!guide.m_guard); QVERIFY(!guide.m_parked); QTRY_VERIFY(processState(pid) != 'T');
-  game.terminate(); QVERIFY(game.waitForFinished());
-}
-
-void InGameGuideTests::libraryParksBeforeActivation_data() {
-  QTest::addColumn<bool>("managed");
-  QTest::addColumn<bool>("accepted");
-  QTest::newRow("game-mode-library") << true << true;
-  QTest::newRow("cold-gui-library") << false << true;
-  QTest::newRow("refused-game-mode-park") << true << false;
-}
-
-void InGameGuideTests::libraryParksBeforeActivation() {
-  QFETCH(bool, managed); QFETCH(bool, accepted);
-  QTemporaryDir root; QVERIFY(root.isValid());
-  QFile hyprctl(root.filePath("hyprctl")); QVERIFY(hyprctl.open(QIODevice::WriteOnly));
-  hyprctl.write("#!/bin/sh\nexit 0\n"); hyprctl.close();
-  QVERIFY(hyprctl.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
-  const auto oldPath = qgetenv("PATH");
-  qputenv("PATH", root.path().toUtf8() + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
-  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
-  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
-  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
-  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
-  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}, {"source", "Manual"}};
-  guide.setContext({{"gameModeActive", managed}});
-  guide.m_opened = true;
-  QSignalSpy libraries(&guide, &InGameGuide::libraryRequested), parks(&guide, &InGameGuide::parkRequested);
-  guide.message({{"action", "library"}});
-  QTRY_VERIFY(guide.parked()); QTRY_COMPARE(processState(game.processId()), 'T');
-  QVERIFY(!guide.opened()); QVERIFY(guide.m_guard);
-  if (managed) {
-    QCOMPARE(parks.count(), 1); QCOMPARE(libraries.count(), 0);
-    guide.parkComplete(accepted);
-  }
-  if (accepted) {
-    QTRY_COMPARE(libraries.count(), 1);
-    QVERIFY(guide.parked()); QVERIFY(guide.m_paused); QVERIFY(guide.m_guard);
-    guide.m_enabled = true;
-    QSignalSpy restores(&guide, &InGameGuide::restoreRequested);
-    if (managed) { QVERIFY(guide.toggle()); QCOMPARE(restores.count(), 1); }
-    guide.close(); QTRY_VERIFY(processState(game.processId()) != 'T');
-  } else {
-    QTRY_VERIFY(!guide.parked()); QTRY_VERIFY(processState(game.processId()) != 'T');
-    QCOMPARE(libraries.count(), 0);
-  }
 }
 
 void InGameGuideTests::steamArtSelection() {
@@ -408,11 +268,11 @@ void InGameGuideTests::pluginFocus() {
   };
   const QVariantMap full{{"game", true}, {"achievements", true}, {"volume", true}, {"outputs", 1}};
   const auto rows = grid(full);
-  QCOMPARE(keys(rows), (QStringList{"screenshot,record,desktop,library", "achievements", "volume", "resume,quit"}));
+  QCOMPARE(keys(rows), (QStringList{"screenshot,record", "achievements", "volume", "resume,quit"}));
   QCOMPARE(global.property("home").call({rows}).toString(), QStringLiteral("resume"));
   auto replay = full; replay.insert("replay", true); replay.insert("outputs", 3);
-  QCOMPARE(keys(grid(replay)), (QStringList{"screenshot,record,replay,desktop,library", "achievements", "volume", "output", "resume,quit"}));
-  QCOMPARE(keys(grid({{"game", true}})), (QStringList{"screenshot,record,desktop,library", "resume,quit"}));
+  QCOMPARE(keys(grid(replay)), (QStringList{"screenshot,record,replay", "achievements", "volume", "output", "resume,quit"}));
+  QCOMPARE(keys(grid({{"game", true}})), (QStringList{"screenshot,record", "resume,quit"}));
   QCOMPARE(keys(grid({})), (QStringList{"screenshot,record"}));
   QCOMPARE(global.property("home").call({grid({})}).toString(), QStringLiteral("screenshot"));
 
@@ -434,18 +294,19 @@ void InGameGuideTests::pluginFocus() {
   // Left and right on a one-item row belong to the control there.
   QCOMPARE(walk(rows, {"up", "left", "right"}), (QStringList{"volume", "-", "-"}));
   // The position across the card holds through one-item rows.
-  QCOMPARE(walk(rows, {"down", "right", "right", "right", "right", "down", "down", "down", "up", "up", "up"}),
-           (QStringList{"screenshot", "record", "desktop", "library", "library", "achievements", "volume", "quit",
-                        "volume", "achievements", "library"}));
-  QCOMPARE(walk(rows, {"down", "right", "down", "down", "down"}), (QStringList{"screenshot", "record", "achievements", "volume", "resume"}));
-  // With five tiles the middle one leads to Resume, the two on the right to Quit.
-  const auto five = grid(replay);
-  QCOMPARE(walk(five, {"down", "right", "right", "up"}), (QStringList{"screenshot", "record", "replay", "resume"}));
-  QCOMPARE(walk(five, {"down", "right", "right", "right", "up"}), (QStringList{"screenshot", "record", "replay", "desktop", "quit"}));
+  QCOMPARE(walk(rows, {"down", "right", "right", "down", "down", "down", "up", "up", "up"}),
+           (QStringList{"screenshot", "record", "record", "achievements", "volume", "quit",
+                        "volume", "achievements", "record"}));
+  QCOMPARE(walk(rows, {"down", "down", "down", "down"}), (QStringList{"screenshot", "achievements", "volume", "resume"}));
+  // With three tiles the middle one leads to Resume, the right one to Quit.
+  const auto three = grid(replay);
+  QCOMPARE(walk(three, {"down", "right", "down", "down", "down", "down"}),
+           (QStringList{"screenshot", "record", "achievements", "volume", "output", "resume"}));
+  QCOMPARE(walk(three, {"down", "right", "right", "up"}), (QStringList{"screenshot", "record", "replay", "quit"}));
   // One sweep of the D-pad reaches every control.
   QSet<QString> seen;
-  for (const auto& key : walk(five, {"down", "right", "right", "right", "right", "down", "down", "down", "down", "left", "down"})) seen << key;
-  QCOMPARE(seen.size(), 10);
+  for (const auto& key : walk(three, {"down", "right", "right", "down", "down", "down", "down", "left", "down"})) seen << key;
+  QCOMPARE(seen.size(), 8);
   // An unknown cursor (a control that went away) goes home.
   QCOMPARE(global.property("move").call({rows, QStringLiteral("replay"), QStringLiteral("down")}).property("key").toString(), QStringLiteral("resume"));
 }
