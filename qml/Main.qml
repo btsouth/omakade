@@ -251,10 +251,14 @@ ApplicationWindow {
         if (action === "accept") {
             const combo = !overlay ? root.openControllerCombo() : null
             if (combo) { combo.controllerAccept(); return }
-            if (focused && focused.visible && focused.enabled) {
-                if (typeof focused.controllerAccept === "function") focused.controllerAccept()
-                else if (typeof focused.toggle === "function") { focused.toggle(); focused.clicked() }
-                else if (typeof focused.clicked === "function") focused.clicked()
+            for (let control = focused; control; control = control.parent) {
+                if (!control.visible || !control.enabled) return
+                if (typeof control.controllerAccept === "function") { control.controllerAccept(); return }
+                if (typeof control.clicked === "function") {
+                    if (control.checkable) control.toggle()
+                    control.clicked()
+                    return
+                }
             }
             return
         }
@@ -316,27 +320,31 @@ ApplicationWindow {
         // Dropdown delegates take focus away from the ComboBox while its popup is open.
         const combo = root.openControllerCombo()
         if (combo) { combo.controllerNavigate(key); return }
-        if (focused) {
-            const method = key === Qt.Key_Up ? "controllerUp" : key === Qt.Key_Down ? "controllerDown"
-                         : key === Qt.Key_Left ? "controllerLeft" : "controllerRight"
-            if (typeof focused[method] === "function" && focused[method]()) return
-            if (typeof focused.controllerNavigate === "function" && focused.controllerNavigate(key)) return
+        const method = key === Qt.Key_Up ? "controllerUp" : key === Qt.Key_Down ? "controllerDown"
+                     : key === Qt.Key_Left ? "controllerLeft" : "controllerRight"
+        let view = null
+        for (let control = focused; control; control = control.parent) {
+            if (typeof control[method] === "function" && control[method]()) return
+            if (typeof control.controllerNavigate === "function" && control.controllerNavigate(key)) return
+            if (control.count !== undefined && control.currentIndex !== undefined) { view = control; break }
         }
         const container = root.navigationContainer()
         if (container) {
             root.focusSpatial(container, key)
         } else if (!root.couchMode && !libraryView.gridFocused) {
             if (!root.focusSpatial(librarySurface, key) && key === Qt.Key_Down) libraryView.focusGrid()
-        } else if (focused && focused.count !== undefined && focused.currentIndex !== undefined) {
+        } else if (view) {
             // GridView/ListView's built-in keyboard movement becomes an explicit pad command.
-            const columns = focused.columnCount !== undefined ? focused.columnCount
-                          : focused.columns !== undefined ? focused.columns : 1
+            const horizontalList = view.orientation !== undefined && view.orientation === ListView.Horizontal
+            if (horizontalList && (key === Qt.Key_Up || key === Qt.Key_Down)) return
+            const columns = view.columnCount !== undefined ? view.columnCount
+                          : view.columns !== undefined ? view.columns : 1
             const step = key === Qt.Key_Up ? -columns : key === Qt.Key_Down ? columns
                        : key === Qt.Key_Left ? -1 : 1
-            const next = focused.currentIndex + step
-            if (next >= 0 && next < focused.count) {
-                focused.currentIndex = next
-                if (typeof focused.positionViewAtIndex === "function") focused.positionViewAtIndex(next, GridView.Contain)
+            const next = view.currentIndex + step
+            if (next >= 0 && next < view.count) {
+                view.currentIndex = next
+                if (typeof view.positionViewAtIndex === "function") view.positionViewAtIndex(next, GridView.Contain)
             }
         } else if (root.couchMode && focused) {
             couchLibraryView.navigateControls(focused, { key: key, accepted: false })
