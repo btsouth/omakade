@@ -185,6 +185,7 @@ public:
   void setHomeButtonOpensGuide(bool value);
   // Read straight from a config file, for the session service, which has no AppSettings.
   [[nodiscard]] static bool homeButtonOpensGuideAt(const QString& path);
+  [[nodiscard]] static QString defaultPath();
   [[nodiscard]] bool battleNetEnabled() const;
   void setBattleNetEnabled(bool value);
   [[nodiscard]] bool rommEnabled() const { return m_rommEnabled; }
@@ -270,7 +271,6 @@ private:
   struct UnloadedSettings {};
   explicit AppSettings(UnloadedSettings) : QObject(nullptr) {}
   void assignBackupSettings(const QJsonObject& settings);
-  [[nodiscard]] static QString defaultPath();
   void load();
   bool save();
 

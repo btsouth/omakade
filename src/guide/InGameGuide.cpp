@@ -58,7 +58,7 @@ QString retroArchMenuKey(qint64 pid) {
   QString key = QStringLiteral("f1"); // RetroArch's default
   QFile file(config);
   if (file.open(QIODevice::ReadOnly)) {
-    static const QRegularExpression line(QStringLiteral(R"((?m)^\s*input_menu_toggle\s*=\s*"?([^"\n]*)"?\s*$)"));
+    static const QRegularExpression line(QStringLiteral(R"re((?m)^\s*input_menu_toggle\s*=\s*"?([^"\n]*)"?\s*$)re"));
     const auto match = line.match(QString::fromUtf8(file.readAll()));
     if (match.hasMatch()) key = match.captured(1).trimmed().toLower();
   }

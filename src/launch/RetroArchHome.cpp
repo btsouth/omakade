@@ -13,7 +13,7 @@ namespace {
 
 const QRegularExpression& bindLine() {
   static const QRegularExpression line(
-      QStringLiteral(R"(^\s*input_menu_toggle_btn\s*=\s*"?([^"]*)"?\s*$)"));
+      QStringLiteral(R"re(^\s*input_menu_toggle_btn\s*=\s*"?([^"]*)"?\s*$)re"));
   return line;
 }
 
