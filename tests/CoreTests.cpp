@@ -1196,6 +1196,7 @@ private slots:
   void downloadedCoversSurviveARescan();
   void libretroCoverFailuresRemainRetryable();
   void gridMatchPrefersTheClosestYearAndRefusesTies();
+  void retroArchLaunchLeavesHomeToTheGuide();
   void battleNetScannerImportsInstalledGamesAndArtwork();
   void battleNetScannerDiscoversKnownPrefixes();
   void battleNetScannerKeepsInstallsFromSeparatePrefixes();
@@ -4292,6 +4293,58 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
   QVERIFY(!launcher.launch(QStringLiteral("RetroArch"), QStringLiteral("id"), false, {},
                            archive + QStringLiteral("#Sonic.unknown"), {}));
   QVERIFY(!launcher.lastError().startsWith(QStringLiteral("The installed files are missing.")));
+}
+
+void CoreTests::retroArchLaunchLeavesHomeToTheGuide() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QByteArray previousConfig = qgetenv("XDG_CONFIG_HOME"), previousData = qgetenv("XDG_DATA_HOME");
+  const QByteArray previousPath = qgetenv("PATH");
+  const auto restore = qScopeGuard([&] {
+    qputenv("XDG_CONFIG_HOME", previousConfig); qputenv("XDG_DATA_HOME", previousData);
+    qputenv("PATH", previousPath);
+  });
+  qputenv("XDG_CONFIG_HOME", directory.filePath(QStringLiteral("config")).toUtf8());
+  qputenv("XDG_DATA_HOME", directory.filePath(QStringLiteral("data")).toUtf8());
+  const auto restoreCache = redirectCacheHome(directory.filePath(QStringLiteral("cache")));
+  Q_UNUSED(restoreCache);
+  // A stand-in RetroArch that records the arguments it was started with.
+  const QString bin = directory.filePath(QStringLiteral("bin"));
+  QVERIFY(QDir().mkpath(bin));
+  const QString recorded = directory.filePath(QStringLiteral("args"));
+  writeFile(bin + QStringLiteral("/retroarch"),
+            QStringLiteral("#!/bin/sh\nprintf '%s\\n' \"$@\" > '%1.tmp' && mv '%1.tmp' '%1'\n").arg(recorded).toUtf8());
+  QVERIFY(QFile::setPermissions(bin + QStringLiteral("/retroarch"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  qputenv("PATH", bin.toUtf8() + ':' + previousPath);
+  QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("config/retroarch"))));
+  writeFile(directory.filePath(QStringLiteral("config/retroarch/retroarch.cfg")), "input_menu_toggle_btn = \"nul\"\n");
+  const QString content = directory.filePath(QStringLiteral("GoldenEye 007 (USA).z64"));
+  const QString core = directory.filePath(QStringLiteral("mupen64plus_next_libretro.so"));
+  writeFile(content, "rom");
+  writeFile(core, "core");
+  const auto launched = [&] {
+    QFile file(recorded);
+    return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList{};
+  };
+
+  GameLauncher launcher;
+  bool owned = false;
+  launcher.setRetroArchHomeOwner([&owned] { return owned; });
+  QVERIFY2(launcher.launch(QStringLiteral("RetroArch"), QStringLiteral("id"), false, {}, content, core),
+           qPrintable(launcher.lastError()));
+  QTRY_VERIFY(!launched().isEmpty());
+  QVERIFY(!launched().contains(QStringLiteral("--appendconfig")));
+  QFile::remove(recorded);
+
+  owned = true;
+  QVERIFY2(launcher.launch(QStringLiteral("RetroArch"), QStringLiteral("id"), false, {}, content, core),
+           qPrintable(launcher.lastError()));
+  QTRY_VERIFY(!launched().isEmpty());
+  const QStringList arguments = launched();
+  const int at = arguments.indexOf(QStringLiteral("--appendconfig"));
+  QCOMPARE(at, 0);
+  QCOMPARE(arguments.value(1), directory.filePath(QStringLiteral("cache/omakade/retroarch-home.cfg")));
+  QCOMPARE(arguments.constLast(), content);
 }
 
 void CoreTests::battleNetScannerImportsInstalledGamesAndArtwork() {
