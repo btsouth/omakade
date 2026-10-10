@@ -6961,10 +6961,22 @@ int main(int argc, char* argv[]) {
                      *returnNode = node;
                      gameMode.enter();
                    });
-  QObject::connect(&gameMode, &GameModeSession::resumed, &gameMode, [&gameMode, returnNode] {
+  QObject::connect(&gameMode, &GameModeSession::resumed, &gameMode, [&gameMode, rootWindow, returnNode] {
     if (!returnNode->has_value()) return;
-    // Let the library finish restoring its own window before the game goes in front of it.
-    QTimer::singleShot(150, &gameMode, [&gameMode] { gameMode.focusGame(); });
+    // The library is mapped again and takes focus a moment after the resume. Put the game in
+    // front only once it has, or it lands back on top.
+    auto connection = std::make_shared<QMetaObject::Connection>();
+    auto done = std::make_shared<bool>(false);
+    const auto focus = [&gameMode, connection, done] {
+      if (*done) return;
+      *done = true; QObject::disconnect(*connection);
+      QTimer::singleShot(100, &gameMode, [&gameMode] { gameMode.focusGame(); });
+    };
+    if (rootWindow == nullptr || rootWindow->isActive()) { focus(); return; }
+    *connection = QObject::connect(rootWindow, &QWindow::activeChanged, &gameMode, [rootWindow, focus] {
+      if (rootWindow->isActive()) focus();
+    });
+    QTimer::singleShot(2000, &gameMode, focus);
   });
   QObject::connect(&gameMode, &GameModeSession::gameFocused, &inGameGuide, [&inGameGuide, returnNode] {
     if (!returnNode->has_value()) return;
