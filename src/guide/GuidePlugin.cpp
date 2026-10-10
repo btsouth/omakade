@@ -110,8 +110,7 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     QFile loaded(loadedPath);
     const QByteArray recorded = loaded.open(QIODevice::ReadOnly) ? loaded.readAll().trimmed() : QByteArray{};
     if (recorded == current) return;
-    // A first enable loads the plugin for the first time: nothing old is in memory.
-    if (state->rescanned) { recordLoaded(); return; }
+    // Even a fresh enable can follow an earlier copy this shell still holds.
     if (shellReply(paths, {"shell", "ping"}, environment) == "ok" && (!calm || calm()) &&
         restartShell(paths, environment))
       recordLoaded();

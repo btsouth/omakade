@@ -924,27 +924,30 @@ void InGameGuideTests::pluginLinksAndEnablesOnce() {
   QCOMPARE(QFileInfo(link).symLinkTarget(), fixture.paths.bundledDir);
   QVERIFY(GuidePlugin::usable(fixture.paths));
   QVERIFY(QFileInfo::exists(fixture.paths.markerPath));
-  QCOMPARE(fixture.calls(), (QStringList{"shell ping", "shell rescanPlugins", "shell enablePlugin omakade.guide {}"}));
+  QCOMPARE(fixture.calls().mid(0, 3), (QStringList{"shell ping", "shell rescanPlugins", "shell enablePlugin omakade.guide {}"}));
   // A later launch asks the shell nothing, and a plugin the user disabled stays disabled.
+  const auto before = fixture.calls().size();
   QVERIFY(QFile::remove(fixture.paths.shellConfig));
   QVERIFY(!GuidePlugin::ensure(fixture.paths));
   QVERIFY(!GuidePlugin::usable(fixture.paths));
-  QCOMPARE(fixture.calls().size(), 3);
+  QCOMPARE(fixture.calls().size(), before);
 }
 
 void InGameGuideTests::pluginReloadsWhenItsFilesChange() {
   PluginFixture fixture; fixture.fakeShell("ok", true);
   QVERIFY(GuidePlugin::ensure(fixture.paths));
-  QCOMPARE(fixture.calls().size(), 3); // ping, rescan, enable: that rescan loaded these files
+  // Enabling cannot tell whether the shell still holds an older copy: it restarts once.
+  QCOMPARE(fixture.calls(), (QStringList{"shell ping", "shell rescanPlugins", "shell enablePlugin omakade.guide {}",
+                                         "shell ping", "restart"}));
   QVERIFY(GuidePlugin::ensure(fixture.paths));
-  QCOMPARE(fixture.calls().size(), 3);
+  QCOMPARE(fixture.calls().size(), 5);
   // An upgrade changes the files: the shell restarts once, since a reload keeps old QML.
   QFile qml(fixture.paths.bundledDir + "/Guide.qml");
   QVERIFY(qml.open(QIODevice::WriteOnly)); qml.write("// new card\n"); qml.close();
   QVERIFY(GuidePlugin::ensure(fixture.paths));
-  QCOMPARE(fixture.calls().mid(3), (QStringList{"shell ping", "restart"}));
+  QCOMPARE(fixture.calls().mid(5), (QStringList{"shell ping", "restart"}));
   QVERIFY(GuidePlugin::ensure(fixture.paths));
-  QCOMPARE(fixture.calls().size(), 5);
+  QCOMPARE(fixture.calls().size(), 7);
   // Already enabled in the shell but never recorded, as after a reinstall: reload too.
   PluginFixture enabled; enabled.fakeShell("ok", true);
   QFile config(enabled.paths.shellConfig);

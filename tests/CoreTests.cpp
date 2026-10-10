@@ -5657,6 +5657,20 @@ void CoreTests::homeButtonSettingAndRetroArchMenuOverride() {
   RetroArchHome::repair(paths);
   QCOMPARE(read(paths.config), "video_driver = \"vulkan\"\n" + chosen + "\n");
   QVERIFY(!QFileInfo::exists(paths.marker));
+  // It saves a path in the home folder as ~/...; that is still the copy.
+  {
+    const QByteArray previousHome = qgetenv("HOME");
+    const auto restoreHome = qScopeGuard([&] { qputenv("HOME", previousHome); });
+    qputenv("HOME", directory.path().toUtf8());
+    QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+    QVERIFY(write(paths.config, "joypad_autoconfig_dir = \"~/cache/autoconfig\"\n"));
+    QCOMPARE(RetroArchHome::prepare(paths), paths.override); // its source is still the original
+    QCOMPARE(read(paths.profiles + QStringLiteral("/udev/Xbox 360 pad.cfg")),
+             QByteArray("input_device = \"Microsoft X-Box 360 pad\"\ninput_a_btn = \"0\"\n"));
+    RetroArchHome::repair(paths);
+    QCOMPARE(read(paths.config), chosen + "\n");
+    QVERIFY(!QFileInfo::exists(paths.marker));
+  }
   // Without the setting, the copy is of the profiles RetroArch uses by default.
   RetroArchHome::Paths unset = paths;
   unset.fallbackProfiles = source;

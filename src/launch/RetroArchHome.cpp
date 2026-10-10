@@ -45,6 +45,15 @@ int find(const QStringList& lines, QString* value) {
   return -1;
 }
 
+// RetroArch saves paths under the home folder as "~/...".
+QString expanded(const QString& path) {
+  return QDir::cleanPath(path.startsWith(QStringLiteral("~/")) ? QDir::homePath() + path.mid(1) : path);
+}
+
+bool samePath(const QString& left, const QString& right) {
+  return !left.isEmpty() && expanded(left) == expanded(right);
+}
+
 QString quoted(const QString& path) {
   return kKey + QStringLiteral(" = \"") + path + QLatin1Char('"');
 }
@@ -115,14 +124,14 @@ QString prepare(const Paths& paths) {
   QString value;
   const int index = find(lines, &value);
   // An earlier session that was never repaired already points at the copy.
-  const bool ours = value == paths.profiles && QFileInfo::exists(paths.marker);
-  QString source = ours || value.isEmpty() || value == QStringLiteral("default") ? paths.fallbackProfiles : value;
+  const bool ours = samePath(value, paths.profiles) && QFileInfo::exists(paths.marker);
+  QString source = ours || value.isEmpty() || value == QStringLiteral("default") ? paths.fallbackProfiles : expanded(value);
   if (ours) {
     QFile marker(paths.marker);
     if (marker.open(QIODevice::ReadOnly)) {
       static const QRegularExpression original(QStringLiteral(R"re(=\s*"?([^"]*)"?\s*$)re"));
       const auto match = original.match(QString::fromUtf8(marker.readAll()).trimmed());
-      if (match.hasMatch() && !match.captured(1).trimmed().isEmpty()) source = match.captured(1).trimmed();
+      if (match.hasMatch() && !match.captured(1).trimmed().isEmpty()) source = expanded(match.captured(1).trimmed());
     }
   }
   if (!QDir(source).exists() || !copyProfiles(source, paths.profiles)) return {};
@@ -143,7 +152,7 @@ void repair(const Paths& paths) {
   QString value;
   const int index = ok ? find(lines, &value) : -1;
   // Anything but the copy is the user's newer choice, or RetroArch did not save.
-  if (index >= 0 && value == paths.profiles) {
+  if (index >= 0 && samePath(value, paths.profiles)) {
     if (original == kMissing) lines.removeAt(index);
     else lines[index] = original;
     if (!write(paths.config, lines.join(QLatin1Char('\n')).toUtf8())) return;
