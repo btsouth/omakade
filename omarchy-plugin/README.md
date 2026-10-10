@@ -82,11 +82,11 @@ and B.
 Screenshot hides the card for a frame, saves the game's output with grim where
 Omasnap saves screenshots, and reports through an Omarchy notification once the
 file exists. Screenshot and Record clip wait for a submitted guide-free frame
-and at least 80 ms. Record clip closes the guide, then starts Omarchy's own recorder
-(`omarchy-capture-screenrecording --fullscreen --with-desktop-audio`) and
-resumes the game; Stop recording stops it, and Omarchy's notification follows
-when the clip is saved. Next to a running gpu-screen-recorder replay buffer,
-which that recorder would stop, the plugin records on its own instead. Save last
+and at least 80 ms. Record clip closes the guide, then records the game's output
+with desktop audio through its own gpu-screen-recorder and resumes the game; Stop
+recording stops it, and a notification follows when the clip is saved. The guide
+only shows and stops the recording it started, so a screen recording started from
+Omarchy runs on untouched, and Omarchy's stop leaves the guide's clip alone. Save last
 30 s appears only while a replay buffer runs and sends it SIGUSR1; the length
 comes from the buffer's own `-r`. Volume sets the output Omarchy's volume keys
 use (`omarchy-audio-output-sink`), through Quickshell PipeWire.

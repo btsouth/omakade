@@ -3,8 +3,8 @@
 
   status                 CPU/GPU load and temperature, running recorder processes
   screenshot OUTPUT      save OUTPUT's current frame where Omasnap saves screenshots
-  record OUTPUT          record OUTPUT next to a running replay buffer
-  record-stop PID        stop a recording started by `record`
+  record OUTPUT          record a clip of OUTPUT with the guide's own recorder
+  record-stop PID        stop the clip `record` started
   replay-save PID        save the replay buffer of gpu-screen-recorder PID
 
 Capture actions report through Omarchy notifications, and only after the file exists.
@@ -152,10 +152,34 @@ def recorders():
     return found
 
 
+def process_start(pid):
+    stat = read('/proc/%d/stat' % pid) or ''
+    fields = stat[stat.rfind(')') + 2:].split()
+    return int(fields[19]) if len(fields) > 19 else None
+
+
+# The guide's clip, by process identity. A recording someone started elsewhere, such as
+# Omarchy's screen recorder, is never shown as the guide's and never stopped by it.
+clip_record = state / 'recording.json'
+
+
+def own_clip():
+    try:
+        clip = json.loads(clip_record.read_text())
+        pid = int(clip['pid'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if own_recorder(pid) and process_start(pid) == clip.get('start'):
+        return clip
+    clip_record.unlink(missing_ok=True)
+    return None
+
+
 def status():
     busy, gpu_temperature = gpu_readings()
     result = dict(cpu=cpu_load(), cpuTemp=cpu_temperature(), gpu=busy, gpuTemp=gpu_temperature,
                   recording=None, replay=None)
+    clip = own_clip()
     for process in recorders():
         if process['replay']:
             try:
@@ -163,7 +187,7 @@ def status():
             except ValueError:
                 seconds = None
             result['replay'] = dict(pid=process['pid'], seconds=seconds)
-        elif result['recording'] is None:
+        elif clip and process['pid'] == clip['pid']:
             result['recording'] = dict(pid=process['pid'], started=process['started'])
     return {key: value for key, value in result.items() if value is not None}
 
@@ -216,8 +240,12 @@ def videos():
 
 
 def record(output):
+    if own_clip():
+        return 0
     path = videos() / ('screenrecording-' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.mp4')
-    command = [recorder, '-w', output, '-k', 'auto', '-f', '60', '-fm', 'cfr', '-fallback-cpu-encoding', 'yes',
+    # By full path: Omarchy finds its own recording with `pgrep -f "^gpu-screen-recorder"`,
+    # and stops it with the same pattern, so a clip started this way is never taken for it.
+    command = [shutil.which(recorder) or recorder, '-w', output, '-k', 'auto', '-f', '60', '-fm', 'cfr', '-fallback-cpu-encoding', 'yes',
                '-a', 'default_output', '-ac', 'aac', '-o', str(path)]
     try:
         process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -230,6 +258,8 @@ def record(output):
     if process.poll() is not None or not path.exists():
         notify('Recording failed', 'The recorder could not start')
         return 1
+    state.mkdir(parents=True, exist_ok=True)
+    clip_record.write_text(json.dumps(dict(pid=process.pid, start=process_start(process.pid), path=str(path))))
     refresh_indicators()
     return 0
 
@@ -240,7 +270,8 @@ def own_recorder(pid):
 
 
 def record_stop(pid):
-    args = own_recorder(pid)
+    clip = own_clip()
+    args = own_recorder(pid) if clip and clip['pid'] == pid else None
     if not args:
         return 1
     path = Path(args[args.index('-o') + 1]) if '-o' in args[:-1] else None
@@ -248,6 +279,7 @@ def record_stop(pid):
     deadline = time.monotonic() + 5
     while own_recorder(pid) and time.monotonic() < deadline:
         time.sleep(0.1)
+    clip_record.unlink(missing_ok=True)
     refresh_indicators()
     if path and path.is_file() and path.stat().st_size:
         notify('Screen recording saved', path.name)

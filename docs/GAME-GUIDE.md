@@ -63,8 +63,9 @@ Force quit after five seconds.
 
 Screenshot and Record clip hide both the card and scrim and wait for a submitted
 guide-free frame and at least 80 ms. Screenshot then captures the game's output;
-Record clip closes the guide and starts Omarchy's recorder.
-Next to an existing replay buffer the plugin starts its own recording instead.
+Record clip closes the guide and records the game with its own recorder. A screen
+recording you start from Omarchy is separate: the guide does not show it as its
+clip or stop it.
 Screenshot success is reported only after a file exists. Volume and sound output
 use Omarchy's output selection and PipeWire.
 
