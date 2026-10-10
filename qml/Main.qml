@@ -335,8 +335,10 @@ ApplicationWindow {
             if (!root.focusSpatial(librarySurface, key) && key === Qt.Key_Down) libraryView.focusGrid()
         } else if (view) {
             // GridView/ListView's built-in keyboard movement becomes an explicit pad command.
-            const horizontalList = view.orientation !== undefined && view.orientation === ListView.Horizontal
-            if (horizontalList && (key === Qt.Key_Up || key === Qt.Key_Down)) return
+            if (view.orientation !== undefined) {
+                const vertical = key === Qt.Key_Up || key === Qt.Key_Down
+                if (vertical !== (view.orientation === ListView.Vertical)) return
+            }
             const columns = view.columnCount !== undefined ? view.columnCount
                           : view.columns !== undefined ? view.columns : 1
             const step = key === Qt.Key_Up ? -columns : key === Qt.Key_Down ? columns
