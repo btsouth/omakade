@@ -900,10 +900,14 @@ void InGameGuideTests::quitEscalation() {
   QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); game.readAllStandardOutput(); qint64 start = -1;
   for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
   GuideActions::Tree tree; QVERIFY(!tree.pin(game.processId(), start + 1)); QVERIFY(tree.pin(game.processId(), start));
-  tree.signal(SIGTERM); QVERIFY(game.waitForReadyRead(1000));
-  const auto child = game.readAllStandardOutput().split('\n');
-  qint64 childPid = 0; for (const auto& line : child) if (line.toLongLong() > 1) childPid = line.toLongLong();
-  QVERIFY(childPid > 1); QVERIFY(!game.waitForFinished(100)); QVERIFY(tree.alive());
+  tree.signal(SIGTERM);
+  // The handler's pid can arrive in more than one read; wait for its complete line.
+  QByteArray output; qint64 childPid = 0;
+  QTRY_VERIFY_WITH_TIMEOUT(([&] {
+    output += game.readAllStandardOutput();
+    for (const auto& line : output.left(output.lastIndexOf('\n') + 1).split('\n')) if (line.toLongLong() > 1) childPid = line.toLongLong();
+    return childPid > 1;
+  })(), 5000); QVERIFY(!game.waitForFinished(100)); QVERIFY(tree.alive());
   QVERIFY(tree.pin(game.processId(), start)); QVERIFY(tree.identities().size() >= 2);
   tree.signal(SIGKILL); QVERIFY(game.waitForFinished());
   QTRY_VERIFY(!tree.alive());

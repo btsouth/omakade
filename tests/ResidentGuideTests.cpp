@@ -59,7 +59,7 @@ void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
   QVERIFY(write(bin + "/systemctl", "#!/bin/sh\n[ \"$2\" = show-environment ] || exit 1\necho HYPRLAND_INSTANCE_SIGNATURE=late-test\necho WAYLAND_DISPLAY=wayland-test\n", true));
   QVERIFY(write(bin + "/hyprctl", "#!/bin/sh\n[ \"$HYPRLAND_INSTANCE_SIGNATURE\" = late-test ] || exit 1\necho \"$@\" >> '" + queryLog.toUtf8() + "'\nif [ \"$1\" = eval ]; then echo ok; exit; fi\ncase \"$2\" in\nactivewindow) echo '" + active + "';;\nclients) echo '" + clients + "';;\nmonitors) echo '[{\"id\":0,\"name\":\"TEST-1\"}]';;\neval) echo ok;;\nesac\n", true));
   const auto summonFile = root.path() + "/summon.json", shellLog = root.path() + "/shell.log";
-  QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + "'\necho ok\n", true));
+  QVERIFY(write(bin + "/omarchy-shell", "#!/bin/sh\n[ \"$2\" = summon ] && echo \"$4\" > '" + summonFile.toUtf8() + ".tmp' && mv '" + summonFile.toUtf8() + ".tmp' '" + summonFile.toUtf8() + "'\necho \"$1 $2 $3\" >> '" + shellLog.toUtf8() + "'\necho ok\n", true));
   auto env = QProcessEnvironment::systemEnvironment();
   env.remove("HYPRLAND_INSTANCE_SIGNATURE"); env.remove("WAYLAND_DISPLAY");
   env.insert("PATH", bin + ':' + env.value("PATH")); env.insert("XDG_RUNTIME_DIR", runtime); env.insert("TMPDIR", runtime);
