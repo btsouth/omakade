@@ -25,6 +25,9 @@ env:
 
 # Tests and packaging run as separate jobs so neither waits on the other.
 # Publishing still needs both to pass on both architectures.
+# x86_64 builds on Omarchy's stable channel so the package runs on stable, rc
+# and edge. A build against newer Qt fails to start on older Qt. -uu lets the
+# stable snapshot downgrade packages newer than it.
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -38,17 +41,22 @@ jobs:
       matrix:
         include:
           - arch: x86_64
+            packages: omarchy-stable
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
           - arch: aarch64
+            packages: arch
             runner: ubuntu-24.04-arm
             container: menci/archlinuxarm:base-devel@sha256:5dda87d4b360dff28fe5ce27a20041949aa770a785c52daf82fc9956b2534c39
     runs-on: ${{ matrix.runner }}
     container:
       image: ${{ matrix.container }}
     steps:
+      - name: Use Omarchy stable packages
+        if: matrix.packages == 'omarchy-stable'
+        run: echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
       - name: Install dependencies
-        run: pacman -Syu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
+        run: pacman -Syyuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -56,8 +64,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: ccache-v1-${{ runner.os }}-${{ runner.arch }}-
+          key: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
@@ -89,9 +97,11 @@ jobs:
       matrix:
         include:
           - arch: x86_64
+            packages: omarchy-stable
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
           - arch: aarch64
+            packages: arch
             runner: ubuntu-24.04-arm
             container: menci/archlinuxarm:base-devel@sha256:5dda87d4b360dff28fe5ce27a20041949aa770a785c52daf82fc9956b2534c39
     runs-on: ${{ matrix.runner }}
@@ -104,8 +114,11 @@ jobs:
     env:
       PACKAGE_ARCH: ${{ matrix.arch }}
     steps:
+      - name: Use Omarchy stable packages
+        if: matrix.packages == 'omarchy-stable'
+        run: echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
       - name: Install dependencies
-        run: pacman -Syu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
+        run: pacman -Syyuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -114,8 +127,8 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: ccache-v1-${{ runner.os }}-${{ runner.arch }}-
+          key: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Check release version and architecture
         run: |
