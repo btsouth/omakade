@@ -201,7 +201,9 @@ QString HyprlandGameModeCompositor::coldWindowScript() {
       "size = { \"monitor_w\", \"monitor_h\" }, move = { \"0\", \"0\" }, "
       "fullscreen_state = \"0 2\", suppress_event = \"fullscreen fullscreenoutput\", "
       "no_initial_focus = true, tag = \"+omakade-entry-tiled\", "
-      "no_anim = true, no_dim = true, opacity = \"0.000015 override 0.000015 override 0.000015 override\" })");
+      "no_anim = true, no_dim = true, no_follow_mouse = true, focus_on_activate = false, "
+      "no_blur = true, no_shadow = true, border_size = 0, "
+      "opacity = \"0.000015 override 0.000015 override 0.000015 override\" })");
 }
 
 bool HyprlandGameModeCompositor::prepareColdWindow(QString* error) {
@@ -218,7 +220,9 @@ bool HyprlandGameModeCompositor::prepareSnapshotWindow(const QString& address,
       "omakade_entry_snapshot_owner = %1\n"
       "hl.window_rule({ name = \"omakade-game-mode-preparation\", "
       "match = { class = \"^io.github.tsouth89.Omakade$\", tag = \"omakade-entry-preparing\" }, "
-      "no_anim = true, no_dim = true, opacity = \"0.000015 override 0.000015 override 0.000015 override\" })\n"
+      "no_anim = true, no_dim = true, no_follow_mouse = true, focus_on_activate = false, "
+      "no_blur = true, no_shadow = true, border_size = 0, "
+      "opacity = \"0.000015 override 0.000015 override 0.000015 override\" })\n"
       "if not omakade_entry_snapshot_hook then\n"
       " omakade_entry_snapshot_hook = true\n"
       " hl.on(\"window.open\", function(snapshot)\n"
@@ -254,11 +258,11 @@ QString HyprlandGameModeCompositor::prepareScript(const QString& address,
       "hl.dispatch(hl.dsp.window.tag({ window = %1, tag = \"+omakade-entry-preparing\" }))\n"
       "hl.window_rule({ name = \"omakade-game-mode-preparation\", "
       "match = { class = \"^io.github.tsouth89.Omakade$\", tag = \"omakade-entry-preparing\" }, "
-      "no_anim = true, no_dim = true, no_blur = true, no_shadow = true, border_size = 0, "
+      "no_anim = true, no_dim = true, no_follow_mouse = true, focus_on_activate = false, no_blur = true, no_shadow = true, border_size = 0, "
       "opacity = \"0.000015 override 0.000015 override 0.000015 override\" })\n"
       "hl.window_rule({ name = \"omakade-game-mode-presentation\", "
       "match = { class = \"^io.github.tsouth89.Omakade$\", workspace = \"name:omakade\" }, "
-      "no_anim = true, no_dim = true, opacity = \"1 override 1 override 1 override\" })\n"
+      "no_anim = true, no_dim = true, no_follow_mouse = false, focus_on_activate = true, opacity = \"1 override 1 override 1 override\" })\n"
       "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 }))\n")
       .arg(window, luaString(output));
   if (!placeholder.isEmpty())

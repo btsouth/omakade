@@ -2567,6 +2567,8 @@ private slots:
         "0xddd4", "3", "HDMI-A-2", kPlaceholderAddress);
     QVERIFY(script.contains("no_anim = true"));
     QVERIFY(script.contains("no_dim = true"));
+    QVERIFY(script.contains("focus_on_activate = false"));
+    QVERIFY(script.contains("no_follow_mouse = true"));
     QVERIFY(script.contains("1 override 1 override 1 override"));
     QVERIFY(!script.contains("render_unfocused"));
     QVERIFY(script.indexOf("window.swap") < script.indexOf("window.move"));
@@ -2594,6 +2596,10 @@ private slots:
     QVERIFY(cold.contains("class = \"^io.github.tsouth89.Omakade$\""));
     QVERIFY(cold.contains("fullscreen_state = \"0 2\""));
     QVERIFY(cold.contains("no_initial_focus = true"));
+    QVERIFY(cold.contains("focus_on_activate = false"));
+    QVERIFY(cold.contains("no_blur = true"));
+    QVERIFY(cold.contains("no_shadow = true"));
+    QVERIFY(cold.contains("border_size = 0"));
     QVERIFY(cold.contains("no_anim = true"));
     const QString place =
         HyprlandGameModeCompositor::placeScript("0xddd4", "name:omakade", "HDMI-A-2");
