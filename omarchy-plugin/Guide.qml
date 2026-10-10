@@ -11,9 +11,9 @@ import "GuideProtocol.js" as Protocol
 import "GuideFocus.js" as Focus
 import "Legibility.js" as Legibility
 
-// The in-game guide: one card over the paused game, built like Omarchy's
-// panels. A hero with the game and the time, its readings, action tiles,
-// achievements and sound, then Resume and Quit (components/GuideCard.qml).
+// The in-game guide: one panel at the right edge over the paused game, built
+// from Omarchy's kit. The status and the game, Resume, capture, sound,
+// performance, then Quit (components/GuideCard.qml).
 // Input arrives as actions (up, down, left, right, a, b, y, guide) from the
 // keyboard or, for controllers, from Omakade's service over the guide socket;
 // input() maps them to cursor moves and to actions.
@@ -32,12 +32,10 @@ Item {
   property var model: ({})
   property string family: "keyboard"
   property string cursor: ""
-  // What the card body shows: the rows, the game's achievements, or the quit
-  // question. The header and hint line stay.
+  // "main", or "confirm" while the quit question takes Quit's place.
   property string view: "main"
   readonly property bool confirming: root.view === "confirm"
   property int confirmChoice: 0
-  property int achIndex: 0
   // Quit was confirmed and Omakade is waiting for the game to exit.
   property bool quitting: false
   // A second B straight after backing out of a view must not also close.
@@ -67,30 +65,21 @@ Item {
   readonly property bool muted: root.fixtureMode ? !!(root.model.audio || {}).muted : audio.muted
   readonly property var outputs: root.fixtureMode ? ((root.model.audio || {}).outputs || []) : audio.outputs
   readonly property var currentOutput: root.outputs.filter(function(o) { return o.current })[0] || root.outputs[0] || null
-  readonly property var achievements: (root.game && root.game.achievements) || null
-  readonly property bool hasAchievements: !!(root.achievements && root.achievements.total > 0)
-  // Omakade sends changed fields after the initial payload; the list and the rows are
-  // only rebuilt when what they show changed, so scrolling and hover hold.
-  property var achievementItems: []
-  property string achievementsJson: "[]"
-  onAchievementsChanged: {
-    var items = (root.achievements && root.achievements.items) || []
-    var json = JSON.stringify(items)
-    if (json !== root.achievementsJson) { root.achievementsJson = json; root.achievementItems = items }
-  }
   readonly property var padLevels: root.fixtureMode ? (root.model.pads || []) : pads.levels
 
-  // The card's controls as rows of keys, top to bottom (GuideFocus.js): the
-  // tiles, achievements, volume, sound output, then Resume and Quit. Every
-  // control shown takes the cursor; `rows` is all of them.
-  readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay, achievements: root.hasAchievements,
-                                          desktop: !!root.game && !!root.model.desktop,
-                                          retroarch: !!root.game && !!root.game.retroarchMenu,
+  // The card's controls as rows of keys, top to bottom (GuideFocus.js):
+  // Resume, Desktop and the RetroArch menu, the capture tiles, volume, sound
+  // output, then Quit. Every control shown takes the cursor; `rows` is all of
+  // them.
+  readonly property bool showDesktop: !!root.game && !!root.model.desktop
+  readonly property bool showRetroarch: !!root.game && !!root.game.retroarchMenu
+  readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay,
+                                          desktop: root.showDesktop, retroarch: root.showRetroarch,
                                           volume: root.volumeAvailable, outputs: root.outputs.length})
   readonly property var rows: [].concat.apply([], root.grid)
   // Where across the card the cursor is (0..1), kept through one-item rows.
   property real focusAnchor: Focus.homeAnchor
-  // The card's width in Omarchy units at scale 1: room for five tiles.
+  // The panel's width in Omarchy units at scale 1.
   readonly property int cardWidth: 480
   readonly property int replaySeconds: (root.replay && root.replay.seconds) || 30
 
@@ -103,39 +92,50 @@ Item {
   // the focus edge and the recording mark, over a dark and a light frame.
   // Secondary text is Omarchy's 0.52, raised only where a theme needs it.
   readonly property var cardGrounds: Legibility.grounds(Commons.Color.menu.background)
-  readonly property var fillGrounds: Legibility.grounds(Commons.Color.menu.selectedBackground, root.cardGrounds)
   readonly property color quiet: root.solid(Legibility.fade(root.text, root.background, root.cardGrounds, 0.52, 4.6))
-  // A grey selected colour (Solitude's accent) reads as dimmed, not chosen:
-  // there the focus takes the text colour and is drawn by its fill and border.
+  // Second-rank text (the pad, times, the output, small figures): between
+  // the text colour and quiet.
+  readonly property color dim: root.solid(Legibility.fade(root.text, root.background, root.cardGrounds, 0.75, 4.6))
+  // The theme's selected colour: the PAUSED mark, the volume level and the
+  // focus ring. A grey one (Solitude's accent) reads as dimmed, not chosen;
+  // there it takes the text colour.
   readonly property color selectedTone: Commons.Color.menu.selectedText.hslSaturation < 0.15 ? root.text : Commons.Color.menu.selectedText
-  readonly property color selectedInk: root.solid(Legibility.legibleInk(root.selectedTone, root.text, root.fillGrounds, 4.6))
-  readonly property color urgentInk: root.solid(Legibility.legibleInk(Commons.Color.urgent, root.text, root.fillGrounds, 4.6))
-  readonly property color recordingInk: root.solid(Legibility.legibleInk(Commons.Color.bar.active, root.text, root.cardGrounds.concat(root.fillGrounds), 3))
-  // Where the selected fill alone is too close to the card to see at 3:1, the
-  // row also takes a hairline in the theme's focus colour.
-  readonly property bool needsEdge: Legibility.weakest(root.fillGrounds, root.cardGrounds) < 3
-  readonly property color focusEdge: root.solid(Legibility.fade(Style.focusStateColor(root.text, Commons.Color.accent, Commons.Color.urgent), root.background, root.cardGrounds, 0.25, 3))
+  // Each is held legible on the card and on its own tint (the PAUSED and REC
+  // marks, a focused control, the quit question).
+  readonly property color accentInk: root.solid(Legibility.legibleInk(root.selectedTone, root.text,
+    Legibility.grounds(Util.alpha(root.selectedTone, 0.14), root.cardGrounds).concat(root.cardGrounds), 4.6))
+  readonly property color urgentInk: root.solid(Legibility.legibleInk(Commons.Color.urgent, root.text,
+    Legibility.grounds(Util.alpha(Commons.Color.urgent, 0.14), root.cardGrounds).concat(root.cardGrounds), 4.6))
+  // Resting controls: a faint fill and edge in the text colour.
+  readonly property color fill: Util.alpha(root.text, Style.normalFillAlpha)
+  readonly property color edge: Util.alpha(root.text, 0.14)
+  // The performance boxes sit a step below the card: a shade darker on a
+  // dark card, a touch on a light one. A black card has no darker step, so
+  // there they take a faint fill instead.
+  readonly property real cardLightness: Commons.Color.menu.background.hslLightness
+  readonly property color well: root.cardLightness < 0.08 ? Util.alpha(root.text, 0.06)
+    : Util.alpha(Qt.darker(root.solid(Commons.Color.menu.background), root.cardLightness > 0.5 ? 1.06 : 1.35), 0.9)
 
   function solid(c) { return Qt.rgba(c.r, c.g, c.b, 1) }
 
   // Material Design glyphs from the Nerd Font: one set, one weight.
   readonly property var icons: ({
-    resume: "\u{f040a}", desktop: "\u{f0379}", retroarch: "\u{f035c}", screenshot: "\u{f0100}",
-    record: "\u{f044a}", replay: "\u{f02da}", achievements: "\u{f0538}", volume: "\u{f057e}",
-    volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}", quit: "\u{f0343}",
-    stop: "\u{f04db}", gamepad: "\u{f0297}"
+    resume: "\u{f040a}", pause: "\u{f03e4}", desktop: "\u{f0379}", retroarch: "\u{f035c}",
+    screenshot: "\u{f0d5d}", record: "\u{f043e}", stop: "\u{f0666}", replay: "\u{f02da}",
+    volume: "\u{f057e}", volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}",
+    chevron: "\u{f0142}", quit: "\u{f0425}", gamepad: "\u{f0297}", keyboard: "\u{f030c}"
   })
 
-  // The readings the designs show as labelled numbers; missing ones are left out.
+  // The performance readings, one box each; missing ones are left out.
   function known(v) { return v !== undefined && v !== null && isFinite(Number(v)) }
   function loadReadout(label, load, temp) {
     if (!root.known(load) && !root.known(temp)) return null
-    if (!root.known(load)) return {label: label, value: Math.round(temp) + "°", unit: ""}
-    return {label: label, value: Math.round(load) + "%", unit: root.known(temp) ? " " + Math.round(temp) + "°" : ""}
+    if (!root.known(load)) return {label: label, value: Math.round(temp) + "°C", unit: ""}
+    return {label: label, value: Math.round(load) + "%", unit: root.known(temp) ? Math.round(temp) + "°C" : ""}
   }
   readonly property var readouts: [
     root.known(root.performance.fps) ? {label: "FPS", value: String(Math.round(root.performance.fps)), unit: ""} : null,
-    root.known(root.performance.frametime) ? {label: "FRAME", value: Number(root.performance.frametime).toFixed(1), unit: " ms"} : null,
+    root.known(root.performance.frametime) ? {label: "FRAME", value: Number(root.performance.frametime).toFixed(1), unit: "ms"} : null,
     root.loadReadout("CPU", root.stats.cpu, root.stats.cpuTemp),
     root.loadReadout("GPU", root.stats.gpu, root.stats.gpuTemp)
   ].filter(function(r) { return r !== null })
@@ -208,12 +208,11 @@ Item {
     return JSON.stringify({scale: root.couchScale, zoom: root.zoom, opened: root.opened, opening: root.opened && !root.presented, presented: root.presented, ready: root.ready(),
       token: root.backend ? root.backend.token : "", socket: root.backend ? root.backend.socket : "",
       output: window.screen ? window.screen.name : "", surface: [window.width, window.height],
-      cursor: root.cursor, rows: root.rows, view: root.view, confirming: root.confirming, confirmChoice: root.confirmChoice, achIndex: root.achIndex, pad: root.family, data: root.model,
-      geometry: root.geometry(), palette: {text: String(Commons.Color.menu.text), quiet: String(root.quiet),
-        background: String(Commons.Color.menu.background), selectedBackground: String(Commons.Color.menu.selectedBackground),
-        selectedText: String(Commons.Color.menu.selectedText), urgent: String(Commons.Color.urgent), border: String(Commons.Color.menu.border),
-        recording: String(root.recordingInk), selectedInk: String(root.selectedInk), urgentInk: String(root.urgentInk),
-        focusEdge: root.needsEdge ? String(root.focusEdge) : ""}})
+      cursor: root.cursor, rows: root.rows, view: root.view, confirming: root.confirming, confirmChoice: root.confirmChoice, pad: root.family, data: root.model,
+      geometry: root.geometry(), palette: {text: String(Commons.Color.menu.text), quiet: String(root.quiet), dim: String(root.dim),
+        background: String(Commons.Color.menu.background), border: String(Commons.Color.menu.border),
+        accent: String(root.selectedTone), urgent: String(Commons.Color.urgent),
+        accentInk: String(root.accentInk), urgentInk: String(root.urgentInk)}})
   }
 
   // Where the card and its rows are on the surface, for layout checks.
@@ -235,7 +234,7 @@ Item {
     return {card: box(card), rows: rowBoxes, icons: iconBoxes,
       fits: card.height >= card.contentTopInset + content.implicitHeight + card.contentBottomInset
         && card.y >= 0 && card.y + card.height <= window.height && card.width <= window.width,
-      truncated: truncated, list: box(content.achievementList), readouts: content.readoutCount, lastAct: root.lastAct}
+      truncated: truncated, readouts: content.readoutCount, lastAct: root.lastAct}
   }
 
   // The card's controls by key, as they register themselves (Focusable.qml).
@@ -273,7 +272,6 @@ Item {
     root.focusAnchor = Focus.homeAnchor
     root.view = p.confirm ? "confirm" : "main"
     root.confirmChoice = 0
-    root.achIndex = 0
     root.quitting = false
     root.capturing = false
     root.lastAct = ""
@@ -336,8 +334,7 @@ Item {
       // A fixture opens on Resume too, unless it names a control to show focused.
       root.cursor = root.rows.indexOf(root.model.cursor) >= 0 ? root.model.cursor : Focus.home(root.grid)
       root.focusAnchor = Focus.homeAnchor
-      root.achIndex = root.model.achIndex || 0
-      root.view = root.model.confirm ? "confirm" : root.model.view === "achievements" && root.hasAchievements ? "achievements" : "main"
+      root.view = root.model.confirm ? "confirm" : "main"
     }
   }
 
@@ -441,16 +438,6 @@ Item {
       else if (action === "a") { if (root.confirmChoice === 0) root.cancelQuit(); else root.quitGame() }
       else if (action === "b") root.cancelQuit()
       else if (action === "guide" || action === "start") root.close()
-      return "ok"
-    }
-    if (root.view === "achievements") {
-      var last = Math.max(0, root.achievementItems.length - 1)
-      if (action === "up") root.achIndex = Math.max(0, root.achIndex - 1)
-      else if (action === "down") root.achIndex = Math.min(last, root.achIndex + 1)
-      else if (action === "left") root.achIndex = Math.max(0, root.achIndex - 5)
-      else if (action === "right") root.achIndex = Math.min(last, root.achIndex + 5)
-      else if (action === "b") root.back()
-      else if (action === "guide" || action === "start") root.close()
       else if (action === "y") root.activate("screenshot")
       return "ok"
     }
@@ -474,30 +461,28 @@ Item {
   function rowSpec(key) {
     switch (key) {
     // The play triangle draws a third less ink than its neighbours.
-    case "resume": return {icon: root.icons.resume, iconScale: 1.3, label: "Resume"}
+    case "resume": return {icon: root.icons.resume, label: "Resume"}
     case "screenshot": return {icon: root.icons.screenshot, label: "Screenshot"}
     case "desktop": return {icon: root.icons.desktop, label: "Desktop"}
     case "retroarch": return {icon: root.icons.retroarch, label: "RetroArch menu"}
-    // The bar's recording colour while a clip runs.
-    case "record": return root.recording ? {icon: root.icons.record, iconColor: root.recordingInk, label: "Stop recording", value: root.recordingTime}
+    // The urgent colour and the clip's time while a clip runs.
+    case "record": return root.recording ? {icon: root.icons.stop, urgent: true, label: "Stop clip \u00b7 " + root.recordingTime}
                                          : {icon: root.icons.record, label: "Record clip"}
-    case "replay": return {icon: root.icons.replay, label: "Save last " + ((root.replay && root.replay.seconds) || 30) + " s"}
-    case "achievements": return {icon: root.icons.achievements, label: "Achievements",
-                                 value: (root.achievements.unlocked || 0) + "/" + root.achievements.total}
+    case "replay": return {icon: root.icons.replay, label: "Save " + root.replaySeconds + " s"}
     case "volume": return {icon: root.muted ? root.icons.volumeOff : root.icons.volume, label: "Volume",
                            value: root.muted ? "Muted" : Math.round(root.volume * 100) + "%"}
     case "output":
       var name = root.currentOutput ? root.currentOutput.name : "Output"
-      // Which of how many: says the row cycles, as Achievements says how far.
+      // Which of how many: says the row cycles.
       return {icon: /head|ear|bud|airpod/i.test(name) ? root.icons.headphones : root.icons.speaker,
-              label: name, wrap: true, value: (root.outputs.indexOf(root.currentOutput) + 1) + "/" + root.outputs.length}
+              label: name, value: (root.outputs.indexOf(root.currentOutput) + 1) + " / " + root.outputs.length}
     case "quit": return {icon: root.icons.quit, urgent: true,
                          label: root.forceReady ? "Force quit" : root.quitting ? "Closing game\u2026" : "Quit game"}
     }
     return {icon: "", label: key}
   }
 
-  // Out of a view and back to the rows, on the row that opened it.
+  // Out of the quit question and back to the rows, on Quit.
   function back() {
     root.view = "main"
     root.backAt = Date.now()
@@ -522,7 +507,6 @@ Item {
   function activate(key) {
     switch (key) {
     case "resume": root.close(); break
-    case "achievements": root.view = "achievements"; break
     case "desktop": root.act("desktop"); break
     case "retroarch": root.act("retroarch-menu"); break
     case "output": root.act("output", 1); break
@@ -632,28 +616,37 @@ Item {
 
   // ------------------------------------------------------------ text
 
+  // m:ss, or h:mm:ss past the hour.
   function duration(seconds) {
     seconds = Math.max(0, Math.floor(seconds))
     var h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60
     var two = function(n) { return (n < 10 ? "0" : "") + n }
-    return (h > 0 ? h + ":" + two(m) : two(m)) + ":" + two(s)
+    return h > 0 ? h + ":" + two(m) + ":" + two(s) : m + ":" + two(s)
   }
 
-  function sessionText() {
-    var parts = []
-    if (!root.game) {
-      if (root.padLevels.length) parts.push((root.padLevels.length > 1 ? "Pads " : "Pad ") + root.padLevels.map(function(p) { return p + "%" }).join(" "))
-      return parts.join(" · ")
-    }
-    var minutes = root.game.sessionMinutes
-    if (minutes !== undefined && minutes !== null) {
-      parts.push(minutes >= 60 ? Math.floor(minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min")
-    }
-    if (root.game.paused) parts.push("Paused")
-    var pads = root.padLevels
-    if (pads.length) parts.push((pads.length > 1 ? "Pads " : "Pad ") + pads.map(function(p) { return p + "%" }).join(" "))
-    return parts.join(" · ")
+  function minutesText(minutes) {
+    return minutes >= 60 ? Math.floor(minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min"
   }
+
+  // The game's times: [figure, words] pairs for what Omakade knows.
+  readonly property var times: {
+    var list = [], g = root.game
+    if (!g) return list
+    if (root.known(g.sessionMinutes)) list.push([root.minutesText(Math.max(0, Math.floor(g.sessionMinutes))), "this session"])
+    if (root.known(g.totalMinutes) && g.totalMinutes > 0)
+      list.push([g.totalMinutes >= 60 ? Math.floor(g.totalMinutes / 60) + " h" : Math.floor(g.totalMinutes) + " min", "total"])
+    return list
+  }
+
+  // The platform and where the game comes from, when the payload says.
+  readonly property string subline: root.game ? [root.game.platform, root.game.source]
+    .filter(function(v) { return typeof v === "string" && v !== "" }).join(" \u00b7 ") : ""
+
+  // The connected pad by family, with its battery when UPower reports one.
+  readonly property string padName: ({xbox: "Xbox pad", playstation: "PlayStation pad", nintendo: "Nintendo pad",
+                                       deck: "Steam Deck", keyboard: "Keyboard"})[root.family] || "Gamepad"
+  readonly property string padText: root.padName + (root.family !== "keyboard" && root.padLevels.length
+    ? " " + root.padLevels.map(function(p) { return p + "%" }).join(" ") : "")
 
   readonly property string recordingTime: {
     var r = root.recording
@@ -693,17 +686,10 @@ Item {
     nintendo: ["B", "A", "X"]
   })[root.family] || ["A", "B", "Y"]
 
-  // Button names in the text colour, what they do quiet, as in the readings.
-  readonly property var hint: {
-    var b = root.buttons, list = []
-    var leave = root.game ? "resume" : "close"
-    if (root.view === "confirm") list.push([b[0], "select"], [b[1], "keep playing"])
-    else if (root.view === "achievements") list.push(["\u2191\u2193", "scroll"], ["\u2190\u2192", "page"], [b[1], "back"])
-    else if (root.cursor === "volume") list.push([b[0], root.muted ? "unmute" : "mute"], ["\u2190\u2192", "volume"], [b[1], leave])
-    else if (root.cursor === "output") list.push([b[0], "next"], ["\u2190\u2192", "output"], [b[1], leave])
-    else list.push([b[0], "select"], [b[1], leave], [b[2], "screenshot"])
-    return list
-  }
+  // What the buttons do, under the card: the button's glyph, then its action.
+  readonly property var hint: [[root.buttons[0], "Select"],
+    [root.buttons[1], root.view === "confirm" ? "Back" : root.game ? "Resume" : "Close"],
+    [root.buttons[2], "Screenshot"]]
 
   // ------------------------------------------------------------ IPC
 
@@ -750,9 +736,18 @@ Item {
       anchors.fill: parent
       visible: !root.capturing
 
+      // The surface covers the screen: the theme's scrim over the game, a
+      // little lighter far from the panel and stronger beside it.
       Rectangle {
+        id: scrimLayer
+        readonly property color scrim: Commons.Color.menu.scrim
         anchors.fill: parent
-        color: Commons.Color.menu.scrim
+        gradient: Gradient {
+          orientation: Gradient.Horizontal
+          GradientStop { position: 0; color: Util.alpha(scrimLayer.scrim, scrimLayer.scrim.a * 0.6) }
+          GradientStop { position: 0.6; color: Util.alpha(scrimLayer.scrim, Math.min(1, scrimLayer.scrim.a * 1.1)) }
+          GradientStop { position: 1; color: Util.alpha(scrimLayer.scrim, Math.min(1, scrimLayer.scrim.a * 1.4)) }
+        }
       }
 
       MouseArea {
@@ -772,12 +767,15 @@ Item {
         }
       }
 
+      // At the right edge, the window gaps plus a margin in from it, centred
+      // down the screen.
       BorderSurface {
         id: card
-        readonly property int pad: root.sized(Style.spacing.panelPadding)
+        readonly property int pad: root.sized(Style.space(24))
+        readonly property int edge: Style.gapsOut + root.sized(Style.space(24))
         width: Math.min(root.sized(Style.space(root.cardWidth)), window.width - Style.gapsOut * 2)
         height: Math.min(card.contentTopInset + content.implicitHeight + card.contentBottomInset, window.height - Style.gapsOut * 2)
-        anchors.horizontalCenter: parent.horizontalCenter
+        x: Math.max(Style.gapsOut, window.width - card.width - card.edge)
         y: Math.max(Style.gapsOut, Math.round((window.height - card.height) / 2))
         radius: root.sized(Style.cornerRadius)
         color: Commons.Color.menu.background
@@ -799,6 +797,7 @@ Item {
         GuideCard {
           id: content
           g: root
+          bleed: card.contentLeftInset
           onImplicitHeightChanged: Qt.callLater(root.fitZoom)
           x: card.contentLeftInset
           y: card.contentTopInset
@@ -817,7 +816,4 @@ Item {
     if (root.view === "confirm" && pointerGate.moved(source, mouse)) root.confirmChoice = choice
   }
 
-  function hoverAchievement(index, source, mouse) {
-    if (root.view === "achievements" && pointerGate.moved(source, mouse)) root.achIndex = index
-  }
 }

@@ -71,17 +71,21 @@ def layout(name, s):
     x, y, w, h = g['card']
     sw, sh = s['surface']
     check(x >= 0 and y >= 0 and x + w <= sw and y + h <= sh, f'{name}: card {g["card"]} outside {s["surface"]}')
+    # The panel sits at the right edge, centred down the screen.
+    check(sw - (x + w) < x, f'{name}: card {g["card"]} not at the right edge of {s["surface"]}')
+    check(abs((y + h / 2) - sh / 2) <= 2 or y <= 10, f'{name}: card {g["card"]} not centred down {s["surface"]}')
     for key in s['rows']:
         if s['view'] == 'main':
             check(g['rows'].get(key), f'{name}: {key} not shown')
-    # Icons sit in the middle of their tiles; tiles share one width.
-    tiles = [g['rows'][k] for k in s['rows'] if k in ('screenshot', 'record', 'replay', 'desktop', 'library') and g['rows'].get(k)]
-    if tiles:
-        check(max(t[2] for t in tiles) - min(t[2] for t in tiles) <= 1, f'{name}: tile widths {[t[2] for t in tiles]}')
-        for key in ('screenshot', 'record', 'replay', 'desktop', 'library'):
-            box, icon = g['rows'].get(key), g['icons'].get(key)
-            if box and icon:
-                check(abs((icon[0] + icon[2] / 2) - (box[0] + box[2] / 2)) <= 1, f'{name}: {key} icon off centre')
+    # Buttons in a row share one width; every icon sits inside its control.
+    for group in (('screenshot', 'record', 'replay'), ('desktop', 'retroarch')):
+        boxes = [g['rows'][k] for k in group if g['rows'].get(k)]
+        if boxes:
+            check(max(b[2] for b in boxes) - min(b[2] for b in boxes) <= 1, f'{name}: {group} widths {[b[2] for b in boxes]}')
+    for key, box in g['rows'].items():
+        icon = g['icons'].get(key)
+        if box and icon:
+            check(icon[0] >= box[0] and icon[0] + icon[2] <= box[0] + box[2] + 1, f'{name}: {key} icon outside its control')
 
 
 def reachable(s):
@@ -102,36 +106,28 @@ def main(scales):
     # Focus model and every action, at the couch scale.
     s = summon('lantern-road')
     expect(s['cursor'], 'resume', 'opens on Resume')
-    expect(s['rows'], ['screenshot', 'record', 'desktop', 'library', 'achievements', 'volume', 'resume', 'quit'], 'rows')
-    expect(press('up')['cursor'], 'volume', 'up from Resume')
+    expect(s['rows'], ['resume', 'screenshot', 'record', 'volume', 'quit'], 'rows')
+    expect(press('up')['cursor'], 'quit', 'up from Resume wraps to Quit')
     expect(press('up', 'up')['cursor'], 'screenshot', 'up to the first tile')
-    expect(press('right', 'right', 'right')['cursor'], 'library', 'along the tiles')
-    expect(press('right')['cursor'], 'library', 'tiles stop at the end')
-    expect(press('down')['cursor'], 'achievements', 'down to achievements')
-    expect(press('down', 'down')['cursor'], 'quit', 'Library keeps its side down to Quit')
-    expect(press('left')['cursor'], 'resume', 'left to Resume')
-    expect(press('down')['cursor'], 'screenshot', 'down from Resume wraps to the first tile')
-    expect(press('right', 'down', 'down', 'down')['cursor'], 'resume', 'Record lands on Resume')
+    expect(press('right')['cursor'], 'record', 'along the tiles')
+    expect(press('right')['cursor'], 'record', 'tiles stop at the end')
+    expect(press('down', 'down')['cursor'], 'quit', 'down through volume to Quit')
+    expect(press('left')['cursor'], 'quit', 'left on Quit stays')
+    expect(press('down', 'down')['cursor'], 'record', 'Record keeps its side round past Resume')
     expect(reachable(state()), set(state()['rows']), 'every control reachable')
 
     s = summon('lantern-road')
-    press('up')
+    press('down', 'down')
     expect(round(press('right')['data']['audio']['volume'], 2), 0.77, 'right raises the volume')
     expect(round(press('left', 'left')['data']['audio']['volume'], 2), 0.67, 'left lowers the volume')
     expect(press('a')['data']['audio']['muted'], True, 'A mutes')
     expect(press('a')['data']['audio']['muted'], False, 'A unmutes')
-    s = press('up', 'a')
-    expect((s['cursor'], s['view']), ('achievements', 'achievements'), 'A opens achievements')
-    expect(press('down')['achIndex'], 1, 'down in the list')
-    s = press('b')
-    expect((s['view'], s['cursor'], s['opened']), ('main', 'achievements', True), 'B returns to the card')
-    s = press('b')
-    expect(s['opened'], True, 'a second B at once does not also close')
     expect(press('y')['geometry']['lastAct'], 'screenshot', 'Y takes a screenshot')
 
-    for path, act in ((['up', 'up', 'up', 'a'], 'screenshot'), (['up', 'up', 'up', 'right', 'a'], 'record'),
-                      (['up', 'up', 'up', 'right', 'right', 'a'], 'desktop'), (['up', 'up', 'up', 'right', 'right', 'right', 'a'], 'library')):
-        summon('lantern-road')
+    for fixture, path, act in (('lantern-road', ['down', 'a'], 'screenshot'), ('lantern-road', ['down', 'right', 'a'], 'record'),
+                               ('desktop-retroarch', ['down', 'a'], 'desktop'),
+                               ('desktop-retroarch', ['down', 'right', 'a'], 'retroarch-menu')):
+        summon(fixture)
         s = press(*path)
         expect(s['geometry']['lastAct'], act, f'A on {act}')
         if act != 'screenshot':
@@ -141,20 +137,29 @@ def main(scales):
     summon('lantern-road')
     expect(press('b')['opened'], False, 'B resumes')
     summon('lantern-road')
-    s = press('right', 'a')
+    s = press('up', 'a')
     expect((s['view'], s['confirmChoice']), ('confirm', 0), 'Quit asks, on Keep playing')
     s = press('a')
     expect((s['view'], s['cursor'], s['opened']), ('main', 'quit', True), 'Keep playing returns')
     s = press('a', 'right')
-    expect(s['confirmChoice'], 1, 'right to Quit game')
+    expect(s['confirmChoice'], 1, 'right to Quit')
     s = press('a')
-    expect((s['geometry']['lastAct'], s['opened']), ('quit-confirmed', False), 'Quit game quits')
+    expect((s['geometry']['lastAct'], s['opened']), ('quit-confirmed', False), 'Quit quits')
     summon('lantern-road')
-    expect(press('right', 'a', 'b')['view'], 'main', 'B leaves the question')
+    s = press('up', 'a', 'y')
+    expect((s['view'], s['geometry']['lastAct']), ('confirm', 'screenshot'), 'Y takes a screenshot in the question')
+    s = press('b')
+    expect((s['view'], s['opened']), ('main', True), 'B leaves the question')
+    s = press('b')
+    expect(s['opened'], True, 'a second B at once does not also close')
+
+    s = summon('desktop-retroarch')
+    expect(s['rows'], ['resume', 'desktop', 'retroarch', 'screenshot', 'record', 'volume', 'quit'], 'Desktop and RetroArch rows')
+    expect(press('down', 'right', 'down')['cursor'], 'record', 'RetroArch menu leads down to Record')
 
     s = summon('replay-buffer')
-    expect(s['rows'][:5], ['screenshot', 'record', 'replay', 'desktop', 'library'], 'replay is a fifth tile')
-    expect(press('a')['geometry']['lastAct'], 'save-replay', 'A on Save last 30 s')
+    expect(s['rows'][:4], ['resume', 'screenshot', 'record', 'replay'], 'replay is a third tile')
+    expect(press('a')['geometry']['lastAct'], 'save-replay', 'A on Save 30 s')
 
     s = summon('sound-outputs')
     expect(s['cursor'], 'output', 'fixture cursor')
@@ -162,15 +167,15 @@ def main(scales):
     expect([o['current'] for o in s['data']['audio']['outputs']], [False, True, False], 'right picks the next output')
     s = press('a')
     expect([o['current'] for o in s['data']['audio']['outputs']], [False, False, True], 'A picks the next output')
-    expect(press('down')['cursor'], 'resume', 'down from the output row')
+    expect(press('down')['cursor'], 'quit', 'down from the output row')
 
     s = summon('unavailable')
-    expect(s['rows'], ['screenshot', 'record', 'desktop', 'library', 'achievements', 'resume', 'quit'], 'no sound rows without audio')
+    expect(s['rows'], ['resume', 'screenshot', 'record', 'quit'], 'no sound rows without audio')
     expect(s['geometry']['readouts'], 0, 'no readings without telemetry')
-    s = summon('no-achievements')
-    expect(s['rows'], ['screenshot', 'record', 'desktop', 'library', 'volume', 'resume', 'quit'], 'no achievements row')
     s = summon('no-mangohud')
     expect(s['geometry']['readouts'], 2, 'CPU and GPU without MangoHud')
+    s = summon('no-game')
+    expect((s['rows'], s['cursor']), (['screenshot', 'record', 'volume'], 'screenshot'), 'no game: capture and sound only')
 
     # Layout of every state at every scale on this screen.
     for scale in scales:

@@ -18,16 +18,17 @@ screen sizes.
 tools/guide-overlay-preview/check-plugin.py [SCALE...]`), drives the card through
 the fixtures: where the cursor starts and how the D-pad moves it, every action,
 and for every fixture at scales 1, 1.25 and 1.7 that the card fits the screen
-with nothing cut off, equal tiles and their icons centred. Run it once per
+with nothing cut off, the panel at the right edge, equal tiles and their icons
+inside them. Run it once per
 screen size.
 
 A fixture is the card's data without the backend: `game` as Omakade sends it,
 `performance` (`fps`, `frametime`), `stats` (`cpu`, `cpuTemp`, `gpu`,
 `gpuTemp`), `audio` (`volume`, `muted`, `outputs: [{name, current}]`), `pads` (battery
-percentages), `capture` (`recording: {seconds}`,
-`replay: {seconds}`), plus `clock`, `cursor` (the focused row), `confirm` (the quit question open)
-and `view: "achievements"` with `achIndex` (the list open). `"@/..."` paths
-point into this folder, where the achievement pictures live. Actions in fixture mode change the fixture and are
+percentages), `capture` (`recording: {seconds}`, `replay: {seconds}`), `desktop`
+(Game Mode's Desktop button), plus `clock`, `cursor` (the focused row) and
+`confirm` (the quit question open). `"@/..."` paths point into this folder,
+where the pictures live. Actions in fixture mode change the fixture and are
 logged as `GUIDE_ACT`.
 
 `omarchy-shell shell call omakade.guide state ""` returns the card's state,

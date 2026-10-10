@@ -3,20 +3,28 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// What the card shows, in the language of Omarchy's audio, monitor and weather
-// panels: a hero with the game, its readings as labelled numbers, a row of
-// action tiles, achievements and sound as panel sections, then Resume and Quit
-// as a pair of buttons, and what the buttons do. The achievements list takes
-// the place of the tiles and sections; the quit question takes the place of
-// everything under the readings. `g` is the guide: its state, colours, sizes
-// and actions. The cursor moves as GuideFocus.js says.
+// What the panel shows, top to bottom: the status line, the game, Resume,
+// Desktop and the RetroArch menu where they apply, the capture tiles, sound,
+// performance, then Quit under a rule and what the buttons do. Sections that
+// do not apply are left out. The quit question takes Quit's place. `g` is the
+// guide: its state, colours, sizes and actions. The cursor moves as
+// GuideFocus.js says.
 Column {
   id: card
 
   property var g
-  readonly property alias achievementList: list
+  // The card's padding, for rules that run out to its edges.
+  property int bleed: 0
   readonly property int readoutCount: g.readouts.length
   readonly property bool titleTruncated: hero.truncated
+  readonly property int gap: g.sized(Style.space(12))
+
+  spacing: g.sized(Style.space(20))
+
+  StatusRow {
+    g: card.g
+    width: parent.width
+  }
 
   GameHero {
     id: hero
@@ -24,182 +32,162 @@ Column {
     width: parent.width
   }
 
-  Sep { g: card.g; visible: card.readoutCount > 0 }
+  ActionButton {
+    readonly property var spec: card.g.rowSpec("resume")
+    visible: !!card.g.game
+    g: card.g
+    key: "resume"
+    width: parent.width
+    height: card.g.sized(Style.space(60))
+    icon: spec.icon
+    iconSize: Math.round(card.g.sized(Style.font.iconLarge) * 1.15)
+    label: spec.label
+    labelSize: card.g.sized(Style.font.heading)
+    strong: true
+    hint: card.g.buttons[1]
+  }
 
-  // The readings, one column each, centred.
+  // Desktop (Game Mode) and the RetroArch menu: buttons like the tiles, one
+  // line high.
   Row {
-    id: readings
-    visible: card.readoutCount > 0
+    id: extras
+    readonly property var keys: [].concat(card.g.showDesktop ? ["desktop"] : [], card.g.showRetroarch ? ["retroarch"] : [])
+    visible: extras.keys.length > 0
     width: parent.width
-    spacing: tiles.spacing
+    spacing: card.gap
     Repeater {
-      model: card.g.readouts
-      Readout {
-        required property var modelData
+      model: extras.keys
+      ActionButton {
+        required property string modelData
+        readonly property var spec: card.g.rowSpec(modelData)
         g: card.g
-        width: Math.floor((readings.width - readings.spacing * (card.readoutCount - 1)) / Math.max(1, card.readoutCount))
-        centered: true
-        label: modelData.label
-        value: modelData.value
-        unit: modelData.unit
+        key: modelData
+        width: Math.floor((extras.width - extras.spacing * (extras.keys.length - 1)) / extras.keys.length)
+        height: card.g.sized(Style.space(48))
+        icon: spec.icon
+        label: spec.label
       }
     }
   }
 
-  Sep { g: card.g }
-
-  Item {
-    id: body
+  // Capture. Save N s joins as a third tile while a replay buffer runs.
+  Row {
+    id: tiles
+    readonly property var keys: card.g.grid.filter(function(row) { return row.indexOf("screenshot") >= 0 })[0] || []
     width: parent.width
-    height: card.g.view === "confirm" ? confirm.implicitHeight : main.implicitHeight
-
-    Column {
-      id: main
-      width: parent.width
-      visible: card.g.view === "main"
-
-      // Capture and leaving the game. Save last N s joins as a fifth tile while
-      // a replay buffer runs; the tiles narrow, the card keeps its height.
-      Row {
-        id: tiles
-        width: parent.width
-        spacing: card.g.sized(Style.space(8))
-        Repeater {
-          model: card.g.grid.length ? card.g.grid[0] : []
-          Tile {
-            required property string modelData
-            readonly property var spec: card.g.rowSpec(modelData)
-            readonly property int count: card.g.grid[0].length
-            g: card.g
-            key: modelData
-            width: Math.floor((tiles.width - tiles.spacing * (count - 1)) / count)
-            height: card.g.sized(Style.space(72))
-            icon: modelData === "record" && card.g.recording ? card.g.icons.stop : spec.icon
-            iconScale: modelData === "record" && !card.g.recording ? 1.1 : 1
-            iconColor: spec.iconColor !== undefined ? spec.iconColor : ink
-            label: ({screenshot: "Screenshot",
-                     record: card.g.recording ? "Stop " + card.g.recordingTime : "Record",
-                     replay: "Save " + card.g.replaySeconds + " s",
-                     desktop: "Desktop", retroarch: "RetroArch"})[modelData] || spec.label
-          }
-        }
+    spacing: card.gap
+    Repeater {
+      model: tiles.keys
+      Tile {
+        required property string modelData
+        readonly property var spec: card.g.rowSpec(modelData)
+        g: card.g
+        key: modelData
+        urgent: !!spec.urgent
+        tone: spec.urgent ? "tint" : "plain"
+        width: Math.floor((tiles.width - tiles.spacing * (tiles.keys.length - 1)) / tiles.keys.length)
+        height: card.g.sized(Style.space(90))
+        icon: spec.icon
+        label: spec.label
+        hint: modelData === "screenshot" ? card.g.buttons[2] : ""
       }
-
-      Sep { g: card.g; visible: card.g.hasAchievements }
-
-      Column {
-        width: parent.width
-        visible: card.g.hasAchievements
-        spacing: card.g.sized(Style.space(6))
-        SectionHead {
-          g: card.g
-          text: "ACHIEVEMENTS"
-          value: card.g.hasAchievements ? (card.g.achievements.unlocked || 0) + " / " + card.g.achievements.total : ""
-        }
-        ControlRow {
-          g: card.g
-          key: "achievements"
-          width: parent.width
-          kind: "meter"
-          icon: card.g.icons.achievements
-          // The cup draws less ink than the speaker below it.
-          iconScale: 1.1
-          amount: card.g.hasAchievements ? (card.g.achievements.unlocked || 0) / card.g.achievements.total : 0
-        }
-      }
-
-      Sep { g: card.g; visible: card.g.volumeAvailable || card.g.outputs.length > 1 }
-
-      Column {
-        width: parent.width
-        visible: card.g.volumeAvailable || card.g.outputs.length > 1
-        spacing: card.g.sized(Style.space(6))
-        SectionHead {
-          g: card.g
-          text: "SOUND"
-          value: !card.g.volumeAvailable ? "" : card.g.muted ? "Muted" : Math.round(card.g.volume * 100) + "%"
-        }
-        ControlRow {
-          visible: card.g.volumeAvailable
-          g: card.g
-          key: "volume"
-          width: parent.width
-          kind: "slider"
-          icon: card.g.muted ? card.g.icons.volumeOff : card.g.icons.volume
-          amount: card.g.volume
-          dim: card.g.muted
-        }
-        // The output the game plays through, as the audio panel names its
-        // devices; A or left and right switch to the next.
-        ControlRow {
-          readonly property var spec: card.g.rowSpec("output")
-          visible: card.g.outputs.length > 1
-          g: card.g
-          key: "output"
-          width: parent.width
-          kind: "text"
-          icon: spec.icon
-          label: spec.label
-          value: (card.g.outputs.indexOf(card.g.currentOutput) + 1) + " / " + card.g.outputs.length
-        }
-      }
-
-      Sep { g: card.g; visible: !!card.g.game }
-
-      Row {
-        id: buttons
-        visible: !!card.g.game
-        width: parent.width
-        spacing: tiles.spacing
-        ActionButton {
-          g: card.g
-          key: "resume"
-          width: Math.floor((buttons.width - buttons.spacing) / 2)
-          height: card.g.sized(Style.space(44))
-          icon: card.g.icons.resume
-          iconScale: 1.3
-          label: "Resume"
-        }
-        ActionButton {
-          readonly property var spec: card.g.rowSpec("quit")
-          g: card.g
-          key: "quit"
-          urgent: true
-          width: Math.floor((buttons.width - buttons.spacing) / 2)
-          height: card.g.sized(Style.space(44))
-          icon: card.g.icons.quit
-          label: spec.label
-        }
-      }
-    }
-
-    AchievementList {
-      id: list
-      anchors.fill: parent
-      visible: card.g.view === "achievements"
-      items: card.g.achievementItems
-      unlockedCount: card.g.achievements ? (card.g.achievements.unlocked || 0) : 0
-      total: card.g.achievements ? (card.g.achievements.total || 0) : 0
-      current: card.g.achIndex
-      zoom: card.g.zoom
-      fontFamily: card.g.fontFamily
-      text: card.g.text
-      quiet: card.g.quiet
-      selectedInk: card.g.selectedInk
-      edge: card.g.needsEdge
-      edgeColor: card.g.focusEdge
-      onHovered: (index, source, mouse) => card.g.hoverAchievement(index, source, mouse)
-    }
-
-    ConfirmBlock {
-      id: confirm
-      g: card.g
-      width: parent.width
-      visible: card.g.view === "confirm"
     }
   }
 
-  Item { width: 1; height: card.g.sized(Style.space(16)) }
+  Column {
+    width: parent.width
+    visible: card.g.volumeAvailable || card.g.outputs.length > 1
+    spacing: card.g.sized(Style.space(10))
+    SectionHead {
+      g: card.g
+      text: "SOUND"
+      value: !card.g.volumeAvailable ? "" : card.g.muted ? "Muted" : Math.round(card.g.volume * 100) + "%"
+    }
+    ControlRow {
+      readonly property var spec: card.g.rowSpec("volume")
+      visible: card.g.volumeAvailable
+      g: card.g
+      key: "volume"
+      width: parent.width
+      kind: "slider"
+      icon: spec.icon
+      amount: card.g.volume
+      dim: card.g.muted
+    }
+    // The output the game plays through; A or left and right pick the next.
+    ControlRow {
+      readonly property var spec: card.g.rowSpec("output")
+      visible: card.g.outputs.length > 1
+      g: card.g
+      key: "output"
+      width: parent.width
+      kind: "text"
+      icon: spec.icon
+      iconSize: card.g.sized(Style.font.icon)
+      label: spec.label
+      value: spec.value
+    }
+  }
+
+  Column {
+    width: parent.width
+    visible: card.readoutCount > 0
+    spacing: card.g.sized(Style.space(10))
+    SectionHead {
+      g: card.g
+      text: "PERFORMANCE"
+    }
+    // One box per reading, in one row where their figures fit, else two.
+    Grid {
+      id: readings
+      readonly property int widest: {
+        var w = 0
+        for (var i = 0; i < boxes.count; i++) if (boxes.itemAt(i)) w = Math.max(w, boxes.itemAt(i).naturalWidth)
+        return w
+      }
+      readonly property int fitted: Math.floor((width - spacing * (card.readoutCount - 1)) / Math.max(1, card.readoutCount))
+      width: parent.width
+      spacing: card.gap
+      columns: card.readoutCount > 2 && readings.widest > readings.fitted ? 2 : Math.max(1, card.readoutCount)
+      Repeater {
+        id: boxes
+        model: card.g.readouts
+        Readout {
+          required property var modelData
+          g: card.g
+          width: Math.floor((readings.width - readings.spacing * (readings.columns - 1)) / readings.columns)
+          label: modelData.label
+          value: modelData.value
+          unit: modelData.unit
+        }
+      }
+    }
+  }
+
+  Sep {
+    g: card.g
+    bleed: card.bleed
+    visible: !!card.g.game
+  }
+
+  ActionButton {
+    readonly property var spec: card.g.rowSpec("quit")
+    visible: !!card.g.game && card.g.view !== "confirm"
+    g: card.g
+    key: "quit"
+    urgent: true
+    tone: "outline"
+    width: parent.width
+    height: card.g.sized(Style.space(50))
+    icon: spec.icon
+    label: spec.label
+  }
+
+  ConfirmBlock {
+    visible: !!card.g.game && card.g.view === "confirm"
+    g: card.g
+    width: parent.width
+  }
 
   HintLine {
     g: card.g

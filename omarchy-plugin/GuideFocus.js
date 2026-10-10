@@ -1,20 +1,21 @@
 .pragma library
 
-// The card's focus model: its controls as rows of keys, top to bottom. The
-// tiles share a row, as do Resume and Quit; every other control is a row of
-// its own. Only what the card shows is in the grid, so nothing is skipped.
+// The card's focus model: its controls as rows of keys, top to bottom. Resume
+// and Quit are rows of their own, as are volume and the sound output; Desktop
+// and the RetroArch menu share a row, as do the capture tiles. Only what the
+// card shows is in the grid, so nothing is skipped.
 //
-// `shown` says what is on the card: {game, replay, desktop, retroarch, achievements,
-// volume, outputs}.
+// `shown` says what is on the card: {game, replay, desktop, retroarch, volume,
+// outputs}.
 function grid(shown) {
   var s = shown || {}
   return [
-    ["screenshot", "record"].concat(s.replay ? ["replay"] : [], s.desktop ? ["desktop"] : [],
-                                    s.retroarch ? ["retroarch"] : []),
-    s.achievements ? ["achievements"] : [],
+    s.game ? ["resume"] : [],
+    [].concat(s.desktop ? ["desktop"] : [], s.retroarch ? ["retroarch"] : []),
+    ["screenshot", "record"].concat(s.replay ? ["replay"] : []),
     s.volume ? ["volume"] : [],
     (s.outputs || 0) > 1 ? ["output"] : [],
-    s.game ? ["resume", "quit"] : []
+    s.game ? ["quit"] : []
   ].filter(function(row) { return row.length > 0 })
 }
 
@@ -24,7 +25,7 @@ function home(rows) {
   return rows.length ? rows[0][0] : ""
 }
 
-// The horizontal position the cursor starts with: under the first tile.
+// The horizontal position the cursor starts with: over the first tile.
 var homeAnchor = 0.1
 
 // Fraction across the card of the item at `column` in a row of `count`.
@@ -42,10 +43,10 @@ function settle(anchor, column, count) {
 // One D-pad step. Up and down change row and wrap at the ends; on a row of
 // several items left and right move along it and stop at its ends. `anchor` is
 // the horizontal position (0..1) the cursor last had on a row of several items:
-// moving through one-item rows keeps it, so Record, down to Achievements and
-// Volume, then down again lands on Quit, below it. Returns {key, anchor}, or
-// null where the step is not a move: left and right on a one-item row belong to
-// that control (the volume level, the sound output).
+// moving through one-item rows keeps it, so Record, down through Volume and
+// Quit and round past Resume, comes back to Record. Returns
+// {key, anchor}, or null where the step is not a move: left and right on a
+// one-item row belong to that control (the volume level, the sound output).
 function move(rows, cursor, action, anchor) {
   var r = -1, c = 0
   for (var i = 0; i < rows.length; i++) {

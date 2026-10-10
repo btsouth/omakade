@@ -1,41 +1,50 @@
 # In-game guide (Omarchy shell plugin)
 
-The card Omakade opens over a running game. It is built like Omarchy's own
-panels (audio, monitor, weather) from the shell's kit (`qs.Commons`, `qs.Ui`),
-so it follows the active theme's menu colours, font, corner radius and spacing.
+The card Omakade opens over a running game: a panel at the right edge of the
+screen, centred down it, over a dim that deepens towards it. It is built from
+the Omarchy shell's kit (`qs.Commons`, `qs.Ui`), so it follows the active
+theme's menu colours, font, corner radius and spacing.
 
 ```
-┌──────────────────────────────────────────────┐
-│ ▣  Lantern Road                      9:47 PM │
-│    42 MIN · PAUSED · PAD 80%                 │
-├──────────────────────────────────────────────┤
-│   FPS      FRAME      CPU         GPU        │
-│   58       17.2 ms    41% 67°     88% 71°    │
-├──────────────────────────────────────────────┤
-│ [Screenshot]  [Record]                       │  (+ [Save 30 s] while a replay buffer runs)
-├──────────────────────────────────────────────┤
-│ ACHIEVEMENTS                         23 / 63 │
-│ ◇  ━━━━━━━━━━━━━──────────────────────       │
-├──────────────────────────────────────────────┤
-│ SOUND                                    72% │
-│ ◁  ━━━━━━━━━━━━━━━━━━━━━━○──────────         │
-│ ◁  Living room TV (HDMI)               1 / 3 │  (only with more than one output)
-├──────────────────────────────────────────────┤
-│ [ ▶ Resume ]              [ ⇥ Quit game ]    │
-│        A select   B resume   Y screenshot    │
-└──────────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│ [II PAUSED]              ◎ Xbox pad  9:47 PM  │
+│                                               │
+│ ┌────┐  Lantern Road                          │
+│ │    │  Steam                                 │
+│ └────┘  42 min this session   18 h total      │
+│                                               │
+│ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  │
+│ ┃ ▶  Resume                            (B) ┃  │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  │
+│ [ ▭  Desktop        ] [ ≡  RetroArch menu  ]  │  (only where they apply)
+│                                               │
+│ [ ◎             (Y) ] [ ◉                  ]  │
+│ [ Screenshot        ] [ Record clip        ]  │  (+ [Save 30 s] while a replay buffer runs)
+│                                               │
+│ SOUND                                    72%  │
+│ ◁  ━━━━━━━━━━━━━━━━━━━━━━━━━━○─────────────   │
+│ ▢  Living room TV (HDMI)              1 / 3 › │  (only with more than one output)
+│                                               │
+│ PERFORMANCE                                   │
+│ [ FPS  58           ] [ FRAME  17.2 ms     ]  │
+│ [ CPU  41%  67°C    ] [ GPU  88%  71°C     ]  │  (one box per available reading)
+├───────────────────────────────────────────────┤
+│ [ ⏻  Quit game                              ] │
+│    (A) Select   (B) Resume   (Y) Screenshot   │
+└───────────────────────────────────────────────┘
 ```
 
-The hero shows the game's cover (or a controller glyph), the session time,
-Paused and controller batteries when UPower reports them. The readings leave
-out what is not available: frame rate and frame time come from an existing game
-telemetry file through Omakade, CPU and GPU load and temperature from the
-drivers; with none the block is not shown. Record turns into Stop with the
-clip's running time. Achievements (Steam games with data) opens a list in place
-of the tiles and sections: unlocked, newest first, then locked, with their
-pictures; B goes back. The output row cycles the outputs. Quit asks in the card,
-starting on Keep playing. Sections that do not apply are left out, with their
-rules.
+The status line shows PAUSED, or REC and the clip's time while a clip records,
+then the pad (with its battery when UPower reports one) and the clock. The game
+block shows the cover at a fixed height and as wide as the picture is, the
+title, the platform and source when the payload has them, and the session and
+total play time Omakade knows. Desktop appears for Game Mode games, the
+RetroArch menu when Omakade can open it. Record clip turns into Stop clip with
+the clip's running time. The performance boxes leave out what is not
+available: frame rate and frame time come from an existing game telemetry file
+through Omakade, CPU and GPU load and temperature from the drivers; with none
+the section is not shown. The output row cycles the outputs. Quit asks in
+Quit's place, starting on Keep playing. Sections that do not apply are left out.
 
 Layout is `components/GuideCard.qml`; the cursor's moves are `GuideFocus.js`;
 what each control does is `activate()` and `act()` in `Guide.qml`.
@@ -57,15 +66,16 @@ omarchy-shell omakade.guide input <up|down|left|right|a|b|y|guide>
 ```
 
 The cursor starts on Resume each time the card opens. Up and down move between
-rows (the tiles, achievements, volume, output, Resume and Quit) and wrap; left
-and right move along the tiles and between Resume and Quit. Moving between
-rows keeps the cursor's place across the card, through the one-control rows
-too, so Record and down three times lands on Quit. On volume left and right
-change the level, on the output row they pick the next output. A activates, B
-backs out of the list or the quit question first and then resumes. Y takes a
-screenshot. Keyboard: arrows, Enter or Space (A), Escape (B), Y, G or Home
-(Guide). Button names in the hint line follow the pad: Xbox and Steam Deck
-letters, PlayStation symbols, Nintendo's swapped A and B.
+rows (Resume, Desktop and the RetroArch menu, the capture tiles, volume, output,
+Quit) and wrap; left and right move along a row of several. Moving between rows
+keeps the cursor's place across the card, through the one-control rows too, so
+Record, down through volume and Quit and round past Resume, comes back to
+Record. On volume left and right change the level, on the output row they pick
+the next output. A activates, B backs out of the quit question first and then
+resumes. Y takes a screenshot. Keyboard: arrows, Enter or Space (A), Escape (B),
+Y, G or Home (Guide). The button glyphs on the card and in the hint line follow
+the pad: Xbox and Steam Deck letters, PlayStation symbols, Nintendo's swapped A
+and B.
 
 ## Capture and sound
 
@@ -87,4 +97,4 @@ See `tools/guide-overlay-preview/README.md`.
 
 Backend updates use the same version 1 payload shape. With `delta: true`, data is
 a merge patch: absent fields are retained, null removes fields, arrays replace.
-Static art and achievements are kept until their content changes.
+Static art is kept until its content changes.

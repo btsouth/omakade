@@ -2,14 +2,16 @@
   "pad": "xbox",
   "clock": "9:47 PM",
   "game": {
-    "title": "Lantern Road",
-    "source": "Steam",
-    "kind": "steam",
-    "cover": "@/cover.jpg",
+    "title": "Lantern Road 64",
+    "platform": "Nintendo 64",
+    "source": "RetroArch",
+    "kind": "native",
+    "cover": "@/game.jpg",
     "sessionMinutes": 42,
     "totalMinutes": 1080,
     "pauseWhileOpen": true,
-    "paused": true
+    "paused": true,
+    "retroarchMenu": true
   },
   "performance": {
     "mangohud": true,
@@ -26,5 +28,6 @@
     "volume": 0.72,
     "muted": false
   },
-  "capture": {}
+  "capture": {},
+  "desktop": true
 }
