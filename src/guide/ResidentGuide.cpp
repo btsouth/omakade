@@ -301,7 +301,6 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     if (changed || !m_ready) refresh();
   }
   else if (action == "close") m_guide.close();
-
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
     const auto requested = data.value("requestNs").toString().toLongLong();
