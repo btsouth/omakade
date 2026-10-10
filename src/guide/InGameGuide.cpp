@@ -430,6 +430,14 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
 
 void InGameGuide::setContext(const QJsonObject& context) {
   m_context = context;
+  // Once parked, coming back by any route ends it: a later park is not the guide's.
+  if (context.value("gameModeParked").toBool()) m_returnParked = !m_returnTo.isEmpty();
+  else if (m_returnParked && context.contains("gameModeParked")) { m_returnTo = {}; m_returnParked = false; }
+}
+
+bool InGameGuide::returnPending() const {
+  return !m_returnTo.isEmpty() && m_context.value("gameModeParked").toBool() &&
+         ProcFs::processAlive(m_returnTo.value("pid").toLongLong(), m_returnTo.value("procStart").toLongLong());
 }
 
 void InGameGuide::restoreWindow(std::function<void(bool)> done) {
@@ -510,6 +518,7 @@ void InGameGuide::message(const QJsonObject& data) {
     // Leave the way holding Home does: close the guide, resume the game and let go of
     // the pads first, then park a running game exactly as Home did in 1.15.
     m_restoreFocus = false;
+    m_returnTo = m_session; m_returnParked = false;
     finishClose(true);
     emit desktopRequested();
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {

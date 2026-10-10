@@ -52,6 +52,8 @@ public:
   void setInjectedInputEnabled(bool enabled);
   void setDesktopEnvironment(const QProcessEnvironment& environment) { m_environment = environment; }
   void setContext(const QJsonObject& context);
+  // The guide's Desktop parked this game and it is still parked: Home should come back to it.
+  bool returnPending() const;
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
 signals:
   void changed();
@@ -76,14 +78,14 @@ private:
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   // The combo that opens RetroArch's menu, when the game is a RetroArch Omakade started.
   QString m_retroArchCombo;
-  QJsonObject m_context, m_lastPayload;
+  QJsonObject m_context, m_lastPayload, m_returnTo;
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
   GameModeSession* m_gameMode;
   GameLauncher* m_launcher;
   HyprlandGameModeCompositor* m_compositor;
   bool m_enabled = false, m_opened = false, m_opening = false, m_paused = false;
-  bool m_restoreFocus = true;
+  bool m_restoreFocus = true, m_returnParked = false;
   bool m_pauseWhileOpen = true, m_injectedInput = false, m_polling = false;
   QVariantMap m_session, m_metadata, m_quitSession;
   QString m_output, m_family = "keyboard", m_token, m_socketPath;

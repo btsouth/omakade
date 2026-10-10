@@ -144,6 +144,16 @@ void InGameGuideTests::desktopResumesBeforeParking() {
   // Game Mode parks a running game, as when Home is held: the pause is already gone.
   QCOMPARE(desktop.count(), 1); QVERIFY(!guide.showing()); QVERIFY(!guide.m_guard);
   QTRY_VERIFY(processState(game.processId()) != 'T');
+  // Home on the desktop comes back to this game while it stays parked, and only then.
+  QVERIFY(!guide.returnPending());
+  // Still parking: a snapshot from before the park lands does not forget the game.
+  guide.setContext({{"gameModeActive", true}, {"gameModeParked", false}});
+  guide.setContext({{"gameModeActive", false}, {"gameModeParked", true}});
+  QVERIFY(guide.returnPending());
+  guide.setContext({{"gameModeActive", true}, {"gameModeParked", false}});
+  QVERIFY(!guide.returnPending());
+  guide.setContext({{"gameModeActive", false}, {"gameModeParked", true}});
+  QVERIFY(!guide.returnPending());
 }
 
 void InGameGuideTests::surfaceFailureResumes() {

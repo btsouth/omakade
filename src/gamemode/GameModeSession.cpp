@@ -403,10 +403,12 @@ void GameModeSession::focusGame() {
     }
     if (!hasGame) {
       m_compositor->focusWindow(window.address);
+      emit gameFocused();
       return;
     }
     if (!m_controller.focusRetainedGame())
       emit failed(QStringLiteral("The retained game could not be focused. Its session is still available."));
+    else emit gameFocused();
   });
 }
 

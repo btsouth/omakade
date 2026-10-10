@@ -193,9 +193,9 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
           socket->write(QJsonDocument(command(data)).toJson(QJsonDocument::Compact) + '\n'); socket->flush(); socket->disconnectFromServer();
         };
         const auto action = data.value("action").toString();
-        const bool reconcile = action == "shortcut" && !m_guide.showing() && !m_guide.hasGame();
+        const bool reconcile = (action == "shortcut" && !m_guide.showing() && !m_guide.hasGame()) || action == "reopen";
         if ((!m_ready || reconcile) && !m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty() &&
-            (action == "shortcut" || action == "toggle")) {
+            (action == "shortcut" || action == "toggle" || action == "reopen")) {
           // A cache miss is reconciled from queries started after this request. An
           // already-running stale poll must not turn a newly launched game into GUI fallback.
           const int needed = m_refreshGeneration + (reconcile ? 1 : 0);
@@ -295,12 +295,23 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     if (changed || !m_ready) refresh();
   }
   else if (action == "close") m_guide.close();
+  else if (action == "reopen") {
+    // Game Mode has resumed with the game in front; never park or fall back from here.
+    if (!m_guide.showing() && m_guide.hasGame() && m_guide.usable()) m_guide.toggle(data.value("node").toString(), false);
+  }
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
     const auto requested = data.value("requestNs").toString().toLongLong();
     const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
+    // Parked from the guide's Desktop: come back to the game with the guide open.
+    if (action == "shortcut" && !m_guide.showing() && m_guide.returnPending()) {
+      const auto node = data.value("node").toString();
+      static const QRegularExpression device("^event[0-9]+$");
+      launch("--game-mode-return" + (device.match(node).hasMatch() ? " --guide-device " + node : QString()));
+      return reply;
+    }
     if (!m_ready) return {{"result", "preparing"}};
     // No game, a disabled plugin, a parked Game Mode session or the 1.15 setting: Home
     // does what it did in 1.15.

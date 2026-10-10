@@ -85,7 +85,7 @@ void GuideClient::request(const QJsonObject& command, QObject* owner,
     finish(reply.value("result").toString("unavailable"), reply);
   });
   QObject::connect(socket, &QLocalSocket::errorOccurred, owner, [finish](QLocalSocket::LocalSocketError) { finish("unavailable", {}); });
-  QTimer::singleShot(command.value("action") == "shortcut" || command.value("action") == "toggle" ? 2000 : 500, socket, [finish] { finish("unavailable", {}); });
+  QTimer::singleShot(command.value("action") == "shortcut" || command.value("action") == "toggle" || command.value("action") == "reopen" ? 2000 : 500, socket, [finish] { finish("unavailable", {}); });
   socket->connectToServer(socketPath());
 }
 

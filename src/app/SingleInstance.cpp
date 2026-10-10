@@ -36,6 +36,8 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
           emit gameModeRequested(command.endsWith("enter"));
         } else if (command == "game-mode desktop") {
           emit gameModeDesktopRequested();
+        } else if (command.startsWith("game-mode return")) {
+          emit gameModeReturnRequested(QString::fromUtf8(command.mid(16)).trimmed());
         } else if (command.startsWith("game-mode toggle")) {
           emit gameModeToggleRequested(QString::fromUtf8(command.mid(16)).trimmed());
         } else if (command.startsWith("guide toggle")) {
