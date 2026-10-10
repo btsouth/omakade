@@ -59,10 +59,10 @@ explicitly; normal system updates prefer OPR's copy.
 You can also download and verify a release package directly:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.16.0/omakade-1.16.0-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.16.0/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.16.1/omakade-1.16.1-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.16.1/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.16.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.16.1-1-x86_64.pkg.tar.zst
 ```
 
 For ARM64, replace `x86_64` with `aarch64`. Packages are also available under

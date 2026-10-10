@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.16.1
+
+- Record clip in the in-game guide now uses its own recorder. A screen recording you
+  start from Omarchy keeps running on its own: the guide no longer shows it as its
+  clip or stops it, and Omarchy's stop leaves the guide's clip alone.
+
+[Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.1)
+
 ## 1.16.0
 
 Press Home or Super + Ctrl + G over a running game to open the in-game guide, a
