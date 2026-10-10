@@ -3,6 +3,8 @@
 import fcntl
 import json
 import os
+import signal
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -12,6 +14,12 @@ import unittest
 
 
 BINARY = str(Path(sys.argv.pop(1)).resolve())
+# CTest runs the cases in shards so each stays well inside its timeout: --shard=N/M runs
+# every Mth case in name order, starting at N.
+SHARD = next((arg for arg in sys.argv[1:] if arg.startswith("--shard=")), None)
+if SHARD:
+    sys.argv.remove(SHARD)
+    SHARD_INDEX, SHARD_COUNT = (int(part) for part in SHARD.removeprefix("--shard=").split("/"))
 
 
 class GameModeStartupTests(unittest.TestCase):
@@ -41,7 +49,7 @@ class GameModeStartupTests(unittest.TestCase):
         (root / "runtime").mkdir(mode=0o700)
         tools = root / "tools"
         tools.mkdir()
-        for name in ("hyprctl", "pactl", "omarchy-shell"):
+        for name in ("hyprctl", "pactl", "omarchy-shell", "systemctl"):
             stub = tools / name
             stub.write_text("#!/bin/sh\nexit 1\n")
             stub.chmod(0o755)
@@ -49,23 +57,86 @@ class GameModeStartupTests(unittest.TestCase):
         config = root / "config/omakade"
         config.mkdir(parents=True)
         (config / "game-mode.json").write_text(json.dumps({"silence_notifications": False}))
-        self.log = open(root / "app.log", "w+")
+        self.log_path = root / "app.log"
+        self.log = self.log_path.open("a")
         self.primary = None
         self.game = None
+        # Keep real resident IPC in these legacy fallback ownership tests. Its
+        # compositor is unavailable: the GUI transport below changes per test,
+        # and intentionally requires variables absent at login.
+        resident_tools = root / "resident-tools"
+        resident_tools.mkdir()
+        hyprctl = resident_tools / "hyprctl"
+        hyprctl.write_text("#!/bin/sh\ncase \"$2\" in\nactivewindow) echo '{}';;\nclients|monitors) echo '[]';;\n*) exit 1;;\nesac\n")
+        hyprctl.chmod(0o755)
+        resident_env = self.env.copy()
+        resident_env["PATH"] = str(resident_tools) + os.pathsep + self.env["PATH"]
+        self.resident = subprocess.Popen(
+            [str(Path(BINARY).with_name("omakade-sessiond")), "--guide-only"],
+            env=resident_env, stdout=self.log, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        endpoint = str(root / "runtime" / f"omakade-guide-control-{os.getuid()}")
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            try:
+                with socket.socket(socket.AF_UNIX) as channel:
+                    channel.settimeout(0.5)
+                    channel.connect(endpoint)
+                    channel.sendall(b'{"action":"status"}\n')
+                    status = json.loads(channel.recv(65536))
+                    # Socket/protocol readiness is sufficient for this fallback
+                    # fixture. An unavailable compositor correctly reports ready=false.
+                    if status.get("result") == "handled" and "ready" in status:
+                        break
+            except (OSError, ValueError):
+                pass
+            if self.resident.poll() is not None:
+                self.fail("Resident guide exited during fixture startup")
+            time.sleep(0.02)
+        else:
+            self.fail("Resident guide did not prepare the fallback fixture")
 
     def tearDown(self):
-        if self.primary is not None and self.primary.poll() is None:
-            self.primary.terminate()
-            try:
-                self.primary.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.primary.kill()
-                self.primary.wait(timeout=5)
-        if self.game is not None and self.game.poll() is None:
-            self.game.terminate()
-            self.game.wait(timeout=5)
+        for process in (self.primary, self.game, self.resident):
+            if process is not None:
+                self.stop_process_group(process)
         self.log.close()
         self.directory.cleanup()
+
+    def stop_process_group(self, process):
+        # SIGTERM of Qt alone leaves its in-flight QProcess helpers orphaned.
+        # Each fixture-owned process has its own session, including its helpers.
+        def send(sig):
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                pass
+
+        def live_members():
+            members = []
+            for stat in Path("/proc").glob("[0-9]*/stat"):
+                try:
+                    fields = stat.read_text().rsplit(")", 1)[1].split()
+                except FileNotFoundError:
+                    continue
+                if int(fields[2]) == process.pid and fields[0] not in ("Z", "X"):
+                    members.append(int(stat.parent.name))
+            return members
+
+        send(signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            send(signal.SIGKILL)
+            process.wait(timeout=5)
+        # The parent may already have exited normally while a helper is running.
+        send(signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while members := live_members():
+            self.assertLess(time.monotonic(), deadline,
+                            f"Fixture process group {process.pid} still running: {members}")
+            time.sleep(0.02)
 
     def wait_for(self, predicate, message):
         deadline = time.monotonic() + 8
@@ -75,9 +146,7 @@ class GameModeStartupTests(unittest.TestCase):
             if self.primary.poll() is not None:
                 break
             time.sleep(0.02)
-        self.log.flush()
-        self.log.seek(0)
-        details = self.log.read()[-4000:]
+        details = self.log_path.read_text()[-4000:]
         for name in ("state", "fixture"):
             path = getattr(self, name, None)
             if path and path.exists():
@@ -88,6 +157,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.primary = subprocess.Popen(
             [BINARY, "--demo", *arguments], env=self.env,
             stdout=self.log, stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
 
     def command(self, argument):
@@ -122,7 +192,7 @@ class GameModeStartupTests(unittest.TestCase):
         # Real process/start identities through the production procfs adapter;
         # only compositor/audio transport is fake. No desktop services are used.
         if with_game:
-            self.game = subprocess.Popen(["sleep", "120"], env=self.env)
+            self.game = subprocess.Popen(["sleep", "120"], env=self.env, start_new_session=True)
         root = Path(self.directory.name)
         self.fixture = root / "desktop.json"
         self.fixture.write_text(json.dumps({"owner": 0, "game": self.game.pid if self.game else 0,
@@ -233,7 +303,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.phase("parked")
         self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xdd",
                       "Empty park did not restore desktop focus")
-        self.game = subprocess.Popen(["sleep", "120"], env=self.env)
+        self.game = subprocess.Popen(["sleep", "120"], env=self.env, start_new_session=True)
         self.fixture_update(game=self.game.pid, game_open=True)
         self.wait_for(lambda: json.loads(self.fixture.read_text())["mute"],
                       "Delayed game audio was not muted by parked polling")
@@ -331,6 +401,13 @@ class GameModeStartupTests(unittest.TestCase):
 
     def test_library_only_warm_couch_reopens_same_owner_and_close_cleans_up(self):
         self.assert_library_session_retained(cold=False, couch=True, close=True)
+
+
+def load_tests(loader, tests, pattern):
+    names = loader.getTestCaseNames(GameModeStartupTests)
+    if SHARD:
+        names = names[SHARD_INDEX::SHARD_COUNT]
+    return unittest.TestSuite(GameModeStartupTests(name) for name in names)
 
 
 if __name__ == "__main__":

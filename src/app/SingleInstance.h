@@ -23,8 +23,11 @@ signals:
   void playRequested(const QString& launchKey);
   void rescanRequested(const QString& source);
   void gameModeRequested(bool enter);
-  void gameModeToggleRequested();
+  void gameModeToggleRequested(const QString& node);
+  void guideToggleRequested(const QString& node);
   void gameModeDesktopRequested();
+  // Home after the guide's Desktop: resume; the guide service reopens itself over the game.
+  void gameModeReturnRequested();
   void quitRequested();
   void trackingStorageFailed();
   // The recorder's durable recovery journal is full or was found damaged, so refused writes

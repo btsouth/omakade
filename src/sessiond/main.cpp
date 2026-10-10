@@ -1,4 +1,6 @@
 #include "tracking/AppNotify.h"
+#include "guide/ResidentGuide.h"
+#include <QThread>
 #include "tracking/AttributionAdapter.h"
 #include "tracking/DiscordPresence.h"
 #include "tracking/HyprlandWindows.h"
@@ -99,17 +101,36 @@ int main(int argc, char* argv[]) {
   QCoreApplication app(argc, argv);
   QCoreApplication::setApplicationName(QStringLiteral("omakade-sessiond"));
 
+  // Own the control endpoint before any thread can listen or unlink it. This also
+  // protects guide-only startup and survives unavailable recording storage.
+  QLockFile instance(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/omakade-sessiond.lock");
+  instance.setStaleLockTime(0);
+  if (!instance.tryLock(0)) { qWarning("omakade-sessiond: recorder already running or guide instance lock is unavailable"); return 1; }
+
+  // The recorder uses synchronous procfs/database polls. Keep guide input and IPC on
+  // an independent event loop, with no GUI application or library models.
+  QThread guideThread;
+  QObject guideOwner; guideOwner.moveToThread(&guideThread);
+  QObject::connect(&guideThread, &QThread::started, &guideOwner, [&guideOwner] { new ResidentGuide(&guideOwner); });
+  guideThread.start();
+  const auto stopGuide = [&] {
+    QMetaObject::invokeMethod(&guideOwner, [&guideOwner] { qDeleteAll(guideOwner.children()); }, Qt::BlockingQueuedConnection);
+    guideThread.quit(); guideThread.wait();
+  };
+  QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, stopGuide);
+  if (app.arguments().contains("--guide-only")) return app.exec();
+
   const QString databasePath = SessionDatabase::defaultDatabasePath();
   if (!QDir().mkpath(QFileInfo(databasePath).absolutePath())) {
     qWarning("omakade-sessiond: could not create the data directory");
-    return 1;
+    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
   // One owner per database, including manually started copies of the daemon.
   QLockFile owner(databasePath + QStringLiteral(".sessiond.lock"));
   owner.setStaleLockTime(0);
   if (!owner.tryLock(0)) {
     qWarning("omakade-sessiond: recorder already running or its lock is unavailable");
-    return 1;
+    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
 
   QString profileError;
@@ -122,7 +143,7 @@ int main(int argc, char* argv[]) {
   if (!SessionDatabase::open(database, SessionDatabase::defaultDatabasePath(),
                              QStringLiteral("omakade-sessiond"))) {
     qWarning("omakade-sessiond: could not open the play session database");
-    return 1;
+    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
 
   ConfigToggle toggle;

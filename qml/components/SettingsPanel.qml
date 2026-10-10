@@ -1577,6 +1577,35 @@ import QtQuick.Layouts
                     font.pixelSize: 10 * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: GameModeGuideButton.available && GameModeGuideButton.enabled
+                    Text {
+                        Layout.fillWidth: true
+                        text: "HOME BUTTON IN GAMES"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10 * settingsPanel.uiScale
+                    }
+                    GlassButton {
+                        objectName: "homeButtonOpensGuide"
+                        compact: true
+                        text: Preferences.homeButtonOpensGuide ? "GUIDE" : "GAME MODE"
+                        onClicked: Preferences.homeButtonOpensGuide = !Preferences.homeButtonOpensGuide
+                    }
+                }
+                Text {
+                    objectName: "homeButtonOpensGuideStatus"
+                    Layout.fillWidth: true
+                    visible: GameModeGuideButton.available && GameModeGuideButton.enabled
+                    text: Preferences.homeButtonOpensGuide
+                          ? "Home opens the guide over a game. Hold Home, or choose Desktop in the guide, to switch between Game Mode and your desktop."
+                          : "Home switches between Game Mode and your desktop, as before the guide."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
                 Text {
                     objectName: "gameModeStatus"
                     Layout.fillWidth: true

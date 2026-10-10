@@ -25,6 +25,7 @@ GameModeSession::GameModeSession(GameModeCompositor* compositor, GameModeAudio* 
           &GameModeSession::finishChange);
   m_controller.setPlaceholder([this](bool visible) { emit placeholderRequested(visible); });
   m_controller.setWindowVisibility([this](bool visible) { emit windowVisibilityRequested(visible); });
+  m_controller.setOpenOutput([this](const QString& output) { emit openOutputRequested(output); });
   m_controller.setBeforeParkRestore([this] {
     m_parkUiLeft = true;
     emit leaving(true);

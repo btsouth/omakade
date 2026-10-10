@@ -1,0 +1,35 @@
+{
+  "pad": "xbox",
+  "clock": "9:47 PM",
+  "game": {
+    "title": "Lantern Road",
+    "source": "Steam",
+    "kind": "steam",
+    "cover": "@/cover.jpg",
+    "sessionMinutes": 42,
+    "totalMinutes": 1080,
+    "pauseWhileOpen": true,
+    "paused": true
+  },
+  "performance": {
+    "mangohud": true,
+    "fps": 58,
+    "frametime": 17.2
+  },
+  "stats": {
+    "cpu": 41,
+    "cpuTemp": 67,
+    "gpu": 88,
+    "gpuTemp": 71
+  },
+  "audio": {
+    "volume": 0.72,
+    "muted": false
+  },
+  "capture": {
+    "replay": {
+      "seconds": 30
+    }
+  },
+  "cursor": "replay"
+}

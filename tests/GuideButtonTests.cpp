@@ -79,16 +79,22 @@ public:
   [[nodiscard]] QString sysDir() const { return m_root.filePath(QStringLiteral("sys")); }
 
   FakeNode add(const QString& node, const QString& name, const QString& keys,
-               bool virtualDevice = false) {
+               bool virtualDevice = false, bool bluetooth = false) {
     // sysfs links each event node to its device; virtual devices live under devices/virtual.
     const QString device = m_root.filePath(
-        (virtualDevice ? QStringLiteral("devices/virtual/input/") : QStringLiteral("devices/"))
+        (bluetooth ? QStringLiteral("devices/virtual/misc/uhid/") :
+         virtualDevice ? QStringLiteral("devices/virtual/input/") : QStringLiteral("devices/"))
         + node);
     QDir().mkpath(device + QStringLiteral("/device/capabilities"));
     writeFile(device + QStringLiteral("/device/name"), name);
+    if (bluetooth) {
+      QDir().mkpath(device + QStringLiteral("/device/id"));
+      writeFile(device + QStringLiteral("/device/id/vendor"), QStringLiteral("045e"));
+      writeFile(device + QStringLiteral("/device/id/product"), QStringLiteral("0b20"));
+    }
     writeFile(device + QStringLiteral("/device/capabilities/key"), keys);
     writeFile(device + QStringLiteral("/device/capabilities/abs"),
-              keys == kXpadKeys ? kXpadAxes : QStringLiteral("0"));
+              keys == kXpadKeys || bluetooth ? kXpadAxes : QStringLiteral("0"));
     QFile::remove(sysDir() + QLatin1Char('/') + node);
     QFile::link(device, sysDir() + QLatin1Char('/') + node);
     FakeNode fake{.path = devDir() + QLatin1Char('/') + node};
@@ -167,6 +173,9 @@ private slots:
     press.opened(QStringLiteral("event1"), 0);
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed));
     QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 120));
+    // A genuinely new press on the same source needs release, not a one-second wait.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 200));
+    QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 250));
     // Pressing again later toggles again.
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 3000));
     QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 3100));
@@ -191,6 +200,28 @@ private slots:
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 2, kArmed + 500));
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 0,
                  kArmed + GuidePress::kMaxHoldMs + 1));
+  }
+
+  void holdIsReportedOnceAndIsNotAPress() {
+    GuidePress press;
+    press.opened(QStringLiteral("event1"), 0);
+    press.opened(QStringLiteral("event2"), 0); // Steam's mirror of the same pad
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed));
+    QVERIFY(!key(press, QStringLiteral("event2"), BTN_MODE, 1, kArmed + 5));
+    QVERIFY(!press.hold(QStringLiteral("event1"), kArmed + GuidePress::kHoldMs - 1));
+    QVERIFY(press.hold(QStringLiteral("event1"), kArmed + GuidePress::kHoldMs));
+    QVERIFY(!press.hold(QStringLiteral("event1"), kArmed + GuidePress::kHoldMs + 50));
+    QVERIFY(!press.hold(QStringLiteral("event2"), kArmed + GuidePress::kHoldMs + 10));
+    // Released within the press window, a hold still never toggles as a press.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 700));
+    QVERIFY(!key(press, QStringLiteral("event2"), BTN_MODE, 0, kArmed + 705));
+    // The next short press is a press again.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 3000));
+    QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 3100));
+    // A chord is never a hold.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 6000));
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_START, 1, kArmed + 6040));
+    QVERIFY(!press.hold(QStringLiteral("event1"), kArmed + 6000 + GuidePress::kHoldMs));
   }
 
   void chordsDoNotToggle() {
@@ -326,6 +357,23 @@ private slots:
     QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 100));
   }
 
+  void listenerIdentifiesBluetoothUhidHardware() {
+    FakeInput input;
+    FakeNode pad = input.add("event3", "Xbox Wireless Controller", kXpadKeys, false, true);
+    FakeNode mirror = input.add("event4", "Microsoft X-Box 360 pad 0", kXpadKeys, true);
+    // Compact button usages 1..10 plus a separately exposed Guide button.
+    FakeNode compact = input.add("event5", "Xbox Wireless Controller", "13ff000000000000 0 0 0 0", false, true);
+    const auto found = GuideListener::scan(input.devDir(), input.sysDir());
+    QCOMPARE(found.size(), 3);
+    QVERIFY(!found.first().virtualDevice);
+    QCOMPARE(found.first().vendor, quint16(0x045e));
+    QCOMPARE(found.first().product, quint16(0x0b20));
+    QVERIFY(found.at(1).virtualDevice);
+    QVERIFY(!found.first().compactHidButtons);
+    QVERIFY(found.last().compactHidButtons);
+    QVERIFY(!found.last().virtualDevice);
+  }
+
   void listenerWatchesOnlyControllers() {
     FakeInput input;
     FakeNode pad = input.add(QStringLiteral("event3"), QStringLiteral("Microsoft X-Box 360 pad"),
@@ -358,6 +406,7 @@ private slots:
     FakeNode steam = input.add(QStringLiteral("event4"), QStringLiteral("pad 0"), kXpadKeys, true);
     GuideListener listener(input.devDir(), input.sysDir());
     QSignalSpy pressed(&listener, &GuideListener::pressed);
+    QSignalSpy preparing(&listener, &GuideListener::preparing);
     listener.start();
     QTest::qWait(int(kArmed) + 100);
 
@@ -368,6 +417,8 @@ private slots:
     pad.press(BTN_SOUTH, 0);
     pad.press(BTN_MODE, 1);
     steam.press(BTN_MODE, 1);
+    QTRY_COMPARE(preparing.size(), 2);
+    QCOMPARE(pressed.size(), 0);
     pad.press(BTN_MODE, 0);
     steam.press(BTN_MODE, 0);
     QTRY_COMPARE(pressed.size(), 1);

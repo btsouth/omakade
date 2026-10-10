@@ -737,6 +737,20 @@ void AppSettings::setPreferStandaloneEmulators(bool value) {
   emit preferStandaloneEmulatorsChanged();
 }
 
+void AppSettings::setHomeButtonOpensGuide(bool value) {
+  if (m_homeButtonOpensGuide == value) return;
+  m_homeButtonOpensGuide = value;
+  save();
+  emit homeButtonOpensGuideChanged();
+}
+
+bool AppSettings::homeButtonOpensGuideAt(const QString& path) {
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return true;
+  static const QRegularExpression off(QStringLiteral("(?m)^home_button_opens_guide\\s*=\\s*false\\s*$"));
+  return !off.match(QString::fromUtf8(file.readAll())).hasMatch();
+}
+
 bool AppSettings::closeAfterLaunch() const { return m_closeAfterLaunch; }
 
 void AppSettings::setCloseAfterLaunch(bool value) {
@@ -959,6 +973,7 @@ void AppSettings::load() {
   m_dolphinEnabled = readEnabled(QStringLiteral("dolphin_enabled"), false);
   m_consolePortalsEnabled = readEnabled(QStringLiteral("console_portals_enabled"), true);
   m_preferStandaloneEmulators = readEnabled(QStringLiteral("prefer_standalone_emulators"), false);
+  m_homeButtonOpensGuide = readEnabled(QStringLiteral("home_button_opens_guide"), true);
   const QRegularExpression consoleLayouts(
       QStringLiteral("(?ms)^console_layouts\\s*=\\s*\"\"\"(.*?)\"\"\"\\s*$"));
   const QRegularExpressionMatch consoleLayoutsMatch = consoleLayouts.match(contents);
@@ -1111,6 +1126,7 @@ bool AppSettings::save() {
   contents += QStringLiteral("prefer_standalone_emulators = %1\n")
                   .arg(m_preferStandaloneEmulators ? QStringLiteral("true")
                                                    : QStringLiteral("false"));
+  contents += QStringLiteral("home_button_opens_guide = %1\n").arg(m_homeButtonOpensGuide ? "true" : "false");
   contents += QStringLiteral("protect_retroarch_saves = %1\n").arg(m_protectRetroArchSaves ? "true" : "false");
   contents += QStringLiteral("rom_folders = \"\"\"\n%1\"\"\"\n").arg(m_romFolders.join('\n'));
   contents += QStringLiteral("console_layouts = \"\"\"\n%1\"\"\"\n").arg(m_consoleLayouts.join('\n'));

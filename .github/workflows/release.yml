@@ -163,6 +163,27 @@ jobs:
             -name "omakade-[0-9]*-$PACKAGE_ARCH.pkg.tar.zst" -print -quit)"
           test -n "$package_file"
           echo "PACKAGE_FILE=$package_file" >> "$GITHUB_ENV"
+      - name: Check the package runs on Omarchy stable
+        if: matrix.arch == 'x86_64'
+        run: |
+          # Read stable's versions from its mirror, not from the build container.
+          stable_version() {
+            curl -fsSL "https://stable-mirror.omarchy.org/$1/os/x86_64/$1.db" | bsdtar -tf - \
+              | sed -nE "s|^$2-([0-9]+\.[0-9]+)[^/]*/$|\1|p" | head -n 1
+          }
+          newest() { sort -V | tail -n 1; }
+          stable_qt="$(stable_version extra qt6-base)"
+          stable_glibc="$(stable_version core glibc)"
+          test -n "$stable_qt" && test -n "$stable_glibc"
+          unpacked="$(mktemp -d)"
+          bsdtar -xf "$PACKAGE_FILE" -C "$unpacked" usr
+          symbols="$(find "$unpacked" -type f -exec objdump -T {} + 2>/dev/null || true)"
+          needed_qt="$(grep -oE 'Qt_6\.[0-9]+' <<<"$symbols" | sed 's/^Qt_//' | newest)"
+          needed_glibc="$(grep -oE 'GLIBC_2\.[0-9]+' <<<"$symbols" | sed 's/^GLIBC_//' | newest)"
+          echo "Omarchy stable has Qt $stable_qt and glibc $stable_glibc; the package needs Qt $needed_qt and glibc $needed_glibc."
+          test -n "$needed_qt" && test -n "$needed_glibc"
+          test "$(printf '%s\n' "$needed_qt" "$stable_qt" | newest)" = "$stable_qt"
+          test "$(printf '%s\n' "$needed_glibc" "$stable_glibc" | newest)" = "$stable_glibc"
       - name: Test install, upgrade, removal, and reinstall
         env:
           GH_TOKEN: ${{ github.token }}
@@ -189,11 +210,14 @@ jobs:
           QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software omakade --smoke-test
           test -f /usr/lib/systemd/user/omakade-guide-button.service
           omakade-guide-button --list
+          test -f /usr/share/omakade/omarchy-plugin/manifest.json
+          python3 -c "import json; assert json.load(open('/usr/share/omakade/omarchy-plugin/manifest.json'))['id'] == 'omakade.guide'"
           pacman -U --noconfirm "$PACKAGE_FILE"
           pacman -R --noconfirm omakade
           test ! -e /usr/bin/omakade
           test ! -e /usr/bin/omakade-guide-button
           test ! -e /usr/lib/systemd/user/omakade-guide-button.service
+          test ! -e /usr/share/omakade/omarchy-plugin
           pacman -U --noconfirm "$PACKAGE_FILE"
       - name: Generate package SBOM
         run: >-

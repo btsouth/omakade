@@ -200,6 +200,16 @@ public:
     log.append(QStringLiteral("hold"));
     return !holdFails;
   }
+  // Off unless a test models Hyprland's open rule.
+  bool openSupported = false;
+  QString openWorkspace;
+  bool prepareOpen(const QString& workspace, const QString& output, QString*) override {
+    if (!openSupported) return false;
+    openWorkspace = workspace;
+    log.append(workspace.isEmpty() ? QStringLiteral("open withdrawn")
+                                   : QStringLiteral("open %1 %2").arg(workspace, output));
+    return true;
+  }
   bool placeWindow(const QString& address, const QString& workspace, const QString& target,
                    const QString& held, QString*) override {
     if (beforePlace)
@@ -1392,6 +1402,46 @@ private slots:
     QCOMPARE(m_compositor.currentFocus.workspace, QStringLiteral("8"));
     QCOMPARE(m_compositor.currentFocus.address, QStringLiteral("0xcafe"));
     QCOMPARE(visibility, (QStringList{"show", "hide", "show", "hide"}));
+  }
+
+  void coldRootOpensDirectlyInGameMode() {
+    deskAndTv(true);
+    auto game = controller();
+    game.setTemporaryWindow(true);
+    game.setPlaceholder([&](bool shown) { m_compositor.placeholderShown = shown; });
+    m_compositor.openSupported = true;
+    QStringList opened;
+    game.setOpenOutput([&](const QString& output) { opened.append(output); });
+    game.setWindowVisibility([&](bool shown) {
+      m_compositor.windowMapped = shown;
+      // Hyprland applies the rule as the window maps: it never tiles on the desktop.
+      if (shown && !m_compositor.openWorkspace.isEmpty())
+        m_compositor.window.workspace = m_compositor.openWorkspace;
+    });
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+    QVERIFY(m_compositor.log.contains(QStringLiteral("open name:omakade %1").arg(kTv)));
+    for (const auto& entry : m_compositor.log) {
+      QVERIFY2(!entry.startsWith("place") && entry != "hold", qPrintable(entry));
+    }
+    // Restoring the desktop still knows Game Mode moved focus.
+    QVERIFY(game.state().windowPlaced);
+    QVERIFY(game.state().desktopPending);
+    retainedGame();
+    QVERIFY(game.park(100).ok);
+    m_compositor.log.clear();
+    QVERIFY(game.resume(tvSettings(), 100).ok);
+    QVERIFY(m_compositor.log.contains(QStringLiteral("open name:omakade %1").arg(kTv)));
+    for (const auto& entry : m_compositor.log) QVERIFY2(!entry.startsWith("place"), qPrintable(entry));
+    // The window is sized for the display it opens on, before it is shown.
+    QCOMPARE(opened, (QStringList{kTv, kTv}));
+    const QString open = HyprlandGameModeCompositor::openScript("name:omakade", kTv);
+    QVERIFY(open.contains("initial_title = \"^Omakade Game Mode Opening.*\""));
+    // Lua rejects "\." in a string: the regex's backslashes must be escaped.
+    QVERIFY(open.contains(QStringLiteral("class = \"^io\\\\.github\\\\.tsouth89\\\\.Omakade$\"")));
+    QVERIFY(!open.contains(QStringLiteral("\"^io\\.github")));
+    QVERIFY(open.contains("workspace = \"name:omakade\", float = false, fullscreen = true, no_anim = true"));
+    QVERIFY(open.endsWith(QStringLiteral("hl.dispatch(hl.dsp.focus({ monitor = \"%1\" }))").arg(kTv)));
+    QVERIFY(HyprlandGameModeCompositor::openScript({}, {}).contains("enabled = false"));
   }
 
   void retainedWarmWindowTradesPlaceholderEachCycle() {

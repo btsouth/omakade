@@ -50,6 +50,10 @@ desktop and the warm window's current home and compositor mode.
 
 The desktop entry also carries a **Game Mode** action for launchers that show actions.
 
+With the shell guide plugin enabled on Omarchy, these controls use the
+[in-game guide](GAME-GUIDE.md). While a known game runs, the Guide button and
+Super + Ctrl + G open or close it.
+
 Press Start on the controller or F11 on the keyboard while Omakade is in front to open
 the compact Game Mode controls. **Back to Library** keeps the session active, and
 **Back to Game** dismisses the overlay when it is over a game. Escape or the controller's
@@ -80,9 +84,14 @@ the game visible and explains why Return to Desktop could not complete.
 ## Use a controller's Home button
 
 Turn on **Controller Home button** in **Settings → Controls**. A short press of the
-Xbox, PlayStation or Home button on any connected controller then starts Game Mode,
-returns to the desktop, and resumes, exactly like Super + Ctrl + G. It works while a
-game has focus and when Omakade is closed.
+Xbox, PlayStation or Home button on any connected controller then does what
+Super + Ctrl + G does: with no game it starts Game Mode, returns to the desktop and
+resumes; over a running game it opens the [in-game guide](GAME-GUIDE.md). Holding
+the button for half a second always switches between Game Mode and the desktop,
+without the guide. It works while a game has focus and when Omakade is closed.
+
+To have a short press switch Game Mode and the desktop as before the guide, set
+**Home button in games** to **Game Mode**.
 
 Turning it on starts a small user service, `omakade-guide-button`, and adds it to your
 desktop session's startup. Turning it off stops the service and removes it from startup.
@@ -93,15 +102,17 @@ systemctl --user enable --now omakade-guide-button
 systemctl --user disable --now omakade-guide-button
 ```
 
-The service only reads controllers. It does not grab them, remap buttons or create a
-virtual controller, so games and Steam Input see every press as before. It reads only
+The button-detection service only reads controllers. While the in-game guide is
+open, Omakade separately grabs controller evdev nodes and can pause the game
+process tree. Closing releases the grabs and resumes processes it paused.
+Outside the guide, games and Steam Input receive ordinary input as before. It reads only
 devices that report a Home button, asks the kernel for button events alone, and needs
 no root access or extra permissions.
 
 A press counts when it is short, alone and new:
 
-- Holding the button for a second or more does nothing, so holding the Xbox button to
-  switch a controller off does not toggle Game Mode.
+- Holding the button counts once, as a hold, after half a second. Holding on to switch
+  a controller off does nothing more.
 - Pressing it together with another button, the D-pad or a trigger does nothing, whichever
   goes down first. Those are hotkeys for Steam or an emulator.
 - The press that switches a wireless controller on, or a button already held when a
@@ -122,7 +133,8 @@ Settings** and turn off:
 Steam Input can stay on. These are Steam's settings for every game: the button no longer
 brings up Steam, and Guide button chords stop working. Omakade does not change Steam's
 settings for you. A game or emulator that uses the Home button for its own menu still
-gets the press as well.
+gets the press as well. RetroArch started by Omakade is the exception: its menu moves
+off Home for that run, and the guide opens it instead.
 
 ### If a controller does nothing
 

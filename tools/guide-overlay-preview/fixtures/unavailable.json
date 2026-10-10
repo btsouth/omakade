@@ -1,0 +1,15 @@
+{
+  "pad": "xbox",
+  "clock": "9:47 PM",
+  "game": {
+    "title": "Lantern Road",
+    "source": "Steam",
+    "kind": "steam",
+    "cover": "@/cover.jpg",
+    "sessionMinutes": 42,
+    "totalMinutes": 1080,
+    "pauseWhileOpen": true,
+    "paused": false
+  },
+  "capture": {}
+}

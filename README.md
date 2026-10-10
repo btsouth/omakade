@@ -59,10 +59,10 @@ explicitly; normal system updates prefer OPR's copy.
 You can also download and verify a release package directly:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.15.0/omakade-1.15.0-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.15.0/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.16.0/omakade-1.16.0-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.16.0/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.15.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.16.0-1-x86_64.pkg.tar.zst
 ```
 
 For ARM64, replace `x86_64` with `aarch64`. Packages are also available under
@@ -70,9 +70,9 @@ For ARM64, replace `x86_64` with `aarch64`. Packages are also available under
 Upgrading preserves your library and settings.
 
 Omakade is also listed in [OmaStore](https://github.com/KitsuneForgering/OmaStore),
-a community app store that installs it into your home directory. That install
-does not set up the `omakade-sessiond` service, so playtime recording stays off
-unless you start it yourself. Use a package above if you want playtime recording.
+a community app store that installs it into your home directory. OmaStore 0.4
+and newer also set up the `omakade-sessiond` service, so playtime recording works
+there too.
 
 ## Getting started
 
@@ -85,8 +85,8 @@ appear automatically. Use `omakade --demo` to try a fictional library.
 | Arrow keys / Enter | Navigate / open details |
 | Escape | Go back |
 | F11 / controller Start | Toggle Couch Mode |
-| `Super+Ctrl+G` | Return to the desktop / resume Game Mode (add in Settings) |
-| Controller Home button | Same as `Super+Ctrl+G` (turn on in Settings) |
+| `Super+Ctrl+G` | In-game guide over a game; otherwise return to the desktop / resume Game Mode (add in Settings) |
+| Controller Home button | Same as `Super+Ctrl+G`; hold it to switch Game Mode and the desktop (turn on in Settings) |
 | `Ctrl+D` | Settings and source diagnostics |
 | `Ctrl+M` | Toggle reduced motion |
 

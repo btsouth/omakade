@@ -1,0 +1,1115 @@
+#include "guide/GuideInput.h"
+#include "guide/GuideActions.h"
+#include "guide/GuidePlugin.h"
+#include "guide/InGameGuide.h"
+#include <QTemporaryDir>
+#include <QDir>
+#include <QHash>
+#include <QImage>
+#include <QUrl>
+#include <fcntl.h>
+#include "tracking/PlaySessionStore.h"
+#include "guide/GuidePayload.h"
+#include "tracking/ProcFs.h"
+
+#include <QFile>
+#include <QJSEngine>
+#include <QJsonDocument>
+#include <QProcess>
+#include <QtTest>
+#include <csignal>
+#include <linux/input.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <QScopeGuard>
+#include <unistd.h>
+
+class InGameGuideTests final : public QObject {
+  Q_OBJECT
+private slots:
+  void steamArtSelection();
+  void steamArtRejections();
+  void payloadUnknowns();
+  void payloadRoundTrip();
+  void changedPayloadKeepsStaticData();
+  void telemetryRequiresRealFreshReadings();
+  void desktopResumesBeforeParking();
+  void surfaceFailureResumes();
+  void openingDeadlineResumes();
+  void pluginParser();
+  void pluginFocus();
+  void buttons();
+  void faceButtonPositions_data();
+  void faceButtonPositions();
+  void compactXboxShoulders();
+  void axes();
+  void reportArbitrationAndRepeat();
+  void mirroredReportsAndRecovery();
+  void nonXboxMirrors_data();
+  void nonXboxMirrors();
+  void families();
+  void guardResumesOnOwnerDeath();
+  void guardTreeAndIdentity();
+  void protocolExtension();
+  void mangoBuilding();
+  void releaseHoldsPressedPads();
+  void perDeviceGrab();
+  void padsChangingWhileOpen();
+  void trackedQuit();
+  void guardDeathResume();
+  void quitEscalation();
+  void guardDiesDuringPause();
+  void failedPinRetainsRecovery();
+  void quitKeepsItsOriginalGame();
+  void pluginLinksAndEnablesOnce();
+  void pluginKeepsUserCopyAndWaitsForShell();
+  void pluginReloadsWhenItsFilesChange();
+  void pluginFallsBackWhenSummonFails();
+  void provisioningAndPauseDoNotBlock();
+  void provisioningFailureIsBounded_data();
+  void provisioningFailureIsBounded();
+  void provisioningRechecksGame();
+  void guardAcquirePrecedesFallbackRelease();
+};
+
+void InGameGuideTests::changedPayloadKeepsStaticData() {
+  QJsonArray items; for (int i = 0; i < 300; ++i) items.append(QJsonObject{{"title", QString::number(i)}});
+  auto before = GuidePayload::build({{"source", "Steam"}, {"name", "Test"}}, {}, "TEST", "xbox", true, false);
+  auto data = before.value("data").toObject(), game = data.value("game").toObject();
+  game.insert("achievements", QJsonObject{{"items", items}}); game.insert("banner", "file:///art.jpg");
+  data.insert("game", game); data.insert("performance", QJsonObject{{"fps", 60}}); before.insert("data", data);
+  auto after = before; game.insert("paused", true); data.insert("game", game); data.remove("performance"); after.insert("data", data);
+  const auto changes = GuidePayload::difference(before, after);
+  QVERIFY(QJsonDocument(changes).toJson(QJsonDocument::Compact).size() < 100);
+  QCOMPARE(changes.value("data").toObject().value("performance"), QJsonValue(QJsonValue::Null));
+  QVERIFY(GuidePayload::difference(after, after).isEmpty());
+  QFile script(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideProtocol.js")); QVERIFY(script.open(QIODevice::ReadOnly));
+  auto text = QString::fromUtf8(script.readAll()); text.remove(".pragma library"); QJSEngine engine; engine.evaluate(text);
+  auto patch = after; patch.insert("delta", true); patch.insert("data", changes.value("data"));
+  const auto updated = engine.globalObject().property("update").call({QString::fromUtf8(QJsonDocument(patch).toJson(QJsonDocument::Compact)),
+      engine.toScriptValue(before.value("data").toObject().toVariantMap())});
+  QVERIFY(!updated.isNull());
+  QCOMPARE(QJsonObject::fromVariantMap(updated.property("data").toVariant().toMap()), after.value("data").toObject());
+}
+
+void InGameGuideTests::telemetryRequiresRealFreshReadings() {
+  QTemporaryDir root; QVERIFY(root.isValid());
+  const auto path = root.filePath("game.csv");
+  const auto write = [&](const QByteArray& bytes) { QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(bytes); };
+  const QVariantMap source{{"kind", "mangohud"}, {"path", path}};
+  write("os,cpu\nLinux,Test\nfps,frametime,cpu_load\n59.2,16.7,10\n");
+  QCOMPARE(GuideActions::performance(source), (QJsonObject{{"fps", 59.2}, {"frametime", 16.7}}));
+  write("fps,frametime,cpu_load\nnan,-3,10\n"); QVERIFY(GuideActions::performance(source).isEmpty());
+  write("fps,frametime,cpu_load\n59,16,10"); QVERIFY(GuideActions::performance(source).isEmpty());
+  write("fps=58.5\nfocus=123\n");
+  const QVariantMap gamescope{{"kind", "gamescope"}, {"path", path}};
+  QCOMPARE(GuideActions::performance(gamescope), (QJsonObject{{"fps", 58.5}}));
+  QFile old(path); QVERIFY(old.open(QIODevice::ReadOnly)); QVERIFY(old.setFileTime(QDateTime::currentDateTime().addSecs(-10), QFileDevice::FileModificationTime)); old.close();
+  QVERIFY(GuideActions::performance(gamescope).isEmpty());
+  const auto fifo = root.filePath("stats"); QVERIFY(::mkfifo(QFile::encodeName(fifo).constData(), 0600) == 0);
+  QElapsedTimer clock; clock.start(); QVERIFY(GuideActions::performance({{"kind", "gamescope"}, {"path", fifo}}).isEmpty()); QVERIFY(clock.elapsed() < 50);
+}
+
+namespace {
+char processState(qint64 pid) {
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  if (!stat.open(QIODevice::ReadOnly)) return '?';
+  const auto raw = stat.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).at(0);
+}
+qint64 processStart(qint64 pid) {
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  if (!stat.open(QIODevice::ReadOnly)) return 0;
+  const auto raw = stat.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+}
+}
+
+void InGameGuideTests::desktopResumesBeforeParking() {
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.m_opened = true; guide.m_token = "test";
+  QSignalSpy desktop(&guide, &InGameGuide::desktopRequested);
+  // Outside Game Mode the game is already on the desktop: no Desktop.
+  QVERIFY(!guide.payload().value("data").toObject().value("desktop").toBool());
+  guide.message({{"action", "desktop"}});
+  QCOMPARE(desktop.count(), 0); QVERIFY(guide.opened());
+  guide.setContext({{"gameModeActive", true}});
+  QVERIFY(guide.payload().value("data").toObject().value("desktop").toBool());
+  QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
+  guide.message({{"action", "desktop"}});
+  // Game Mode parks a running game, as when Home is held: the pause is already gone.
+  QCOMPARE(desktop.count(), 1); QVERIFY(!guide.showing()); QVERIFY(!guide.m_guard);
+  QTRY_VERIFY(processState(game.processId()) != 'T');
+  // Home on the desktop comes back to this game while it stays parked, and only then.
+  QVERIFY(!guide.returnPending());
+  // Still parking: a snapshot from before the park lands does not forget the game.
+  guide.setContext({{"gameModeActive", true}, {"gameModeParked", false}});
+  guide.setContext({{"gameModeActive", false}, {"gameModeParked", true}});
+  QVERIFY(guide.returnPending());
+  guide.setContext({{"gameModeActive", true}, {"gameModeParked", false}});
+  QVERIFY(!guide.returnPending());
+  guide.setContext({{"gameModeActive", false}, {"gameModeParked", true}});
+  QVERIFY(!guide.returnPending());
+}
+
+void InGameGuideTests::surfaceFailureResumes() {
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.m_opening = true;
+  QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
+  guide.message({{"action", "surface-failed"}});
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.showing()); QVERIFY(!guide.m_guard);
+}
+
+void InGameGuideTests::openingDeadlineResumes() {
+  QTemporaryDir root; QVERIFY(root.isValid());
+  QFile shell(root.filePath("omarchy-shell")); QVERIFY(shell.open(QIODevice::WriteOnly));
+  shell.write("#!/bin/sh\necho '{\"token\":\"ignored\",\"opening\":true}'\n"); shell.close();
+  QVERIFY(shell.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", root.path().toUtf8() + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false); guide.m_enabled = true;
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.toggle();
+  guide.m_poll.stop(); // Model an older plugin that keeps reporting opening forever.
+  QTRY_COMPARE(processState(game.processId()), 'T'); QVERIFY(guide.showing());
+  QTRY_VERIFY_WITH_TIMEOUT(!guide.showing(), 4000);
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_guard);
+}
+
+void InGameGuideTests::steamArtSelection() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  const auto cache = directory.path() + "/268910/";
+  QVERIFY(QDir().mkpath(cache));
+  QImage hero(1920, 620, QImage::Format_RGB32); hero.fill(Qt::blue);
+  QImage logo(400, 200, QImage::Format_ARGB32); logo.fill(Qt::transparent);
+  QVERIFY(hero.save(cache + "library_hero.jpg")); QVERIFY(logo.save(cache + "logo.png"));
+  auto build = [&](const QVariantMap& metadata) {
+    return GuidePayload::build({{"source", "Steam"}, {"name", "Cuphead"}}, metadata,
+        "DP-2", "xbox", false, false, directory.path()).value("data").toObject().value("game").toObject();
+  };
+  for (const auto& path : {QString{}, QString("file:///steam/header.jpg"), QString("/steam/header.jpg"), QString("/missing/library_hero.jpg")}) {
+    const auto game = build({{"appId", "268910"}, {"heroPath", path}});
+    QCOMPARE(game.value("banner").toString(), QUrl::fromLocalFile(cache + "library_hero.jpg").toString());
+    QCOMPARE(game.value("logo").toString(), QUrl::fromLocalFile(cache + "logo.png").toString());
+    QVERIFY(!game.contains("bannerKind"));
+  }
+  const auto localHero = directory.path() + "/library_hero.jpg";
+  QVERIFY(hero.save(localHero));
+  const auto local = build({{"appId", "268910"}, {"heroPath", QUrl::fromLocalFile(localHero).toString()}, {"logoPath", "file:///steam/logo.png"}});
+  QCOMPARE(local.value("banner").toString(), QUrl::fromLocalFile(localHero).toString());
+  QCOMPARE(local.value("logo").toString(), QString("file:///steam/logo.png"));
+  QVERIFY(QFile::remove(cache + "library_hero.jpg"));
+  const auto fallback = build({{"appId", "268910"}, {"heroPath", "file:///steam/header.jpg"}});
+  QCOMPARE(fallback.value("banner").toString(), QString("file:///steam/header.jpg"));
+  QCOMPARE(fallback.value("bannerKind").toString(), QString("header"));
+}
+
+void InGameGuideTests::steamArtRejections() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  const auto cache = directory.path() + "/268910/"; QVERIFY(QDir().mkpath(cache));
+  QImage small(460, 215, QImage::Format_RGB32); small.fill(Qt::red);
+  QVERIFY(small.save(cache + "library_hero.jpg"));
+  QFile corrupt(cache + "logo.png"); QVERIFY(corrupt.open(QIODevice::WriteOnly));
+  corrupt.write("not an image"); corrupt.close();
+  auto build = [&](const QString& source, const QString& id) {
+    return GuidePayload::build({{"source", source}, {"name", "Game"}}, {{"appId", id}, {"heroPath", "file:///steam/header.jpg"}},
+        "DP-2", "xbox", false, false, directory.path()).value("data").toObject().value("game").toObject();
+  };
+  const auto invalidArt = build("Steam", "268910");
+  QCOMPARE(invalidArt.value("bannerKind").toString(), QString("header")); QVERIFY(!invalidArt.contains("logo"));
+  QImage wide(1920, 620, QImage::Format_RGB32); wide.fill(Qt::blue); QVERIFY(wide.save(cache + "library_hero.jpg"));
+  for (const auto& source : {QString("Manual"), QString("Heroic"), QString("steam")})
+    QCOMPARE(build(source, "268910").value("banner").toString(), QString("file:///steam/header.jpg"));
+  for (const auto& id : {QString{}, QString("../268910"), QString("268910/"), QString("268910\n"), QString("٢٦٨٩١٠")})
+    QCOMPARE(build("Steam", id).value("banner").toString(), QString("file:///steam/header.jpg"));
+}
+
+void InGameGuideTests::payloadUnknowns() {
+  const auto empty = GuidePayload::build({}, {}, "DP-2", "keyboard", true, false);
+  QVERIFY(!empty.value("data").toObject().contains("game"));
+  const auto game = GuidePayload::build({{"name", "Game"}, {"source", "Manual"}}, {}, "DP-2", "xbox", false, false).value("data").toObject().value("game").toObject();
+  QVERIFY(!game.contains("totalMinutes"));
+  QVERIFY(!game.contains("sessionMinutes"));
+  QVERIFY(!game.contains("achievements"));
+}
+
+void InGameGuideTests::payloadRoundTrip() {
+  const auto payload = GuidePayload::build({{"name", "fallback"}, {"source", "Steam"}, {"elapsedSeconds", 125}},
+      {{"title", "Quoted \"game\" 🕹"}, {"playtimeSeconds", 3600}, {"coverPath", "file:///tmp/a.png"},
+       {"achievementsTotal", 12}, {"achievementsUnlocked", 4}}, "HDMI-A-1", "playstation", true, true);
+  QJsonObject parsed;
+  QVERIFY(GuidePayload::parse(QJsonDocument(payload).toJson(), &parsed));
+  QCOMPARE(parsed, payload);
+  const auto game = parsed.value("data").toObject().value("game").toObject();
+  QCOMPARE(game.value("sessionMinutes").toInteger(), 2);
+  QCOMPARE(game.value("totalMinutes").toInteger(), 60);
+  QVERIFY(!game.contains("bannerKind"));
+  const auto steamArt = GuidePayload::build({{"name", "Cuphead"}, {"source", "Steam"}},
+      {{"heroPath", "file:///steam/librarycache/268910/header.jpg"}, {"logoPath", "file:///steam/librarycache/268910/logo.png"}},
+      "DP-2", "xbox", true, true).value("data").toObject().value("game").toObject();
+  QCOMPARE(steamArt.value("bannerKind").toString(), QStringLiteral("header"));
+  QCOMPARE(steamArt.value("logo").toString(), QStringLiteral("file:///steam/librarycache/268910/logo.png"));
+  QCOMPARE(game.value("kind").toString(), "steam");
+  QVERIFY(!GuidePayload::parse("{}", &parsed));
+  auto newer = payload; newer.insert("version", 2);
+  QVERIFY(!GuidePayload::parse(QJsonDocument(newer).toJson(), &parsed));
+  auto invalid = payload; invalid.insert("data", QJsonObject{{"game", "wrong"}});
+  QVERIFY(!GuidePayload::parse(QJsonDocument(invalid).toJson(), &parsed));
+}
+
+void InGameGuideTests::pluginParser() {
+  QFile script(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideProtocol.js"));
+  QVERIFY(script.open(QIODevice::ReadOnly));
+  auto code = QString::fromUtf8(script.readAll());
+  code.remove(".pragma library");
+  QJSEngine engine;
+  QVERIFY(!engine.evaluate(code).isError());
+  const auto parse = engine.globalObject().property("parse");
+  const auto valid = GuidePayload::build({{"name", "Live game"}, {"source", "RetroArch"}}, {}, "DP-2", "deck", true, false);
+  const auto result = parse.call({QString::fromUtf8(QJsonDocument(valid).toJson())});
+  QVERIFY(!result.isNull());
+  QCOMPARE(result.property("output").toString(), "DP-2");
+  for (const QString invalid : {"{", "{}", "{\"version\":2}", "{\"version\":1,\"output\":\"a\",\"pad\":\"xbox\",\"data\":{\"game\":{}}}"})
+    QVERIFY(parse.call({invalid}).isNull());
+}
+
+// The card's focus model (omarchy-plugin/GuideFocus.js): its rows for each
+// state, where the cursor starts, and one D-pad step at a time.
+void InGameGuideTests::pluginFocus() {
+  QFile script(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideFocus.js"));
+  QVERIFY(script.open(QIODevice::ReadOnly));
+  auto code = QString::fromUtf8(script.readAll());
+  code.remove(".pragma library");
+  QJSEngine engine;
+  QVERIFY(!engine.evaluate(code).isError());
+  const auto global = engine.globalObject();
+  const auto grid = [&](const QVariantMap& shown) { return global.property("grid").call({engine.toScriptValue(shown)}); };
+  const auto keys = [](const QJSValue& rows) {
+    QStringList out;
+    for (const auto& row : rows.toVariant().toList()) out << row.toStringList().join(',');
+    return out;
+  };
+  const QVariantMap full{{"game", true}, {"volume", true}, {"outputs", 1}};
+  const auto rows = grid(full);
+  QCOMPARE(keys(rows), (QStringList{"resume", "screenshot,record", "volume", "quit"}));
+  QCOMPARE(global.property("home").call({rows}).toString(), QStringLiteral("resume"));
+  auto all = full; all.insert("desktop", true); all.insert("retroarch", true); all.insert("replay", true); all.insert("outputs", 3);
+  QCOMPARE(keys(grid(all)), (QStringList{"resume", "desktop,retroarch", "screenshot,record,replay", "volume", "output", "quit"}));
+  auto desktop = full; desktop.insert("desktop", true);
+  QCOMPARE(keys(grid(desktop)), (QStringList{"resume", "desktop", "screenshot,record", "volume", "quit"}));
+  QCOMPARE(keys(grid({{"game", true}})), (QStringList{"resume", "screenshot,record", "quit"}));
+  QCOMPARE(keys(grid({})), (QStringList{"screenshot,record"}));
+  QCOMPARE(global.property("home").call({grid({})}).toString(), QStringLiteral("screenshot"));
+
+  // Walk a path of steps from Resume; "-" marks a step that is not a move.
+  const auto walk = [&](const QJSValue& rows, const QStringList& steps) {
+    QString cursor = global.property("home").call({rows}).toString();
+    auto anchor = global.property("homeAnchor");
+    QStringList visited;
+    for (const auto& step : steps) {
+      const auto next = global.property("move").call({rows, cursor, step, anchor});
+      if (next.isNull()) { visited << "-"; continue; }
+      cursor = next.property("key").toString(); anchor = next.property("anchor");
+      visited << cursor;
+    }
+    return visited;
+  };
+  QCOMPARE(walk(rows, {"up", "up", "up", "up"}), (QStringList{"quit", "volume", "screenshot", "resume"}));
+  QCOMPARE(walk(rows, {"down", "down", "down", "down"}), (QStringList{"screenshot", "volume", "quit", "resume"}));
+  // Along a row and stopping at its ends.
+  QCOMPARE(walk(rows, {"down", "right", "right", "left", "left"}), (QStringList{"screenshot", "record", "record", "screenshot", "screenshot"}));
+  // Left and right on a one-item row belong to the control there.
+  QCOMPARE(walk(rows, {"left", "right"}), (QStringList{"-", "-"}));
+  QCOMPARE(walk(rows, {"down", "down", "left", "right"}), (QStringList{"screenshot", "volume", "-", "-"}));
+  QCOMPARE(walk(grid(desktop), {"down", "right", "down"}), (QStringList{"desktop", "-", "screenshot"}));
+  // The position across the card holds through one-item rows.
+  QCOMPARE(walk(rows, {"down", "right", "down", "down", "down", "down", "down"}),
+           (QStringList{"screenshot", "record", "volume", "quit", "resume", "record", "volume"}));
+  const auto every = grid(all);
+  QCOMPARE(walk(every, {"down", "right", "down", "right", "right", "down", "down", "down", "down", "down"}),
+           (QStringList{"desktop", "retroarch", "replay", "replay", "replay", "volume", "output", "quit", "resume", "retroarch"}));
+  // With three tiles the middle one leads to Desktop, the right one to the RetroArch menu.
+  QCOMPARE(walk(every, {"down", "down", "right", "up"}), (QStringList{"desktop", "screenshot", "record", "desktop"}));
+  QCOMPARE(walk(every, {"down", "down", "right", "right", "up"}), (QStringList{"desktop", "screenshot", "record", "replay", "retroarch"}));
+  // One sweep of the D-pad reaches every control.
+  QSet<QString> seen;
+  for (const auto& key : walk(every, {"down", "right", "down", "left", "left", "down", "down", "down", "down"})) seen << key;
+  QCOMPARE(seen.size(), 9);
+  // An unknown cursor (a control that went away) goes home.
+  QCOMPARE(global.property("move").call({rows, QStringLiteral("replay"), QStringLiteral("down")}).property("key").toString(), QStringLiteral("resume"));
+}
+
+void InGameGuideTests::buttons() {
+  GuideInputMap map;
+  for (const auto& pair : {qMakePair(BTN_SOUTH, "a"), qMakePair(BTN_EAST, "b"), qMakePair(BTN_MODE, "guide")}) {
+    QVERIFY(map.event(EV_KEY, pair.first, 1).isEmpty());
+    QCOMPARE(map.report(0), QStringList{pair.second});
+    map.event(EV_KEY, pair.first, 1); map.event(EV_KEY, pair.first, 2);
+    QVERIFY(map.report(1).isEmpty());
+    map.event(EV_KEY, pair.first, 0); QVERIFY(map.report(2).isEmpty());
+    map.event(EV_KEY, pair.first, 1); QCOMPARE(map.report(3), QStringList{pair.second});
+    map.reset();
+  }
+}
+
+void InGameGuideTests::faceButtonPositions_data() {
+  QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
+  QTest::addColumn<int>("top"); QTest::addColumn<int>("left");
+  QTest::addColumn<quint16>("vendor"); QTest::addColumn<quint16>("product");
+  QTest::addColumn<bool>("compact");
+  QTest::newRow("xpad") << QString("Microsoft X-Box 360 pad") << QString("xpad") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("steam-xbox-mirror") << QString("Microsoft X-Box 360 pad 0") << QString{} << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("xpad-third-party") << QString("Logitech F310") << QString("xpad") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("xpadneo") << QString("Xbox Wireless Controller") << QString("xpadneo") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("hid-steam") << QString("Steam Deck") << QString("steam") << BTN_Y << BTN_X << quint16(0) << quint16(0) << false;
+  QTest::newRow("hid-playstation") << QString("Sony DualSense") << QString("playstation") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+  QTest::newRow("hid-nintendo") << QString("Nintendo Switch Pro Controller") << QString("nintendo") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+  QTest::newRow("position-driver-wins") << QString("Xbox style pad") << QString("hid-generic") << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+  QTest::newRow("xbox-bt-microsoft") << QString("Xbox Wireless Controller") << QString("microsoft") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x02fd) << false;
+  QTest::newRow("xbox-series-hid-microsoft") << QString("Wireless Controller") << QString("hid-microsoft") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x0b13) << false;
+  QTest::newRow("xbox-bt-generic") << QString("Xbox Wireless Controller") << QString("hid-generic") << BTN_Y << BTN_X << quint16(0x045e) << quint16(0x0b20) << false;
+  QTest::newRow("generic-vendor-required") << QString("Xbox style pad") << QString("generic") << BTN_NORTH << BTN_WEST << quint16(0x1234) << quint16(0x0b20) << false;
+  QTest::newRow("sony-bt") << QString("Wireless Controller") << QString("hid-sony") << BTN_NORTH << BTN_WEST << quint16(0x054c) << quint16(0x05c4) << false;
+  QTest::newRow("xbox-bt-compact-hid") << QString("Xbox Wireless Controller") << QString("hid-generic") << BTN_NORTH << BTN_C << quint16(0x045e) << quint16(0x02e0) << true;
+  QTest::newRow("unknown") << QString("USB gamepad") << QString{} << BTN_NORTH << BTN_WEST << quint16(0) << quint16(0) << false;
+}
+
+void InGameGuideTests::faceButtonPositions() {
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(int, top); QFETCH(int, left); QFETCH(quint16, vendor); QFETCH(quint16, product); QFETCH(bool, compact);
+  GuideInputMap map; map.setController(name, driver, vendor, product, compact);
+  map.event(EV_KEY, top, 1); QCOMPARE(map.report(0), QStringList{"y"});
+  QVERIFY(map.heldPosition(BTN_NORTH)); QVERIFY(!map.heldPosition(BTN_WEST));
+  map.event(EV_KEY, top, 0); map.report(1);
+  map.event(EV_KEY, left, 1); QCOMPARE(map.report(2), QStringList{"x"});
+  QVERIFY(map.heldPosition(BTN_WEST)); QVERIFY(!map.heldPosition(BTN_NORTH));
+}
+
+void InGameGuideTests::compactXboxShoulders() {
+  GuideInputMap map; map.setController("Xbox Wireless Controller", "hid-generic", 0x045e, 0x02e0, true);
+  for (const auto& pair : {qMakePair(BTN_WEST, "lb"), qMakePair(BTN_Z, "rb"), qMakePair(BTN_TR, "start")}) {
+    map.event(EV_KEY, pair.first, 1); QCOMPARE(map.report(0), QStringList{pair.second});
+    map.event(EV_KEY, pair.first, 0); map.report(1);
+  }
+  map.event(EV_KEY, BTN_TL, 1); QVERIFY(map.report(2).isEmpty()); // Back is not LB.
+}
+
+void InGameGuideTests::axes() {
+  GuideInputMap map;
+  map.setAxis(ABS_X, 0, 255, 8);
+  map.event(EV_ABS, ABS_X, 128); QVERIFY(map.report(0).isEmpty());
+  map.event(EV_ABS, ABS_X, 255); QCOMPARE(map.report(1), QStringList{"right"});
+  map.event(EV_ABS, ABS_X, 230); QVERIFY(map.report(2).isEmpty());
+  QCOMPARE(map.heldDirections(), QStringList{"right"});
+  map.event(EV_ABS, ABS_X, 0); QVERIFY(map.report(3).isEmpty()); // reversal requires neutral
+  QVERIFY(map.heldDirections().isEmpty());
+  map.event(EV_ABS, ABS_X, 128); QVERIFY(map.report(4).isEmpty());
+  map.event(EV_ABS, ABS_X, 0); QCOMPARE(map.report(5), QStringList{"left"});
+  map.reset(); QVERIFY(map.heldDirections().isEmpty());
+}
+
+void InGameGuideTests::reportArbitrationAndRepeat() {
+  GuideInputMap map;
+  map.event(EV_ABS, ABS_X, 18000); map.event(EV_ABS, ABS_Y, 18000);
+  QCOMPARE(map.report(0), QStringList{"down"}); // radial diagonal, dominant-axis tie
+  QVERIFY(map.repeat(349).isEmpty()); QCOMPARE(map.repeat(350), QStringList{"down"});
+  QVERIFY(map.repeat(449).isEmpty()); QCOMPARE(map.repeat(450), QStringList{"down"});
+  QCOMPARE(map.repeat(1000), QStringList{"down"});
+  QVERIFY(map.repeat(1079).isEmpty()); QCOMPARE(map.repeat(1080), QStringList{"down"});
+  QCOMPARE(map.repeat(9000), QStringList{"down"}); QVERIFY(map.repeat(9000).isEmpty());
+  map.reset();
+  map.event(EV_ABS, ABS_X, 32767); map.event(EV_ABS, ABS_HAT0Y, -1); map.event(EV_KEY, BTN_DPAD_DOWN, 1);
+  QCOMPARE(map.report(0), QStringList{"down"}); // buttons take precedence over hat and stick
+  map.reset();
+  map.event(EV_ABS, ABS_X, 11000); map.event(EV_ABS, ABS_Y, 11000);
+  QCOMPARE(map.report(0), QStringList{"down"}); // each axis below threshold, radius above it
+  map.reset(); map.event(EV_KEY, BTN_DPAD_DOWN, 1);
+  QVERIFY(map.report(0, true).isEmpty()); QVERIFY(map.repeat(5000).isEmpty());
+  QVERIFY(map.report(5001).isEmpty()); // a stale held gesture cannot repeat later
+  map.event(EV_KEY, BTN_DPAD_DOWN, 0); map.report(5002);
+  map.event(EV_KEY, BTN_DPAD_DOWN, 1); QCOMPARE(map.report(5003), QStringList{"down"});
+}
+
+void InGameGuideTests::mirroredReportsAndRecovery() {
+  GuideInput input;
+  QHash<QString, int> writers;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{
+    {"event15", "physical", "Microsoft X-Box 360 pad", false},
+    {"event16", "virtual", "Microsoft X-Box 360 pad 0", true}}; };
+  access.open = [&writers](const QString& node) { int fds[2]; if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC)) return -1; writers[node] = fds[1]; return fds[0]; };
+  access.grab = [](int) { return true; }; access.ungrab = [](int) {};
+  input.setAccess(access); input.grab("event15", nullptr, nullptr);
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto report = [&writers](const QString& node, int type, int code, int value, qint64 age = 0) {
+    input_event events[2]{};
+    events[0].type = type; events[0].code = code; events[0].value = value;
+    events[1].type = EV_SYN; events[1].code = SYN_REPORT;
+    if (age) { const auto at = QDateTime::currentMSecsSinceEpoch() - age; for (auto& event : events) { event.input_event_sec = at / 1000; event.input_event_usec = (at % 1000) * 1000; } }
+    QCOMPARE(::write(writers[node], events, sizeof(events)), ssize_t(sizeof(events)));
+  };
+  QTest::qWait(20);
+  report("event16", EV_KEY, BTN_MODE, 1, 40); // delayed copy of the opening Home, before grab
+  QTest::qWait(20); QCOMPARE(actions.size(), 0);
+  report("event16", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_DPAD_DOWN, 1); report("event16", EV_KEY, BTN_DPAD_DOWN, 1);
+  QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
+  report("event15", EV_KEY, BTN_DPAD_DOWN, 0); report("event16", EV_KEY, BTN_DPAD_DOWN, 0);
+  QTest::qWait(20);
+  report("event15", EV_KEY, BTN_SOUTH, 1); report("event16", EV_KEY, BTN_SOUTH, 1);
+  QTRY_COMPARE(actions.size(), 2);
+  report("event15", EV_KEY, BTN_SOUTH, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_SOUTH, 1); QTest::qWait(20); QCOMPARE(actions.size(), 2); // mirror still held
+  report("event15", EV_KEY, BTN_SOUTH, 0); report("event16", EV_KEY, BTN_SOUTH, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_SOUTH, 1); QTRY_COMPARE(actions.size(), 3);
+  report("event15", EV_KEY, BTN_DPAD_DOWN, 1, 5000); report("event15", EV_KEY, BTN_DPAD_DOWN, 0, 4000);
+  report("event15", EV_KEY, BTN_DPAD_UP, 1, 3000); report("event15", EV_KEY, BTN_DPAD_UP, 0, 2000);
+  QTest::qWait(20); QCOMPARE(actions.size(), 3);
+  report("event15", EV_SYN, SYN_DROPPED, 0); report("event15", EV_KEY, BTN_EAST, 1);
+  QTest::qWait(20); QCOMPARE(actions.size(), 3); // recovery is sampled, never dispatched
+  report("event15", EV_KEY, BTN_EAST, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_EAST, 1); QTRY_COMPARE(actions.size(), 4);
+  // Home must first be neutral on every source, including a delayed virtual mirror.
+  report("event16", EV_KEY, BTN_MODE, 1); QTest::qWait(20); // currently armed, one close
+  QTRY_COMPARE(actions.size(), 5);
+  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 5);
+  // The physical Xbox top/left and Steam's mirror use legacy label codes.
+  // A mirrored screenshot press is one action, even when callbacks arrive apart.
+  report("event15", EV_KEY, BTN_Y, 1); QTRY_COMPARE(actions.size(), 6);
+  QCOMPARE(actions.last().first().toString(), "y");
+  report("event16", EV_KEY, BTN_Y, 1); QTest::qWait(20); QCOMPARE(actions.size(), 6);
+  report("event15", EV_KEY, BTN_Y, 0); report("event16", EV_KEY, BTN_Y, 0); QTest::qWait(20);
+  report("event16", EV_KEY, BTN_Y, 1); QTRY_COMPARE(actions.size(), 7);
+  QCOMPARE(actions.last().first().toString(), "y");
+  report("event15", EV_KEY, BTN_X, 1); report("event16", EV_KEY, BTN_X, 1);
+  QTRY_COMPARE(actions.size(), 8); QCOMPARE(actions.last().first().toString(), "x");
+  report("event15", EV_KEY, BTN_MODE, 0); QTest::qWait(20);
+  report("event15", EV_KEY, BTN_MODE, 1); QTest::qWait(20); QCOMPARE(actions.size(), 8);
+  input.release(); for (const int fd : writers) ::close(fd);
+}
+
+void InGameGuideTests::nonXboxMirrors_data() {
+  QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
+  QTest::addColumn<QString>("family"); QTest::addColumn<int>("mirrorButton");
+  QTest::newRow("playstation") << QString("Sony DualSense") << QString("hid-playstation") << QString("playstation") << BTN_Y;
+  QTest::newRow("nintendo-layout") << QString("Nintendo Switch Pro Controller") << QString("hid-nintendo") << QString("nintendo") << BTN_X;
+}
+
+void InGameGuideTests::nonXboxMirrors() {
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(QString, family); QFETCH(int, mirrorButton);
+  GuideInput input; QHash<QString, int> writers;
+  QList<GuideListener::Controller> pads{
+      {"event15", "physical", name, false, driver},
+      {"event16", "mirror", "Microsoft X-Box 360 pad 0", true, {}, 0x045e, 0x028e}};
+  GuideInput::Access access;
+  access.scan = [&] { return pads; };
+  access.open = [&](const QString& node) { int fds[2]; if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC)) return -1; writers[node] = fds[1]; return fds[0]; };
+  access.grab = [](int) { return true; }; access.ungrab = [](int) {};
+  input.setAccess(access); input.grab("event15", nullptr, nullptr);
+  QCOMPARE(input.grabbedCount(), size_t(2));
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto report = [&](const QString& node, int key, int value) {
+    input_event events[2]{}; events[0].type = EV_KEY; events[0].code = key; events[0].value = value;
+    events[1].type = EV_SYN; events[1].code = SYN_REPORT;
+    QCOMPARE(::write(writers[node], events, sizeof(events)), ssize_t(sizeof(events)));
+  };
+  QTest::qWait(20);
+  report("event15", BTN_DPAD_DOWN, 1); QTest::qWait(20);
+  report("event16", BTN_DPAD_DOWN, 1); QTest::qWait(20);
+  QCOMPARE(actions.size(), 1); QCOMPARE(actions.first().at(1).toString(), family);
+  report("event15", BTN_DPAD_DOWN, 0); report("event16", BTN_DPAD_DOWN, 0); QTest::qWait(20);
+  // Nintendo's mirror can disagree on X/Y, so latching by action is insufficient.
+  report("event15", BTN_NORTH, 1); QTest::qWait(20);
+  report("event16", mirrorButton, 1); QTest::qWait(20);
+  QCOMPARE(actions.size(), 2); QCOMPARE(actions.last().first().toString(), "y");
+  QCOMPARE(actions.last().at(1).toString(), family);
+  report("event15", BTN_NORTH, 0); report("event16", mirrorButton, 0); QTest::qWait(20);
+  // Other virtual controllers are not globally discarded.
+  pads.append({"event17", "remote", "Remote gamepad", true}); input.rescan();
+  report("event17", BTN_SOUTH, 1); QTest::qWait(20); QCOMPARE(actions.size(), 3);
+  // Once hardware disappears, the known Steam mirror is usable by itself.
+  pads.removeFirst(); ::close(writers.take("event15")); QTest::qWait(20); input.rescan();
+  report("event16", BTN_SOUTH, 1); QTest::qWait(20);
+  QCOMPARE(actions.size(), 4); QCOMPARE(actions.last().at(1).toString(), "xbox");
+  input.release(); for (const int fd : writers) ::close(fd);
+}
+
+void InGameGuideTests::families() {
+  QCOMPARE(GuidePayload::padFamily("Sony DualSense"), "playstation");
+  QCOMPARE(GuidePayload::padFamily("Nintendo Switch Pro"), "nintendo");
+  QCOMPARE(GuidePayload::padFamily("Steam Deck"), "deck");
+  QCOMPARE(GuidePayload::padFamily("Microsoft X-Box"), "xbox");
+  QCOMPARE(GuidePayload::padFamily("USB gamepad"), "generic");
+}
+
+void InGameGuideTests::guardResumesOnOwnerDeath() {
+  QProcess game;
+  game.start("sleep", {"30"});
+  QVERIFY(game.waitForStarted());
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QTRY_VERIFY(([&] {
+    for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+    return start > 0;
+  })());
+  QProcess guard;
+  guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD));
+  QVERIFY(guard.waitForStarted());
+  guard.write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", game.processId()}, {"start", start}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(guard.waitForReadyRead(3000));
+  const auto response = QJsonDocument::fromJson(guard.readAllStandardOutput()).object();
+  QVERIFY2(response.value("ok").toBool(), qPrintable(response.value("error").toString()));
+  auto state = [&game] {
+    QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId()));
+    if (!stat.open(QIODevice::ReadOnly)) return QByteArray{};
+    const auto data = stat.readAll();
+    return data.mid(data.lastIndexOf(')') + 2, 1);
+  };
+  QCOMPARE(state(), QByteArray("T"));
+  guard.closeWriteChannel();
+  QVERIFY(guard.waitForFinished(3000));
+  QTRY_VERIFY(state() != "T");
+  QVERIFY(ProcFs::processAlive(game.processId(), start));
+  game.terminate();
+  QVERIFY(game.waitForFinished());
+}
+
+void InGameGuideTests::guardTreeAndIdentity() {
+  QProcess game;
+  game.start("python3", {"-u", "-c", "import subprocess; child = subprocess.Popen(['sleep','30']); print(child.pid); child.wait()"});
+  QVERIFY(game.waitForStarted());
+  QVERIFY(game.waitForReadyRead());
+  const auto child = game.readAllStandardOutput().trimmed().toLongLong();
+  QVERIFY(child > 1);
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QVERIFY(start > 0);
+  QProcess guard;
+  guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD));
+  QVERIFY(guard.waitForStarted());
+  auto send = [&guard, &game](qint64 identity) {
+    guard.write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", game.processId()}, {"start", identity}}).toJson(QJsonDocument::Compact) + '\n');
+    if (!guard.waitForReadyRead(3000)) return false;
+    return QJsonDocument::fromJson(guard.readAllStandardOutput()).object().value("ok").toBool();
+  };
+  QVERIFY(!send(start + 1));
+  QVERIFY(send(start));
+  auto state = [](qint64 pid) {
+    QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+    if (!stat.open(QIODevice::ReadOnly)) return QByteArray{};
+    const auto data = stat.readAll();
+    return data.mid(data.lastIndexOf(')') + 2, 1);
+  };
+  QCOMPARE(state(game.processId()), QByteArray("T"));
+  QCOMPARE(state(child), QByteArray("T"));
+  guard.closeWriteChannel();
+  QVERIFY(guard.waitForFinished(3000));
+  QTRY_VERIFY(state(game.processId()) != "T");
+  QTRY_VERIFY(state(child) != "T");
+  ::kill(child, SIGTERM);
+  QVERIFY(game.waitForFinished(3000));
+}
+
+
+void InGameGuideTests::protocolExtension() {
+  auto payload = GuidePayload::build({{"name", "Game"}, {"source", "Manual"}}, {}, "DP-2", "xbox", true, false);
+  auto data = payload.value("data").toObject(); auto game = data.value("game").toObject();
+  game.insert("forceReady", true); data.insert("game", game);
+  data.insert("performance", QJsonObject{{"nextLaunch", true}}); payload.insert("data", data);
+  QJsonObject result; QVERIFY(GuidePayload::parse(QJsonDocument(payload).toJson(), &result)); QCOMPARE(result, payload);
+  QFile file(QStringLiteral(OMAKADE_SOURCE_DIR "/omarchy-plugin/GuideProtocol.js")); QVERIFY(file.open(QIODevice::ReadOnly));
+  auto script = QString::fromUtf8(file.readAll()); script.remove(".pragma library"); QJSEngine engine; engine.evaluate(script);
+  QVERIFY(!engine.globalObject().property("parse").call({QString::fromUtf8(QJsonDocument(payload).toJson())}).isNull());
+}
+void InGameGuideTests::mangoBuilding() {
+  QProcessEnvironment base; base.insert("KEEP", "yes"); base.insert("MANGOHUD_CONFIG", "full"); base.insert("MANGOHUD_FPS_LIMIT", "144");
+  QCOMPARE(GuideActions::mangoEnvironment(base, false, "/tmp/c"), base);
+  const auto env = GuideActions::mangoEnvironment(base, true, "/tmp/c");
+  QCOMPARE(env.value("MANGOHUD"), "1"); QCOMPARE(env.value("MANGOHUD_CONFIGFILE"), "/tmp/c"); QCOMPARE(env.value("KEEP"), "yes");
+  QCOMPARE(env.value("MANGOHUD_CONFIG"), "read_cfg,no_display"); QVERIFY(!env.contains("MANGOHUD_FPS_LIMIT"));
+  for (const auto& level : {"off", "fps", "frametime", "full"}) {
+    const auto config = GuideActions::mangoConfig("omakade-test", level, 60);
+    QVERIFY(config.startsWith("no_display\ncontrol=omakade-test\nfps_limit=60\n"));
+    if (QString(level) == "full") QVERIFY(config.contains("full\n"));
+    if (QString(level) == "frametime") QVERIFY(config.contains("frame_timing=1"));
+  }
+}
+void InGameGuideTests::releaseHoldsPressedPads() {
+  GuideInput input;
+  int writer = -1, ungrabs = 0;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{{"event0", "a", "Xbox pad", false}}; };
+  access.open = [&writer](const QString&) {
+    int pipe[2];
+    if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+    writer = pipe[1];
+    return pipe[0];
+  };
+  access.grab = [](int) { return true; };
+  access.ungrab = [&ungrabs](int) { ++ungrabs; };
+  input.setAccess(access);
+  QString family, warning;
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto send = [&writer](int code, int value) {
+    input_event event{}; event.type = EV_KEY; event.code = code; event.value = value;
+    input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT;
+    return ::write(writer, &event, sizeof(event)) == ssize_t(sizeof(event)) &&
+           ::write(writer, &syn, sizeof(syn)) == ssize_t(sizeof(syn));
+  };
+  // Closing on A while it is still down keeps the pad until A comes up, so the
+  // game sees neither the press nor its release.
+  QVERIFY(input.grab("event0", &family, &warning));
+  QVERIFY(send(BTN_SOUTH, 1)); QTRY_COMPARE(actions.size(), 1);
+  input.release();
+  QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(input.holdingCount(), size_t(1)); QCOMPARE(ungrabs, 0);
+  QVERIFY(send(BTN_SOUTH, 0));
+  QTRY_COMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 1); QCOMPARE(actions.size(), 1);
+  ::close(writer);
+  // Opening again while a pad is still held takes it straight back.
+  QVERIFY(input.grab("event0", &family, &warning));
+  QVERIFY(send(BTN_EAST, 1)); QTRY_COMPARE(actions.size(), 2);
+  input.release(); QCOMPARE(input.holdingCount(), size_t(1));
+  const int previous = writer;
+  QVERIFY(input.grab("event0", &family, &warning));
+  QCOMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 2); QCOMPARE(input.deviceCount(), size_t(1));
+  input.release(); ::close(previous); ::close(writer);
+  // A button that never comes up returns the pad after a bounded wait.
+  QVERIFY(input.grab("event0", &family, &warning));
+  QVERIFY(send(BTN_SOUTH, 1)); QTRY_COMPARE(actions.size(), 3);
+  input.release(); QCOMPARE(input.holdingCount(), size_t(1));
+  QTest::qWait(1000); QCOMPARE(input.holdingCount(), size_t(1));
+  QTRY_COMPARE_WITH_TIMEOUT(input.holdingCount(), size_t(0), 3000); QCOMPARE(ungrabs, 4);
+  ::close(writer);
+}
+
+void InGameGuideTests::perDeviceGrab() {
+  GuideInput input;
+  int writer = -1, ungrabs = 0;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{{"event0", "a", "Busy pad", false}, {"event1", "b", "Unavailable pad", false}, {"event2", "c", "Xbox pad", false}}; };
+  access.open = [&writer](const QString& node) {
+    if (node == "event1") return -1;
+    int pipe[2];
+    if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+    if (node == "event0") writer = pipe[1];
+    else ::close(pipe[1]);
+    return pipe[0];
+  };
+  int grabs = 0;
+  access.grab = [&grabs](int) { return ++grabs % 2 == 0; };
+  access.ungrab = [&ungrabs](int) { ++ungrabs; };
+  input.setAccess(access);
+  QString family, warning;
+  QSignalSpy actions(&input, &GuideInput::action);
+  QVERIFY(input.grab("event0", &family, &warning));
+  QCOMPARE(input.deviceCount(), size_t(2)); QCOMPARE(input.grabbedCount(), size_t(1));
+  QVERIFY(warning.contains("Busy pad may still reach the game"));
+  QVERIFY(warning.contains("Unavailable pad could not be opened"));
+  input_event event{}; event.type = EV_KEY; event.code = BTN_DPAD_DOWN; event.value = 1;
+  input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT;
+  QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
+  QCOMPARE(::write(writer, &syn, sizeof(syn)), ssize_t(sizeof(syn)));
+  QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
+  // The busy pad was never grabbed, so there is nothing to hold for it.
+  input.release(); ::close(writer);
+  QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 1);
+  QVERIFY(input.grab("event-missing", &family, &warning));
+  QVERIFY(warning.contains("Busy pad may still reach the game"));
+  QVERIFY(warning.contains("Unavailable pad could not be opened"));
+  QVERIFY(warning.contains("controller that opened the guide disconnected"));
+  input.release(); ::close(writer); QCOMPARE(ungrabs, 2);
+}
+
+void InGameGuideTests::padsChangingWhileOpen() {
+  // Steam Input replaces its virtual pad while a game runs; the replacement must be held
+  // too, and losing a pad must not close the guide.
+  GuideInput input;
+  QList<GuideListener::Controller> pads{{"event15", "a", "Microsoft X-Box 360 pad", false}};
+  QHash<QString, int> writers;
+  int grabs = 0;
+  GuideInput::Access access;
+  access.scan = [&pads] { return pads; };
+  access.open = [&writers](const QString& node) {
+    int pipe[2];
+    if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+    writers.insert(node, pipe[1]);
+    return pipe[0];
+  };
+  access.grab = [&grabs](int) { ++grabs; return true; };
+  access.ungrab = [](int) {};
+  input.setAccess(access);
+  QString family, warning;
+  QSignalSpy actions(&input, &GuideInput::action);
+  QVERIFY(input.grab("event15", &family, &warning));
+  QCOMPARE(input.deviceCount(), size_t(1));
+  pads.append({"event16", "b", "Microsoft X-Box 360 pad 0", true});
+  input.rescan();
+  QCOMPARE(input.deviceCount(), size_t(2)); QCOMPARE(input.grabbedCount(), size_t(2)); QCOMPARE(grabs, 2);
+  input.rescan();
+  QCOMPARE(input.deviceCount(), size_t(2));
+  input_event event{}; event.type = EV_KEY; event.code = BTN_SOUTH; event.value = 1;
+  input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT;
+  QCOMPARE(::write(writers.value("event16"), &event, sizeof(event)), ssize_t(sizeof(event)));
+  QCOMPARE(::write(writers.value("event16"), &syn, sizeof(syn)), ssize_t(sizeof(syn)));
+  QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "a");
+  pads.removeLast();
+  ::close(writers.take("event16"));
+  QTRY_COMPARE(input.deviceCount(), size_t(1));
+  event.code = BTN_EAST;
+  QCOMPARE(::write(writers.value("event15"), &event, sizeof(event)), ssize_t(sizeof(event)));
+  QCOMPARE(::write(writers.value("event15"), &syn, sizeof(syn)), ssize_t(sizeof(syn)));
+  QTRY_COMPARE(actions.size(), 2); QCOMPARE(actions.last().first().toString(), "b");
+  input.release();
+  for (const int fd : writers) ::close(fd);
+}
+
+void InGameGuideTests::trackedQuit() {
+  QTemporaryDir directory; QVERIFY(directory.isValid());
+  QProcess game;
+  game.start("python3", {"-u", "-c", "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready'); time.sleep(30)"});
+  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead());
+  const auto pid = game.processId();
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == pid) start = process.procStart;
+  QVERIFY(start > 0);
+  const auto path = directory.filePath("sessions.sqlite3");
+  {
+    QSqlDatabase database;
+    const QString connection = "guide-tracked-quit";
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QVERIFY(SessionDatabase::beginSession(database, "tracked-game", "Manual", QDateTime::currentSecsSinceEpoch(), pid, start) > 0);
+    database.close(); database = {}; QSqlDatabase::removeDatabase(connection);
+  }
+  PlaySessionStore store(path); store.refreshNowPlaying(); QCOMPARE(store.nowPlaying().size(), 1);
+  InGameGuide guide(&store, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_opened = true; guide.m_token = "tracked";
+  guide.m_session = store.nowPlaying().first().toMap();
+  guide.message({{"action", "quit-confirmed"}});
+  QCOMPARE(store.nowPlaying().size(), 1);
+  QVERIFY(store.nowPlaying().first().toMap().value("stopping").toBool());
+  QVERIFY(!store.nowPlaying().first().toMap().value("forceReady").toBool());
+  QVERIFY(!guide.m_forceReady);
+  guide.message({{"action", "force-quit"}}); QVERIFY(!game.waitForFinished(50));
+  // The existing original-game test waits for the real five-second gate.
+  guide.m_forceReady = true;
+  guide.message({{"action", "force-quit"}}); QVERIFY(game.waitForFinished());
+  store.refreshNowPlaying(); QVERIFY(store.nowPlaying().isEmpty());
+}
+
+void InGameGuideTests::guardDeathResume() {
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QProcess guard; guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD)); QVERIFY(guard.waitForStarted());
+  guard.write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", game.processId()}, {"start", start}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(guard.waitForReadyRead(3000)); const auto response = QJsonDocument::fromJson(guard.readAllStandardOutput()).object();
+  QVERIFY(response.value("ok").toBool()); GuideActions::Tree recovery; QVERIFY(recovery.adopt(response.value("stopped").toArray()));
+  guard.kill(); QVERIFY(guard.waitForFinished()); recovery.signal(SIGCONT);
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  QTRY_VERIFY_WITH_TIMEOUT([&] { stat.seek(0); auto bytes = stat.readAll(); return bytes.mid(bytes.lastIndexOf(')') + 2, 1) != "T"; }(), 3000);
+  game.terminate(); QVERIFY(game.waitForFinished());
+}
+void InGameGuideTests::failedPinRetainsRecovery() {
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  GuideActions::Tree recovery; QVERIFY(recovery.pin(game.processId(), start));
+  recovery.signal(SIGSTOP);
+  auto ids = recovery.identities(); ids.append(QJsonObject{{"pid", 1}, {"start", 1}});
+  QVERIFY(!recovery.adopt(ids)); QVERIFY(!recovery.identities().isEmpty()); recovery.signal(SIGCONT);
+  game.terminate(); QVERIFY(game.waitForFinished());
+}
+
+void InGameGuideTests::guardDiesDuringPause() {
+  QProcess game; game.start("python3", {"-u", "-c", "import subprocess; child=subprocess.Popen(['sleep','30']); print(child.pid); child.wait()"});
+  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); const auto child = game.readAllStandardOutput().trimmed().toLongLong();
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QProcess guard; guard.start(QStringLiteral(OMAKADE_GUIDE_GUARD)); QVERIFY(guard.waitForStarted());
+  guard.write(QJsonDocument(QJsonObject{{"action", "pause"}, {"pid", game.processId()}, {"start", start}, {"recoverable", true}}).toJson(QJsonDocument::Compact) + '\n');
+  QVERIFY(guard.waitForReadyRead(3000)); auto reply = QJsonDocument::fromJson(guard.readAllStandardOutput()).object();
+  QJsonArray ids{reply.value("pin")}; GuideActions::Tree recovery; QVERIFY(recovery.adopt(ids));
+  guard.write("pin-ok\n"); QVERIFY(guard.waitForReadyRead(3000)); reply = QJsonDocument::fromJson(guard.readAllStandardOutput()).object();
+  QVERIFY(reply.contains("pin")); ids.append(reply.value("pin")); QVERIFY(recovery.adopt(ids));
+  guard.kill(); QVERIFY(guard.waitForFinished()); recovery.signal(SIGCONT);
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  QTRY_VERIFY_WITH_TIMEOUT([&] { stat.seek(0); auto bytes = stat.readAll(); return bytes.mid(bytes.lastIndexOf(')') + 2, 1) != "T"; }(), 3000);
+  ::kill(child, SIGTERM); QVERIFY(game.waitForFinished());
+}
+
+void InGameGuideTests::quitEscalation() {
+  QProcess game; game.start("python3", {"-u", "-c", "import signal,time,subprocess; children=[]; signal.signal(signal.SIGTERM,lambda *args: (children.append(subprocess.Popen(['sleep','30'])),print(children[-1].pid))); print('ready'); time.sleep(30)"});
+  QVERIFY(game.waitForStarted()); QVERIFY(game.waitForReadyRead()); game.readAllStandardOutput(); qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  GuideActions::Tree tree; QVERIFY(!tree.pin(game.processId(), start + 1)); QVERIFY(tree.pin(game.processId(), start));
+  tree.signal(SIGTERM);
+  // The handler's pid can arrive in more than one read; wait for its complete line.
+  QByteArray output; qint64 childPid = 0;
+  QTRY_VERIFY_WITH_TIMEOUT(([&] {
+    output += game.readAllStandardOutput();
+    for (const auto& line : output.left(output.lastIndexOf('\n') + 1).split('\n')) if (line.toLongLong() > 1) childPid = line.toLongLong();
+    return childPid > 1;
+  })(), 5000); QVERIFY(!game.waitForFinished(100)); QVERIFY(tree.alive());
+  QVERIFY(tree.pin(game.processId(), start)); QVERIFY(tree.identities().size() >= 2);
+  tree.signal(SIGKILL); QVERIFY(game.waitForFinished());
+  QTRY_VERIFY(!tree.alive());
+}
+
+void InGameGuideTests::quitKeepsItsOriginalGame() {
+  QProcess game, other;
+  game.start("python3", {"-u", "-c", "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); print('ready'); time.sleep(30)"});
+  other.start("sleep", {"30"});
+  QVERIFY(game.waitForStarted()); QVERIFY(other.waitForStarted()); QVERIFY(game.waitForReadyRead());
+  qint64 start = -1; for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_opened = true; guide.m_token = "test";
+  guide.m_session = {{"pid", game.processId()}, {"procStart", start}, {"source", "Manual"}, {"path", "original"}};
+  guide.message({{"action", "quit-confirmed"}});
+  QVERIFY(!guide.m_forceReady); QVERIFY(!game.waitForFinished(50));
+  QTRY_VERIFY_WITH_TIMEOUT(guide.m_forceReady, 6000);
+  guide.m_session.insert("pid", other.processId());
+  guide.message({{"action", "force-quit"}});
+  QVERIFY(game.waitForFinished()); QVERIFY(other.state() == QProcess::Running);
+  other.terminate(); QVERIFY(other.waitForFinished());
+}
+
+namespace {
+struct PluginFixture {
+  QTemporaryDir root;
+  GuidePlugin::Paths paths;
+  QString log;
+  PluginFixture() {
+    const QString base = root.path();
+    QDir().mkpath(base + "/bundled");
+    QFile manifest(base + "/bundled/manifest.json");
+    if (manifest.open(QIODevice::WriteOnly)) manifest.write(R"({"id":"omakade.guide"})");
+    paths.pluginsDir = base + "/config/omarchy/plugins";
+    paths.shellConfig = base + "/config/omarchy/shell.json";
+    paths.bundledDir = base + "/bundled";
+    paths.markerPath = base + "/state/omakade/guide-plugin-enabled";
+    paths.shellProgram = base + "/omarchy-shell";
+    paths.restartProgram = base + "/omarchy-restart-shell";
+    log = base + "/shell.log";
+    QDir().mkpath(base + "/config/omarchy");
+  }
+  // A shell that records its arguments and answers enablePlugin with `reply` ("" = not running).
+  void fakeShell(const QString& reply, bool writeConfig) {
+    QFile script(paths.shellProgram);
+    QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QString body = "#!/bin/sh\necho \"$@\" >> '" + log + "'\n";
+    if (reply.isEmpty()) body += "exit 1\n";
+    else {
+      if (writeConfig) body += "[ \"$2\" = enablePlugin ] && echo '{\"plugins\":[{\"id\":\"omakade.guide\"}]}' > '" + paths.shellConfig + "'\n";
+      body += "[ \"$2\" = enablePlugin ] && echo " + reply + "\n[ \"$2\" = rescanPlugins ] || [ \"$2\" = ping ] && echo ok\nexit 0\n";
+    }
+    script.write(body.toUtf8()); script.close();
+    QFile::setPermissions(paths.shellProgram, QFile::permissions(paths.shellProgram) | QFile::ExeOwner);
+    QFile restart(paths.restartProgram);
+    QVERIFY(restart.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    restart.write(("#!/bin/sh\necho restart >> '" + log + "'\n").toUtf8()); restart.close();
+    QFile::setPermissions(paths.restartProgram, QFile::permissions(paths.restartProgram) | QFile::ExeOwner);
+  }
+  QStringList calls() const { QFile f(log); return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList{}; }
+};
+}  // namespace
+
+void InGameGuideTests::pluginLinksAndEnablesOnce() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  QVERIFY(!GuidePlugin::usable(fixture.paths));
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  const QString link = fixture.paths.pluginsDir + "/omakade.guide";
+  QVERIFY(QFileInfo(link).isSymLink());
+  QCOMPARE(QFileInfo(link).symLinkTarget(), fixture.paths.bundledDir);
+  QVERIFY(GuidePlugin::usable(fixture.paths));
+  QVERIFY(QFileInfo::exists(fixture.paths.markerPath));
+  QCOMPARE(fixture.calls().mid(0, 3), (QStringList{"shell ping", "shell rescanPlugins", "shell enablePlugin omakade.guide {}"}));
+  // A later launch asks the shell nothing, and a plugin the user disabled stays disabled.
+  const auto before = fixture.calls().size();
+  QVERIFY(QFile::remove(fixture.paths.shellConfig));
+  QVERIFY(!GuidePlugin::ensure(fixture.paths));
+  QVERIFY(!GuidePlugin::usable(fixture.paths));
+  QCOMPARE(fixture.calls().size(), before);
+}
+
+void InGameGuideTests::pluginReloadsWhenItsFilesChange() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  // Enabling cannot tell whether the shell still holds an older copy: it restarts once.
+  QCOMPARE(fixture.calls(), (QStringList{"shell ping", "shell rescanPlugins", "shell enablePlugin omakade.guide {}",
+                                         "shell ping", "restart"}));
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().size(), 5);
+  // An upgrade changes the files: the shell restarts once, since a reload keeps old QML.
+  QFile qml(fixture.paths.bundledDir + "/Guide.qml");
+  QVERIFY(qml.open(QIODevice::WriteOnly)); qml.write("// new card\n"); qml.close();
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().mid(5), (QStringList{"shell ping", "restart"}));
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QCOMPARE(fixture.calls().size(), 7);
+  // Already enabled in the shell but never recorded, as after a reinstall: reload too.
+  PluginFixture enabled; enabled.fakeShell("ok", true);
+  QFile config(enabled.paths.shellConfig);
+  QVERIFY(config.open(QIODevice::WriteOnly)); config.write(R"({"plugins":[{"id":"omakade.guide"}]})"); config.close();
+  QVERIFY(GuidePlugin::ensure(enabled.paths));
+  QCOMPARE(enabled.calls(), (QStringList{"shell ping", "restart"}));
+}
+
+void InGameGuideTests::pluginKeepsUserCopyAndWaitsForShell() {
+  PluginFixture own; own.fakeShell("ok", true);
+  QVERIFY(QDir().mkpath(own.paths.pluginsDir + "/omakade.guide"));
+  QFile mine(own.paths.pluginsDir + "/omakade.guide/manifest.json");
+  QVERIFY(mine.open(QIODevice::WriteOnly)); mine.write("{}"); mine.close();
+  QVERIFY(GuidePlugin::ensure(own.paths));
+  QVERIFY(!QFileInfo(own.paths.pluginsDir + "/omakade.guide").isSymLink());
+  PluginFixture dangling; dangling.fakeShell("ok", true);
+  QVERIFY(QDir().mkpath(dangling.paths.pluginsDir));
+  QVERIFY(QFile::link(dangling.root.path() + "/gone", dangling.paths.pluginsDir + "/omakade.guide"));
+  QVERIFY(!GuidePlugin::ensure(dangling.paths));
+  QCOMPARE(QFileInfo(dangling.paths.pluginsDir + "/omakade.guide").symLinkTarget(), dangling.root.path() + "/gone");
+  // The shell is not running: the plugin is linked but nothing is marked, so the next launch retries.
+  PluginFixture down; down.fakeShell("", false);
+  QVERIFY(!GuidePlugin::ensure(down.paths));
+  QVERIFY(QFileInfo(down.paths.pluginsDir + "/omakade.guide").isSymLink());
+  QVERIFY(!QFileInfo::exists(down.paths.markerPath));
+  down.fakeShell("ok", true);
+  QVERIFY(GuidePlugin::ensure(down.paths));
+  QVERIFY(QFileInfo::exists(down.paths.markerPath));
+  // The shell does not know the plugin: no marker either.
+  PluginFixture unknown; unknown.fakeShell("unknown", false);
+  QVERIFY(!GuidePlugin::ensure(unknown.paths));
+  QVERIFY(!QFileInfo::exists(unknown.paths.markerPath));
+  // No bundled copy (a source build): nothing is linked.
+  PluginFixture source; source.fakeShell("ok", true);
+  source.paths.bundledDir = source.root.path() + "/missing";
+  QVERIFY(!GuidePlugin::ensure(source.paths));
+  QVERIFY(!QFileInfo(source.paths.pluginsDir + "/omakade.guide").isSymLink());
+}
+
+void InGameGuideTests::pluginFallsBackWhenSummonFails() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  QDir().mkpath(fixture.root.path() + "/bin");
+  QFile shell(fixture.root.path() + "/bin/omarchy-shell");
+  QVERIFY(shell.open(QIODevice::WriteOnly)); shell.write("#!/bin/sh\necho unknown\n"); shell.close();
+  QFile::setPermissions(shell.fileName(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+  const QByteArray originalPath = qgetenv("PATH");
+  qputenv("PATH", (fixture.root.path() + "/bin:" + originalPath).toUtf8());
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_enabled = true;
+  QSignalSpy failed(&guide, &InGameGuide::summonFailed);
+  // Opened from inside Omakade: no fallback, so Game Mode is left alone.
+  QVERIFY(guide.toggle());
+  QTRY_VERIFY(!guide.m_opening);
+  QCOMPARE(failed.count(), 0);
+  QVERIFY(guide.toggle({}, true));
+  QTRY_COMPARE(failed.count(), 1);
+  qputenv("PATH", originalPath);
+  QVERIFY(!guide.opened()); QVERIFY(!guide.m_paused);
+  // No plugin, no guide: the shortcut keeps its Game Mode behavior.
+  QVERIFY(!guide.usable());
+  guide.setPluginPaths(fixture.paths);
+  QVERIFY(!guide.usable());
+  QVERIFY(GuidePlugin::ensure(fixture.paths));
+  QVERIFY(guide.usable());
+  guide.m_enabled = false;
+  QVERIFY(!guide.usable());
+}
+
+void InGameGuideTests::provisioningAndPauseDoNotBlock() {
+  PluginFixture fixture; fixture.fakeShell("ok", true);
+  bool done = false; QElapsedTimer elapsed; elapsed.start();
+  GuidePlugin::ensureAsync(fixture.paths, this, [&done](bool ready) { done = ready; });
+  QVERIFY(elapsed.elapsed() < 30);
+  QTRY_VERIFY(done); QVERIFY(GuidePlugin::usable(fixture.paths));
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  qint64 start = -1;
+  for (const auto& process : ProcFs::listProcesses()) if (process.pid == game.processId()) start = process.procStart;
+  QVERIFY(start > 0);
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", start}};
+  // The test executable sits in tests/, beside which the guard is not installed.
+  const auto originalPath = qgetenv("PATH");
+  qputenv("PATH", (QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath() + ':' + originalPath).toUtf8());
+  elapsed.restart(); QVERIFY(guide.setPaused(true)); QVERIFY(elapsed.elapsed() < 30);
+  QTRY_VERIFY(guide.m_paused);
+  elapsed.restart(); guide.close(); QVERIFY(elapsed.elapsed() < 30);
+  QVERIFY(!guide.m_paused); QVERIFY(!guide.m_guard);
+  QTRY_VERIFY(ProcFs::processAlive(game.processId(), start));
+  game.terminate(); QVERIFY(game.waitForFinished());
+  qputenv("PATH", originalPath);
+}
+
+
+void InGameGuideTests::provisioningFailureIsBounded_data() {
+  QTest::addColumn<QByteArray>("failure");
+  QTest::newRow("unknown") << QByteArray("echo unknown");
+  QTest::newRow("error") << QByteArray("echo error");
+  QTest::newRow("nonzero") << QByteArray("exit 1");
+  QTest::newRow("timeout") << QByteArray("exec sleep 2");
+}
+void InGameGuideTests::provisioningFailureIsBounded() {
+  QFETCH(QByteArray, failure);
+  PluginFixture fixture;
+  QFile script(fixture.paths.shellProgram); QVERIFY(script.open(QIODevice::WriteOnly));
+  script.write("#!/bin/sh\necho \"$@\" >> '" + fixture.log.toUtf8() + "'\n[ \"$2\" = enablePlugin ] && { " + failure + "; exit; }\necho ok\n"); script.close();
+  QVERIFY(QFile::setPermissions(script.fileName(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  auto retry = std::make_shared<GuidePlugin::RetryState>();
+  // Advance the daemon's five-second retry ticks without sleeping for a minute.
+  for (int seconds = 0; seconds < 60; seconds += 5) {
+    QElapsedTimer elapsed; elapsed.start();
+    QVERIFY(!GuidePlugin::ensure(fixture.paths, retry));
+    QVERIFY(elapsed.elapsed() < 3500);
+  }
+  QCOMPARE(fixture.calls().count("shell rescanPlugins"), 1);
+  QCOMPARE(retry->attempts, 3);
+  QVERIFY(fixture.calls().filter("enablePlugin").size() <= 9);
+  QVERIFY(!QFileInfo::exists(fixture.paths.markerPath));
+}
+void InGameGuideTests::provisioningRechecksGame() {
+  PluginFixture fixture; fixture.fakeShell({}, false);
+  auto retry = std::make_shared<GuidePlugin::RetryState>();
+  for (int tick = 0; tick < 5; ++tick) QVERIFY(!GuidePlugin::ensure(fixture.paths, retry));
+  QCOMPARE(retry->attempts, 0); QVERIFY(!retry->rescanned);
+  fixture.fakeShell("unknown", false);
+  bool checked = false;
+  QVERIFY(!GuidePlugin::ensure(fixture.paths, retry, QProcessEnvironment::systemEnvironment(), [&] { checked = true; return false; }));
+  QVERIFY(checked); QVERIFY(!retry->rescanned); QCOMPARE(fixture.calls().count("shell rescanPlugins"), 0);
+  fixture.fakeShell("ok", true);
+  QVERIFY(GuidePlugin::ensure(fixture.paths, retry, QProcessEnvironment::systemEnvironment(), [] { return true; }));
+  QCOMPARE(fixture.calls().count("shell rescanPlugins"), 1);
+}
+void InGameGuideTests::guardAcquirePrecedesFallbackRelease() {
+  QTemporaryDir root;
+  const auto log = root.filePath("ipc.log"), bin = root.filePath("bin"); QVERIFY(QDir().mkpath(bin));
+  QFile shell(bin + "/hyprctl"); QVERIFY(shell.open(QIODevice::WriteOnly));
+  shell.write("#!/bin/sh\ncase \"$2\" in\n*'={pid='*) echo acquire-begin >> '" + log.toUtf8() + "'; sleep .3; echo acquire-end >> '" + log.toUtf8() + "';;\n*) echo release >> '" + log.toUtf8() + "';;\nesac\necho ok\n"); shell.close();
+  QVERIFY(QFile::setPermissions(shell.fileName(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { game.kill(); game.waitForFinished(); });
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", start}};
+  guide.m_environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "fake");
+  guide.m_environment.insert("PATH", bin + ':' + QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath() + ':' + qEnvironmentVariable("PATH"));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", guide.m_environment.value("PATH").toUtf8());
+  const auto resetPath = qScopeGuard([&] { qputenv("PATH", oldPath); });
+  const auto calls = [&] { QFile file(log); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{}; };
+  QVERIFY(guide.setPaused(true)); QTRY_VERIFY(calls().contains("acquire-begin"));
+  guide.stopGuard();
+  QTest::qWait(100); QVERIFY(!calls().contains("release"));
+  QTRY_VERIFY(calls().contains("release"));
+  QVERIFY(calls().indexOf("acquire-end") < calls().indexOf("release"));
+}
+
+QTEST_GUILESS_MAIN(InGameGuideTests)
+#include "InGameGuideTests.moc"

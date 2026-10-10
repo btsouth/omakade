@@ -53,6 +53,7 @@ public:
   // True while a game process started by launch() is still alive. Games are started detached,
   // so this is polled from /proc rather than reported by QProcess.
   [[nodiscard]] bool gameRunning() const;
+  [[nodiscard]] QVariantList trackedGames() const;
   // Starts a detached process and follows it through gameRunning() until it exits.
   bool startTracked(const LaunchCommand& command, const QString& workingDirectory = {});
   [[nodiscard]] static LaunchCommand lutrisCommand(const QString& id, bool flatpak);
@@ -110,6 +111,9 @@ public:
                           const QString& runner = {}, const QString& launchTarget = {});
   Q_INVOKABLE bool install(const QString& source, const QString& id);
   void setPreferStandaloneEmulators(bool value);
+  // Asked at each RetroArch launch: while Home opens the guide, RetroArch's menu moves
+  // off that button.
+  void setRetroArchHomeOwner(std::function<bool()> owner);
   void setSaveBackups(SaveBackups* backups) { m_saveBackups = backups; }
 
 signals:
@@ -160,10 +164,17 @@ private:
   struct TrackedProcess {
     qint64 pid = 0;
     qint64 startTime = -1;
+    QVariantMap installation;
+    qint64 startedAt = 0;
   };
   SaveBackups* m_saveBackups = nullptr;
   QString m_lastError;
   bool m_preferStandaloneEmulators = false;
+  std::function<bool()> m_retroArchHomeOwner;
+  // The command, with RetroArch's menu moved off Home when it starts RetroArch itself.
+  [[nodiscard]] LaunchCommand withRetroArchHome(LaunchCommand command) const;
+  void repairRetroArchHome() const;
   QList<TrackedProcess> m_trackedProcesses;
+  QVariantMap m_launchIdentity;
   QTimer m_trackTimer;
 };

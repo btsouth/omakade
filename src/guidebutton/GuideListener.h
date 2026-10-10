@@ -31,6 +31,10 @@ public:
     QString name;
     // Made by software, such as Steam Input's pad, rather than a driver for hardware.
     bool virtualDevice = false;
+    QString driver;
+    quint16 vendor = 0;
+    quint16 product = 0;
+    bool compactHidButtons = false;
   };
 
   explicit GuideListener(QString devDir = QStringLiteral("/dev/input"),
@@ -44,7 +48,10 @@ public:
   [[nodiscard]] QStringList openNodes() const;
 
 signals:
+  void preparing(const QString& node, const QString& name);
   void pressed(const QString& node, const QString& name);
+  // The button stayed down alone for GuidePress::kHoldMs; its release is not a press.
+  void held(const QString& node, const QString& name);
   void devicesChanged();
 
 private:

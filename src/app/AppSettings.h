@@ -57,6 +57,9 @@ class AppSettings final : public QObject {
                  consoleExpandLimitChanged)
   Q_PROPERTY(bool preferStandaloneEmulators READ preferStandaloneEmulators WRITE
                  setPreferStandaloneEmulators NOTIFY preferStandaloneEmulatorsChanged)
+  // A controller's Home button opens the in-game guide; off, it toggles Game Mode as in 1.15.
+  Q_PROPERTY(bool homeButtonOpensGuide READ homeButtonOpensGuide WRITE setHomeButtonOpensGuide
+                 NOTIFY homeButtonOpensGuideChanged)
   Q_PROPERTY(bool closeAfterLaunch READ closeAfterLaunch WRITE setCloseAfterLaunch NOTIFY
                  closeAfterLaunchChanged)
   Q_PROPERTY(bool protectRetroArchSaves READ protectRetroArchSaves WRITE setProtectRetroArchSaves NOTIFY protectRetroArchSavesChanged)
@@ -178,6 +181,11 @@ public:
   void setConsoleExpandLimit(int value);
   [[nodiscard]] bool preferStandaloneEmulators() const;
   void setPreferStandaloneEmulators(bool value);
+  [[nodiscard]] bool homeButtonOpensGuide() const { return m_homeButtonOpensGuide; }
+  void setHomeButtonOpensGuide(bool value);
+  // Read straight from a config file, for the session service, which has no AppSettings.
+  [[nodiscard]] static bool homeButtonOpensGuideAt(const QString& path);
+  [[nodiscard]] static QString defaultPath();
   [[nodiscard]] bool battleNetEnabled() const;
   void setBattleNetEnabled(bool value);
   [[nodiscard]] bool rommEnabled() const { return m_rommEnabled; }
@@ -256,13 +264,13 @@ signals:
   void expandConsolesChanged();
   void consoleExpandLimitChanged();
   void preferStandaloneEmulatorsChanged();
+  void homeButtonOpensGuideChanged();
 
 private:
   QString m_statsPeriod = QStringLiteral("year");
   struct UnloadedSettings {};
   explicit AppSettings(UnloadedSettings) : QObject(nullptr) {}
   void assignBackupSettings(const QJsonObject& settings);
-  [[nodiscard]] static QString defaultPath();
   void load();
   bool save();
 
@@ -306,6 +314,7 @@ private:
   bool m_expandConsoles = false;
   int m_consoleExpandLimit = 200;
   bool m_preferStandaloneEmulators = false;
+  bool m_homeButtonOpensGuide = true;
   bool m_battleNetEnabled = true;
   bool m_rommEnabled = false;
   QString m_rommUrl;

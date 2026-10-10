@@ -36,6 +36,17 @@ bool GuidePress::holding(const QString& device) const {
   return state != m_devices.cend() && state->heldSince >= 0 && !state->chord;
 }
 
+bool GuidePress::hold(const QString& device, qint64 nowMs) {
+  auto state = m_devices.find(device);
+  if (state == m_devices.end() || state->heldSince < 0 || state->chord || state->held ||
+      nowMs - state->heldSince < kHoldMs)
+    return false;
+  state->held = true;
+  const bool mirror = m_lastHold >= 0 && device != m_lastHoldDevice && nowMs - m_lastHold < kSameReleaseMs;
+  if (!mirror) { m_lastHold = nowMs; m_lastHoldDevice = device; }
+  return !mirror;
+}
+
 bool GuidePress::event(const QString& device, int type, int code, int value, qint64 nowMs) {
   auto state = m_devices.find(device);
   if (state == m_devices.end()) {
@@ -48,17 +59,19 @@ bool GuidePress::event(const QString& device, int type, int code, int value, qin
       // the second half of a chord.
       state->heldSince = nowMs >= state->armedAt ? nowMs : -1;
       state->chord = !state->keysDown.isEmpty();
+      state->held = false;
       return false;
     }
     if (value != 0 || state->heldSince < 0) {
       return false;
     }
-    const bool shortPress = nowMs - state->heldSince <= kMaxHoldMs;
+    const bool shortPress = nowMs - state->heldSince <= kMaxHoldMs && !state->held;
     const bool alone = !state->chord;
     state->heldSince = -1;
     state->chord = false;
-    const bool samePress = m_lastRelease >= 0 && nowMs - m_lastRelease < kSameReleaseMs;
-    m_lastRelease = nowMs;
+    state->held = false;
+    const bool samePress = m_lastRelease >= 0 && device != m_lastReleaseDevice && nowMs - m_lastRelease < kSameReleaseMs;
+    if (!samePress) { m_lastRelease = nowMs; m_lastReleaseDevice = device; }
     return shortPress && alone && !samePress;
   }
   bool pressed = false;

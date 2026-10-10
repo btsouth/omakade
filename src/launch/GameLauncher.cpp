@@ -1,4 +1,5 @@
 #include "launch/GameLauncher.h"
+#include "launch/RetroArchHome.h"
 #include "saves/SaveBackups.h"
 #include "library/ManualGameModel.h"
 
@@ -9,11 +10,17 @@
 #include "sources/heroic/HeroicScanner.h"
 
 #include <QDesktopServices>
+#include <QDateTime>
+#include <QScopeGuard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include "guide/GuideActions.h"
+#include <QSaveFile>
+#include <QSettings>
+#include <QUuid>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrlQuery>
@@ -335,9 +342,23 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   if (!workingDirectory.isEmpty()) {
     process.setWorkingDirectory(workingDirectory);
   }
-  if (!environment.isEmpty()) {
-    process.setProcessEnvironment(environment);
+  auto launchEnvironment = environment.isEmpty() ? QProcessEnvironment::systemEnvironment() : environment;
+  const auto source = m_launchIdentity.value("source").toString();
+  if (track && (source == "Manual" || isEmulatorSourceName(source)) && !QStandardPaths::findExecutable("mangohud").isEmpty()) {
+    const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-mangohud";
+    const auto socket = "omakade-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const auto config = directory + '/' + socket + ".conf";
+    QSettings settings;
+    QSaveFile file(config);
+    if (QDir().mkpath(directory) && file.open(QIODevice::WriteOnly)) {
+      const auto bytes = GuideActions::mangoConfig(socket, settings.value("guide/hud", "off").toString(), settings.value("guide/limit", 0).toInt()).toUtf8();
+      if (file.write(bytes) == bytes.size() && file.commit()) {
+        launchEnvironment = GuideActions::mangoEnvironment(launchEnvironment, true, config);
+        m_launchIdentity.insert("mangoSocket", socket);
+      }
+    }
   }
+  process.setProcessEnvironment(launchEnvironment);
   qint64 pid = 0;
   if (!process.startDetached(&pid)) {
     return false;
@@ -354,7 +375,7 @@ void GameLauncher::trackProcess(qint64 pid) {
     return;  // Already gone: a launcher stub that handed off and exited.
   }
   const bool wasRunning = gameRunning();
-  m_trackedProcesses.append({pid, startTime});
+  m_trackedProcesses.append({pid, startTime, m_launchIdentity, QDateTime::currentSecsSinceEpoch()});
   if (!m_trackTimer.isActive()) {
     m_trackTimer.start();
   }
@@ -363,11 +384,25 @@ void GameLauncher::trackProcess(qint64 pid) {
   }
 }
 
+QVariantList GameLauncher::trackedGames() const {
+  QVariantList games;
+  for (const auto& process : m_trackedProcesses) {
+    if (process.installation.isEmpty() || processStartTime(process.pid) != process.startTime) continue;
+    auto game = process.installation;
+    game.insert("pid", process.pid);
+    game.insert("procStart", process.startTime);
+    game.insert("elapsedSeconds", QDateTime::currentSecsSinceEpoch() - process.startedAt);
+    games.append(game);
+  }
+  return games;
+}
+
 void GameLauncher::pollTrackedProcesses() {
   const bool wasRunning = gameRunning();
-  m_trackedProcesses.removeIf([](const TrackedProcess& process) {
+  const auto removed = m_trackedProcesses.removeIf([](const TrackedProcess& process) {
     return processStartTime(process.pid) != process.startTime;
   });
+  if (removed > 0) repairRetroArchHome();
   if (m_trackedProcesses.isEmpty()) {
     m_trackTimer.stop();
   }
@@ -378,6 +413,34 @@ void GameLauncher::pollTrackedProcesses() {
 
 void GameLauncher::setPreferStandaloneEmulators(bool value) {
   m_preferStandaloneEmulators = value;
+}
+
+void GameLauncher::setRetroArchHomeOwner(std::function<bool()> owner) {
+  m_retroArchHomeOwner = std::move(owner);
+  repairRetroArchHome(); // A session that ended while Omakade was closed.
+}
+
+LaunchCommand GameLauncher::withRetroArchHome(LaunchCommand command) const {
+  const bool flatpak = command.program == QStringLiteral("flatpak") &&
+                       command.arguments.value(1) == QStringLiteral("org.libretro.RetroArch");
+  if ((command.program != QStringLiteral("retroarch") && !flatpak) || !m_retroArchHomeOwner ||
+      !m_retroArchHomeOwner())
+    return command;
+  const QString override = RetroArchHome::prepare(RetroArchHome::paths(flatpak));
+  qInfo().noquote() << (override.isEmpty() ? QStringLiteral("RetroArch: its own menu button is kept")
+                                           : QStringLiteral("RetroArch: Home is left to the guide"));
+  if (override.isEmpty()) return command;
+  // Flatpak's own arguments come first: run org.libretro.RetroArch.
+  const int at = flatpak ? 2 : 0;
+  command.arguments.insert(at, QStringLiteral("--appendconfig"));
+  command.arguments.insert(at + 1, override);
+  return command;
+}
+
+void GameLauncher::repairRetroArchHome() const {
+  if (RetroArchHome::retroArchRunning()) return;
+  RetroArchHome::repair(RetroArchHome::paths(false));
+  RetroArchHome::repair(RetroArchHome::paths(true));
 }
 
 QString GameLauncher::lastError() const { return m_lastError; }
@@ -704,6 +767,8 @@ LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& install
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
+  m_launchIdentity = {{"source", source}, {"appId", id}, {"path", source == "Manual" ? id : installPath}};
+  const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
           .contains(source))
     return launchPlannedEmulator({{"source",source},{"appId",id},{"flatpak",flatpak},{"runner",runner},{"installPath",installPath},{"launchTarget",launchTarget},{"system",system}});
@@ -1123,6 +1188,7 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
     setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
   }
+  const LaunchCommand launch = manageOnly ? command : withRetroArchHome(command);
   if (!manageOnly && m_saveBackups) {
     const int coreArgument=command.arguments.indexOf("-L");
     const QString core=coreArgument>=0 && coreArgument+1<command.arguments.size()?command.arguments.at(coreArgument+1):corePath;
@@ -1130,7 +1196,7 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
       setError(m_saveBackups->message());return false;
     }
   }
-  if (!startCommand(command, !manageOnly)) {
+  if (!startCommand(launch, !manageOnly)) {
     setError(usesRetroArch
                  ? QStringLiteral("RetroArch could not be started. Open RetroArch and try again.")
                  : QStringLiteral("%1 could not be started.").arg(command.program));

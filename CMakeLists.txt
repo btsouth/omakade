@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(Omakade VERSION 1.15.0 LANGUAGES C CXX)
+project(Omakade VERSION 1.16.0 LANGUAGES C CXX)
 
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto)
@@ -127,12 +127,26 @@ target_include_directories(omakade_guide PUBLIC src)
 target_link_libraries(omakade_guide PUBLIC Qt6::Core)
 
 qt_add_executable(omakade-guide-button src/guidebutton/main.cpp)
-target_link_libraries(omakade-guide-button PRIVATE omakade_guide)
+target_link_libraries(omakade-guide-button PRIVATE omakade_guide Qt6::Network)
+target_sources(omakade-guide-button PRIVATE src/guide/GuideClient.cpp src/guide/GuideClient.h)
 target_compile_definitions(omakade-guide-button PRIVATE OMAKADE_VERSION="${PROJECT_VERSION}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade_guide PRIVATE -Wall -Wextra -Wpedantic)
   target_compile_options(omakade-guide-button PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+add_library(omakade_guide_runtime STATIC
+  src/guide/GuideArt.cpp src/guide/GuideArt.h
+  src/guide/GuidePayload.cpp src/guide/GuidePayload.h
+  src/guide/GuideInput.cpp src/guide/GuideInput.h
+  src/guide/GuidePause.cpp src/guide/GuidePause.h
+  src/guide/GuideAnr.cpp src/guide/GuideAnr.h
+  src/guide/GuideActions.cpp src/guide/GuideActions.h
+)
+target_include_directories(omakade_guide_runtime PUBLIC src)
+target_link_libraries(omakade_guide_runtime PUBLIC omakade_guide omakade_tracking Qt6::Gui Qt6::Network Qt6::Concurrent)
+qt_add_executable(omakade-guide-guard src/guide/guard.cpp)
+target_link_libraries(omakade-guide-guard PRIVATE omakade_guide_runtime)
 
 add_library(omakade_core STATIC
   src/backup/BackupArchive.cpp
@@ -235,6 +249,7 @@ add_library(omakade_core STATIC
   src/sources/romm/RommScanner.h
   src/launch/GameLaunchSetup.cpp
   src/launch/GameLauncher.cpp
+  src/launch/RetroArchHome.cpp
   src/launch/GameLauncher.h
   src/launch/LaunchCommand.h
   src/launch/PlayRequest.cpp
@@ -306,6 +321,13 @@ add_library(omakade_core STATIC
   src/gamemode/GameModeDesktop.h
   src/gamemode/GameModeGuideButton.cpp
   src/gamemode/GameModeGuideButton.h
+  src/guide/GuidePlugin.cpp
+  src/guide/GuidePlugin.h
+  src/guide/InGameGuide.cpp
+  src/guide/InGameGuide.h
+  src/guide/GuideClient.cpp src/guide/GuideClient.h
+  src/guide/ResidentGuide.cpp src/guide/ResidentGuide.h
+  src/guide/GuideEnvironment.cpp src/guide/GuideEnvironment.h
   src/gamemode/GameModeOverlay.cpp
   src/gamemode/GameModeOverlay.h
   src/gamemode/GameModePorts.h
@@ -321,6 +343,7 @@ add_library(omakade_core STATIC
 
 target_include_directories(omakade_core PUBLIC src)
 target_link_libraries(omakade_core PUBLIC
+  omakade_guide_runtime
   omakade_tracking
   LayerShellQt::Interface
   Qt6::Quick
@@ -339,6 +362,8 @@ target_link_libraries(omakade_core PUBLIC
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+target_link_libraries(omakade-sessiond PRIVATE omakade_core)
 
 qt_add_executable(omakade
   src/app/main.cpp
@@ -464,7 +489,7 @@ install(TARGETS omakade
   BUNDLE DESTINATION .
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(TARGETS omakade-sessiond omakade-guide-button
+install(TARGETS omakade-sessiond omakade-guide-button omakade-guide-guard
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 install(FILES resources/sessiond-profiles.json
@@ -473,6 +498,9 @@ install(FILES resources/sessiond-profiles.json
 install(FILES packaging/omakade-sessiond.service packaging/omakade-guide-button.service
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user
 )
+# Start the resident service with the desktop even before the library is opened.
+install(CODE "file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/systemd/user/graphical-session.target.wants\")
+file(CREATE_LINK \"../omakade-sessiond.service\" \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/systemd/user/graphical-session.target.wants/omakade-sessiond.service\" SYMBOLIC)")
 install(FILES packaging/io.github.tsouth89.Omakade.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
@@ -491,6 +519,15 @@ install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
 install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md SECURITY.md RELEASING.md
   CHANGELOG.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
+)
+# The in-game guide shell plugin. Omakade links it into each user's Omarchy plugin folder
+# on first run, so package upgrades update it in place.
+install(DIRECTORY omarchy-plugin/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/omarchy-plugin
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "README.md" EXCLUDE
+  PATTERN "*.py" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 install(DIRECTORY skills/omakade-tv-gaming
   DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/skills

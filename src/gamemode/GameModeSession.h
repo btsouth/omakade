@@ -58,6 +58,8 @@ public:
   [[nodiscard]] bool parked() const { return m_parked; }
   [[nodiscard]] bool hasSession() const { return m_active || m_parked; }
   void setTemporaryWindow(bool temporary);
+  // The window exists only for Game Mode and is hidden, not returned, when it parks.
+  Q_INVOKABLE bool temporaryWindow() const { return m_controller.temporaryWindow(); }
   [[nodiscard]] QString statusText() const { return m_statusText; }
   [[nodiscard]] bool displayManaged() const { return m_displayManaged; }
   [[nodiscard]] bool soundManaged() const { return m_soundManaged; }
@@ -121,6 +123,8 @@ signals:
   void parkedOnDesktop();
   void resumed();
   void windowVisibilityRequested(bool visible);
+  // The display the next hidden root opens on, sent before windowVisibilityRequested.
+  void openOutputRequested(const QString& output);
   // The placeholder window that keeps Omakade's place in the desktop layout should be
   // shown or hidden. Emitted from the worker thread.
   void placeholderRequested(bool visible);

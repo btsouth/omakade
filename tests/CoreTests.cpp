@@ -35,6 +35,7 @@
 #include "input/ControllerInput.h"
 #include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
+#include "launch/RetroArchHome.h"
 #include "launch/PlayRequest.h"
 #include "launch/SteamLauncher.h"
 #include "library/BattleNetGameModel.h"
@@ -1197,6 +1198,7 @@ private slots:
   void downloadedCoversSurviveARescan();
   void libretroCoverFailuresRemainRetryable();
   void gridMatchPrefersTheClosestYearAndRefusesTies();
+  void retroArchLaunchLeavesHomeToTheGuide();
   void battleNetScannerImportsInstalledGamesAndArtwork();
   void battleNetScannerDiscoversKnownPrefixes();
   void battleNetScannerKeepsInstallsFromSeparatePrefixes();
@@ -1223,6 +1225,7 @@ private slots:
   void manualGamesImportEditLaunchAndRemove();
   void launchKeysRoundTripAndResolveInstallations();
   void singleInstanceForwardsPlayAndQuitCommands();
+  void homeButtonSettingAndRetroArchMenuOverride();
   void sunshineIntegrationWritesOnlyItsOwnEntries();
   void secondInstanceRequestsActivation();
   void couchCursorFollowsInputMode();
@@ -4362,6 +4365,60 @@ void CoreTests::retroArchLauncherBuildsSafeCommands() {
   QVERIFY(!launcher.lastError().startsWith(QStringLiteral("The installed files are missing.")));
 }
 
+void CoreTests::retroArchLaunchLeavesHomeToTheGuide() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QByteArray previousConfig = qgetenv("XDG_CONFIG_HOME"), previousData = qgetenv("XDG_DATA_HOME");
+  const QByteArray previousPath = qgetenv("PATH");
+  const auto restore = qScopeGuard([&] {
+    qputenv("XDG_CONFIG_HOME", previousConfig); qputenv("XDG_DATA_HOME", previousData);
+    qputenv("PATH", previousPath);
+  });
+  qputenv("XDG_CONFIG_HOME", directory.filePath(QStringLiteral("config")).toUtf8());
+  qputenv("XDG_DATA_HOME", directory.filePath(QStringLiteral("data")).toUtf8());
+  const auto restoreCache = redirectCacheHome(directory.filePath(QStringLiteral("cache")));
+  Q_UNUSED(restoreCache);
+  // A stand-in RetroArch that records the arguments it was started with.
+  const QString bin = directory.filePath(QStringLiteral("bin"));
+  QVERIFY(QDir().mkpath(bin));
+  const QString recorded = directory.filePath(QStringLiteral("args"));
+  writeFile(bin + QStringLiteral("/retroarch"),
+            QStringLiteral("#!/bin/sh\nprintf '%s\\n' \"$@\" > '%1.tmp' && mv '%1.tmp' '%1'\n").arg(recorded).toUtf8());
+  QVERIFY(QFile::setPermissions(bin + QStringLiteral("/retroarch"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  qputenv("PATH", bin.toUtf8() + ':' + previousPath);
+  QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("config/retroarch"))));
+  writeFile(directory.filePath(QStringLiteral("config/retroarch/retroarch.cfg")), "input_menu_toggle_btn = \"nul\"\n");
+  QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("config/retroarch/autoconfig/udev"))));
+  writeFile(directory.filePath(QStringLiteral("config/retroarch/autoconfig/udev/pad.cfg")), "input_menu_toggle_btn = \"8\"\n");
+  const QString content = directory.filePath(QStringLiteral("GoldenEye 007 (USA).z64"));
+  const QString core = directory.filePath(QStringLiteral("mupen64plus_next_libretro.so"));
+  writeFile(content, "rom");
+  writeFile(core, "core");
+  const auto launched = [&] {
+    QFile file(recorded);
+    return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList{};
+  };
+
+  GameLauncher launcher;
+  bool owned = false;
+  launcher.setRetroArchHomeOwner([&owned] { return owned; });
+  QVERIFY2(launcher.launch(QStringLiteral("RetroArch"), QStringLiteral("id"), false, {}, content, core),
+           qPrintable(launcher.lastError()));
+  QTRY_VERIFY(!launched().isEmpty());
+  QVERIFY(!launched().contains(QStringLiteral("--appendconfig")));
+  QFile::remove(recorded);
+
+  owned = true;
+  QVERIFY2(launcher.launch(QStringLiteral("RetroArch"), QStringLiteral("id"), false, {}, content, core),
+           qPrintable(launcher.lastError()));
+  QTRY_VERIFY(!launched().isEmpty());
+  const QStringList arguments = launched();
+  const int at = arguments.indexOf(QStringLiteral("--appendconfig"));
+  QCOMPARE(at, 0);
+  QCOMPARE(arguments.value(1), directory.filePath(QStringLiteral("cache/omakade/retroarch-home.cfg")));
+  QCOMPARE(arguments.constLast(), content);
+}
+
 void CoreTests::battleNetScannerImportsInstalledGamesAndArtwork() {
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -5299,10 +5356,12 @@ void CoreTests::manualGamesImportEditLaunchAndRemove() {
              qPrintable(error));
     QVERIFY(launcher.gameRunning());
     const QString output = directory.path() + QStringLiteral("/launch-result.txt");
-    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(output), 3000);
-    QFile result(output);
-    QVERIFY(result.open(QIODevice::ReadOnly));
-    QCOMPARE(result.readAll(), directory.path().toUtf8() + "\ntwo words\n\n$literal\n");
+    // The script creates the file before it has written to it: wait for the whole output.
+    const auto launched = [&output] {
+      QFile result(output);
+      return result.open(QIODevice::ReadOnly) ? result.readAll() : QByteArray{};
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(launched(), directory.path().toUtf8() + "\ntwo words\n\n$literal\n", 3000);
     QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
     QVERIFY(library.get(0).value(QStringLiteral("lastPlayed")).toLongLong() > 0);
     draft = manual.get(id);
@@ -5624,6 +5683,95 @@ void CoreTests::launchKeysRoundTripAndResolveInstallations() {
   QVERIFY(!PlayRequest::perform(unified, launcher, LaunchKey::parse(QStringLiteral("bad")), &error));
   QVERIFY(error.contains(QStringLiteral("Steam::620")));
 }
+
+void CoreTests::homeButtonSettingAndRetroArchMenuOverride() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString configPath = directory.filePath(QStringLiteral("config.toml"));
+  {
+    AppSettings settings(configPath);
+    QVERIFY(settings.homeButtonOpensGuide());
+    QVERIFY(AppSettings::homeButtonOpensGuideAt(configPath)); // no file yet
+    settings.setHomeButtonOpensGuide(false);
+    QVERIFY(!AppSettings::homeButtonOpensGuideAt(configPath));
+  }
+  QVERIFY(!AppSettings(configPath).homeButtonOpensGuide());
+
+  const auto write = [](const QString& path, const QByteArray& data) {
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+  };
+  const auto read = [](const QString& path) {
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
+  };
+  const QString source = directory.filePath(QStringLiteral("system-autoconfig"));
+  QVERIFY(QDir().mkpath(source + QStringLiteral("/udev")));
+  QVERIFY(write(source + QStringLiteral("/udev/Xbox 360 pad.cfg"),
+                "input_device = \"Microsoft X-Box 360 pad\"\ninput_menu_toggle_btn = \"8\"\ninput_a_btn = \"0\"\n"));
+  const RetroArchHome::Paths paths{directory.filePath(QStringLiteral("retroarch.cfg")),
+                                   directory.filePath(QStringLiteral("cache/home.cfg")),
+                                   directory.filePath(QStringLiteral("data/marker")),
+                                   directory.filePath(QStringLiteral("cache/autoconfig")),
+                                   directory.filePath(QStringLiteral("missing-autoconfig"))};
+  const QByteArray chosen = "joypad_autoconfig_dir = \"" + source.toUtf8() + "\"";
+  // Every port reads the profiles' menu bind; the copy leaves those binds out.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\n" + chosen + "\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QCOMPARE(read(paths.override), "joypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\ninput_menu_toggle_gamepad_combo = \"2\"\n");
+  QCOMPARE(read(paths.profiles + QStringLiteral("/udev/Xbox 360 pad.cfg")),
+           QByteArray("input_device = \"Microsoft X-Box 360 pad\"\ninput_a_btn = \"0\"\n"));
+  // RetroArch saves the appended value on exit; the next launch still copies the original.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  RetroArchHome::repair(paths);
+  QCOMPARE(read(paths.config), "video_driver = \"vulkan\"\n" + chosen + "\n");
+  QVERIFY(!QFileInfo::exists(paths.marker));
+  // The menu combo it saved goes back to how it was set.
+  QVERIFY(write(paths.config, "input_menu_toggle_gamepad_combo = \"0\"\n" + chosen + "\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QVERIFY(write(paths.config, "input_menu_toggle_gamepad_combo = \"2\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
+  RetroArchHome::repair(paths);
+  QCOMPARE(read(paths.config), "input_menu_toggle_gamepad_combo = \"0\"\n" + chosen + "\n");
+  // A combo the user chose stands: only the profiles are appended.
+  QVERIFY(write(paths.config, "input_menu_toggle_gamepad_combo = \"4\"\n" + chosen + "\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QCOMPARE(read(paths.override), "joypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n");
+  RetroArchHome::repair(paths);
+  // It saves a path in the home folder as ~/...; that is still the copy.
+  {
+    const QByteArray previousHome = qgetenv("HOME");
+    const auto restoreHome = qScopeGuard([&] { qputenv("HOME", previousHome); });
+    qputenv("HOME", directory.path().toUtf8());
+    QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+    QVERIFY(write(paths.config, "joypad_autoconfig_dir = \"~/cache/autoconfig\"\n"));
+    QCOMPARE(RetroArchHome::prepare(paths), paths.override); // its source is still the original
+    QCOMPARE(read(paths.profiles + QStringLiteral("/udev/Xbox 360 pad.cfg")),
+             QByteArray("input_device = \"Microsoft X-Box 360 pad\"\ninput_a_btn = \"0\"\n"));
+    RetroArchHome::repair(paths);
+    QCOMPARE(read(paths.config), chosen + "\n");
+    QVERIFY(!QFileInfo::exists(paths.marker));
+  }
+  // Without the setting, the copy is of the profiles RetroArch uses by default.
+  RetroArchHome::Paths unset = paths;
+  unset.fallbackProfiles = source;
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\n"));
+  QCOMPARE(RetroArchHome::prepare(unset), paths.override);
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
+  RetroArchHome::repair(unset);
+  QCOMPARE(read(paths.config), QByteArray("video_driver = \"vulkan\"\n"));
+  // A newer choice made while RetroArch ran is never reverted.
+  QVERIFY(write(paths.config, chosen + "\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QVERIFY(write(paths.config, "joypad_autoconfig_dir = \"/elsewhere\"\n"));
+  RetroArchHome::repair(paths);
+  QCOMPARE(read(paths.config), QByteArray("joypad_autoconfig_dir = \"/elsewhere\"\n"));
+  QVERIFY(!QFileInfo::exists(paths.marker));
+  // No profiles to copy: nothing is appended.
+  QVERIFY(write(paths.config, "joypad_autoconfig_dir = \"/no/such/dir\"\n"));
+  QVERIFY(RetroArchHome::prepare(paths).isEmpty());
+}
+
 
 void CoreTests::singleInstanceForwardsPlayAndQuitCommands() {
   const QString name = QStringLiteral("omakade-test-") + QUuid::createUuid().toString();
@@ -5997,6 +6145,8 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   controls.gbutton.button = SDL_GAMEPAD_BUTTON_NORTH;
   QVERIFY(SDL_PushEvent(&controls));
   QTRY_COMPARE_WITH_TIMEOUT(toolbar.size(), 1, 1000);
+  QCOMPARE(controller.favoriteGlyph(), QStringLiteral("X"));
+  QCOMPARE(controller.toolbarGlyph(), QStringLiteral("Y"));
 
   keys.clear();
   QVERIFY(SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, 20000));
@@ -9606,10 +9756,11 @@ void CoreTests::aNewGameInTheSameProcessDoesNotInheritThePendingStop() {
   QVERIFY(standIn.waitForStarted(5000));
   const qint64 pid = standIn.processId();
   qint64 procStart = -1;
-  for (const auto& process : ProcFs::listProcesses()) {
-    if (process.pid == pid) procStart = process.procStart;
-  }
-  QVERIFY(procStart > 0);
+  QTRY_VERIFY(([&] {
+    for (const auto& process : ProcFs::listProcesses())
+      if (process.pid == pid) procStart = process.procStart;
+    return procStart > 0;
+  })());
   {
     QSqlDatabase database;
     QVERIFY(SessionDatabase::open(database, path, connection));
@@ -14623,20 +14774,22 @@ void CoreTests::sessionStoreReportsAndStopsLiveSessions() {
   // real against a live process.
   QProcess game;
   game.start(QStringLiteral("/bin/sh"),
-             {QStringLiteral("-c"), QStringLiteral("trap '' TERM; sleep 20")});
+             {QStringLiteral("-c"), QStringLiteral("trap '' TERM; printf 'ready\\n'; sleep 20")});
   QVERIFY(game.waitForStarted(5000));
+  // The trap must be installed before the test can send SIGTERM. Wait for the
+  // fixture's acknowledgement, then read only its own verified identity.
+  QVERIFY(game.bytesAvailable() > 0 || game.waitForReadyRead(5000));
+  QCOMPARE(game.readAllStandardOutput(), QByteArray("ready\n"));
   const qint64 pid = game.processId();
   QVERIFY(pid > 1);
-  // A single snapshot taken right after start has missed the child on a loaded
-  // CI runner, so poll until it shows up.
-  const auto findProcStart = [pid] {
-    for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
-      if (snapshot.pid == pid) return snapshot.procStart;
-    }
-    return qint64{-1};
-  };
-  qint64 procStart = -1;
-  QTRY_VERIFY_WITH_TIMEOUT((procStart = findProcStart()) >= 0, 5000);
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+  QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll();
+  const auto fields = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ');
+  QVERIFY(fields.size() >= 20);
+  const qint64 procStart = fields[19].toLongLong();
+  QVERIFY(procStart > 0);
+  QVERIFY(ProcFs::processAlive(pid, procStart));
 
   const QString gamePath =
       QStringLiteral("/data/Emulation/Games/Xbox/Dante's Inferno (USA)/default.xex");

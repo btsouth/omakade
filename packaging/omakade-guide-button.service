@@ -2,7 +2,8 @@
 Description=Omakade Game Mode controller button
 Documentation=https://github.com/btsouth/omakade/blob/main/docs/GAME-MODE.md
 PartOf=graphical-session.target
-After=graphical-session.target
+Wants=omakade-sessiond.service
+After=graphical-session.target omakade-sessiond.service
 
 [Service]
 ExecStart=/usr/bin/omakade-guide-button

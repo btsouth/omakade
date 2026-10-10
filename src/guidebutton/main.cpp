@@ -3,6 +3,7 @@
 // Hyprland to run the same command the keyboard shortcut runs.
 
 #include "guidebutton/GuideListener.h"
+#include "guide/GuideClient.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -14,6 +15,7 @@
 #include <QTimer>
 
 #include <unistd.h>
+#include <chrono>
 
 namespace {
 constexpr int kHyprctlTimeoutMs = 5000;
@@ -150,12 +152,31 @@ int main(int argc, char* argv[]) {
 
   GuideListener listener(parser.value(devDir), parser.value(sysDir));
   const QString toggleCommand = parser.value(command);
+  QObject::connect(&listener, &GuideListener::preparing, &application, [&application](const QString& node, const QString&) {
+    qInfo("Guide timing: Home down mono_ns=%lld node=%s", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()), qPrintable(node));
+    // Preserve release/chord safety while preparing the cached game snapshot on down.
+    GuideClient::request({{"action", "prepare"}}, &application);
+  });
   QObject::connect(&listener, &GuideListener::pressed, &application,
                    [&application, toggleCommand](const QString& node, const QString& name) {
-                     qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)")
-                                              .arg(node, name);
-                     toggleGameMode(toggleCommand, &application);
-                   });
+    qInfo().noquote() << QStringLiteral("Guide pressed on %1 (%2)").arg(node, name);
+    const auto now = qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    qInfo("Guide timing: Home release mono_ns=%lld node=%s", now, qPrintable(node));
+    GuideClient::requestShortcut(node, &application,
+                        [&application, toggleCommand, node](const QString& result, const QJsonObject&) {
+      if (result == "fallback" || result == "unavailable" || result == "preparing")
+        toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback").replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node, &application);
+      else if (result != "handled" && result != "locked") qWarning("Resident guide could not handle Home");
+    });
+  });
+  // Holding Home does what a press did before the guide: Game Mode to the desktop and back.
+  QObject::connect(&listener, &GuideListener::held, &application,
+                   [&application, toggleCommand](const QString& node, const QString& name) {
+    qInfo().noquote() << QStringLiteral("Guide held on %1 (%2)").arg(node, name);
+    toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback")
+                       .replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node,
+                   &application);
+  });
   listener.start();
   return application.exec();
 }

@@ -85,7 +85,9 @@ ApplicationWindow {
         { id: "psx", name: "PlayStation" }
     ]
     property int desktopVisibility: Window.Windowed
-    readonly property bool libraryScanning: (SteamLibrary ? SteamLibrary.scanning : false)
+    property int pendingStartupScans: 0
+    readonly property bool libraryScanning: root.pendingStartupScans > 0
+                                            || (SteamLibrary ? SteamLibrary.scanning : false)
                                             || (LutrisLibrary ? LutrisLibrary.scanning : false)
                                             || (HeroicLibrary ? HeroicLibrary.scanning : false)
                                             || (FaugusLibrary ? FaugusLibrary.scanning : false)
@@ -98,6 +100,7 @@ ApplicationWindow {
                                             || (CemuLibrary ? CemuLibrary.scanning : false)
                                             || (MelondsLibrary ? MelondsLibrary.scanning : false)
                                             || (DolphinLibrary ? DolphinLibrary.scanning : false)
+                                            || (XeniaLibrary ? XeniaLibrary.scanning : false)
                                             || (BattleNetLibrary ? BattleNetLibrary.scanning : false)
     readonly property int ownedGameCount: SteamAccount
                                           ? SteamAccount.ownedGameCount
@@ -906,6 +909,9 @@ ApplicationWindow {
         root.gameModeNavigationRestoring = retainNavigation === true
         root.hideGameModeOverlay()
         if (gameModeControlsLoader.item) gameModeControlsLoader.item.closeAll()
+        // A Game Mode-only window parks hidden. Switching it to the desktop layout would
+        // only flash that layout on its way out, and redo the library on resume.
+        if (retainNavigation === true && GameMode.temporaryWindow()) return
         if (!retainNavigation) root.clearCouchNavigation()
         root.updateCouchModeInternal(root.couchBeforeGameMode, false,
                                      !GameMode.displayManaged, retainNavigation === true)
