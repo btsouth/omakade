@@ -6962,18 +6962,28 @@ int main(int argc, char* argv[]) {
   if (rootWindow != nullptr) {
     const auto windowStateBeforePreparation =
         std::make_shared<Qt::WindowState>(rootWindow->windowState());
+    const auto openOutput = std::make_shared<QString>();
+    QObject::connect(&gameMode, &GameModeSession::openOutputRequested, rootWindow,
+                     [openOutput](const QString& output) { *openOutput = output; });
     QObject::connect(&gameMode, &GameModeSession::windowVisibilityRequested, rootWindow,
-                     [rootWindow](bool visible) {
+                     [rootWindow, openOutput](bool visible) {
                        // The controller snapshots desktop focus before asking to map
                        // a cold root. Request its native mode while it is still hidden.
-                       if (visible && !rootWindow->isVisible()) {
-                         // The compositor's open rule matches this initial title. Size the
-                         // first buffer for the display so it never shows at a smaller size.
+                       QScreen* screen = nullptr;
+                       if (visible && !rootWindow->isVisible() && !openOutput->isEmpty()) {
+                         for (auto* candidate : QGuiApplication::screens())
+                           if (candidate->name() == *openOutput) screen = candidate;
+                         // The compositor's open rule matches this initial title.
                          rootWindow->setTitle(HyprlandGameModeCompositor::openTitle());
-                         if (rootWindow->screen()) rootWindow->resize(rootWindow->screen()->size());
+                         if (screen) rootWindow->setScreen(screen);
                        }
+                       openOutput->clear();
                        if (visible) rootWindow->setWindowState(Qt::WindowFullScreen);
                        rootWindow->setVisible(visible);
+                       // A hidden window does not keep a new size: showing it reapplies the
+                       // last one, here the old tiled half. Set the display's size now, before
+                       // the compositor's first configure, so the first frame is full size.
+                       if (screen) rootWindow->setGeometry(screen->geometry());
                      });
     // Once mapped, the root keeps its ordinary title for the rest of the session.
     const auto restoreTitle = [rootWindow, title = rootWindow->title()] { rootWindow->setTitle(title); };

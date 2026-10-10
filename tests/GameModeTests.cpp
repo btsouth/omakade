@@ -1410,6 +1410,8 @@ private slots:
     game.setTemporaryWindow(true);
     game.setPlaceholder([&](bool shown) { m_compositor.placeholderShown = shown; });
     m_compositor.openSupported = true;
+    QStringList opened;
+    game.setOpenOutput([&](const QString& output) { opened.append(output); });
     game.setWindowVisibility([&](bool shown) {
       m_compositor.windowMapped = shown;
       // Hyprland applies the rule as the window maps: it never tiles on the desktop.
@@ -1430,6 +1432,8 @@ private slots:
     QVERIFY(game.resume(tvSettings(), 100).ok);
     QVERIFY(m_compositor.log.contains(QStringLiteral("open name:omakade %1").arg(kTv)));
     for (const auto& entry : m_compositor.log) QVERIFY2(!entry.startsWith("place"), qPrintable(entry));
+    // The window is sized for the display it opens on, before it is shown.
+    QCOMPARE(opened, (QStringList{kTv, kTv}));
     const QString open = HyprlandGameModeCompositor::openScript("name:omakade", kTv);
     QVERIFY(open.contains("initial_title = \"^Omakade Game Mode Opening.*\""));
     // Lua rejects "\." in a string: the regex's backslashes must be escaped.

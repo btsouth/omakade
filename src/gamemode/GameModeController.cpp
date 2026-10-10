@@ -338,6 +338,8 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
           state.windowPlaced = false;
           state.desktopPending = false;
           (void)m_compositor->prepareOpen({}, {});
+        } else if (m_openOutput) {
+          m_openOutput(openOutput);
         }
       } else {
         (void)m_compositor->prepareOpen({}, {});
@@ -944,6 +946,8 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
     // Map straight onto the retained workspace; never tile on the desktop first.
     if (!m_compositor->prepareOpen(workspace(), chosen))
       (void)m_compositor->prepareOpen({}, {});
+    else if (m_openOutput)
+      m_openOutput(chosen);
     visibility(true);
   }
   GameModeWindow window;

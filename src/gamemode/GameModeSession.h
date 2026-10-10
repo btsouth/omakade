@@ -121,6 +121,8 @@ signals:
   void parkedOnDesktop();
   void resumed();
   void windowVisibilityRequested(bool visible);
+  // The display the next hidden root opens on, sent before windowVisibilityRequested.
+  void openOutputRequested(const QString& output);
   // The placeholder window that keeps Omakade's place in the desktop layout should be
   // shown or hidden. Emitted from the worker thread.
   void placeholderRequested(bool visible);

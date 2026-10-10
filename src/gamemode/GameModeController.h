@@ -93,6 +93,8 @@ public:
   [[nodiscard]] Result refreshParked();
   [[nodiscard]] bool focusRetainedGame();
   void setTemporaryWindow(bool temporary) { m_temporaryWindow = temporary; }
+  // Told the display a hidden root is about to open on, just before it is shown.
+  void setOpenOutput(std::function<void(const QString&)> callback) { m_openOutput = std::move(callback); }
   void setWindowVisibility(std::function<void(bool)> callback) {
     m_windowVisibility = std::move(callback);
   }
@@ -152,5 +154,6 @@ private:
   bool m_parked = false;
   bool m_temporaryWindow = false;
   std::function<void(bool)> m_windowVisibility;
+  std::function<void(const QString&)> m_openOutput;
   std::function<void()> m_beforeParkRestore;
 };
