@@ -260,26 +260,21 @@ ApplicationWindow {
         }
         if (action === "start") {
             if (overlay) return
-
             if (root.couchTextEntryOpen) root.closeCouchTextEntry(true)
             else if (root.couchMode && couchLibraryView.searchOpen) couchLibraryView.closeSearch(true)
             else root.toggleCouchMode()
-
             return
         }
         if (action === "toolbar") {
             if (overlay) return
-
             const keyboard = root.couchTextEntryOpen ? couchTextEntryKeyboard
                            : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
             if (keyboard) { keyboard.appendText(" "); return }
             root.toggleLibraryControls()
-
             return
         }
         if (action === "favorite") {
             if (overlay) return
-
             const keyboard = root.couchTextEntryOpen ? couchTextEntryKeyboard
                            : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
             if (keyboard) { keyboard.activateKey(40); return }
@@ -359,66 +354,66 @@ ApplicationWindow {
     }
 
     function goBack() {
-            const focusedPopup = root.activeFocusItem ? root.activeFocusItem.popup : null
-            if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
-                // An open dropdown closes first; the panel it sits in stays.
-                focusedPopup.close()
-            } else if (activeActionMenu && activeActionMenu.opened) {
-                activeActionMenu.close()
-            } else if (coverSizePopup.opened) {
-                coverSizePopup.close()
-            } else if (root.couchTextEntryOpen) {
-                root.closeCouchTextEntry(false)
-            } else if (root.backupEditorOpen) {
-                backupEditor.dismiss()
-            } else if (root.bulkOrganizationOpen) {
-                root.dismissLibraryEditor("bulk")
-            } else if (root.savedFiltersOpen) {
-                root.dismissLibraryEditor("saved")
-            } else if (root.repairOpen && !root.artworkEditorOpen) {
-                LibraryRepair.pause()
-                root.repairOpen = false
-                Qt.callLater(root.focusCurrentSurface)
-            } else if (root.artworkEditorOpen) {
-                root.dismissEditor("artwork")
-            } else if (root.manualEditorOpen) {
-                root.dismissEditor("manual")
-            } else if (root.filterPickerOpen) {
-                root.filterPickerOpen = false
-            } else if (root.couchMode && couchLibraryView.searchOpen) {
-                couchLibraryView.closeSearch(false)
-            } else if (root.couchMode && couchLibraryView.browseOpen) {
-                couchLibraryView.closeBrowse()
-            } else if (root.linkDialogOpen) {
-                root.linkDialogOpen = false
-            } else if (root.collectionDeleteOpen) {
-                root.collectionDeleteOpen = false
-                root.pendingCollectionDelete = ""
-            } else if (root.diagnosticsOpen) {
-                settingsOverlay.back()
-            } else if (root.detailOpen && detailsLoader.item
-                       && detailsLoader.item.collectionEditorOpen) {
-                // The window shortcut sees Escape before the details page does.
-                detailsLoader.item.closeCollectionEditor()
-            } else if (root.detailOpen) {
-                root.closeDetails()
-            } else if (root.statsOpen && statsLoader.item && statsLoader.item.cardPreviewOpen) {
-                // The preview owns the screen while it is open, so Escape closes it rather than the
-                // whole destination: the window shortcut sees Escape before the focused item does.
-                statsLoader.item.closeCardPreview()
-            } else if (root.statsOpen) {
-                root.statsOpen = false
-                Qt.callLater(root.focusLibrary)
-            } else if (root.homeOpen) {
-                root.homeOpen = false
-                Qt.callLater(root.focusLibrary)
-            } else if (root.stepBackFilter()) {
-                if (!root.couchMode) {
-                    libraryView.focusGrid()
-                }
-            } else if (root.couchMode || !libraryView.gridFocused) {
-                root.focusLibrary()
+        const focusedPopup = root.activeFocusItem ? root.activeFocusItem.popup : null
+        if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
+            // An open dropdown closes first; the panel it sits in stays.
+            focusedPopup.close()
+        } else if (activeActionMenu && activeActionMenu.opened) {
+            activeActionMenu.close()
+        } else if (coverSizePopup.opened) {
+            coverSizePopup.close()
+        } else if (root.couchTextEntryOpen) {
+            root.closeCouchTextEntry(false)
+        } else if (root.backupEditorOpen) {
+            backupEditor.dismiss()
+        } else if (root.bulkOrganizationOpen) {
+            root.dismissLibraryEditor("bulk")
+        } else if (root.savedFiltersOpen) {
+            root.dismissLibraryEditor("saved")
+        } else if (root.repairOpen && !root.artworkEditorOpen) {
+            LibraryRepair.pause()
+            root.repairOpen = false
+            Qt.callLater(root.focusCurrentSurface)
+        } else if (root.artworkEditorOpen) {
+            root.dismissEditor("artwork")
+        } else if (root.manualEditorOpen) {
+            root.dismissEditor("manual")
+        } else if (root.filterPickerOpen) {
+            root.filterPickerOpen = false
+        } else if (root.couchMode && couchLibraryView.searchOpen) {
+            couchLibraryView.closeSearch(false)
+        } else if (root.couchMode && couchLibraryView.browseOpen) {
+            couchLibraryView.closeBrowse()
+        } else if (root.linkDialogOpen) {
+            root.linkDialogOpen = false
+        } else if (root.collectionDeleteOpen) {
+            root.collectionDeleteOpen = false
+            root.pendingCollectionDelete = ""
+        } else if (root.diagnosticsOpen) {
+            settingsOverlay.back()
+        } else if (root.detailOpen && detailsLoader.item
+                   && detailsLoader.item.collectionEditorOpen) {
+            // The window shortcut sees Escape before the details page does.
+            detailsLoader.item.closeCollectionEditor()
+        } else if (root.detailOpen) {
+            root.closeDetails()
+        } else if (root.statsOpen && statsLoader.item && statsLoader.item.cardPreviewOpen) {
+            // The preview owns the screen while it is open, so Escape closes it rather than the
+            // whole destination: the window shortcut sees Escape before the focused item does.
+            statsLoader.item.closeCardPreview()
+        } else if (root.statsOpen) {
+            root.statsOpen = false
+            Qt.callLater(root.focusLibrary)
+        } else if (root.homeOpen) {
+            root.homeOpen = false
+            Qt.callLater(root.focusLibrary)
+        } else if (root.stepBackFilter()) {
+            if (!root.couchMode) {
+                libraryView.focusGrid()
             }
+        } else if (root.couchMode || !libraryView.gridFocused) {
+            root.focusLibrary()
+        }
     }
 
     // Sliders use Left and Right for their value and Up and Down to leave the control.

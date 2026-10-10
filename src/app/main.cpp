@@ -109,18 +109,14 @@
 #include <memory>
 
 namespace {
-void requestControllerCommand(ControllerInput& controller, int key,
-                              Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
-  if (modifiers != Qt::NoModifier) {
-    deliverKeyboardTestKey(QGuiApplication::focusWindow(), key, modifiers);
-    return;
-  }
+// Adapter for table-driven pad self-tests. Keyboard checks use KeyboardTestInput directly.
+void requestControllerCommand(ControllerInput& controller, int key) {
   switch (key) {
   case Qt::Key_Return: case Qt::Key_Enter: controller.acceptRequested(); break;
   case Qt::Key_Escape: controller.backRequested(); break;
   case Qt::Key_Up: case Qt::Key_Down: case Qt::Key_Left: case Qt::Key_Right:
     controller.focusDirectionRequested(key); break;
-  default: deliverKeyboardTestKey(QGuiApplication::focusWindow(), key, modifiers); break;
+  default: qFatal("Unknown controller test command");
   }
 }
 
@@ -240,11 +236,11 @@ QString verifyEditorTextFields(QQuickWindow* window, QQuickItem* container,
     auto* clear = window->activeFocusItem();
     if (!clear || clear == field || clear->property("field").value<QQuickItem*>() != field)
       return "Clear button is unreachable for " + field->objectName();
-    requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+    controller.acceptRequested();
     if (!field->property("text").toString().isEmpty() || !field->hasActiveFocus() || clear->isVisible())
       return "Clear did not empty and refocus " + field->objectName();
     for (const auto key : {Qt::Key_Return, Qt::Key_Enter}) {
-      requestControllerCommand(controller, key, Qt::NoModifier);
+      requestControllerCommand(controller, key);
       if (!window->property("couchTextEntryOpen").toBool())
         return "Keyboard did not open for " + field->objectName();
       auto* keyboard = window->findChild<QQuickItem*>(QStringLiteral("couchTextEntryKeyboard"));
@@ -263,7 +259,7 @@ QString verifyEditorTextFields(QQuickWindow* window, QQuickItem* container,
           const int from = pending.takeFirst();
           for (const auto direction : {Qt::Key_Left, Qt::Key_Right, Qt::Key_Up, Qt::Key_Down}) {
             grid->setProperty("currentIndex", from);
-            requestControllerCommand(controller, direction, Qt::NoModifier);
+            controller.focusDirectionRequested(direction);
             const int to = grid->property("currentIndex").toInt();
             if (!grid->hasActiveFocus() || to < 0 || to >= count)
               return "Keyboard navigation escaped its grid";
@@ -280,11 +276,11 @@ QString verifyEditorTextFields(QQuickWindow* window, QQuickItem* container,
         return "Keyboard Delete shortcut escaped the modal";
       const QString beforeCancel = field->property("text").toString();
       keyboard->setProperty("value", "discard this");
-      requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+      controller.backRequested();
       if (window->property("couchTextEntryOpen").toBool() ||
           field->property("text").toString() != beforeCancel || !waitForFocus(field))
         return "Keyboard Cancel changed the field or failed to close";
-      requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+      controller.acceptRequested();
       if (!window->property("couchTextEntryOpen").toBool()) return "Keyboard failed to reopen after Cancel";
       keyboard->setProperty("value", "start accepted");
       controller.startRequested();
@@ -5095,7 +5091,7 @@ int main(int argc, char* argv[]) {
         QCoreApplication::processEvents();
         strip->setProperty("currentIndex", 0);
         strip->forceActiveFocus();
-        requestControllerCommand(controller, Qt::Key_Right, Qt::NoModifier);
+        controller.focusDirectionRequested(Qt::Key_Right);
         QTimer::singleShot(50, quickWindow,
                            [quickWindow, &application, &controller, couch, couchCursor, strip, grid,
                             view, show, sourceFilter, sortOrder, layout, favorite, browsePanel,
@@ -5111,7 +5107,7 @@ int main(int argc, char* argv[]) {
             return;
           }
           const auto sendKey = [&controller](int key) {
-            requestControllerCommand(controller, key, Qt::NoModifier);
+            requestControllerCommand(controller, key);
             QEventLoop eventLoop;
             QTimer::singleShot(30, &eventLoop, &QEventLoop::quit);
             eventLoop.exec();
@@ -5366,7 +5362,7 @@ int main(int argc, char* argv[]) {
             fail(QStringLiteral("Controller confirm did not type with the on-screen keyboard"));
             return;
           }
-          sendKey(Qt::Key_F11);
+          deliverKeyboardTestKey(quickWindow, Qt::Key_F11);
           if (quickWindow->property("couchMode").toBool() ||
               couch->property("searchOpen").toBool() || keyboard->isVisible() ||
               preferences->property("couchModeEnabled").toBool()) {
@@ -5461,7 +5457,7 @@ int main(int argc, char* argv[]) {
               fail(QStringLiteral("Controller did not traverse and scroll couch Settings"));
               return;
             }
-            requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+            controller.backRequested();
             QTimer::singleShot(
                 50, quickWindow,
                 [quickWindow, &application, &controller, couch, fail] {
@@ -5473,7 +5469,7 @@ int main(int argc, char* argv[]) {
               QMetaObject::invokeMethod(couch, "refreshCurrentGame");
               QMetaObject::invokeMethod(couch, "focusGrid");
               QCoreApplication::processEvents();
-              requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+              controller.acceptRequested();
               QTimer::singleShot(80, quickWindow,
                                  [quickWindow, &application, &controller, fail] {
                 auto* play =
@@ -5501,7 +5497,7 @@ int main(int argc, char* argv[]) {
                     qmlContext(quickWindow)->contextProperty(QStringLiteral("DemoMode")).toBool();
                 if (!demoMode && newCollection != nullptr && newCollection->isVisible()) {
                   const auto sendDetailKey = [&controller](int key) {
-                    requestControllerCommand(controller, key, Qt::NoModifier);
+                    requestControllerCommand(controller, key);
                     QEventLoop eventLoop;
                     QTimer::singleShot(30, &eventLoop, &QEventLoop::quit);
                     eventLoop.exec();
@@ -5602,7 +5598,7 @@ int main(int argc, char* argv[]) {
                     }
                   }
                 }
-                requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+                controller.backRequested();
                 QTimer::singleShot(50, quickWindow,
                                    [quickWindow, &application, &controller, fail] {
                   auto* currentStrip = quickWindow->findChild<QQuickItem*>(
@@ -5619,7 +5615,7 @@ int main(int argc, char* argv[]) {
                     fail(QStringLiteral("Controller Back did not restore the couch library"));
                     return;
                   }
-                  requestControllerCommand(controller, Qt::Key_F11, Qt::NoModifier);
+                  deliverKeyboardTestKey(QGuiApplication::focusWindow(), Qt::Key_F11, Qt::NoModifier);
                   QTimer::singleShot(50, quickWindow, [quickWindow, &application, fail] {
                     if (quickWindow->property("couchMode").toBool()) {
                       fail(QStringLiteral("Controller Start did not return to desktop mode"));
@@ -5806,7 +5802,7 @@ int main(int argc, char* argv[]) {
             if (titleField != nullptr) {
               rootWindow->setProperty("couchTextEntryOpen", false);
               titleField->forceActiveFocus();
-              requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+              controller.acceptRequested();
               if (!rootWindow->property("couchTextEntryOpen").toBool()) {
                 qCritical("The controller reached a text field and no keyboard opened");
                 application.exit(EXIT_FAILURE);
@@ -5814,7 +5810,7 @@ int main(int argc, char* argv[]) {
               }
               rootWindow->setProperty("couchTextEntryOpen", false);
             }
-            requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+            controller.backRequested();
             auto* coverInvoker = item("coverEditButton");
             auto* manageInvoker = coverInvoker && coverInvoker->isVisible()
                                       ? coverInvoker : item("detailManageButton");
@@ -6037,7 +6033,7 @@ int main(int argc, char* argv[]) {
           fail(QStringLiteral("Controller navigation test could not settle on the first game"));
           return;
         }
-        requestControllerCommand(controller, Qt::Key_Up, Qt::NoModifier);
+        controller.focusDirectionRequested(Qt::Key_Up);
         QTimer::singleShot(
             50, quickWindow,
             [quickWindow, &application, &controller, grid, search, fail, ownedLayoutTest] {
@@ -6068,7 +6064,7 @@ int main(int argc, char* argv[]) {
               const auto activate = [&controller, &settle](QQuickItem* control) {
                 if (!control || !control->isVisible() || !control->isEnabled()) return false;
                 control->forceActiveFocus();
-                requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+                controller.acceptRequested();
                 settle();
                 return true;
               };
@@ -6225,15 +6221,15 @@ int main(int argc, char* argv[]) {
               if (!model || !allSources || !retro || !steam || !allSources->hasActiveFocus()) {
                 fail("Sources menu did not focus All sources"); return;
               }
-              requestControllerCommand(controller, Qt::Key_Down, Qt::NoModifier); settle();
+              deliverKeyboardTestKey(quickWindow, Qt::Key_Down, Qt::NoModifier); settle();
               if (allSources->hasActiveFocus()) { fail("Keyboard Down did not navigate Sources popup"); return; }
-              requestControllerCommand(controller, Qt::Key_Up, Qt::NoModifier); settle();
+              deliverKeyboardTestKey(quickWindow, Qt::Key_Up, Qt::NoModifier); settle();
               if (!allSources->hasActiveFocus()) { fail("Keyboard Up did not return to All sources"); return; }
               if (!activate(retro) || model->property("sourceFilters").toStringList() != QStringList{"RetroArch"}) {
                 fail("Source selection changed behavior"); return;
               }
               steam->forceActiveFocus();
-              requestControllerCommand(controller, Qt::Key_Return, Qt::ShiftModifier);
+              deliverKeyboardTestKey(quickWindow, Qt::Key_Return, Qt::ShiftModifier);
               settle();
               if (model->property("sourceFilters").toStringList().size() != 2) {
                 fail("Sources menu lost additive selection"); return;
@@ -6243,7 +6239,7 @@ int main(int argc, char* argv[]) {
                 fail("Controller favorite did not remove a source"); return;
               }
               activate(allSources);
-              requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+              controller.backRequested(); settle();
               if (opened("librarySources") || !sources->hasActiveFocus()) { fail("Sources did not restore focus"); return; }
               if (!activate(filters) || !opened("libraryFilters")) { fail("Filters menu did not open"); return; }
               auto* repairInFilters = item("libraryRepairButton");
@@ -6251,7 +6247,7 @@ int main(int argc, char* argv[]) {
                 fail("Repair Library remained in the Filters popup"); return;
               }
               auto* filterStart = quickWindow->activeFocusItem();
-              requestControllerCommand(controller, Qt::Key_Down, Qt::NoModifier); settle();
+              deliverKeyboardTestKey(quickWindow, Qt::Key_Down, Qt::NoModifier); settle();
               if (quickWindow->activeFocusItem() == filterStart) { fail("Keyboard Down did not navigate Filters popup"); return; }
               auto* hidden = item("hiddenModeButton");
               if (hidden && hidden->isVisible()) {
@@ -6263,13 +6259,13 @@ int main(int argc, char* argv[]) {
               if (!activate(item("statusFilterButton")) || !quickWindow->property("filterPickerOpen").toBool()) {
                 fail("Filters did not open the status picker"); return;
               }
-              requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+              controller.backRequested(); settle();
               if (!opened("libraryFilters")) { fail("Value picker did not return to Filters"); return; }
-              requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+              controller.backRequested(); settle();
               if (!filters->hasActiveFocus()) { fail("Filters did not restore its invoker"); return; }
               if (!activate(sort) || !opened("librarySort")) { fail("Sort menu did not open"); return; }
-              requestControllerCommand(controller, Qt::Key_Down, Qt::NoModifier); settle();
-              requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier); settle();
+              controller.focusDirectionRequested(Qt::Key_Down); settle();
+              controller.acceptRequested(); settle();
               if (model->property("sortMode").toInt() != 1 || !sort->hasActiveFocus()) { fail("Sort choice was not applied"); return; }
               model->setProperty("sortMode", 0);
               if (!activate(view) || !opened("libraryViewMenu")) { fail("View menu did not open"); return; }
@@ -6277,12 +6273,12 @@ int main(int argc, char* argv[]) {
               auto* slider = item("coverSizeSlider");
               if (!slider || !slider->hasActiveFocus()) { fail("Cover size did not focus its slider"); return; }
               const double size = slider->property("value").toDouble();
-              requestControllerCommand(controller, Qt::Key_Left, Qt::NoModifier);
+              deliverKeyboardTestKey(quickWindow, Qt::Key_Left, Qt::NoModifier);
               if (slider->property("value").toDouble() >= size) { fail("Cover size keyboard input failed"); return; }
-              requestControllerCommand(controller, Qt::Key_Right, Qt::NoModifier);
-              requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+              controller.focusDirectionRequested(Qt::Key_Right);
+              controller.backRequested(); settle();
               if (!opened("libraryViewMenu")) { fail("Cover size did not return to View"); return; }
-              requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+              controller.backRequested(); settle();
               if (!view->hasActiveFocus()) { fail("View did not restore focus"); return; }
               if (!activate(more) || !opened("libraryActions")) { fail("More did not open"); return; }
               auto* first = item("randomGameButton");
@@ -6292,7 +6288,7 @@ int main(int argc, char* argv[]) {
                 QSet<QString> visited;
                 bool returned = false;
                 for (int step = 0; step < 20; ++step) {
-                  requestControllerCommand(controller, QString(shortcutName) == "navigationTabForward" ? Qt::Key_Tab : Qt::Key_Backtab, Qt::NoModifier);
+                  deliverKeyboardTestKey(quickWindow, QString(shortcutName) == "navigationTabForward" ? Qt::Key_Tab : Qt::Key_Backtab, Qt::NoModifier);
                   settle();
                   auto* focused = quickWindow->activeFocusItem();
                   if (!focused || !focused->isVisible() || !withinWindow(focused)) { fail("Menu Tab lost usable focus"); return; }
@@ -6305,13 +6301,13 @@ int main(int argc, char* argv[]) {
                   fail("Menu Tab skipped a command"); return;
                 }
               }
-              requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+              controller.backRequested(); settle();
               for (const char* command : {"bulkOrganizationButton", "savedFiltersButton"}) {
                 activate(more);
                 if (!activate(item(command))) { fail("Editor menu command unavailable"); return; }
                 const char* state = QString(command) == "bulkOrganizationButton" ? "bulkOrganizationOpen" : "savedFiltersOpen";
                 if (!quickWindow->property(state).toBool()) { fail("Menu did not open its editor"); return; }
-                requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier); settle();
+                controller.backRequested(); settle();
                 if (quickWindow->property(state).toBool() || !more->hasActiveFocus()) { fail("Editor did not return to More"); return; }
               }
               activate(more);
@@ -6344,7 +6340,7 @@ int main(int argc, char* argv[]) {
                       fail(QStringLiteral("Controller Down did not traverse and scroll Settings"));
                       return;
                     }
-                    requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+                    controller.backRequested();
                     QTimer::singleShot(50, quickWindow, [quickWindow, &application, &controller, grid, fail] {
                       if (quickWindow->property("diagnosticsOpen").toBool()) {
                         fail(QStringLiteral("Controller Back did not close Settings"));
@@ -6355,7 +6351,7 @@ int main(int argc, char* argv[]) {
                         fail(QStringLiteral("Controller Controls did not return to the game grid"));
                         return;
                       }
-                      requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+                      controller.acceptRequested();
                       QTimer::singleShot(100, quickWindow, [quickWindow, &application, &controller, fail] {
                         auto* play =
                             quickWindow->findChild<QQuickItem*>(QStringLiteral("playButton"));
@@ -6573,18 +6569,18 @@ int main(int argc, char* argv[]) {
                         QCoreApplication::processEvents();
                         auto* manageMenuButton = quickWindow->findChild<QQuickItem*>("detailManageButton");
                         manageMenuButton->forceActiveFocus();
-                        requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+                        controller.acceptRequested();
                         QCoreApplication::processEvents();
                         auto* managePopup = quickWindow->findChild<QObject*>("detailManageMenu");
                         if (!managePopup || !managePopup->property("opened").toBool()) { fail("Game Manage menu did not open"); return; }
                         auto* firstAction = quickWindow->activeFocusItem();
                         for (int step = 0; step < 12; ++step) controller.focusDirectionRequested(Qt::Key_Down);
                         if (!firstAction || quickWindow->activeFocusItem() == firstAction) { fail("Game Manage menu did not traverse"); return; }
-                        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+                        controller.backRequested();
                         QCoreApplication::processEvents();
                         if (!manageMenuButton->hasActiveFocus() || !quickWindow->property("detailOpen").toBool()) { fail("Game Manage Back lost detail context"); return; }
                         play->forceActiveFocus();
-                        requestControllerCommand(controller, Qt::Key_Up, Qt::NoModifier);
+                        deliverKeyboardTestKey(quickWindow, Qt::Key_Up, Qt::NoModifier);
                         QTimer::singleShot(
                             50, quickWindow, [quickWindow, &application, &controller, play, fail] {
                               QQuickItem* movedUp = quickWindow->activeFocusItem();
@@ -6597,7 +6593,7 @@ int main(int argc, char* argv[]) {
                                     "Keyboard Up did not move focus on game details"));
                                 return;
                               }
-                              requestControllerCommand(controller, Qt::Key_Down, Qt::NoModifier);
+                              deliverKeyboardTestKey(quickWindow, Qt::Key_Down, Qt::NoModifier);
                               QTimer::singleShot(
                                   50, quickWindow,
                                   [quickWindow, &application, &controller, movedUp, fail] {
@@ -6613,7 +6609,7 @@ int main(int argc, char* argv[]) {
                                           "Keyboard Down did not move focus on game details"));
                                       return;
                                     }
-                                    requestControllerCommand(controller, Qt::Key_Right, Qt::NoModifier);
+                                    deliverKeyboardTestKey(quickWindow, Qt::Key_Right, Qt::NoModifier);
                                     QTimer::singleShot(
                                         50, quickWindow,
                                         [quickWindow, &application, &controller, down, fail] {
@@ -6630,7 +6626,7 @@ int main(int argc, char* argv[]) {
                                                                 "right on game details"));
                                             return;
                                           }
-                                          requestControllerCommand(controller, Qt::Key_Left, Qt::NoModifier);
+                                          deliverKeyboardTestKey(quickWindow, Qt::Key_Left, Qt::NoModifier);
                                           QTimer::singleShot(
                                               50, quickWindow,
                                               [quickWindow, &application, &controller, right,
@@ -6810,8 +6806,7 @@ int main(int argc, char* argv[]) {
                                                       "navigation"));
                                                   return;
                                                 }
-                                                requestControllerCommand(controller, Qt::Key_Escape,
-                                                                        Qt::NoModifier);
+                                                controller.backRequested();
                                                 QTimer::singleShot(
                                                     50, quickWindow,
                                                     [quickWindow, &application, &controller, fail] {
@@ -6822,8 +6817,7 @@ int main(int argc, char* argv[]) {
                                                             "game details"));
                                                         return;
                                                       }
-                                                      requestControllerCommand(controller, Qt::Key_F,
-                                                                              Qt::ControlModifier);
+                                                      deliverKeyboardTestKey(QGuiApplication::focusWindow(), Qt::Key_F, Qt::ControlModifier);
                                                       QTimer::singleShot(
                                                           50, quickWindow,
                                                           [quickWindow, &application, &controller,
@@ -6838,7 +6832,7 @@ int main(int argc, char* argv[]) {
                                                                   "focus the search field"));
                                                               return;
                                                             }
-                                                            requestControllerCommand(controller, Qt::Key_Escape,
+                                                            deliverKeyboardTestKey(quickWindow, Qt::Key_Escape,
                                                                                     Qt::NoModifier);
                                                             QTimer::singleShot(
                                                                 50, quickWindow,
@@ -6857,8 +6851,7 @@ int main(int argc, char* argv[]) {
                                                                         "library grid"));
                                                                     return;
                                                                   }
-                                                                  requestControllerCommand(controller,
-                                                                      Qt::Key_F6, Qt::NoModifier);
+                                                                  deliverKeyboardTestKey(QGuiApplication::focusWindow(), Qt::Key_F6, Qt::NoModifier);
                                                                   QTimer::singleShot(
                                                                       50, quickWindow,
                                                                       [quickWindow, &application,
@@ -6876,9 +6869,7 @@ int main(int argc, char* argv[]) {
                                                                               "controls"));
                                                                           return;
                                                                         }
-                                                                        requestControllerCommand(controller,
-                                                                            Qt::Key_F6,
-                                                                            Qt::NoModifier);
+                                                                        deliverKeyboardTestKey(QGuiApplication::focusWindow(), Qt::Key_F6, Qt::NoModifier);
                                                                         QTimer::singleShot(
                                                                             50, quickWindow,
                                                                             [grid, quickWindow, &application, &controller, fail] {
@@ -6899,7 +6890,7 @@ int main(int argc, char* argv[]) {
   auto* filtersMenu = quickWindow->findChild<QQuickItem*>("filtersMenuButton");
   if (!filtersMenu || !QMetaObject::invokeMethod(filtersMenu, "clicked")) { fail("Filters menu missing"); return; }
   statusFilter->forceActiveFocus();
-  requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+  controller.acceptRequested();
   QTimer::singleShot(
       80, quickWindow, [quickWindow, statusFilter, picker, &application, &controller, fail] {
         bool focusInsidePicker = false;
@@ -6912,7 +6903,7 @@ int main(int argc, char* argv[]) {
           fail(QStringLiteral("Return did not open the status filter picker with focus"));
           return;
         }
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         QTimer::singleShot(80, quickWindow, [quickWindow, statusFilter, &application, fail] {
           auto* filters = quickWindow->findChild<QObject*>("libraryFilters");
           if (quickWindow->property("filterPickerOpen").toBool() || !filters || !filters->property("opened").toBool()) {
@@ -7316,7 +7307,7 @@ int main(int argc, char* argv[]) {
       const auto press = [&](const QString& name) {
         auto* button = find(name);
         if (!button || !button->isVisible() || !button->isEnabled()) return false;
-        button->forceActiveFocus(); requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier); return true;
+        button->forceActiveFocus(); controller.acceptRequested(); return true;
       };
       if (gogSettingsTest) {
         auto* field = find("gogLibraryPathField");
@@ -7331,7 +7322,7 @@ int main(int argc, char* argv[]) {
           if (!field->isVisible()) { fail("GOG settings are unavailable"); return; }
           if (rootWindow->property("couchMode").toBool()) {
             field->forceActiveFocus();
-            requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+            controller.acceptRequested();
             if (!rootWindow->property("couchTextEntryOpen").toBool()) { fail("GOG path controller keyboard did not open"); return; }
             QMetaObject::invokeMethod(rootWindow, "closeCouchTextEntry", Q_ARG(QVariant, false));
           }
@@ -7341,7 +7332,7 @@ int main(int argc, char* argv[]) {
             controller.focusDirectionRequested(Qt::Key_Down);
             auto* add = find("gogAddFolderButton");
             if (!add || !add->hasActiveFocus()) { fail("Directional navigation cannot reach Add Folder"); return; }
-            requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+            controller.acceptRequested();
           } else if (!press("gogAddFolderButton")) { fail("Controller could not add a GOG folder"); return; }
           ++*step;
         } else if (*step == 2) {
@@ -7359,7 +7350,7 @@ int main(int argc, char* argv[]) {
         } else if (*step == 4) {
           if (!field->hasActiveFocus() || preferences.gogLibraryPaths() != QStringList{gogMissingFolder} || !QFileInfo::exists(gogAvailableFolder + "/keep-game.txt")) { fail("Removing a GOG folder lost focus or modified game files"); return; }
           if (AppSettings(settingsPath).gogLibraryPaths() != QStringList{gogMissingFolder}) { fail("Removed GOG folder remained in settings"); return; }
-          requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+          controller.backRequested();
           if (rootWindow->property("diagnosticsOpen").toBool()) { fail("Controller Back did not close GOG settings"); return; }
           timer->stop(); application.quit();
         }
@@ -7376,7 +7367,7 @@ int main(int argc, char* argv[]) {
           for (int attempt = 0; preferredButton && !preferredButton->hasActiveFocus() && attempt < 6; ++attempt)
             controller.focusDirectionRequested(Qt::Key_Down);
           if (!preferredButton || !preferredButton->hasActiveFocus()) { fail("Directional navigation cannot reach Make Default"); return; }
-          requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+          controller.acceptRequested();
           ++*step;
         } else if (*step == 2) {
           const auto preferred = library.preferredInstallation(0);
@@ -7395,7 +7386,7 @@ int main(int argc, char* argv[]) {
           ++*step;
         } else if (*step == 4) {
           if (rootWindow->property("selectedInstallation").toMap().value("appId") != linkedManualId || QFileInfo::exists(artworkFixture.filePath("launched.txt"))) { fail("Reconnect lost the default or unexpectedly launched a game"); return; }
-          requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+          controller.backRequested();
           if (rootWindow->property("detailOpen").toBool()) { fail("Controller Back did not close linked details"); return; }
           timer->stop(); application.quit();
         }
@@ -7417,7 +7408,7 @@ int main(int argc, char* argv[]) {
         auto* button = rootWindow->findChild<QQuickItem*>(name);
         if (!button || !button->isVisible() || !button->isEnabled()) return false;
         button->forceActiveFocus();
-        requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+        controller.acceptRequested();
         return true;
       };
       if (!editor || !field) { fail("Backup editor controls are missing"); return; }
@@ -7431,7 +7422,7 @@ int main(int argc, char* argv[]) {
         ++*step;
       } else if (*step == 1) {
         if (rootWindow->property("couchMode").toBool()) {
-          field->forceActiveFocus(); requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+          field->forceActiveFocus(); controller.acceptRequested();
           if (!rootWindow->property("couchTextEntryOpen").toBool()) { fail("Backup path cannot use controller text entry"); return; }
           QMetaObject::invokeMethod(rootWindow, "closeCouchTextEntry", Q_ARG(QVariant, false));
         }
@@ -7469,7 +7460,7 @@ int main(int argc, char* argv[]) {
         controller.focusDirectionRequested(Qt::Key_Right);
         auto* merge = rootWindow->findChild<QQuickItem*>("backupMergeButton");
         if (!merge || !merge->hasActiveFocus()) { fail("Preview cannot reach restore choices"); return; }
-        requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+        controller.acceptRequested();
         if (editor->property("pendingMode").toString() != "merge" || BackupRecovery(managerPaths).status() != "none") { fail("Merge must await explicit confirmation"); return; }
         ++*step;
       } else if (*step == 5) {
@@ -7495,10 +7486,10 @@ int main(int argc, char* argv[]) {
       auto* editor = rootWindow->findChild<QQuickItem*>(QStringLiteral("bulkOrganizationEditor"));
       if (!editor || !editor->isVisible()) { fail("Bulk organization editor is missing"); return; }
       QMetaObject::invokeMethod(editor, "focusRow", Q_ARG(QVariant, 0));
-      requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+      controller.acceptRequested();
       for (int i = 0; i < 25; ++i) controller.focusDirectionRequested(Qt::Key_Down);
       if (editor->property("focusedRow").toInt() != 25) { fail("Bulk selection cannot scroll with a controller"); return; }
-      requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+      controller.acceptRequested();
       if (library.selectionCount() != 2) { fail("Bulk game selection did not toggle two games"); return; }
       if (editor->property("stacked").toBool()) {
         auto* favorite = rootWindow->findChild<QQuickItem*>(QStringLiteral("bulkFavoriteButton"));
@@ -7517,7 +7508,7 @@ int main(int argc, char* argv[]) {
           auto* tags = rootWindow->findChild<QQuickItem*>(QStringLiteral("bulkTagsField"));
           if (!tags) { fail("Bulk tags field is missing"); return; }
           tags->forceActiveFocus();
-          requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+          controller.acceptRequested();
           if (!rootWindow->property("couchTextEntryOpen").toBool()) { fail("Bulk tags cannot open controller text entry"); return; }
           QMetaObject::invokeMethod(rootWindow, "closeCouchTextEntry", Q_ARG(QVariant, false));
         }
@@ -7529,7 +7520,7 @@ int main(int argc, char* argv[]) {
           fail(QStringLiteral("Bulk hiding: selected=%1 rows=%2 before=%3 focus=%4 message=%5")
               .arg(library.selectionCount()).arg(library.rowCount()).arg(before).arg(selectAll && selectAll->hasActiveFocus()).arg(library.bulkMessage())); return;
         }
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         if (rootWindow->property("bulkOrganizationOpen").toBool()) { fail("Bulk editor cannot close"); return; }
         application.quit();
       });
@@ -7548,7 +7539,7 @@ int main(int argc, char* argv[]) {
       name->forceActiveFocus();
       controller.focusDirectionRequested(Qt::Key_Right);
       if (!clear->hasActiveFocus()) { fail("Saved filter clear button is unreachable"); return; }
-      requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+      controller.acceptRequested();
       if (!name->property("text").toString().isEmpty() || !name->hasActiveFocus() || clear->isVisible()) {
         fail("Saved filter clear button did not clear and return focus"); return;
       }
@@ -7558,7 +7549,7 @@ int main(int argc, char* argv[]) {
         if (!fieldError.isEmpty()) { fail(fieldError); return; }
         if (rootWindow->property("couchMode").toBool()) {
           name->forceActiveFocus();
-          requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+          controller.acceptRequested();
           if (!rootWindow->property("couchTextEntryOpen").toBool()) { fail("Saved filter name cannot open text entry"); return; }
           QMetaObject::invokeMethod(rootWindow, "closeCouchTextEntry", Q_ARG(QVariant, false));
         }
@@ -7575,7 +7566,7 @@ int main(int argc, char* argv[]) {
         QMetaObject::invokeMethod(editor, "focusSavedRow", Q_ARG(QVariant, 0), Q_ARG(QVariant, false));
         for (int i = 0; i < 25; ++i) controller.focusDirectionRequested(Qt::Key_Down);
         if (editor->property("focusedSavedRow").toInt() != 25) { fail("Saved filter controller navigation did not scroll through the list"); return; }
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         if (rootWindow->property("savedFiltersOpen").toBool()) { fail("Saved filters cannot close"); return; }
         application.quit();
       });
@@ -7595,7 +7586,7 @@ int main(int argc, char* argv[]) {
       auto* pick = rootWindow->findChild<QQuickItem*>(couch ? QStringLiteral("couchRandomGameButton") : QStringLiteral("randomGameButton"));
       if (!pick || !pick->isVisible()) { fail("Random game control is not visible"); return; }
       pick->forceActiveFocus();
-      requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+      controller.acceptRequested();
       QCoreApplication::processEvents();
       if (!rootWindow->property("detailOpen").toBool() || !rootWindow->property("randomSelection").toBool()) {
         fail("Random game control did not show a selection"); return;
@@ -7605,11 +7596,11 @@ int main(int argc, char* argv[]) {
         auto* another = rootWindow->findChild<QQuickItem*>(QStringLiteral("pickAnotherButton"));
         if (!another || !another->isVisible()) { fail("Pick another is missing"); return; }
         another->forceActiveFocus();
-        requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+        controller.acceptRequested();
         if (rootWindow->property("selectedGame").toMap().value("appId").toString() == first) {
           fail("Pick another immediately repeated the same game"); return;
         }
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         if (rootWindow->property("detailOpen").toBool()) { fail("Random selection cannot close"); return; }
         application.quit();
       });
@@ -7660,7 +7651,7 @@ int main(int argc, char* argv[]) {
           fail(QStringLiteral("Down from the filter row did not reach the visible game"));
           return;
         }
-        requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+        controller.acceptRequested();
         QCoreApplication::processEvents();
         if (!rootWindow->property("detailOpen").toBool()) {
           fail(QStringLiteral("Moving down from the organize row could not open a game"));
@@ -7912,7 +7903,7 @@ int main(int argc, char* argv[]) {
           return;
         }
         QCoreApplication::processEvents();
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         QCoreApplication::processEvents();
         if (!settled([rootWindow] { return !rootWindow->property("diagnosticsOpen").toBool(); }) ||
             !rootWindow->property("homeOpen").toBool()) {
@@ -7961,7 +7952,7 @@ int main(int argc, char* argv[]) {
         return;
       }
       for (int step = 1; step < overlayActions.size(); ++step) {
-        requestControllerCommand(controller, Qt::Key_Down, Qt::NoModifier);
+        controller.focusDirectionRequested(Qt::Key_Down);
         if (!overlayActions[step]->hasActiveFocus()) {
           fail(QStringLiteral("Controller Down on the Game Mode overlay did not move one step to %1")
                    .arg(overlayActions[step]->objectName()));
@@ -7969,14 +7960,14 @@ int main(int argc, char* argv[]) {
         }
       }
       for (int step = overlayActions.size() - 2; step >= 0; --step) {
-        requestControllerCommand(controller, Qt::Key_Up, Qt::NoModifier);
+        controller.focusDirectionRequested(Qt::Key_Up);
         if (!overlayActions[step]->hasActiveFocus()) {
           fail(QStringLiteral("Controller Up on the Game Mode overlay did not move one step to %1")
                    .arg(overlayActions[step]->objectName()));
           return;
         }
       }
-      requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+      controller.backRequested();
       if (!settled([overlay] { return !overlay->isVisible(); }) || !gameMode.active()) {
         fail(QStringLiteral("Controller Back did not dismiss only the Game Mode overlay"));
         return;
@@ -8373,7 +8364,7 @@ int main(int argc, char* argv[]) {
         return;
       }
       const auto back = [&controller] {
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         QCoreApplication::processEvents();
       };
       const QString system = QStringLiteral("snes");
@@ -8536,13 +8527,13 @@ int main(int argc, char* argv[]) {
           auto* pathField = findVisual(findVisual, qobject_cast<QQuickWindow*>(rootWindow)->contentItem());
           if (!pathField) { fail("Artwork path field is missing"); return; }
           pathField->forceActiveFocus();
-          requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+          controller.acceptRequested();
           if (!rootWindow->property("couchTextEntryOpen").toBool()) {
             fail("Artwork path cannot open controller text entry"); return;
           }
           QMetaObject::invokeMethod(rootWindow, "closeCouchTextEntry", Q_ARG(QVariant, false));
         }
-        requestControllerCommand(controller, Qt::Key_Escape, Qt::NoModifier);
+        controller.backRequested();
         if (rootWindow->property("artworkEditorOpen").toBool()) { fail("Artwork editor cannot close"); return; }
         application.quit();
       });
@@ -8565,7 +8556,7 @@ int main(int argc, char* argv[]) {
         if (!fieldError.isEmpty()) { fail(fieldError); return; }
         if (rootWindow->property("couchMode").toBool()) {
           title->forceActiveFocus();
-          requestControllerCommand(controller, Qt::Key_Return, Qt::NoModifier);
+          controller.acceptRequested();
           if (!rootWindow->property("couchTextEntryOpen").toBool()) {
             fail("Manual title cannot open controller text entry"); return;
           }

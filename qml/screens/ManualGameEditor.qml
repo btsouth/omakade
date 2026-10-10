@@ -64,7 +64,7 @@ Rectangle {
         Accessible.name: fieldTitle
 
         function acceptInput(event) {
-            if (TextEntry.keyboardNeeded) { editor.textEntryRequested(this, fieldTitle); event.accepted = true }
+            if (TextEntry.keyboardNeeded) { editor.textEntryRequested(entryField, fieldTitle); event.accepted = true }
         }
         function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
         Keys.onReturnPressed: event => acceptInput(event)
