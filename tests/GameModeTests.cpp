@@ -1432,6 +1432,9 @@ private slots:
     for (const auto& entry : m_compositor.log) QVERIFY2(!entry.startsWith("place"), qPrintable(entry));
     const QString open = HyprlandGameModeCompositor::openScript("name:omakade", kTv);
     QVERIFY(open.contains("initial_title = \"^Omakade Game Mode Opening.*\""));
+    // Lua rejects "\." in a string: the regex's backslashes must be escaped.
+    QVERIFY(open.contains(R"(class = "^io\\.github\\.tsouth89\\.Omakade$")"));
+    QVERIFY(!open.contains(R"("^io\.github)"));
     QVERIFY(open.contains("workspace = \"name:omakade\", fullscreen = true, no_anim = true"));
     QVERIFY(open.endsWith(QStringLiteral("hl.dispatch(hl.dsp.focus({ monitor = \"%1\" }))").arg(kTv)));
     QVERIFY(HyprlandGameModeCompositor::openScript({}, {}).contains("enabled = false"));

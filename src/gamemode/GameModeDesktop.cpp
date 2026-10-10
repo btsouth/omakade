@@ -195,9 +195,10 @@ QString HyprlandGameModeCompositor::openScript(const QString& workspace, const Q
   // Rules apply when a window maps: Hyprland creates the window on the workspace and
   // switches to it in one step, so the desktop never retiles around a half-size root.
   // Only a root shown for Game Mode carries this initial title.
-  const QString match = QStringLiteral("match = { class = \"^io\\.github\\.tsouth89\\.Omakade$\", "
-                                       "initial_title = %1 }")
-                            .arg(luaString(QLatin1Char('^') + openTitle() + QStringLiteral(".*")));
+  // luaString escapes the regex's backslashes; Lua rejects a bare "\." escape.
+  const QString match = QStringLiteral("match = { class = %1, initial_title = %2 }")
+                            .arg(luaString(QStringLiteral("^io\\.github\\.tsouth89\\.Omakade$")),
+                                 luaString(QLatin1Char('^') + openTitle() + QStringLiteral(".*")));
   if (workspace.isEmpty())
     return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-open\", %1, enabled = false })")
         .arg(match);
