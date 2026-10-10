@@ -35,6 +35,7 @@
 #include "input/ControllerInput.h"
 #include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
+#include "launch/RetroArchHome.h"
 #include "launch/PlayRequest.h"
 #include "launch/SteamLauncher.h"
 #include "library/BattleNetGameModel.h"
@@ -1221,6 +1222,7 @@ private slots:
   void manualGamesImportEditLaunchAndRemove();
   void launchKeysRoundTripAndResolveInstallations();
   void singleInstanceForwardsPlayAndQuitCommands();
+  void homeButtonSettingAndRetroArchMenuOverride();
   void sunshineIntegrationWritesOnlyItsOwnEntries();
   void secondInstanceRequestsActivation();
   void couchCursorFollowsInputMode();
@@ -5553,6 +5555,57 @@ void CoreTests::launchKeysRoundTripAndResolveInstallations() {
   QCOMPARE(error, QStringLiteral("Demo games cannot be launched yet."));
   QVERIFY(!PlayRequest::perform(unified, launcher, LaunchKey::parse(QStringLiteral("bad")), &error));
   QVERIFY(error.contains(QStringLiteral("Steam::620")));
+}
+
+void CoreTests::homeButtonSettingAndRetroArchMenuOverride() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString configPath = directory.filePath(QStringLiteral("config.toml"));
+  {
+    AppSettings settings(configPath);
+    QVERIFY(settings.homeButtonOpensGuide());
+    QVERIFY(AppSettings::homeButtonOpensGuideAt(configPath)); // no file yet
+    settings.setHomeButtonOpensGuide(false);
+    QVERIFY(!AppSettings::homeButtonOpensGuideAt(configPath));
+  }
+  QVERIFY(!AppSettings(configPath).homeButtonOpensGuide());
+
+  const auto write = [](const QString& path, const QByteArray& data) {
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+  };
+  const auto read = [](const QString& path) {
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
+  };
+  const RetroArchHome::Paths paths{directory.filePath(QStringLiteral("retroarch.cfg")),
+                                   directory.filePath(QStringLiteral("cache/home.cfg")),
+                                   directory.filePath(QStringLiteral("data/marker"))};
+  // An unset bind falls back to the pad profile's Home button: override it.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"nul\"\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QCOMPARE(read(paths.override), QByteArray("input_menu_toggle_btn = \"99\"\n"));
+  // RetroArch saves the appended value on exit; the next launch keeps the first original.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"99\"\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  RetroArchHome::repair(paths);
+  QCOMPARE(read(paths.config), QByteArray("video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"nul\"\n"));
+  QVERIFY(!QFileInfo::exists(paths.marker));
+  // A bind RetroArch never wrote is removed again.
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QVERIFY(write(paths.config, "video_driver = \"vulkan\"\ninput_menu_toggle_btn = \"99\"\n"));
+  RetroArchHome::repair(paths);
+  QCOMPARE(read(paths.config), QByteArray("video_driver = \"vulkan\"\n"));
+  // A menu button the user chose stands, and a newer choice is never reverted.
+  QVERIFY(write(paths.config, "input_menu_toggle_btn = \"3\"\n"));
+  QVERIFY(RetroArchHome::prepare(paths).isEmpty());
+  QVERIFY(write(paths.config, "input_menu_toggle_btn = \"nul\"\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QVERIFY(write(paths.config, "input_menu_toggle_btn = \"5\"\n"));
+  RetroArchHome::repair(paths);
+  QCOMPARE(read(paths.config), QByteArray("input_menu_toggle_btn = \"5\"\n"));
+  QVERIFY(!QFileInfo::exists(paths.marker));
 }
 
 void CoreTests::singleInstanceForwardsPlayAndQuitCommands() {

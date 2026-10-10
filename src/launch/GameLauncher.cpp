@@ -1,4 +1,5 @@
 #include "launch/GameLauncher.h"
+#include "launch/RetroArchHome.h"
 #include "saves/SaveBackups.h"
 #include "library/ManualGameModel.h"
 
@@ -398,9 +399,10 @@ QVariantList GameLauncher::trackedGames() const {
 
 void GameLauncher::pollTrackedProcesses() {
   const bool wasRunning = gameRunning();
-  m_trackedProcesses.removeIf([](const TrackedProcess& process) {
+  const auto removed = m_trackedProcesses.removeIf([](const TrackedProcess& process) {
     return processStartTime(process.pid) != process.startTime;
   });
+  if (removed > 0) repairRetroArchHome();
   if (m_trackedProcesses.isEmpty()) {
     m_trackTimer.stop();
   }
@@ -411,6 +413,17 @@ void GameLauncher::pollTrackedProcesses() {
 
 void GameLauncher::setPreferStandaloneEmulators(bool value) {
   m_preferStandaloneEmulators = value;
+}
+
+void GameLauncher::setRetroArchHomeOwned(bool owned) {
+  m_retroArchHomeOwned = owned;
+  repairRetroArchHome(); // A session that ended while Omakade was closed.
+}
+
+void GameLauncher::repairRetroArchHome() const {
+  if (RetroArchHome::retroArchRunning()) return;
+  RetroArchHome::repair(RetroArchHome::paths(false));
+  RetroArchHome::repair(RetroArchHome::paths(true));
 }
 
 QString GameLauncher::lastError() const { return m_lastError; }
@@ -1158,6 +1171,16 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
     setError(QStringLiteral("Could not find %1.").arg(command.program));
     return false;
   }
+  LaunchCommand launch = command;
+  if (usesRetroArch && !manageOnly && m_retroArchHomeOwned) {
+    const QString override = RetroArchHome::prepare(RetroArchHome::paths(flatpak));
+    // Flatpak's own arguments come first: run org.libretro.RetroArch.
+    if (!override.isEmpty()) {
+      const int at = command.program == QStringLiteral("flatpak") ? 2 : 0;
+      launch.arguments.insert(at, QStringLiteral("--appendconfig"));
+      launch.arguments.insert(at + 1, override);
+    }
+  }
   if (!manageOnly && m_saveBackups) {
     const int coreArgument=command.arguments.indexOf("-L");
     const QString core=coreArgument>=0 && coreArgument+1<command.arguments.size()?command.arguments.at(coreArgument+1):corePath;
@@ -1165,7 +1188,7 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
       setError(m_saveBackups->message());return false;
     }
   }
-  if (!startCommand(command, !manageOnly)) {
+  if (!startCommand(launch, !manageOnly)) {
     setError(usesRetroArch
                  ? QStringLiteral("RetroArch could not be started. Open RetroArch and try again.")
                  : QStringLiteral("%1 could not be started.").arg(command.program));

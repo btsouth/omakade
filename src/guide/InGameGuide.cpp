@@ -18,6 +18,7 @@
 #include <QJsonDocument>
 #include <QLocalSocket>
 #include <QUrl>
+#include <QRegularExpression>
 #include <QDateTime>
 #include <QLocale>
 #include <QSqlQuery>
@@ -44,6 +45,31 @@ QString executable(const QString& name) {
   const auto adjacent = QCoreApplication::applicationDirPath() + '/' + name;
   return QFileInfo(adjacent).isExecutable() ? adjacent : QStandardPaths::findExecutable(name);
 }
+// RetroArch's own menu key, for the guide's RetroArch menu button. Home no longer
+// opens that menu when Omakade launches RetroArch.
+QString retroArchMenuKey(qint64 pid) {
+  QFile comm(QStringLiteral("/proc/%1/comm").arg(pid)), cmdline(QStringLiteral("/proc/%1/cmdline").arg(pid));
+  QString config;
+  if (comm.open(QIODevice::ReadOnly) && comm.readAll().trimmed() == "retroarch")
+    config = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/retroarch/retroarch.cfg";
+  else if (cmdline.open(QIODevice::ReadOnly) && cmdline.readAll().contains("org.libretro.RetroArch"))
+    config = QDir::homePath() + "/.var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg";
+  if (config.isEmpty()) return {};
+  QString key = QStringLiteral("f1"); // RetroArch's default
+  QFile file(config);
+  if (file.open(QIODevice::ReadOnly)) {
+    static const QRegularExpression line(QStringLiteral(R"((?m)^\s*input_menu_toggle\s*=\s*"?([^"\n]*)"?\s*$)"));
+    const auto match = line.match(QString::fromUtf8(file.readAll()));
+    if (match.hasMatch()) key = match.captured(1).trimmed().toLower();
+  }
+  static const QRegularExpression function(QStringLiteral("^f([0-9]{1,2})$"));
+  if (const auto match = function.match(key); match.hasMatch()) return "F" + match.captured(1);
+  if (key.size() == 1 && key.at(0).isLetterOrNumber()) return key;
+  static const QHash<QString, QString> named{{"escape", "Escape"}, {"tab", "Tab"}, {"space", "space"},
+                                             {"enter", "Return"}, {"backspace", "BackSpace"}};
+  return named.value(key); // Unset ("nul") or a key Omakade cannot name: no button.
+}
+
 QString preferenceKey(const QVariantMap& session) {
   return QString::fromLatin1(session.value("source").toString().toUtf8().toHex()) + '/' +
          QString::fromLatin1(session.value("path").toString().toUtf8().toHex());
@@ -216,6 +242,7 @@ void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& met
       if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
     QSettings preferences("Omakade", "Omakade");
     m_pauseWhileOpen = preferences.value("guide/pause/" + preferenceKey(session), !online).toBool();
+    m_retroArchKey = retroArchMenuKey(session.value("pid").toLongLong());
   }
   cacheAchievements();
   if (m_enabled && changedGame) {
@@ -297,6 +324,7 @@ QJsonObject InGameGuide::payload() const {
   if (!m_session.isEmpty()) {
     auto game = model.value("game").toObject();
     game.insert("forceReady", m_forceReady);
+    game.insert("retroarchMenu", !m_retroArchKey.isEmpty() && m_window.valid());
     const auto items = m_achievements;
     if (!items.isEmpty()) {
       auto achievements = game.value("achievements").toObject();
@@ -311,6 +339,8 @@ QJsonObject InGameGuide::payload() const {
     const auto stats = GuideActions::performance(m_session.value("performanceSource").toMap());
     if (!stats.isEmpty()) model.insert("performance", stats);
   }
+  // Desktop is Game Mode's park; a game outside Game Mode is already on the desktop.
+  model.insert("desktop", !m_session.isEmpty() && m_context.value("gameModeActive").toBool());
   const auto scale = m_context.value("scale").toDouble(1);
   data.insert("scale", scale); // Explicit 1 also clears an earlier couch open.
   data.insert("data", model);
@@ -390,6 +420,7 @@ void InGameGuide::stopGuard() {
 bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
+  if (m_leavingForDesktop) return true;
   m_summonClock.start();
   qInfo("Guide timing: request mono_ns=%lld", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
   m_restoreFocus = true;
@@ -423,6 +454,14 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
 
 void InGameGuide::setContext(const QJsonObject& context) {
   m_context = context;
+  if (m_leavingForDesktop && context.value("gameModeParked").toBool()) finishDesktop();
+}
+
+void InGameGuide::finishDesktop() {
+  if (!m_leavingForDesktop) return;
+  m_leavingForDesktop = false;
+  // Hidden and muted on its own workspace now: let it run, as a 1.15 park did.
+  stopGuard();
 }
 
 void InGameGuide::restoreWindow(std::function<void(bool)> done) {
@@ -498,6 +537,44 @@ void InGameGuide::message(const QJsonObject& data) {
       m_input.inject(event.value("type").toInt(), event.value("code").toInt(), event.value("value").toInt());
       if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
     }
+  } else if (action == "desktop" && m_opened && !m_session.isEmpty() &&
+             m_context.value("gameModeActive").toBool()) {
+    // Close the card at once, but keep the pause until Game Mode has hidden the game,
+    // so it never runs, or is heard, on its way out. The pads stay held until released.
+    m_leavingForDesktop = true;
+    m_restoreFocus = false;
+    m_opened = m_opening = false;
+    m_token.clear();
+    m_poll.stop();
+    m_polling = false;
+    m_commands.clear();
+    m_input.release();
+    m_lastPayload = {};
+    emit changed();
+    shell({"shell", "hide", "omakade.guide"});
+    emit desktopRequested();
+    const auto generation = ++m_desktopGeneration;
+    QTimer::singleShot(4000, this, [this, generation] {
+      if (generation == m_desktopGeneration && m_leavingForDesktop) {
+        qWarning("Guide: Game Mode did not park; resuming the game.");
+        finishDesktop();
+      }
+    });
+  } else if (action == "retroarch-menu" && m_opened && !m_retroArchKey.isEmpty() &&
+             HyprlandGameModeCompositor::validAddress(m_window.address)) {
+    // Resume first: a paused RetroArch cannot take the key. Closing refocuses the game.
+    const auto script = "hl.dispatch(hl.dsp.send_shortcut({ mods = \"\", key = " +
+        HyprlandGameModeCompositor::luaString(m_retroArchKey) + ", window = " +
+        HyprlandGameModeCompositor::luaString("address:" + m_window.address) + " }))";
+    close();
+    QTimer::singleShot(250, this, [this, script] {
+      auto* process = new QProcess(this);
+      connect(process, &QProcess::finished, process, &QObject::deleteLater);
+      connect(process, &QProcess::errorOccurred, process, &QObject::deleteLater);
+      QTimer::singleShot(2000, process, [process] { process->kill(); });
+      process->setProcessEnvironment(m_environment);
+      process->start("hyprctl", {"eval", script});
+    });
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();
     if (action == "force-quit") {

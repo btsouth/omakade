@@ -79,7 +79,8 @@ Column {
             iconColor: spec.iconColor !== undefined ? spec.iconColor : ink
             label: ({screenshot: "Screenshot",
                      record: card.g.recording ? "Stop " + card.g.recordingTime : "Record",
-                     replay: "Save " + card.g.replaySeconds + " s"})[modelData] || spec.label
+                     replay: "Save " + card.g.replaySeconds + " s",
+                     desktop: "Desktop", retroarch: "RetroArch"})[modelData] || spec.label
           }
         }
       }

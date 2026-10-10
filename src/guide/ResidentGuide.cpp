@@ -1,4 +1,5 @@
 #include "guide/ResidentGuide.h"
+#include "app/AppSettings.h"
 #include "guide/GuideClient.h"
 #include "guide/GuideEnvironment.h"
 #include "gamemode/GameModeDesktop.h"
@@ -219,6 +220,7 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
     }
   });
   connect(&m_guide, &InGameGuide::summonFailed, this, &ResidentGuide::fallback);
+  connect(&m_guide, &InGameGuide::desktopRequested, this, [this] { launch("--game-mode-desktop"); });
   m_refresh.setInterval(5000);
   connect(&m_refresh, &QTimer::timeout, this, &ResidentGuide::refresh);
   m_debounce.setSingleShot(true); m_debounce.setInterval(40);
@@ -260,13 +262,15 @@ void ResidentGuide::connectEvents() {
   watcher->setFuture(QtConcurrent::run([environment = m_environment] { return GuideEnvironment::resolve(environment); }));
 }
 
-void ResidentGuide::fallback() {
+void ResidentGuide::fallback() { launch("--game-mode-fallback"); }
+
+void ResidentGuide::launch(const QString& argument) {
   const auto adjacent = QCoreApplication::applicationDirPath() + "/omakade";
   const auto executable = QFileInfo(adjacent).isExecutable() ? adjacent : QString("omakade");
   // Hyprland owns the launched library and its descendants, outside sessiond's
   // service cgroup. A recorder restart must never kill the user's game.
   auto quotedExecutable = executable; quotedExecutable.replace('\'', QString("'\\''"));
-  const auto command = "'" + quotedExecutable + "' --game-mode-fallback";
+  const auto command = "'" + quotedExecutable + "' " + argument;
   auto* process = new QProcess(this); process->setProcessEnvironment(m_environment);
   connect(process, &QProcess::finished, process, [process](int code, QProcess::ExitStatus status) {
     if (status != QProcess::NormalExit || code != 0 || process->readAllStandardOutput().trimmed() != "ok")
@@ -298,8 +302,10 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     qInfo("Guide timing: resident request origin=%s ipc_ms=%.3f", qPrintable(action), requested > 0 ? (now - requested) / 1000000.0 : 0.0);
     if (m_locked) return {{"result", "locked"}};
     if (!m_ready) return {{"result", "preparing"}};
-    // No game, a disabled plugin or a parked Game Mode session: Home does what it did in 1.15.
-    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable() || m_guide.gameModeParked()))
+    // No game, a disabled plugin, a parked Game Mode session or the 1.15 setting: Home
+    // does what it did in 1.15.
+    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable() || m_guide.gameModeParked() ||
+                               !AppSettings::homeButtonOpensGuideAt(AppSettings::defaultPath())))
       return {{"result", "fallback"}};
     if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");

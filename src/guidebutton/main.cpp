@@ -169,6 +169,14 @@ int main(int argc, char* argv[]) {
       else if (result != "handled" && result != "locked") qWarning("Resident guide could not handle Home");
     });
   });
+  // Holding Home does what a press did before the guide: Game Mode to the desktop and back.
+  QObject::connect(&listener, &GuideListener::held, &application,
+                   [&application, toggleCommand](const QString& node, const QString& name) {
+    qInfo().noquote() << QStringLiteral("Guide held on %1 (%2)").arg(node, name);
+    toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback")
+                       .replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node,
+                   &application);
+  });
   listener.start();
   return application.exec();
 }

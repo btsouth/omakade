@@ -249,6 +249,7 @@ add_library(omakade_core STATIC
   src/sources/romm/RommScanner.h
   src/launch/GameLaunchSetup.cpp
   src/launch/GameLauncher.cpp
+  src/launch/RetroArchHome.cpp
   src/launch/GameLauncher.h
   src/launch/LaunchCommand.h
   src/launch/PlayRequest.cpp

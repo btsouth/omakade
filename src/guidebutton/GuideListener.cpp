@@ -328,7 +328,13 @@ void GuideListener::read(const QString& node) {
                                            : readAt;
       const bool wasHolding = m_press.holding(node);
       fired = m_press.event(node, event.type, event.code, event.value, at) || fired;
-      if (!wasHolding && m_press.holding(node)) emit preparing(node, name);
+      if (!wasHolding && m_press.holding(node)) {
+        emit preparing(node, name);
+        // Holds are decided while the button is still down, so they need a clock.
+        QTimer::singleShot(GuidePress::kHoldMs + 10, this, [this, node, name] {
+          if (m_devices.contains(node) && m_press.hold(node, monotonicMs())) emit held(node, name);
+        });
+      }
     }
     watchTriggers(node, *device, readAt);
   }

@@ -29,4 +29,6 @@ private:
   bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false, m_provisioning = false;
   QJsonObject command(const QJsonObject& command);
   void fallback();
+  // Runs the omakade command line in the desktop session, outside this service.
+  void launch(const QString& argument);
 };

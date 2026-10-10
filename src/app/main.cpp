@@ -1836,6 +1836,14 @@ int main(int argc, char* argv[]) {
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
   GuideClient inGameGuide(!isolatedTest && onOmarchy);
+  // While Home opens the guide, RetroArch launches leave that button to Omakade.
+  const auto updateRetroArchHome = [&launcher, &preferences, &gameModeGuideButton, onOmarchy] {
+    launcher.setRetroArchHomeOwned(onOmarchy && preferences.homeButtonOpensGuide() &&
+                                   gameModeGuideButton.enabled());
+  };
+  updateRetroArchHome();
+  QObject::connect(&preferences, &AppSettings::homeButtonOpensGuideChanged, &launcher, updateRetroArchHome);
+  QObject::connect(&gameModeGuideButton, &GameModeGuideButton::changed, &launcher, updateRetroArchHome);
   // Publish launcher-owned games even when session recording is disabled. The resident
   // service retains exact process identities and resolves compositor data asynchronously.
   QTimer guideSnapshotTimer;

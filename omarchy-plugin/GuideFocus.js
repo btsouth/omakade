@@ -4,11 +4,13 @@
 // tiles share a row, as do Resume and Quit; every other control is a row of
 // its own. Only what the card shows is in the grid, so nothing is skipped.
 //
-// `shown` says what is on the card: {game, replay, achievements, volume, outputs}.
+// `shown` says what is on the card: {game, replay, desktop, retroarch, achievements,
+// volume, outputs}.
 function grid(shown) {
   var s = shown || {}
   return [
-    ["screenshot", "record"].concat(s.replay ? ["replay"] : []),
+    ["screenshot", "record"].concat(s.replay ? ["replay"] : [], s.desktop ? ["desktop"] : [],
+                                    s.retroarch ? ["retroarch"] : []),
     s.achievements ? ["achievements"] : [],
     s.volume ? ["volume"] : [],
     (s.outputs || 0) > 1 ? ["output"] : [],

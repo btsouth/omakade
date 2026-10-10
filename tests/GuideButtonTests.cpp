@@ -202,6 +202,28 @@ private slots:
                  kArmed + GuidePress::kMaxHoldMs + 1));
   }
 
+  void holdIsReportedOnceAndIsNotAPress() {
+    GuidePress press;
+    press.opened(QStringLiteral("event1"), 0);
+    press.opened(QStringLiteral("event2"), 0); // Steam's mirror of the same pad
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed));
+    QVERIFY(!key(press, QStringLiteral("event2"), BTN_MODE, 1, kArmed + 5));
+    QVERIFY(!press.hold(QStringLiteral("event1"), kArmed + GuidePress::kHoldMs - 1));
+    QVERIFY(press.hold(QStringLiteral("event1"), kArmed + GuidePress::kHoldMs));
+    QVERIFY(!press.hold(QStringLiteral("event1"), kArmed + GuidePress::kHoldMs + 50));
+    QVERIFY(!press.hold(QStringLiteral("event2"), kArmed + GuidePress::kHoldMs + 10));
+    // Released within the press window, a hold still never toggles as a press.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 700));
+    QVERIFY(!key(press, QStringLiteral("event2"), BTN_MODE, 0, kArmed + 705));
+    // The next short press is a press again.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 3000));
+    QVERIFY(key(press, QStringLiteral("event1"), BTN_MODE, 0, kArmed + 3100));
+    // A chord is never a hold.
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_MODE, 1, kArmed + 6000));
+    QVERIFY(!key(press, QStringLiteral("event1"), BTN_START, 1, kArmed + 6040));
+    QVERIFY(!press.hold(QStringLiteral("event1"), kArmed + 6000 + GuidePress::kHoldMs));
+  }
+
   void chordsDoNotToggle() {
     GuidePress press;
     press.opened(QStringLiteral("event1"), 0);

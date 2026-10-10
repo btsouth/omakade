@@ -84,6 +84,8 @@ Item {
   // tiles, achievements, volume, sound output, then Resume and Quit. Every
   // control shown takes the cursor; `rows` is all of them.
   readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay, achievements: root.hasAchievements,
+                                          desktop: !!root.game && !!root.model.desktop,
+                                          retroarch: !!root.game && !!root.game.retroarchMenu,
                                           volume: root.volumeAvailable, outputs: root.outputs.length})
   readonly property var rows: [].concat.apply([], root.grid)
   // Where across the card the cursor is (0..1), kept through one-item rows.
@@ -118,7 +120,7 @@ Item {
 
   // Material Design glyphs from the Nerd Font: one set, one weight.
   readonly property var icons: ({
-    resume: "\u{f040a}", screenshot: "\u{f0100}",
+    resume: "\u{f040a}", desktop: "\u{f0379}", retroarch: "\u{f035c}", screenshot: "\u{f0100}",
     record: "\u{f044a}", replay: "\u{f02da}", achievements: "\u{f0538}", volume: "\u{f057e}",
     volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}", quit: "\u{f0343}",
     stop: "\u{f04db}", gamepad: "\u{f0297}"
@@ -474,6 +476,8 @@ Item {
     // The play triangle draws a third less ink than its neighbours.
     case "resume": return {icon: root.icons.resume, iconScale: 1.3, label: "Resume"}
     case "screenshot": return {icon: root.icons.screenshot, label: "Screenshot"}
+    case "desktop": return {icon: root.icons.desktop, label: "Desktop"}
+    case "retroarch": return {icon: root.icons.retroarch, label: "RetroArch menu"}
     // The bar's recording colour while a clip runs.
     case "record": return root.recording ? {icon: root.icons.record, iconColor: root.recordingInk, label: "Stop recording", value: root.recordingTime}
                                          : {icon: root.icons.record, label: "Record clip"}
@@ -519,6 +523,8 @@ Item {
     switch (key) {
     case "resume": root.close(); break
     case "achievements": root.view = "achievements"; break
+    case "desktop": root.act("desktop"); break
+    case "retroarch": root.act("retroarch-menu"); break
     case "output": root.act("output", 1); break
     case "screenshot": root.act("screenshot"); break
     case "record": root.act("record"); break
@@ -545,7 +551,7 @@ Item {
         var list = root.outputs, at = Math.max(0, list.indexOf(root.currentOutput))
         var next = (at + value + list.length) % list.length
         root.setFixture("audio", Object.assign({}, root.model.audio, {outputs: list.map(function(o, i) { return {name: o.name, current: i === next} })}))
-      } else if (name === "record") root.close()
+      } else if (name === "record" || name === "desktop" || name === "retroarch-menu") root.close()
       return
     }
     switch (name) {
@@ -557,6 +563,12 @@ Item {
       else capture.toggleRecording()
       break
     case "save-replay": capture.saveReplay(); break
+    // Omakade closes the guide itself: Desktop once Game Mode has parked the game,
+    // the RetroArch menu once the game is running again to receive its key.
+    case "desktop": case "retroarch-menu":
+      if (root.backend) root.notify(name, null)
+      else root.close()
+      break
     case "output": audio.cycleOutput(Number(value) < 0 ? -1 : 1); break
     case "volume": audio.setVolume(Number(value)); break
     case "mute": audio.toggleMute(); break

@@ -33,6 +33,7 @@ private slots:
   void payloadRoundTrip();
   void changedPayloadKeepsStaticData();
   void telemetryRequiresRealFreshReadings();
+  void desktopKeepsPauseUntilParked();
   void surfaceFailureResumes();
   void openingDeadlineResumes();
   void pluginParser();
@@ -119,6 +120,32 @@ qint64 processStart(qint64 pid) {
   if (!stat.open(QIODevice::ReadOnly)) return 0;
   const auto raw = stat.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
 }
+}
+
+void InGameGuideTests::desktopKeepsPauseUntilParked() {
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", QFileInfo(QStringLiteral(OMAKADE_GUIDE_GUARD)).absolutePath().toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanup = qScopeGuard([&] { ::kill(game.processId(), SIGCONT); game.kill(); game.waitForFinished(); });
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", game.processId()}, {"procStart", processStart(game.processId())}};
+  guide.m_opened = true; guide.m_token = "test";
+  QSignalSpy desktop(&guide, &InGameGuide::desktopRequested);
+  // Outside Game Mode the game is already on the desktop: no Desktop.
+  QVERIFY(!guide.payload().value("data").toObject().value("desktop").toBool());
+  guide.message({{"action", "desktop"}});
+  QCOMPARE(desktop.count(), 0); QVERIFY(guide.opened());
+  guide.setContext({{"gameModeActive", true}});
+  QVERIFY(guide.payload().value("data").toObject().value("desktop").toBool());
+  QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
+  guide.message({{"action", "desktop"}});
+  QCOMPARE(desktop.count(), 1); QVERIFY(!guide.showing());
+  // Home again while Game Mode is parking does nothing.
+  guide.m_enabled = true; QVERIFY(guide.toggle()); QVERIFY(!guide.showing());
+  QTest::qWait(300); QCOMPARE(processState(game.processId()), 'T');
+  guide.setContext({{"gameModeActive", false}, {"gameModeParked", true}});
+  QTRY_VERIFY(processState(game.processId()) != 'T'); QVERIFY(!guide.m_guard);
 }
 
 void InGameGuideTests::surfaceFailureResumes() {

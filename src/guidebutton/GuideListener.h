@@ -50,6 +50,8 @@ public:
 signals:
   void preparing(const QString& node, const QString& name);
   void pressed(const QString& node, const QString& name);
+  // The button stayed down alone for GuidePress::kHoldMs; its release is not a press.
+  void held(const QString& node, const QString& name);
   void devicesChanged();
 
 private:

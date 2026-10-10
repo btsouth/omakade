@@ -57,6 +57,8 @@ signals:
   void changed();
   // The shell could not show the guide. The game is already resumed and the pads released.
   void summonFailed();
+  // Desktop was chosen in a Game Mode session: park it exactly as Home did in 1.15.
+  void desktopRequested();
 private:
   friend class InGameGuideTests;
   void refreshGame();
@@ -71,7 +73,13 @@ private:
   void toast(const QString& title, const QString& detail = {});
   void finishClose(bool hide);
   void restoreWindow(std::function<void(bool)> done);
+  void finishDesktop();
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
+  // The card is gone and Game Mode is parking; the game stays paused until it has.
+  bool m_leavingForDesktop = false;
+  // RetroArch's menu key as Hyprland names it, when the game is RetroArch.
+  QString m_retroArchKey;
+  quint64 m_desktopGeneration = 0;
   QJsonObject m_context, m_lastPayload;
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;
