@@ -1844,6 +1844,9 @@ int main(int argc, char* argv[]) {
   updateRetroArchHome();
   QObject::connect(&preferences, &AppSettings::homeButtonOpensGuideChanged, &launcher, updateRetroArchHome);
   QObject::connect(&gameModeGuideButton, &GameModeGuideButton::changed, &launcher, updateRetroArchHome);
+  // The service's state is otherwise only read when Settings opens; a game can be
+  // launched long before that.
+  if (!isolatedTest && onOmarchy) gameModeGuideButton.refresh();
   // Publish launcher-owned games even when session recording is disabled. The resident
   // service retains exact process identities and resolves compositor data asynchronously.
   QTimer guideSnapshotTimer;
