@@ -47,6 +47,23 @@ bool within(QQuickItem* item, QQuickItem* container) {
   return false;
 }
 
+// Every production pad gesture must stay out of Qt's keyboard delivery path.
+class PadKeyGuard final : public QObject {
+public:
+  PadKeyGuard() { QCoreApplication::instance()->installEventFilter(this); }
+  ~PadKeyGuard() override { QCoreApplication::instance()->removeEventFilter(this); }
+  void verify() const {
+    require(keys == 0, QStringLiteral("Controller command synthesized a keyboard event"));
+  }
+protected:
+  bool eventFilter(QObject* watched, QEvent* event) override {
+    if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) ++keys;
+    return QObject::eventFilter(watched, event);
+  }
+private:
+  int keys = 0;
+};
+
 class VirtualPad {
 public:
   explicit VirtualPad(ControllerInput& controller, bool startController = true,
@@ -79,12 +96,14 @@ public:
     if (id) SDL_DetachVirtualJoystick(id);
   }
   void button(SDL_GamepadButton button, int holdMs = 20) {
+    PadKeyGuard keys;
     setButton(button, true);
     SDL_UpdateJoysticks();
     settle(holdMs);
     setButton(button, false);
     SDL_UpdateJoysticks();
     settle();
+    keys.verify();
   }
   void direction(int key, bool analog) {
     if (!analog) {
@@ -93,6 +112,7 @@ public:
              : key == Qt::Key_Left ? SDL_GAMEPAD_BUTTON_DPAD_LEFT : SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
       return;
     }
+    PadKeyGuard keys;
     const int axis = key == Qt::Key_Left || key == Qt::Key_Right
                          ? SDL_GAMEPAD_AXIS_LEFTX : SDL_GAMEPAD_AXIS_LEFTY;
     const Sint16 value = key == Qt::Key_Left || key == Qt::Key_Up ? -30000 : 30000;
@@ -102,6 +122,7 @@ public:
     setAxis(axis, 0);
     SDL_UpdateJoysticks();
     settle();
+    keys.verify();
   }
   // A pad that repeats every press of this one, as Steam Input's virtual pad does.
   VirtualPad* echo = nullptr;
