@@ -73,13 +73,9 @@ private:
   void toast(const QString& title, const QString& detail = {});
   void finishClose(bool hide);
   void restoreWindow(std::function<void(bool)> done);
-  void finishDesktop();
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
-  // The card is gone and Game Mode is parking; the game stays paused until it has.
-  bool m_leavingForDesktop = false;
   // The combo that opens RetroArch's menu, when the game is a RetroArch Omakade started.
   QString m_retroArchCombo;
-  quint64 m_desktopGeneration = 0;
   QJsonObject m_context, m_lastPayload;
   PlaySessionStore* m_sessions;
   UnifiedGameModel* m_library;

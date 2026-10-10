@@ -397,7 +397,6 @@ void InGameGuide::stopGuard() {
 bool InGameGuide::toggle(const QString& node, bool fallback) {
   if (!m_enabled) return false;
   if (m_opened || m_opening) { close(); return true; }
-  if (m_leavingForDesktop) return true;
   m_summonClock.start();
   qInfo("Guide timing: request mono_ns=%lld", qint64(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
   m_restoreFocus = true;
@@ -431,14 +430,6 @@ bool InGameGuide::toggle(const QString& node, bool fallback) {
 
 void InGameGuide::setContext(const QJsonObject& context) {
   m_context = context;
-  if (m_leavingForDesktop && context.value("gameModeParked").toBool()) finishDesktop();
-}
-
-void InGameGuide::finishDesktop() {
-  if (!m_leavingForDesktop) return;
-  m_leavingForDesktop = false;
-  // Hidden and muted on its own workspace now: let it run, as a 1.15 park did.
-  stopGuard();
 }
 
 void InGameGuide::restoreWindow(std::function<void(bool)> done) {
@@ -516,27 +507,11 @@ void InGameGuide::message(const QJsonObject& data) {
     }
   } else if (action == "desktop" && m_opened && !m_session.isEmpty() &&
              m_context.value("gameModeActive").toBool()) {
-    // Close the card at once, but keep the pause until Game Mode has hidden the game,
-    // so it never runs, or is heard, on its way out. The pads stay held until released.
-    m_leavingForDesktop = true;
+    // Leave the way holding Home does: close the guide, resume the game and let go of
+    // the pads first, then park a running game exactly as Home did in 1.15.
     m_restoreFocus = false;
-    m_opened = m_opening = false;
-    m_token.clear();
-    m_poll.stop();
-    m_polling = false;
-    m_commands.clear();
-    m_input.release();
-    m_lastPayload = {};
-    emit changed();
-    shell({"shell", "hide", "omakade.guide"});
+    finishClose(true);
     emit desktopRequested();
-    const auto generation = ++m_desktopGeneration;
-    QTimer::singleShot(4000, this, [this, generation] {
-      if (generation == m_desktopGeneration && m_leavingForDesktop) {
-        qWarning("Guide: Game Mode did not park; resuming the game.");
-        finishDesktop();
-      }
-    });
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();
     if (action == "force-quit") {
