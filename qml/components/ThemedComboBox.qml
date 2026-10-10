@@ -12,6 +12,13 @@ ComboBox {
     Keys.onReturnPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
     Keys.onEnterPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
     property int controllerIndex: -1
+    Connections {
+        target: Controller
+        function onDrivingChanged() {
+            if (Controller.driving && control.popup.visible)
+                control.controllerIndex = control.highlightedIndex >= 0 ? control.highlightedIndex : control.currentIndex
+        }
+    }
     function controllerAccept() {
         if (!popup.visible) {
             popup.open()
