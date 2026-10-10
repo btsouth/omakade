@@ -909,6 +909,9 @@ ApplicationWindow {
         root.gameModeNavigationRestoring = retainNavigation === true
         root.hideGameModeOverlay()
         if (gameModeControlsLoader.item) gameModeControlsLoader.item.closeAll()
+        // A Game Mode-only window parks hidden. Switching it to the desktop layout would
+        // only flash that layout on its way out, and redo the library on resume.
+        if (retainNavigation === true && GameMode.temporaryWindow()) return
         if (!retainNavigation) root.clearCouchNavigation()
         root.updateCouchModeInternal(root.couchBeforeGameMode, false,
                                      !GameMode.displayManaged, retainNavigation === true)

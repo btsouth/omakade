@@ -1166,6 +1166,23 @@ GameModeController::Result GameModeController::recover() {
   return result;
 }
 
+// Focuses the workspaces that were focused before Game Mode.
+bool GameModeController::focusDesktop(const GameModeState& state, QStringList* notes) {
+  bool ok = true;
+  if (!state.output.isEmpty() && !state.outputWorkspace.isEmpty() &&
+      state.outputWorkspace != workspace() &&
+      (!m_compositor->focusOutput(state.output) ||
+       !m_compositor->focusWorkspace(state.outputWorkspace))) {
+    ok = false;
+    if (notes) notes->append(QStringLiteral("The previous display workspace could not be restored."));
+  }
+  if (!state.focusedOutput.isEmpty() && !m_compositor->focusOutput(state.focusedOutput))
+    ok = false;
+  if (!state.focusedWorkspace.isEmpty() && !m_compositor->focusWorkspace(state.focusedWorkspace))
+    ok = false;
+  return ok;
+}
+
 bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ownerGone,
                                  QStringList* notes, bool retained) {
   bool complete = true;
@@ -1216,6 +1233,9 @@ bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ow
       }
     }
     if (returned && !ownerGone && state.temporaryWindow) {
+      // Bring the desktop back first: hiding the root on a visible Game Mode workspace
+      // would show that workspace empty for a few frames. Hidden, it unmaps off screen.
+      if (putFocusBack) (void)focusDesktop(state, nullptr);
       visibility(false);
       if (!waitFor([&] { return !m_compositor->windowForPid(windowPid).valid(); }, kWindowWaitMs,
                    kPlaceholderStepMs)) {
@@ -1267,17 +1287,7 @@ bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ow
         }
   }
   if (compositor && putFocusBack && !ownerGone && !state.windowPlaced) {
-    if (!state.output.isEmpty() && !state.outputWorkspace.isEmpty() &&
-        state.outputWorkspace != workspace()) {
-      if (!m_compositor->focusOutput(state.output) ||
-          !m_compositor->focusWorkspace(state.outputWorkspace)) {
-        complete = false;
-        note(QStringLiteral("The previous display workspace could not be restored."));
-      }
-    }
-    if (!state.focusedOutput.isEmpty() && !m_compositor->focusOutput(state.focusedOutput))
-      complete = false;
-    if (!state.focusedWorkspace.isEmpty() && !m_compositor->focusWorkspace(state.focusedWorkspace))
+    if (!focusDesktop(state, notes))
       complete = false;
     if (!state.focusedWindow.isEmpty() && !m_compositor->focusWindow(state.focusedWindow)) {
       // The precise window may have closed. The captured workspace remains the fallback.

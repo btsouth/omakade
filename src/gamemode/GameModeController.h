@@ -91,6 +91,7 @@ public:
   [[nodiscard]] Result park(qint64 windowPid);
   [[nodiscard]] Result resume(const GameModeSettings& settings, qint64 windowPid);
   [[nodiscard]] Result refreshParked();
+  [[nodiscard]] bool temporaryWindow() const { return m_temporaryWindow; }
   [[nodiscard]] bool focusRetainedGame();
   void setTemporaryWindow(bool temporary) { m_temporaryWindow = temporary; }
   // Told the display a hidden root is about to open on, just before it is shown.
@@ -128,6 +129,7 @@ private:
   void forget() const;
   // Shared by leaving, by a failed entry, and by recovery. Returns false when something
   // that needed undoing could not be undone.
+  bool focusDesktop(const GameModeState& state, QStringList* notes);
   bool restore(GameModeState& state, qint64 windowPid, bool ownerGone, QStringList* notes,
                bool retained = false);
   bool muteGames(QString* error);
