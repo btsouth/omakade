@@ -447,14 +447,13 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     }
   }
 
-  if (compositor && window.valid()) {
+  if (compositor && window.valid() && window.workspace != workspace()) {
     QString error;
     // A tiled window that is simply moved away and back lands wherever the layout puts a
     // new window. A placeholder keeps its exact place instead. A floating window keeps its
     // own position, so it needs none. The compositor clears fullscreen before swapping.
     GameModeWindow placeholder;
-    if (window.workspace != workspace() && !state.temporaryWindow && m_placeholder &&
-        !window.floating && m_compositor->holdPlaceholder()) {
+    if (!state.temporaryWindow && m_placeholder && !window.floating && m_compositor->holdPlaceholder()) {
       showPlaceholder(true);
       (void)waitFor(
           [&] {
@@ -472,7 +471,7 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     if (!save(state)) {
       return fail(QStringLiteral("Could not record Game Mode's window position."));
     }
-    if (!m_compositor->prepareWindow(window.address, workspace(), state.output, placeholder.address,
+    if (!m_compositor->placeWindow(window.address, workspace(), state.output, placeholder.address,
                                    &error)) {
       return fail(QStringLiteral("Could not move Omakade to the Game Mode display."));
     }
@@ -501,14 +500,6 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
     result.notes.append(
         QStringLiteral("Recovery storage is unavailable; no desktop settings were changed."));
   }
-  if (compositor && window.valid()) {
-    if (!prepareFrame(state.output))
-      return fail(QStringLiteral("Omakade's fullscreen frame did not become ready."));
-    const auto prepared = m_compositor->windowForPid(windowPid);
-    if (prepared.workspace != workspace() || prepared.output != state.output ||
-        !m_compositor->presentWindow(prepared.address))
-      return fail(QStringLiteral("Could not show Omakade's Game Mode window."));
-  }
   m_state = state;
   m_sessionSettings = settings;
   m_active = true;
@@ -520,18 +511,6 @@ GameModeController::Result GameModeController::enter(const GameModeSettings& set
 void GameModeController::visibility(bool visible) const {
   if (m_windowVisibility)
     m_windowVisibility(visible);
-}
-
-bool GameModeController::prepareFrame(const QString& output) const {
-  if (!m_framePreparation) return true;
-  QSize size;
-  for (const auto& candidate : m_compositor->outputs())
-    if (candidate.name == output) {
-      const double scale = candidate.scale > 0 ? candidate.scale : 1;
-      size = QSize(qRound(candidate.width / scale), qRound(candidate.height / scale));
-      if (candidate.transform % 2) size.transpose();
-    }
-  return m_framePreparation(size);
 }
 
 bool GameModeController::captureDesktop(GameModeState* state, QString* error) {
@@ -1052,20 +1031,14 @@ GameModeController::Result GameModeController::resume(const GameModeSettings& se
     }
     m_state.placeholder = placeholder.valid();
     m_state.windowPlaced = true;
-    if (!save(m_state) || !m_compositor->prepareWindow(window.address, workspace(), chosen,
+    if (!save(m_state) || !m_compositor->placeWindow(window.address, workspace(), chosen,
                                                      placeholder.address, &error))
       return fail(QStringLiteral("Omakade's session window could not be restored."));
-  } else if (!m_compositor->prepareWindow(window.address, workspace(), chosen, {}, &error)) {
-    return fail(QStringLiteral("Omakade's session window could not be prepared."));
   }
   // Move the existing game workspace: never enter a fresh library session over it.
   if (!m_compositor->moveWorkspace(workspace(), chosen, &error) ||
-      !prepareFrame(chosen))
+      !m_compositor->focusWorkspace(workspace(), &error))
     return fail(QStringLiteral("The retained game workspace could not be restored: %1").arg(error));
-  window = m_compositor->windowForPid(windowPid);
-  if (window.workspace != workspace() || window.output != chosen ||
-      !m_compositor->presentWindow(window.address, &error))
-    return fail(QStringLiteral("The prepared session window could not be shown: %1").arg(error));
   if (settings.silenceNotifications && m_notifications && m_notifications->available()) {
     bool silenced = false;
     if (m_notifications->silenced(&silenced) && !silenced) {

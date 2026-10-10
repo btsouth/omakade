@@ -230,15 +230,6 @@ public:
     }
     return true;
   }
-  bool prepareWindow(const QString& address, const QString& workspace, const QString& target,
-                     const QString& held, QString* error) override {
-    const auto focus = currentFocus;
-    const auto outputs = list;
-    const bool ok = placeWindow(address, workspace, target, held, error);
-    currentFocus = focus;
-    list = outputs;
-    return ok;
-  }
   bool returnWindow(const QString& address, const QString& workspace, const QString& held,
                     QString*) override {
     if (!held.isEmpty()) {
@@ -259,9 +250,6 @@ public:
       }
     }
     window.workspace = workspace;
-    // Returning to the recorded workspace also returns to its monitor.
-    for (const auto& output : list)
-      if (output.workspace == workspace) window.output = output.name;
     return true;
   }
   bool focusWindow(const QString& address, QString*) override {
@@ -269,11 +257,6 @@ public:
       beforeWindowFocus();
     log.append(QStringLiteral("focus-window %1").arg(address));
     currentFocus.address = address;
-    if (address == window.address) {
-      currentFocus = {window.output, window.workspace, address};
-      for (auto& output : list)
-        if (output.name == window.output) output.workspace = window.workspace;
-    }
     return true;
   }
   bool focusGameWindow(const GameModeGameWindow& game, qint64 ownerPid, QString*) override {
@@ -295,8 +278,6 @@ public:
     log.append(QStringLiteral("focus-workspace %1").arg(workspace));
     currentFocus.workspace = workspace;
     currentFocus.address.clear();
-    for (auto& output : list)
-      if (output.name == currentFocus.output) output.workspace = workspace;
     return true;
   }
   bool focusOutput(const QString& name, QString*) override {
@@ -455,97 +436,6 @@ private slots:
     m_notifications = FakeNotifications{};
     m_slept = 0;
     QFile::remove(statePath());
-  }
-
-  void entryWaitsForPlacedFrameBeforeFocus_data() {
-    QTest::addColumn<bool>("cold");
-    QTest::newRow("warm") << false;
-    QTest::newRow("cold") << true;
-  }
-
-  void entryWaitsForPlacedFrameBeforeFocus() {
-    QFETCH(bool, cold);
-    deskAndTv(true);
-    auto game = controller();
-    game.setTemporaryWindow(cold);
-    game.setWindowVisibility([&](bool visible) { m_compositor.windowMapped = visible; });
-    m_compositor.currentFocus = {kDesk, QStringLiteral("3"), QStringLiteral("0xdddd")};
-    int frames = 0;
-    bool readyInPlace = true;
-    game.setFramePreparation([&](const QSize&) {
-      ++frames;
-      readyInPlace = readyInPlace && m_compositor.window.workspace == GameModeController::workspace()
-          && m_compositor.window.output == kTv
-          && m_compositor.currentFocus.address == QStringLiteral("0xdddd")
-          && m_compositor.list[1].workspace == QStringLiteral("5");
-      m_compositor.log.append(QStringLiteral("frame-ready"));
-      return true;
-    });
-    const auto entered = game.enter(tvSettings(), 100);
-    QVERIFY2(entered.ok, qPrintable(entered.error));
-    QVERIFY(readyInPlace);
-    QCOMPARE(frames, 1);
-    QVERIFY(m_compositor.log.indexOf("frame-ready") <
-            m_compositor.log.indexOf(QStringLiteral("focus-window %1").arg(kAddress)));
-    QVERIFY(game.park(100).ok);
-    m_compositor.currentFocus = {kDesk, QStringLiteral("3"), QStringLiteral("0xdddd")};
-    m_compositor.log.clear();
-    const auto resumed = game.resume(tvSettings(), 100);
-    QVERIFY2(resumed.ok, qPrintable(resumed.error));
-    QVERIFY(readyInPlace);
-    QCOMPARE(frames, 2);
-    QVERIFY(m_compositor.log.indexOf("frame-ready") <
-            m_compositor.log.indexOf(QStringLiteral("focus-window %1").arg(kAddress)));
-    QVERIFY(game.exit(100).ok);
-  }
-
-  void unfinishedFrameRestoresDesktopWithoutExposingLibrary() {
-    deskAndTv(true);
-    auto game = controller();
-    m_compositor.currentFocus = {kDesk, QStringLiteral("3"), QStringLiteral("0xdddd")};
-    game.setFramePreparation([](const QSize&) { return false; });
-    const auto result = game.enter(tvSettings(), 100);
-    QVERIFY(!result.ok);
-    QVERIFY(result.error.contains("frame"));
-    QVERIFY(!game.active());
-    QVERIFY(!m_compositor.log.contains(QStringLiteral("focus-window %1").arg(kAddress)));
-    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
-    QCOMPARE(m_compositor.currentFocus.address, QStringLiteral("0xdddd"));
-    QVERIFY(!QFile::exists(statePath()));
-  }
-
-  void framePreparationUsesScaledRotatedOutputSize() {
-    deskAndTv(true);
-    m_compositor.list[1].width = 3840;
-    m_compositor.list[1].height = 2160;
-    m_compositor.list[1].scale = 1.5;
-    m_compositor.list[1].transform = 1;
-    auto game = controller();
-    QSize frameSize;
-    game.setFramePreparation([&](const QSize& size) { frameSize = size; return true; });
-    QVERIFY(game.enter(tvSettings(), 100).ok);
-    QCOMPARE(frameSize, QSize(1440, 2560));
-    QVERIFY(game.exit(100).ok);
-  }
-
-  void silentPreparationDoesNotFocusDestination() {
-    const auto script = HyprlandGameModeCompositor::prepareScript(
-        "0xddd4", "name:omakade", "HDMI-A-2", kPlaceholderAddress);
-    QVERIFY(script.contains("follow = false"));
-    QVERIFY(script.contains("no_anim = true"));
-    QVERIFY(script.contains("no_dim = true"));
-    QVERIFY(script.contains("render_unfocused = true"));
-    QVERIFY(script.contains("1 override 1 override"));
-    QVERIFY(!script.contains("focus({ window = \"address:0xddd4\""));
-    QVERIFY(!script.contains("focus({ workspace = \"name:omakade\""));
-    QVERIFY(script.indexOf("window.swap") < script.indexOf("window.move"));
-    QVERIFY(script.indexOf("window.move") < script.indexOf("window.resize"));
-    QVERIFY(script.indexOf("window.resize") < script.indexOf("internal = 2, client = 2"));
-    QVERIFY(script.contains("x = 0, y = 0, relative = true"));
-    QVERIFY(script.indexOf("workspace.move") < script.indexOf("internal = 2, client = 2"));
-    const auto cold = HyprlandGameModeCompositor::coldWindowScript();
-    QVERIFY(cold.contains("name:omakade silent"));
-    QVERIFY(cold.contains("no_initial_focus = true"));
   }
 
   void retainedParkResumeRepeatKeepsWorkspaceAndFreshFocus() {

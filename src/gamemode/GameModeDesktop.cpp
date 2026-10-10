@@ -93,8 +93,6 @@ QVector<GameModeOutput> HyprlandGameModeCompositor::parseOutputs(const QByteArra
     output.focused = monitor.value(QLatin1String("focused")).toBool();
     output.width = monitor.value(QLatin1String("width")).toInt();
     output.height = monitor.value(QLatin1String("height")).toInt();
-    output.scale = monitor.value(QLatin1String("scale")).toDouble(1);
-    output.transform = monitor.value(QLatin1String("transform")).toInt();
     if (output.enabled) {
       output.workspace =
           workspaceSelector(monitor.value(QLatin1String("activeWorkspace")).toObject());
@@ -195,56 +193,11 @@ QString HyprlandGameModeCompositor::coldWindowScript() {
   // windows keep their ordinary desktop animation and placement rules.
   return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-startup\", "
                         "match = { initial_title = \"^Omakade Game Mode Startup.*\", "
-                        "class = \"^io.github.tsouth89.Omakade$\" }, no_anim = true, "
-                        "no_initial_focus = true, workspace = \"name:omakade silent\" })");
+                        "class = \"^io.github.tsouth89.Omakade$\" }, no_anim = true })");
 }
 
 bool HyprlandGameModeCompositor::prepareColdWindow(QString* error) {
   return eval(coldWindowScript(), error);
-}
-
-QString HyprlandGameModeCompositor::prepareScript(const QString& address, const QString& workspace,
-                                                  const QString& output, const QString& placeholder) {
-  const QString window = luaString(QStringLiteral("address:") + address);
-  QString script = QStringLiteral(
-      "local focused = hl.get_active_window()\n"
-      "local monitor = hl.get_active_monitor()\n"
-      "local desktop = hl.get_active_workspace()\n"
-      "local targetDesktop = hl.get_active_workspace(%1)\n"
-      "hl.window_rule({ name = \"omakade-game-mode-presentation\", "
-      "match = { class = \"^io.github.tsouth89.Omakade$\", workspace = %2 }, "
-      "no_anim = true, no_dim = true, opacity = \"1 override 1 override\" })\n"
-      "hl.window_rule({ name = \"omakade-game-mode-frame\", enabled = true, "
-      "match = { class = \"^io.github.tsouth89.Omakade$\", workspace = %2 }, "
-      "render_unfocused = true })\n")
-      .arg(luaString(output), luaString(workspace));
-  if (!placeholder.isEmpty())
-    script += QStringLiteral(
-        "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 0, client = 0 }))\n"
-        "hl.dispatch(hl.dsp.window.swap({ window = %1, target = %2 }))\n")
-        .arg(window, luaString(QStringLiteral("address:") + placeholder));
-  // Neither move follows the library. Restore any workspace.move side effect in
-  // this same eval, before Hyprland can render or deliver a focus change to Qt.
-  script += QStringLiteral(
-      "hl.dispatch(hl.dsp.window.move({ window = %1, workspace = %2, follow = false }))\n"
-      "hl.dispatch(hl.dsp.workspace.move({ workspace = %2, monitor = %3 }))\n"
-      "%4"
-      "hl.dispatch(hl.dsp.window.fullscreen_state({ window = %1, internal = 2, client = 2 }))\n"
-      "if targetDesktop and targetDesktop.config_name ~= %2 then\n"
-      "  hl.dispatch(hl.dsp.focus({ workspace = targetDesktop.config_name }))\nend\n"
-      "if desktop and desktop.config_name ~= %2 then\n"
-      "  hl.dispatch(hl.dsp.focus({ workspace = desktop.config_name }))\nend\n"
-      "if monitor then hl.dispatch(hl.dsp.focus({ monitor = monitor.name })) end\n"
-      "if focused and focused.mapped and focused.workspace.config_name ~= %2 then\n"
-      "  hl.dispatch(hl.dsp.focus({ window = \"address:\" .. focused.address }))\nend")
-      .arg(window, luaString(workspace), luaString(output),
-           // Trading with a hidden special-workspace node leaves the Wayland
-           // root suspended in Hyprland 0.56. A zero resize clears suspension
-           // without changing its layout, before the fullscreen configure.
-           placeholder.isEmpty() ? QString{} : QStringLiteral(
-               "hl.dispatch(hl.dsp.window.resize({ window = %1, x = 0, y = 0, relative = true }))\n")
-               .arg(window));
-  return script;
 }
 
 QString HyprlandGameModeCompositor::placeScript(const QString& address, const QString& workspace,
@@ -397,14 +350,6 @@ bool HyprlandGameModeCompositor::placeWindow(const QString& address, const QStri
          eval(placeScript(address, workspace, output, placeholder), error);
 }
 
-bool HyprlandGameModeCompositor::prepareWindow(const QString& address, const QString& workspace,
-                                              const QString& output, const QString& placeholder,
-                                              QString* error) {
-  return validAddress(address) && !workspace.isEmpty() && !output.isEmpty() &&
-         (placeholder.isEmpty() || validAddress(placeholder)) &&
-         eval(prepareScript(address, workspace, output, placeholder), error);
-}
-
 bool HyprlandGameModeCompositor::returnWindow(const QString& address, const QString& workspace,
                                               const QString& placeholder, QString* error) {
   if (!validAddress(address) || workspace.isEmpty()) {
@@ -420,14 +365,6 @@ bool HyprlandGameModeCompositor::focusWindow(const QString& address, QString* er
   return validAddress(address) && eval(QStringLiteral("hl.dispatch(hl.dsp.focus({ window = %1 }))")
                                            .arg(luaString(QStringLiteral("address:") + address)),
                                        error);
-}
-
-bool HyprlandGameModeCompositor::presentWindow(const QString& address, QString* error) {
-  // The final focus and stopping hidden rendering share one compositor turn.
-  return validAddress(address) && eval(QStringLiteral(
-      "hl.dispatch(hl.dsp.focus({ window = %1 }))\n"
-      "hl.window_rule({ name = \"omakade-game-mode-frame\", enabled = false })")
-      .arg(luaString(QStringLiteral("address:") + address)), error);
 }
 
 bool HyprlandGameModeCompositor::setWindowMode(const QString& address, int mode, int clientMode,

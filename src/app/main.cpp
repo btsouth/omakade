@@ -70,7 +70,6 @@
 #include <QPainter>
 #include <QDir>
 #include <QSet>
-#include <QSemaphore>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QGuiApplication>
@@ -155,10 +154,6 @@ public:
     window.workspace = workspace;
     window.output = output;
     return true;
-  }
-  bool prepareWindow(const QString& address, const QString& workspace, const QString& output,
-                     const QString& placeholder, QString* error) override {
-    return placeWindow(address, workspace, output, placeholder, error);
   }
   bool returnWindow(const QString&, const QString& workspace, const QString&, QString*) override {
     window.workspace = workspace;
@@ -7029,60 +7024,6 @@ int main(int argc, char* argv[]) {
   if (rootWindow != nullptr) {
     const auto windowStateBeforePreparation =
         std::make_shared<Qt::WindowState>(rootWindow->windowState());
-    gameMode.setFramePreparation([rootWindow, &gameMode](const QSize& size) {
-      struct FrameRequest {
-        QSemaphore ready;
-        std::atomic<bool> finished{false};
-        std::atomic<bool> ok{false};
-      };
-      const auto request = std::make_shared<FrameRequest>();
-      QMetaObject::invokeMethod(rootWindow, [rootWindow, &gameMode, request, size] {
-        if (request->finished.load()) return;
-        auto* quick = qobject_cast<QQuickWindow*>(rootWindow);
-        if (!quick) {
-          request->finished = true;
-          request->ready.release();
-          return;
-        }
-        // Placement and the desktop snapshot are complete. Finish the native
-        // configure and opaque scene while its workspace is still out of sight.
-        // Hyprland's client configure owns the Wayland fullscreen state here.
-        // A fresh Qt fullscreen request names an output and Hyprland moves the
-        // window to that output's visible workspace, undoing silent placement.
-        if (QGuiApplication::platformName() != "wayland") {
-          rootWindow->setWindowState(Qt::WindowFullScreen);
-        }
-        quick->contentItem()->setOpacity(1);
-        QMetaObject::invokeMethod(rootWindow, gameMode.parked() ? "restoreGameModeNavigation"
-                                                               : "focusCurrentSurface");
-        const auto frames = std::make_shared<int>(0);
-        const auto connection = std::make_shared<QMetaObject::Connection>();
-        *connection = QObject::connect(quick, &QQuickWindow::frameSwapped, quick,
-            [quick, request, size, frames, connection] {
-          if (request->finished.load()) return;
-          // A configure can arrive after the first swap. Require two complete
-          // frames at the final size, including the opaque content change.
-          if (size.isEmpty() || quick->size() == size) ++*frames;
-          else *frames = 0;
-          if (*frames < 2) {
-            quick->update();
-            return;
-          }
-          QObject::disconnect(*connection);
-          request->ok = true;
-          request->finished = true;
-          request->ready.release();
-        }, Qt::QueuedConnection);
-        QTimer::singleShot(4000, quick, [request, connection] {
-          QObject::disconnect(*connection);
-          if (!request->finished.exchange(true)) request->ready.release();
-        });
-        quick->update();
-      }, Qt::QueuedConnection);
-      const bool signalled = request->ready.tryAcquire(1, 4500);
-      request->finished = true;
-      return signalled && request->ok.load();
-    });
     QObject::connect(&gameMode, &GameModeSession::windowVisibilityRequested, rootWindow,
                      [rootWindow, &gameModeCompositor, presentationGeneration](bool visible) {
                        // The controller snapshots desktop focus before asking to map
