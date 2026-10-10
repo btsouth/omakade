@@ -415,8 +415,8 @@ void GameLauncher::setPreferStandaloneEmulators(bool value) {
   m_preferStandaloneEmulators = value;
 }
 
-void GameLauncher::setRetroArchHomeOwned(bool owned) {
-  m_retroArchHomeOwned = owned;
+void GameLauncher::setRetroArchHomeOwner(std::function<bool()> owner) {
+  m_retroArchHomeOwner = std::move(owner);
   repairRetroArchHome(); // A session that ended while Omakade was closed.
 }
 
@@ -1172,8 +1172,10 @@ bool GameLauncher::launchRetroArch(const QString& contentPath, const QString& co
     return false;
   }
   LaunchCommand launch = command;
-  if (usesRetroArch && !manageOnly && m_retroArchHomeOwned) {
+  if (usesRetroArch && !manageOnly && m_retroArchHomeOwner && m_retroArchHomeOwner()) {
     const QString override = RetroArchHome::prepare(RetroArchHome::paths(flatpak));
+    qInfo().noquote() << (override.isEmpty() ? QStringLiteral("RetroArch: its own menu button is kept")
+                                             : QStringLiteral("RetroArch: Home is left to the guide"));
     // Flatpak's own arguments come first: run org.libretro.RetroArch.
     if (!override.isEmpty()) {
       const int at = command.program == QStringLiteral("flatpak") ? 2 : 0;

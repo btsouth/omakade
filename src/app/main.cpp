@@ -1836,17 +1836,16 @@ int main(int argc, char* argv[]) {
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
   GuideClient inGameGuide(!isolatedTest && onOmarchy);
-  // While Home opens the guide, RetroArch launches leave that button to Omakade.
-  const auto updateRetroArchHome = [&launcher, &preferences, &gameModeGuideButton, onOmarchy] {
-    launcher.setRetroArchHomeOwned(onOmarchy && preferences.homeButtonOpensGuide() &&
-                                   gameModeGuideButton.enabled());
-  };
-  updateRetroArchHome();
-  QObject::connect(&preferences, &AppSettings::homeButtonOpensGuideChanged, &launcher, updateRetroArchHome);
-  QObject::connect(&gameModeGuideButton, &GameModeGuideButton::changed, &launcher, updateRetroArchHome);
-  // The service's state is otherwise only read when Settings opens; a game can be
-  // launched long before that.
-  if (!isolatedTest && onOmarchy) gameModeGuideButton.refresh();
+  // While Home opens the guide, RetroArch launches leave that button to Omakade. Read at
+  // launch: the Home button service is on when systemd has it linked into a target.
+  launcher.setRetroArchHomeOwner([&preferences, onOmarchy, isolatedTest, configRoot] {
+    if (isolatedTest || !onOmarchy || !preferences.homeButtonOpensGuide()) return false;
+    const QString unit = QString::fromLatin1(GameModeGuideButton::kUnit);
+    for (const QString& root : {configRoot + QStringLiteral("/systemd/user"), QStringLiteral("/etc/systemd/user")})
+      for (const QString& wants : QDir(root).entryList({QStringLiteral("*.wants")}, QDir::Dirs))
+        if (QFileInfo(root + QLatin1Char('/') + wants + QLatin1Char('/') + unit).isSymLink()) return true;
+    return false;
+  });
   // Publish launcher-owned games even when session recording is disabled. The resident
   // service retains exact process identities and resolves compositor data asynchronously.
   QTimer guideSnapshotTimer;

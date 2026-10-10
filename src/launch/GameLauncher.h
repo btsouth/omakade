@@ -111,8 +111,9 @@ public:
                           const QString& runner = {}, const QString& launchTarget = {});
   Q_INVOKABLE bool install(const QString& source, const QString& id);
   void setPreferStandaloneEmulators(bool value);
-  // Home opens the guide, so RetroArch launches move its menu off that button.
-  void setRetroArchHomeOwned(bool owned);
+  // Asked at each RetroArch launch: while Home opens the guide, RetroArch's menu moves
+  // off that button.
+  void setRetroArchHomeOwner(std::function<bool()> owner);
   void setSaveBackups(SaveBackups* backups) { m_saveBackups = backups; }
 
 signals:
@@ -169,7 +170,7 @@ private:
   SaveBackups* m_saveBackups = nullptr;
   QString m_lastError;
   bool m_preferStandaloneEmulators = false;
-  bool m_retroArchHomeOwned = false;
+  std::function<bool()> m_retroArchHomeOwner;
   void repairRetroArchHome() const;
   QList<TrackedProcess> m_trackedProcesses;
   QVariantMap m_launchIdentity;
