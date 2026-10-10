@@ -3,22 +3,32 @@
 ## 1.16.0
 
 Press Home or Super + Ctrl + G over a running game to open the in-game guide, a
-theme-matched panel at the edge of the screen. Resume, take a screenshot or clip,
-change the sound or quit without leaving the game.
+panel at the edge of the screen in your Omarchy theme. The game pauses while it is
+open. Resume, take a screenshot or record a clip, change the volume or sound output,
+check performance, or quit the game.
 
-- In Game Mode, Desktop parks the session as Home did before. Holding Home for half
-  a second does the same from inside a game, and Home brings the game back.
-- RetroArch games get a RetroArch menu button. When Omakade starts RetroArch, its
-  menu moves off Home for that run, so Home opens only the guide.
-- After the guide closes, a controller is held until its buttons are released, so
-  the press that closed it never reaches the game.
-- Game Mode opens straight onto its own workspace at full size. The desktop no
-  longer rearranges around it, and leaving no longer flashes an empty workspace.
-- Prefer the old Home button? Set Home button in games to Game Mode in Settings.
-- The guide comes with the package. Disable `omakade.guide` to turn it off.
+- **Desktop** (in Game Mode) takes you to the desktop with the game hidden and muted.
+  Press Home to come back to the game, paused, with the guide open.
+- Hold Home for half a second to go to the desktop and back without the guide, as
+  Home did in 1.15.
+- RetroArch started by Omakade: Home opens only the guide. Click both sticks
+  (L3 + R3) for RetroArch's own menu. Your `retroarch.cfg` is left as it was.
+- The press that closes the guide never reaches the game.
+- Game Mode opens straight onto its own workspace at full size, and the library
+  stays behind your game.
+- Prefer the old Home button? Set **Home button in games** to **Game Mode** in
+  Settings. The guide comes with the package; `omarchy plugin disable
+  omakade.guide` turns it off.
 
-[Install Omakade](https://github.com/btsouth/omakade#installation) ·
-[Guide documentation](https://github.com/btsouth/omakade/blob/main/docs/GAME-GUIDE.md)
+Fixes
+
+- Sunshine apps exported by Omakade launch from Moonlight again.
+- Heroic libraries with an empty Epic or Amazon cache no longer block GOG imports.
+- OmaStore installs record playtime.
+- x86_64 packages are built against Omarchy stable, so they start on stable, RC and edge.
+
+[Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.0) ·
+[Guide documentation](https://github.com/btsouth/omakade/blob/v1.16.0/docs/GAME-GUIDE.md)
 
 ## 1.15.0
 

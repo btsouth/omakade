@@ -12,15 +12,18 @@ clip, sound volume and output, the performance readings that are available, and
 Quit, which asks before it acts. Save last N seconds appears while a replay
 buffer runs. Unknown readings stay absent.
 
-In Game Mode the panel adds **Desktop**, which parks the session exactly as
-Home did before the guide: the game is hidden and muted and keeps running.
-Home on the desktop brings it back. Holding Home for half a second does the
-same from inside a game, without opening the guide.
+In Game Mode the panel adds **Desktop**, which parks the session as Home did
+before the guide: the game is hidden and muted and keeps running. Home on the
+desktop brings you back to the game, paused, with the guide open. Holding Home
+for half a second goes to the desktop and back without the guide; after that
+kind of park, Home returns to the library as before.
 
-RetroArch games add **RetroArch menu**, which opens RetroArch's own menu.
-RetroArch's controller profiles bind Home to that menu, so when Omakade starts
-RetroArch it moves the menu off Home for that run. Your `retroarch.cfg` is left
-as it was. A menu button you chose yourself is kept.
+When Omakade starts RetroArch, Home opens only the guide: RetroArch's controller
+profiles bind Home to its menu, so that run uses a copy of the profiles without
+it. RetroArch's menu moves to L3 + R3 (both sticks clicked), unless you set a
+menu combo yourself, and the guide shows the combo. A menu key or button you
+chose yourself is kept. Your `retroarch.cfg` is put back as it was after
+RetroArch exits.
 
 To keep Home exactly as it was before the guide, set **Home button in games**
 to **Game Mode** in Omakade's settings.
@@ -41,8 +44,8 @@ plugin directory and enable it there.
 
 Pause defaults on; games tagged online or multiplayer default to running.
 Existing per-game pause preferences are respected. The card reports the actual
-pause state. Desktop keeps the pause only until Game Mode has hidden the game,
-then lets it run, as a Game Mode park always has.
+pause state. Desktop resumes the game before Game Mode hides it, so it runs,
+muted, while you are on the desktop, as a Game Mode park always has.
 
 The guide pins verified process identities with pidfds. Its guard stops only the
 processes it owns and resumes them on Resume, normal exit, or backend death.

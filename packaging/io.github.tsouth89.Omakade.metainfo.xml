@@ -26,10 +26,10 @@
     </screenshot>
   </screenshots>
   <releases>
-    <release version="1.16.0" date="2026-10-07">
+    <release version="1.16.0" date="2026-10-10">
       <description>
-        <p>Press Home or Super + Ctrl + G over a running game to open one Omarchy guide card. Resume, see achievements, take screenshots and clips, adjust sound or quit.</p>
-        <p>Return to desktop parks the game while paused. Home brings it back under the guide; Resume starts it again. With no game, Home keeps Game Mode. The card follows your theme and scales in Couch Mode.</p>
+        <p>Press Home or Super + Ctrl + G over a running game to open the in-game guide. The game pauses while it is open. Resume, take screenshots and clips, adjust sound, check performance or quit.</p>
+        <p>In Game Mode, Desktop takes you to the desktop and Home brings you back to the paused game with the guide open. Holding Home works as Home did in 1.15. Also fixes Sunshine exports, Heroic GOG imports and OmaStore playtime.</p>
       </description>
     </release>
     <release version="1.15.0" date="2026-10-04">
