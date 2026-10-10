@@ -450,12 +450,21 @@ void InGameGuide::reopen(const QString& node) {
     else qInfo("Guide: game in front after %d ms", elapsed);
     if (!showing() && hasGame()) toggle(node, false);
   });
-  watcher->setFuture(QtConcurrent::run([address, environment = m_environment] {
+  watcher->setFuture(QtConcurrent::run([address = address, pid = m_session.value("pid").toLongLong(), environment = m_environment]() mutable {
     const auto hyprctl = [&environment](const QStringList& arguments) {
       QProcess process; process.setProcessEnvironment(environment); process.start("hyprctl", arguments);
       if (!process.waitForFinished(1000)) { process.kill(); process.waitForFinished(); return QByteArray(); }
       return process.readAllStandardOutput();
     };
+    // A game with a second window (a launcher, an emulator's dialog) keeps its fullscreen
+    // one in front: focusing the other would take fullscreen away from the game.
+    for (const auto& value : QJsonDocument::fromJson(hyprctl({"-j", "clients"})).array()) {
+      const auto client = value.toObject();
+      if (client.value("pid").toInteger() == pid && client.value("fullscreen").toInt() != 0 &&
+          HyprlandGameModeCompositor::validAddress(client.value("address").toString())) {
+        address = client.value("address").toString(); break;
+      }
+    }
     QElapsedTimer clock; clock.start();
     for (int stable = 0; clock.elapsed() < 3000; QThread::msleep(100)) {
       if (QJsonDocument::fromJson(hyprctl({"-j", "activewindow"})).object().value("address").toString() == address) {
