@@ -75,24 +75,39 @@ jobs:
     # Still builds if change detection fails.
     if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     timeout-minutes: 30
-    name: Build and test (${{ matrix.arch }})
+    name: Build and test (${{ matrix.check }})
     strategy:
       fail-fast: false
       matrix:
+        # x86_64 releases build on Omarchy stable, so the required x86_64 check
+        # does too. Current Arch catches newer Qt early.
         include:
-          - arch: x86_64
+          - check: x86_64
+            arch: x86_64
+            packages: omarchy-stable
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
-          - arch: aarch64
+          - check: x86_64 current Arch
+            arch: x86_64
+            packages: arch
+            runner: ubuntu-24.04
+            container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
+          - check: aarch64
+            arch: aarch64
+            packages: arch
             runner: ubuntu-24.04-arm
             container: menci/archlinuxarm:base-devel@sha256:5dda87d4b360dff28fe5ce27a20041949aa770a785c52daf82fc9956b2534c39
     runs-on: ${{ matrix.runner }}
     container:
       image: ${{ matrix.container }}
     steps:
+      - name: Use Omarchy stable packages
+        if: matrix.packages == 'omarchy-stable'
+        run: echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
       - name: Install dependencies
+        # -uu lets the stable snapshot downgrade packages newer than it.
         run: >-
-          pacman -Syu --disable-sandbox --noconfirm --needed
+          pacman -Syyuu --disable-sandbox --noconfirm --needed
           appstream base-devel ccache cmake desktop-file-utils git layer-shell-qt libsecret libzip ninja
           pkgconf python qt6-base qt6-declarative qt6-imageformats qt6-svg sdl3
           ttf-dejavu wayland wayland-protocols
@@ -101,8 +116,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: ccache-v2-${{ runner.os }}-${{ runner.arch }}-
+          key: ccache-v2-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-v2-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
@@ -141,12 +156,12 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-v2-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          key: ccache-v2-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
       - name: Save test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tests-${{ github.job }}-${{ runner.arch }}
+          name: tests-${{ github.job }}-${{ matrix.packages }}-${{ runner.arch }}
           path: '**/test-results.xml'
           if-no-files-found: ignore
           retention-days: 7
