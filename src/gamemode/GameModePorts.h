@@ -16,6 +16,8 @@ struct GameModeOutput {
   bool focused = false;
   int width = 0;
   int height = 0;
+  double scale = 1;
+  int transform = 0;
   // Selector for the workspace the output currently shows. Empty when disabled.
   QString workspace;
 };
@@ -121,6 +123,12 @@ public:
   // a `placeholder`, that window first takes the main window's exact place in the layout.
   virtual bool placeWindow(const QString& address, const QString& workspace, const QString& output,
                            const QString& placeholder, QString* error = nullptr) = 0;
+  // Prepare fullscreen placement without exposing the destination workspace.
+  virtual bool prepareWindow(const QString& address, const QString& workspace, const QString& output,
+                             const QString& placeholder, QString* error = nullptr) = 0;
+  virtual bool presentWindow(const QString& address, QString* error = nullptr) {
+    return focusWindow(address, error);
+  }
   // Moves the window without following it. With a `placeholder`, the window trades places
   // with it instead and so returns to the exact spot it left.
   virtual bool returnWindow(const QString& address, const QString& workspace,

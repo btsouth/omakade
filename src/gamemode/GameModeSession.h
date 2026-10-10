@@ -58,6 +58,9 @@ public:
   [[nodiscard]] bool parked() const { return m_parked; }
   [[nodiscard]] bool hasSession() const { return m_active || m_parked; }
   void setTemporaryWindow(bool temporary);
+  void setFramePreparation(std::function<bool(const QSize&)> callback) {
+    m_controller.setFramePreparation(std::move(callback));
+  }
   [[nodiscard]] QString statusText() const { return m_statusText; }
   [[nodiscard]] bool displayManaged() const { return m_displayManaged; }
   [[nodiscard]] bool soundManaged() const { return m_soundManaged; }

@@ -34,6 +34,11 @@ public:
   [[nodiscard]] static QString coldWindowScript();
   bool placeWindow(const QString& address, const QString& workspace, const QString& output,
                    const QString& placeholder, QString* error = nullptr) override;
+  bool prepareWindow(const QString& address, const QString& workspace, const QString& output,
+                     const QString& placeholder, QString* error = nullptr) override;
+  bool presentWindow(const QString& address, QString* error = nullptr) override;
+  [[nodiscard]] static QString prepareScript(const QString& address, const QString& workspace,
+                                             const QString& output, const QString& placeholder = {});
   bool returnWindow(const QString& address, const QString& workspace, const QString& placeholder,
                     QString* error = nullptr) override;
   bool focusWindow(const QString& address, QString* error = nullptr) override;

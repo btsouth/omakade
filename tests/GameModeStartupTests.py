@@ -27,6 +27,11 @@ class GameModeStartupTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(prefix="omakade-gm-startup-")
         root = Path(self.directory.name)
         self.state = root / "state/omakade/game-mode.json"
+        # Qt's fullscreen geometry must agree with the compositor transport.
+        # Its default offscreen screen is 800x800, while this fixture is 1920x1080.
+        screen = root / "screen.json"
+        screen.write_text(json.dumps({"screens": [{"name": "HEADLESS-1", "x": 0, "y": 0,
+            "width": 1920, "height": 1080, "logicalDpi": 96, "logicalBaseDpi": 96, "dpr": 1}]}))
         self.env = os.environ.copy()
         self.env.update({
             "HOME": str(root),
@@ -36,7 +41,7 @@ class GameModeStartupTests(unittest.TestCase):
             "XDG_STATE_HOME": str(root / "state"),
             "XDG_CACHE_HOME": str(root / "cache"),
             "XDG_RUNTIME_DIR": str(root / "runtime"),
-            "QT_QPA_PLATFORM": "offscreen",
+            "QT_QPA_PLATFORM": "offscreen:configfile=" + str(screen),
             "QT_QPA_PLATFORMTHEME": "",
             "QT_STYLE_OVERRIDE": "Fusion",
             "QT_QUICK_BACKEND": "software",
