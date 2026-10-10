@@ -51,6 +51,7 @@ private slots:
   void guardTreeAndIdentity();
   void protocolExtension();
   void mangoBuilding();
+  void releaseHoldsPressedPads();
   void perDeviceGrab();
   void padsChangingWhileOpen();
   void trackedQuit();
@@ -605,6 +606,54 @@ void InGameGuideTests::mangoBuilding() {
     if (QString(level) == "frametime") QVERIFY(config.contains("frame_timing=1"));
   }
 }
+void InGameGuideTests::releaseHoldsPressedPads() {
+  GuideInput input;
+  int writer = -1, ungrabs = 0;
+  GuideInput::Access access;
+  access.scan = [] { return QList<GuideListener::Controller>{{"event0", "a", "Xbox pad", false}}; };
+  access.open = [&writer](const QString&) {
+    int pipe[2];
+    if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;
+    writer = pipe[1];
+    return pipe[0];
+  };
+  access.grab = [](int) { return true; };
+  access.ungrab = [&ungrabs](int) { ++ungrabs; };
+  input.setAccess(access);
+  QString family, warning;
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto send = [&writer](int code, int value) {
+    input_event event{}; event.type = EV_KEY; event.code = code; event.value = value;
+    input_event syn{}; syn.type = EV_SYN; syn.code = SYN_REPORT;
+    return ::write(writer, &event, sizeof(event)) == ssize_t(sizeof(event)) &&
+           ::write(writer, &syn, sizeof(syn)) == ssize_t(sizeof(syn));
+  };
+  // Closing on A while it is still down keeps the pad until A comes up, so the
+  // game sees neither the press nor its release.
+  QVERIFY(input.grab("event0", &family, &warning));
+  QVERIFY(send(BTN_SOUTH, 1)); QTRY_COMPARE(actions.size(), 1);
+  input.release();
+  QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(input.holdingCount(), size_t(1)); QCOMPARE(ungrabs, 0);
+  QVERIFY(send(BTN_SOUTH, 0));
+  QTRY_COMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 1); QCOMPARE(actions.size(), 1);
+  ::close(writer);
+  // Opening again while a pad is still held takes it straight back.
+  QVERIFY(input.grab("event0", &family, &warning));
+  QVERIFY(send(BTN_EAST, 1)); QTRY_COMPARE(actions.size(), 2);
+  input.release(); QCOMPARE(input.holdingCount(), size_t(1));
+  const int previous = writer;
+  QVERIFY(input.grab("event0", &family, &warning));
+  QCOMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 2); QCOMPARE(input.deviceCount(), size_t(1));
+  input.release(); ::close(previous); ::close(writer);
+  // A button that never comes up returns the pad after a bounded wait.
+  QVERIFY(input.grab("event0", &family, &warning));
+  QVERIFY(send(BTN_SOUTH, 1)); QTRY_COMPARE(actions.size(), 3);
+  input.release(); QCOMPARE(input.holdingCount(), size_t(1));
+  QTest::qWait(1000); QCOMPARE(input.holdingCount(), size_t(1));
+  QTRY_COMPARE_WITH_TIMEOUT(input.holdingCount(), size_t(0), 3000); QCOMPARE(ungrabs, 4);
+  ::close(writer);
+}
+
 void InGameGuideTests::perDeviceGrab() {
   GuideInput input;
   int writer = -1, ungrabs = 0;
@@ -633,30 +682,14 @@ void InGameGuideTests::perDeviceGrab() {
   QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
   QCOMPARE(::write(writer, &syn, sizeof(syn)), ssize_t(sizeof(syn)));
   QTRY_COMPARE(actions.size(), 1); QCOMPARE(actions.first().first().toString(), "down");
-  // Closing while the pad is still pressed keeps it until it is released, so the
-  // game never sees that press or its release.
-  input.release();
-  QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(input.holdingCount(), size_t(1)); QCOMPARE(ungrabs, 0);
-  event.value = 0;
-  QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
-  QCOMPARE(::write(writer, &syn, sizeof(syn)), ssize_t(sizeof(syn)));
-  QTRY_COMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 1); QCOMPARE(actions.size(), 1);
-  ::close(writer);
+  // The busy pad was never grabbed, so there is nothing to hold for it.
+  input.release(); ::close(writer);
+  QCOMPARE(input.deviceCount(), size_t(0)); QCOMPARE(input.holdingCount(), size_t(0)); QCOMPARE(ungrabs, 1);
   QVERIFY(input.grab("event-missing", &family, &warning));
   QVERIFY(warning.contains("Busy pad may still reach the game"));
   QVERIFY(warning.contains("Unavailable pad could not be opened"));
   QVERIFY(warning.contains("controller that opened the guide disconnected"));
   input.release(); ::close(writer); QCOMPARE(ungrabs, 2);
-  // A button that never comes up returns the pad after a bounded wait.
-  QVERIFY(input.grab("event0", &family, &warning));
-  event.code = BTN_SOUTH; event.value = 1;
-  QCOMPARE(::write(writer, &event, sizeof(event)), ssize_t(sizeof(event)));
-  QCOMPARE(::write(writer, &syn, sizeof(syn)), ssize_t(sizeof(syn)));
-  QTRY_COMPARE(actions.size(), 2);
-  input.release(); QCOMPARE(input.holdingCount(), size_t(1));
-  QTest::qWait(1000); QCOMPARE(input.holdingCount(), size_t(1));
-  QTRY_COMPARE_WITH_TIMEOUT(input.holdingCount(), size_t(0), 3000); QCOMPARE(ungrabs, 3);
-  ::close(writer);
 }
 
 void InGameGuideTests::padsChangingWhileOpen() {
