@@ -26,6 +26,14 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.16.1" date="2026-10-10">
+      <description>
+        <p>The in-game guide's Record clip action now uses its own recorder, so a screen recording started from Omarchy keeps running and is no longer shown or stopped by the guide.</p>
+        <p>The guide shows GPU load on NVIDIA cards.</p>
+        <p>Controller navigation is fixed across Home, Settings and Stats: one press moves one step, every control can be reached, and Back from Settings returns to the screen you opened it from.</p>
+        <p>With Steam running, controller presses no longer count twice.</p>
+      </description>
+    </release>
     <release version="1.16.0" date="2026-10-10">
       <description>
         <p>Press Home or Super + Ctrl + G over a running game to open the in-game guide. The game pauses while it is open. Resume, take screenshots and clips, adjust sound, check performance or quit.</p>

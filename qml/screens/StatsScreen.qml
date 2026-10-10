@@ -18,6 +18,10 @@ FocusScope {
     readonly property real scaleFactor: couchMode ? 1.7 : 1
     // Period changes dated figures. The Library view always describes current and lifetime data.
     property int currentView: 0 // Overview, Play patterns, Library snapshot
+    // The header and the view tabs do not line up, so Down and Up link them directly.
+    readonly property Item currentViewButton: currentView === 1 ? patternsButton
+                                            : currentView === 2 ? librarySnapshotButton : overviewButton
+    readonly property Item headerReturnButton: couchMode ? periodRow.firstButton : desktopPeriodRow.firstButton
     property bool showAllGames: false
     property bool showAllGenres: false
     property bool showHourValues: false
@@ -363,6 +367,7 @@ FocusScope {
         }
         GlassButton {
             id: thisYearButton
+            property Item controllerDownTarget: root.currentViewButton
             objectName: periodRow.objectNamePrefix === "" ? "statsThisYearButton"
                                                            : periodRow.objectNamePrefix + "ThisYearButton"
             property Item controllerUpTarget: root.couchMode ? null : statsAppHeader.statsButton
@@ -375,6 +380,7 @@ FocusScope {
         }
         GlassButton {
             id: allTimeButton
+            property Item controllerDownTarget: root.currentViewButton
             objectName: periodRow.objectNamePrefix === "" ? "statsAllTimeButton"
                                                            : periodRow.objectNamePrefix + "AllTimeButton"
             property Item controllerUpTarget: root.couchMode ? null : statsAppHeader.statsButton
@@ -388,6 +394,7 @@ FocusScope {
         }
         GlassButton {
             id: makeCardButton
+            property Item controllerDownTarget: root.currentViewButton
             objectName: "statsMakeCardButton"
             property Item controllerUpTarget: root.couchMode ? null : statsAppHeader.statsButton
             property Item controllerRightTarget: root.couchMode ? statsBackButton : statsAppHeader.settingsButton
@@ -510,6 +517,7 @@ FocusScope {
                     GlassButton {
                         id: statsBackButton
                         objectName: "statsBackButton"
+                        property Item controllerDownTarget: root.currentViewButton
                         text: "BACK"
                         compact: true
                         onClicked: root.close()
@@ -535,6 +543,7 @@ FocusScope {
                     spacing: 8 * root.scaleFactor
                     GlassButton {
                         id: overviewButton
+                        property Item controllerUpTarget: root.headerReturnButton
                         objectName: "statsOverviewButton"
                         text: "OVERVIEW"
                         compact: true
@@ -545,6 +554,7 @@ FocusScope {
                     }
                     GlassButton {
                         id: patternsButton
+                        property Item controllerUpTarget: root.headerReturnButton
                         objectName: "statsPatternsButton"
                         text: "PLAY PATTERNS"
                         compact: true
@@ -555,6 +565,7 @@ FocusScope {
                     }
                     GlassButton {
                         id: librarySnapshotButton
+                        property Item controllerUpTarget: root.headerReturnButton
                         objectName: "statsLibrarySnapshotButton"
                         text: "LIBRARY SNAPSHOT"
                         compact: true

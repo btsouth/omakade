@@ -9,6 +9,8 @@
 
 #include <SDL3/SDL_gamepad.h>
 
+class QWindow;
+
 class ControllerInput final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool inputEnabled READ inputEnabled NOTIFY inputEnabledChanged)
@@ -32,9 +34,12 @@ public:
 
   [[nodiscard]] bool connected() const;
   [[nodiscard]] bool driving() const { return m_driving; }
-  // Real input from the window system arrives spontaneously; the events this class sends on the
-  // controller's behalf do not. That is what tells the two apart.
+  // Real input from the window system arrives spontaneously, and so do the controller's own
+  // presses (deliverKey). Those are marked while they are delivered, so only real keyboard and
+  // mouse input puts the controller down.
   bool eventFilter(QObject* watched, QEvent* event) override;
+  // A controller press, delivered as a real key would be (input/KeyDelivery.h).
+  void deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers);
   [[nodiscard]] QString name() const;
   [[nodiscard]] int controllerCount() const;
   [[nodiscard]] QString primaryGlyph() const;
@@ -68,6 +73,7 @@ private:
   void pollEvents();
   void openAvailableControllers();
   void closeController(SDL_JoystickID id);
+  [[nodiscard]] bool mirrorsAnotherController(SDL_JoystickID id) const;
   void handleButtonPressed(int button);
   [[nodiscard]] bool nintendoFaceButtons() const;
   void handleButtonReleased(int button);
@@ -90,6 +96,7 @@ private:
   bool m_sdlReady = false;
   bool m_focusNavigation = false;
   bool m_driving = false;
+  bool m_deliveringKeys = false;
   void setDriving(bool driving);
   bool m_inputEnabled = true;
 };

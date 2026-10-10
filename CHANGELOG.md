@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.16.1
+
+- The in-game guide's Record clip action now uses its own recorder. A screen recording you
+  start from Omarchy keeps running on its own: the guide no longer shows it as its
+  clip or stops it, and Omarchy's stop leaves the guide's clip alone.
+- The in-game guide shows GPU load and temperature on NVIDIA cards too.
+- Controller navigation is fixed across the app. A press could move two steps, which made
+  some buttons and Settings sections hard or impossible to reach. Every screen is now
+  tested from every control in every direction, in couch and desktop layouts.
+- Home: the top buttons stay on one row, Down moves straight between shelves, and X adds
+  a game to Up next. Going back up to the top buttons shows the top of the page.
+- Settings: Back from Settings opened on Home returns to Home. Sliders change only with
+  Left and Right, dropdowns no longer trap the controller, and Left from a page goes to
+  the section list.
+- With Steam running, each controller press counted twice, because Steam Input adds a
+  copy of the pad. B in Settings on Home went past Home to the library. Omakade now
+  ignores Steam's copy while the real pad is connected.
+- In Game Mode, DESKTOP on Home goes straight to the desktop, as holding Home does.
+
+[Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.1)
+
 ## 1.16.0
 
 Press Home or Super + Ctrl + G over a running game to open the in-game guide, a

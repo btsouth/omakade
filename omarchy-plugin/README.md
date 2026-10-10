@@ -42,9 +42,9 @@ total play time Omakade knows. Desktop appears for Game Mode games, the
 RetroArch menu when Omakade can open it. Record clip turns into Stop clip with
 the clip's running time. The performance boxes leave out what is not
 available: frame rate and frame time come from an existing game telemetry file
-through Omakade, CPU and GPU load and temperature from the drivers; with none
-the section is not shown. The output row cycles the outputs. Quit asks in
-Quit's place, starting on Keep playing. Sections that do not apply are left out.
+through Omakade, CPU and GPU load and temperature from the drivers (nvidia-smi
+on NVIDIA); with none the section is not shown. The output row cycles the
+outputs. Quit asks in Quit's place, starting on Keep playing. Sections that do not apply are left out.
 
 Layout is `components/GuideCard.qml`; the cursor's moves are `GuideFocus.js`;
 what each control does is `activate()` and `act()` in `Guide.qml`.
@@ -82,11 +82,11 @@ and B.
 Screenshot hides the card for a frame, saves the game's output with grim where
 Omasnap saves screenshots, and reports through an Omarchy notification once the
 file exists. Screenshot and Record clip wait for a submitted guide-free frame
-and at least 80 ms. Record clip closes the guide, then starts Omarchy's own recorder
-(`omarchy-capture-screenrecording --fullscreen --with-desktop-audio`) and
-resumes the game; Stop recording stops it, and Omarchy's notification follows
-when the clip is saved. Next to a running gpu-screen-recorder replay buffer,
-which that recorder would stop, the plugin records on its own instead. Save last
+and at least 80 ms. Record clip closes the guide, then records the game's output
+with desktop audio through its own gpu-screen-recorder and resumes the game; Stop
+recording stops it, and a notification follows when the clip is saved. The guide
+only shows and stops the recording it started, so a screen recording started from
+Omarchy runs on untouched, and Omarchy's stop leaves the guide's clip alone. Save last
 30 s appears only while a replay buffer runs and sends it SIGUSR1; the length
 comes from the buffer's own `-r`. Volume sets the output Omarchy's volume keys
 use (`omarchy-audio-output-sink`), through Quickshell PipeWire.

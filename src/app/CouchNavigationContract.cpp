@@ -1,5 +1,6 @@
 #include "app/CouchNavigationContract.h"
 #include "input/ControllerInput.h"
+#include "input/KeyDelivery.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -48,7 +49,9 @@ bool within(QQuickItem* item, QQuickItem* container) {
 
 class VirtualPad {
 public:
-  explicit VirtualPad(ControllerInput& controller, bool startController = true) {
+  explicit VirtualPad(ControllerInput& controller, bool startController = true,
+                      Uint16 vendor = 0xffff, Uint16 product = 0xffff,
+                      const char* padName = "Omakade navigation regression controller") {
     const int previousCount = controller.controllerCount();
     if (startController) controller.start();
     require(until([] { return SDL_WasInit(SDL_INIT_GAMEPAD) != 0; }),
@@ -60,10 +63,10 @@ public:
     desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
     desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_COUNT) - 1;
     desc.button_mask = (1u << SDL_GAMEPAD_BUTTON_COUNT) - 1;
-    desc.name = "Omakade navigation regression controller";
-    // Isolated test runs only allow this VID/PID, so physical pads stay out of the test.
-    desc.vendor_id = 0xffff;
-    desc.product_id = 0xffff;
+    desc.name = padName;
+    // Isolated test runs only allow this VID/PID and Steam's, so physical pads stay out of the test.
+    desc.vendor_id = vendor;
+    desc.product_id = product;
     id = SDL_AttachVirtualJoystick(&desc);
     require(id != 0, QString::fromUtf8(SDL_GetError()));
     joystick = SDL_OpenJoystick(id);
@@ -76,10 +79,10 @@ public:
     if (id) SDL_DetachVirtualJoystick(id);
   }
   void button(SDL_GamepadButton button, int holdMs = 20) {
-    require(SDL_SetJoystickVirtualButton(joystick, button, true), QString::fromUtf8(SDL_GetError()));
+    setButton(button, true);
     SDL_UpdateJoysticks();
     settle(holdMs);
-    require(SDL_SetJoystickVirtualButton(joystick, button, false), QString::fromUtf8(SDL_GetError()));
+    setButton(button, false);
     SDL_UpdateJoysticks();
     settle();
   }
@@ -93,23 +96,30 @@ public:
     const int axis = key == Qt::Key_Left || key == Qt::Key_Right
                          ? SDL_GAMEPAD_AXIS_LEFTX : SDL_GAMEPAD_AXIS_LEFTY;
     const Sint16 value = key == Qt::Key_Left || key == Qt::Key_Up ? -30000 : 30000;
-    require(SDL_SetJoystickVirtualAxis(joystick, axis, value), QString::fromUtf8(SDL_GetError()));
+    setAxis(axis, value);
     SDL_UpdateJoysticks();
     settle();
-    require(SDL_SetJoystickVirtualAxis(joystick, axis, 0), QString::fromUtf8(SDL_GetError()));
+    setAxis(axis, 0);
     SDL_UpdateJoysticks();
     settle();
   }
+  // A pad that repeats every press of this one, as Steam Input's virtual pad does.
+  VirtualPad* echo = nullptr;
 private:
+  void setButton(SDL_GamepadButton button, bool down) {
+    require(SDL_SetJoystickVirtualButton(joystick, button, down), QString::fromUtf8(SDL_GetError()));
+    if (echo) echo->setButton(button, down);
+  }
+  void setAxis(int axis, Sint16 value) {
+    require(SDL_SetJoystickVirtualAxis(joystick, axis, value), QString::fromUtf8(SDL_GetError()));
+    if (echo) echo->setAxis(axis, value);
+  }
   SDL_JoystickID id = 0;
   SDL_Joystick* joystick = nullptr;
 };
 
 void keyboard(QQuickWindow* window, int key, Qt::KeyboardModifiers mods = Qt::NoModifier) {
-  QKeyEvent press(QEvent::KeyPress, key, mods);
-  QKeyEvent release(QEvent::KeyRelease, key, mods);
-  QCoreApplication::sendEvent(window, &press);
-  QCoreApplication::sendEvent(window, &release);
+  deliverKey(window, key, mods);
   settle();
 }
 } // namespace
@@ -409,8 +419,12 @@ bool runCouchNavigationContract(QQuickWindow* window, ControllerInput& controlle
       require(focus && focus->isVisible() && focus->isEnabled() && !headers.contains(focus) && !filters.contains(focus),
               QStringLiteral("Destination retained library focus: %1").arg(entry.second));
       pad.button(SDL_GAMEPAD_BUTTON_EAST);
-      require(until([&] { return !window->property(entry.second).toBool() && grid->hasActiveFocus(); }),
-              QStringLiteral("Destination Back did not restore game focus: %1").arg(entry.second));
+      // Settings opens over the library, so Back returns to the button that opened it. Home and
+      // Stats replace the library, so Back returns to the games.
+      auto* returnTo = entry.second == QStringLiteral("diagnosticsOpen") ? item(entry.first) : grid;
+      require(until([&] { return !window->property(entry.second).toBool() && returnTo->hasActiveFocus(); }),
+              QStringLiteral("Destination Back did not restore focus: %1 (focus %2)")
+                  .arg(entry.second, name(window->activeFocusItem())));
     }
     grid->setProperty("currentIndex", 0);
     grid->forceActiveFocus();
@@ -448,6 +462,365 @@ bool runCouchNavigationContract(QQuickWindow* window, ControllerInput& controlle
     return true;
   } catch (const std::exception& error) {
     qCritical().noquote() << "Couch navigation contract:" << error.what();
+    return false;
+  }
+}
+
+namespace {
+QString describe(QQuickItem* item) {
+  if (!item) return QStringLiteral("no focus");
+  QString label = item->objectName();
+  const QString text = item->property("text").toString();
+  if (!text.isEmpty()) label += (label.isEmpty() ? QString() : QStringLiteral(" ")) + QStringLiteral("\"%1\"").arg(text);
+  if (label.isEmpty()) label = QString::fromLatin1(item->metaObject()->className());
+  return label;
+}
+
+bool shown(QQuickItem* item) {
+  if (!item->isVisible() || !item->isEnabled() || item->width() <= 0 || item->height() <= 0) return false;
+  for (auto* step = item; step; step = step->parentItem())
+    if (step->opacity() <= 0.01) return false;
+  return true;
+}
+
+void collect(QQuickItem* item, QList<QQuickItem*>& out) {
+  if (!item->isVisible()) return;
+  const QVariant navigation = item->property("controllerNavigation");
+  const bool destination = !navigation.isValid() || navigation.toBool() ||
+                           item->property("spatialFocusDestination").toBool() ||
+                           item->property("controllerVerticalNavigation").toBool();
+  if (item->activeFocusOnTab() && shown(item) && destination) out.append(item);
+  for (auto* child : item->childItems()) collect(child, out);
+}
+
+QList<QQuickItem*> focusables(QQuickItem* container) {
+  QList<QQuickItem*> out;
+  for (auto* child : container->childItems()) collect(child, out);
+  // A focus scope (a game grid) stands for its delegates.
+  QList<QQuickItem*> result;
+  for (auto* item : out) {
+    bool insideAnother = false;
+    for (auto* other : out)
+      if (other != item && within(item, other)) { insideAnother = true; break; }
+    if (!insideAnother) result.append(item);
+  }
+  return result;
+}
+
+QRectF sceneRect(QQuickItem* item) { return item->mapRectToScene(item->boundingRect()); }
+
+// How much of the item the user can actually see: the window and every clipping ancestor.
+QRectF seen(QQuickItem* item, QQuickWindow* window, QString* clipper = nullptr) {
+  QRectF rect = sceneRect(item).intersected(QRectF(0, 0, window->width(), window->height()));
+  for (auto* step = item->parentItem(); step; step = step->parentItem()) {
+    if (!step->clip()) continue;
+    rect = rect.intersected(sceneRect(step));
+    if (rect.isEmpty() && clipper && clipper->isEmpty())
+      *clipper = describe(step) + QStringLiteral(" at ") + QString::number(sceneRect(step).y()) +
+                 QStringLiteral(" ") + QString::number(sceneRect(step).height());
+  }
+  return rect;
+}
+
+bool onScreen(QQuickItem* item, QQuickWindow* window) {
+  const QRectF full = sceneRect(item);
+  const QRectF visible = seen(item, window);
+  if (visible.isEmpty()) return false;
+  // Large panels count once a fair part is in view; controls need most of themselves.
+  return visible.width() >= std::min(full.width(), window->width() * 0.5) * 0.6 &&
+         visible.height() >= std::min(full.height(), window->height() * 0.5) * 0.6;
+}
+
+QQuickItem* scrollAncestor(QQuickItem* item) {
+  for (auto* step = item->parentItem(); step; step = step->parentItem())
+    if (step->inherits("QQuickFlickable") &&
+        step->property("contentHeight").toReal() > step->height() + 1)
+      return step;
+  return nullptr;
+}
+
+// Something focusable lies squarely in this direction: it overlaps the current control
+// across the direction of travel and starts beyond it.
+QQuickItem* lineNeighbour(QQuickItem* current, int key, const QList<QQuickItem*>& items) {
+  const QRectF from = sceneRect(current);
+  QQuickItem* best = nullptr;
+  qreal bestGap = 1e9;
+  for (auto* item : items) {
+    if (item == current || within(current, item) || within(item, current) || !shown(item)) continue;
+    const QRectF to = sceneRect(item);
+    qreal gap = -1;
+    bool overlap = false;
+    if (key == Qt::Key_Up || key == Qt::Key_Down) {
+      overlap = std::min(from.right(), to.right()) - std::max(from.left(), to.left()) > 4;
+      gap = key == Qt::Key_Up ? from.top() - to.bottom() : to.top() - from.bottom();
+    } else {
+      overlap = std::min(from.bottom(), to.bottom()) - std::max(from.top(), to.top()) > 4;
+      gap = key == Qt::Key_Left ? from.left() - to.right() : to.left() - from.right();
+    }
+    if (overlap && gap >= -1 && gap < bestGap) { best = item; bestGap = gap; }
+  }
+  return best;
+}
+
+// How far an item lies beyond the current one in this direction, when it overlaps it
+// across the direction of travel; negative when it does not.
+qreal lineGap(QQuickItem* current, QQuickItem* item, int key) {
+  const QRectF from = sceneRect(current), to = sceneRect(item);
+  if (key == Qt::Key_Up || key == Qt::Key_Down) {
+    if (std::min(from.right(), to.right()) - std::max(from.left(), to.left()) <= 4) return -1;
+    return key == Qt::Key_Up ? from.top() - to.bottom() : to.top() - from.bottom();
+  }
+  if (std::min(from.bottom(), to.bottom()) - std::max(from.top(), to.top()) <= 4) return -1;
+  return key == Qt::Key_Left ? from.left() - to.right() : to.left() - from.right();
+}
+
+QString keyName(int key) {
+  return key == Qt::Key_Up ? QStringLiteral("Up") : key == Qt::Key_Down ? QStringLiteral("Down")
+       : key == Qt::Key_Left ? QStringLiteral("Left") : QStringLiteral("Right");
+}
+
+struct Sweep {
+  QQuickWindow* window;
+  VirtualPad& pad;
+  QStringList failures;
+  int presses = 0;
+
+  // The D-pad through SDL and the production controller code, as a player presses it.
+  void press(int key) { pad.direction(key, false); }
+
+  void surface(const QString& name, QQuickItem* container) {
+    settle(60);
+    if (!container || !shown(container)) { failures << QStringLiteral("%1: not shown").arg(name); return; }
+    auto items = focusables(container);
+    if (items.isEmpty()) { failures << QStringLiteral("%1: nothing to focus").arg(name); return; }
+    auto* start = window->activeFocusItem();
+    if (!within(start, container)) {
+      failures << QStringLiteral("%1: opened with focus outside it (%2)").arg(name, describe(start));
+      start = items.first();
+    }
+    QHash<QQuickItem*, QSet<QQuickItem*>> edges;
+    const auto owner = [&items](QQuickItem* focus) -> QQuickItem* {
+      for (auto* item : items) if (within(focus, item)) return item;
+      return nullptr;
+    };
+    for (int sourceIndex = 0; sourceIndex < items.size(); ++sourceIndex) {
+      auto* source = items[sourceIndex];
+      for (int key : {Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right}) {
+        source->forceActiveFocus(Qt::TabFocusReason);
+        // Scrolled into view the way the app does when focus arrives by the pad.
+        QMetaObject::invokeMethod(window, "revealNavigationItem",
+                                  Q_ARG(QVariant, QVariant::fromValue<QObject*>(container)),
+                                  Q_ARG(QVariant, QVariant::fromValue<QObject*>(source)));
+        settle(5);
+        if (!within(window->activeFocusItem(), source)) break;  // Not focusable after all.
+        auto* scroll = scrollAncestor(source);
+        press(key);
+        ++presses;
+        auto* focus = window->activeFocusItem();
+        const QString where = QStringLiteral("%1: %2 from %3").arg(name, keyName(key), describe(source));
+        if (!within(focus, container)) {
+          failures << QStringLiteral("%1 left the screen for %2").arg(where, describe(focus));
+          continue;
+        }
+        auto* landed = owner(focus);
+        if (!landed) { landed = focus; items.append(focus); }  // A control the scan missed.
+        edges[source].insert(landed);
+        if (landed != source && !onScreen(landed, window)) {
+          QString clipper;
+          const QRectF full = sceneRect(landed), visible = seen(landed, window, &clipper);
+          failures << QStringLiteral("%1 focused %2 off screen (at %3,%4 %5x%6, %7x%8 visible, clipped by %9)")
+                          .arg(where, describe(landed)).arg(full.x()).arg(full.y()).arg(full.width())
+                          .arg(full.height()).arg(visible.width()).arg(visible.height()).arg(clipper);
+        }
+        // Text fields and sliders use Left and Right themselves.
+        // One press, one step: skipping the nearest control in line for one further on is
+        // how a press handled twice shows up.
+        if (landed != source && !within(landed, source) && !within(source, landed)) {
+          auto* nearest = lineNeighbour(source, key, items);
+          const qreal landedGap = lineGap(source, landed, key);
+          // Up and Down stay on a scrolling page while it has more that way (Main.qml).
+          const bool pageFirst = scroll && (key == Qt::Key_Up || key == Qt::Key_Down) && nearest &&
+                            !within(nearest, scroll) && within(landed, scroll);
+          if (nearest && nearest != landed && !pageFirst && landedGap >= 0 &&
+              landedGap > lineGap(source, nearest, key) + 1)
+            failures << QStringLiteral("%1 skipped %2 and landed on %3").arg(where, describe(nearest), describe(landed));
+        }
+        const bool textCursor = (key == Qt::Key_Left || key == Qt::Key_Right) &&
+                                (source->property("cursorPosition").isValid() ||
+                                 source->property("controllerVerticalNavigation").toBool());
+        if (landed == source && !textCursor) {
+          if (auto* missed = lineNeighbour(source, key, items))
+            failures << QStringLiteral("%1 stayed put, %2 is right there").arg(where, describe(missed));
+        }
+        if (scroll && !within(landed, scroll) && scroll->property("contentHeight").toReal() > scroll->height() + 1) {
+          const qreal y = scroll->property("contentY").toReal();
+          const qreal top = scroll->property("originY").toReal();
+          if (key == Qt::Key_Up && y > top + 1)
+            failures << QStringLiteral("%1 went above %2 without scrolling it to the top").arg(where, describe(scroll));
+        }
+      }
+    }
+    // Reachable from where the screen starts, by direction alone.
+    QSet<QQuickItem*> reached;
+    QList<QQuickItem*> pending{owner(start) ? owner(start) : items.first()};
+    while (!pending.isEmpty()) {
+      auto* item = pending.takeFirst();
+      if (reached.contains(item)) continue;
+      reached.insert(item);
+      for (auto* next : edges.value(item)) pending.append(next);
+    }
+    // OMAKADE_SWEEP_GRAPH=<screen name> prints where each control's presses lead.
+    if (qEnvironmentVariableIsSet("OMAKADE_SWEEP_GRAPH") && name.contains(qEnvironmentVariable("OMAKADE_SWEEP_GRAPH"))) {
+      qInfo().noquote() << "start" << describe(start);
+      for (auto* item : items) {
+        QStringList targets;
+        for (auto* next : edges.value(item)) targets << describe(next);
+        qInfo().noquote() << describe(item) << sceneRect(item) << "->" << targets.join(", ");
+      }
+    }
+    for (auto* item : items)
+      if (!reached.contains(item) && edges.contains(item))
+        failures << QStringLiteral("%1: %2 cannot be reached with the d-pad").arg(name, describe(item));
+    qInfo().noquote() << QStringLiteral("Sweep %1: %2 controls").arg(name).arg(items.size());
+  }
+};
+}  // namespace
+
+bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) {
+  try {
+    const auto item = [window](const char* objectName) {
+      auto* result = window->findChild<QQuickItem*>(QString::fromLatin1(objectName));
+      require(result != nullptr, QStringLiteral("Missing %1").arg(QString::fromLatin1(objectName)));
+      return result;
+    };
+    window->requestActivate();
+    require(until([&] { return window->isActive() && controller.inputEnabled(); }),
+            QStringLiteral("Test window never acquired input ownership"));
+    VirtualPad pad(controller);
+    Sweep sweep{window, pad, {}};
+    const auto open = [&](const char* property, bool value) {
+      window->setProperty(property, value);
+      settle(80);
+    };
+    const auto back = [&](const QString& what, const std::function<bool()>& expected) {
+      pad.button(SDL_GAMEPAD_BUTTON_EAST);
+      settle(80);
+      if (!expected())
+        sweep.failures << QStringLiteral("Back from %1 went to the wrong place: home=%2 settings=%3 stats=%4 details=%5 focus=%6")
+                              .arg(what).arg(window->property("homeOpen").toBool())
+                              .arg(window->property("diagnosticsOpen").toBool())
+                              .arg(window->property("statsOpen").toBool())
+                              .arg(window->property("detailOpen").toBool())
+                              .arg(describe(window->activeFocusItem()));
+    };
+    auto* home = item("homeScreen");
+    auto* settings = item("settingsOverlay");
+    const bool couch = window->property("couchMode").toBool();
+
+    // Library, Home and Stats, as each opens.
+    if (couch) sweep.surface(QStringLiteral("Library"), item("couchLibrary"));
+    open("homeOpen", true);
+    QMetaObject::invokeMethod(home, "focusHome");
+    sweep.surface(QStringLiteral("Home"), home);
+    open("homeOpen", false);
+    open("statsOpen", true);
+    if (auto* stats = window->findChild<QQuickItem*>(QStringLiteral("statsScreen")))
+      sweep.surface(QStringLiteral("Stats"), stats);
+    open("statsOpen", false);
+
+    // Every Settings page.
+    open("diagnosticsOpen", true);
+    const QVariantList sections = settings->property("sections").toList();
+    for (const QVariant& entry : sections) {
+      const auto page = entry.toMap();
+      QMetaObject::invokeMethod(settings, "chooseSection", Q_ARG(QVariant, page.value("section")));
+      settle(80);
+      sweep.surface(QStringLiteral("Settings > %1").arg(page.value("label").toString()), settings);
+    }
+    open("diagnosticsOpen", false);
+
+    // Back goes one screen, with the pad, from screens opened over Home.
+    open("homeOpen", true);
+    QMetaObject::invokeMethod(home, "focusHome");
+    auto* homeSettings = item(couch ? "homeCouchSettingsButton" : "homeSettingsButton");
+    homeSettings->forceActiveFocus();
+    pad.button(SDL_GAMEPAD_BUTTON_SOUTH);
+    require(until([&] { return window->property("diagnosticsOpen").toBool(); }),
+            QStringLiteral("Home SETTINGS did not open Settings"));
+    back(QStringLiteral("Settings opened from Home"), [&] {
+      return !window->property("diagnosticsOpen").toBool() && window->property("homeOpen").toBool() &&
+             homeSettings->hasActiveFocus();
+    });
+    // Steam Input repeats every press on a virtual pad of its own. Each press still counts once.
+    {
+      VirtualPad steam(controller, false, 0x28de, 0x11ff, "Microsoft X-Box 360 pad 0");
+      homeSettings->forceActiveFocus();
+      pad.direction(Qt::Key_Right, false);
+      QQuickItem* single = window->activeFocusItem();
+      pad.echo = &steam;
+      homeSettings->forceActiveFocus();
+      pad.direction(Qt::Key_Right, false);
+      if (window->activeFocusItem() != single)
+        sweep.failures << QStringLiteral("Right with Steam Input running went to %1, not %2")
+                              .arg(describe(window->activeFocusItem()), describe(single));
+      homeSettings->forceActiveFocus();
+      pad.button(SDL_GAMEPAD_BUTTON_SOUTH);
+      require(until([&] { return window->property("diagnosticsOpen").toBool(); }),
+              QStringLiteral("Home SETTINGS did not open Settings with Steam Input running"));
+      back(QStringLiteral("Settings opened from Home with Steam Input running"), [&] {
+        return !window->property("diagnosticsOpen").toBool() && window->property("homeOpen").toBool() &&
+               homeSettings->hasActiveFocus();
+      });
+      pad.echo = nullptr;
+    }
+    require(until([&] { return controller.controllerCount() == 1; }),
+            QStringLiteral("Steam Input's pad was not disconnected"));
+    // From wherever focus is in Settings, Back closes only Settings.
+    for (const QVariant& entry : sections) {
+      const auto page = entry.toMap();
+      for (int index = 0;; ++index) {
+        homeSettings->forceActiveFocus();
+        pad.button(SDL_GAMEPAD_BUTTON_SOUTH);
+        require(until([&] { return window->property("diagnosticsOpen").toBool(); }),
+                QStringLiteral("Home SETTINGS did not open Settings"));
+        QMetaObject::invokeMethod(settings, "chooseSection", Q_ARG(QVariant, page.value("section")));
+        settle(80);
+        const auto controls = focusables(settings);
+        if (index >= controls.size()) {
+          window->setProperty("diagnosticsOpen", false);
+          settle(80);
+          break;
+        }
+        controls[index]->forceActiveFocus(Qt::TabFocusReason);
+        settle(10);
+        const QString from = describe(window->activeFocusItem());
+        back(QStringLiteral("Settings > %1 at %2, opened from Home").arg(page.value("label").toString(), from), [&] {
+          return !window->property("diagnosticsOpen").toBool() && window->property("homeOpen").toBool();
+        });
+        if (window->property("diagnosticsOpen").toBool()) {
+          // A page inside Settings goes back to its list first; one more Back leaves.
+          back(QStringLiteral("Settings > %1 at %2, second Back").arg(page.value("label").toString(), from), [&] {
+            return !window->property("diagnosticsOpen").toBool() && window->property("homeOpen").toBool();
+          });
+          window->setProperty("diagnosticsOpen", false);
+        }
+        window->setProperty("homeOpen", true);
+        settle(40);
+      }
+    }
+    QMetaObject::invokeMethod(home, "focusHome");
+    back(QStringLiteral("Home"), [&] { return !window->property("homeOpen").toBool(); });
+
+    for (const auto& failure : sweep.failures) qCritical().noquote() << failure;
+    if (!sweep.failures.isEmpty()) {
+      qCritical().noquote() << QStringLiteral("Couch navigation sweep: %1 problems in %2 presses")
+                                   .arg(sweep.failures.size()).arg(sweep.presses);
+      return false;
+    }
+    qInfo().noquote() << QStringLiteral("Couch navigation sweep passed: %1 presses").arg(sweep.presses);
+    return true;
+  } catch (const std::exception& error) {
+    qCritical().noquote() << "Couch navigation sweep:" << error.what();
     return false;
   }
 }

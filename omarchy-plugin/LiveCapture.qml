@@ -3,9 +3,8 @@ import Quickshell
 import Quickshell.Io
 
 // Readings for the perf line and the capture rows, polled only while the card is
-// open. Recording goes through Omarchy's own recorder so the bar indicator and
-// the saved-clip notification are Omarchy's; next to a running replay buffer,
-// which that recorder would stop instead, the helper records on its own.
+// open. Clips use the helper's own recorder, so a screen recording started from
+// Omarchy is neither shown here nor stopped by the guide, and the reverse.
 Item {
   id: root
 
@@ -56,13 +55,10 @@ Item {
 
   function toggleRecording() {
     if (root.recording) {
-      if (root.replay) run(["python3", "-I", root.helper, "record-stop", String(root.recording.pid)], root.refresh)
-      else Quickshell.execDetached(["omarchy-capture-screenrecording", "--stop-recording"])
+      run(["python3", "-I", root.helper, "record-stop", String(root.recording.pid)], root.refresh)
       root.status = Object.assign({}, root.status, {recording: null})
-    } else if (root.replay) {
-      Quickshell.execDetached(["python3", "-I", root.helper, "record", root.output])
     } else {
-      Quickshell.execDetached(["omarchy-capture-screenrecording", "--fullscreen", "--with-desktop-audio"])
+      Quickshell.execDetached(["python3", "-I", root.helper, "record", root.output])
     }
   }
 
