@@ -5650,12 +5650,20 @@ void CoreTests::singleInstanceForwardsPlayAndQuitCommands() {
 }
 
 void CoreTests::sunshineIntegrationWritesOnlyItsOwnEntries() {
-  QCOMPARE(SunshineIntegration::shellQuote(QStringLiteral("it's")), QStringLiteral("'it'\\''s'"));
+  // Sunshine splits commands itself, without a shell (#87).
+  QCOMPARE(SunshineIntegration::commandArgument(QStringLiteral("/usr/bin/omakade")),
+           QStringLiteral("/usr/bin/omakade"));
+  QCOMPARE(SunshineIntegration::commandArgument(QStringLiteral("it's")), QStringLiteral("it's"));
+  QCOMPARE(SunshineIntegration::commandArgument(QStringLiteral("/opt/my games/omakade")),
+           QStringLiteral("\"/opt/my games/omakade\""));
+  QCOMPARE(SunshineIntegration::commandArgument(QStringLiteral("say \"hi\"")),
+           QStringLiteral("\"say \\\"hi\\\"\""));
   QCOMPARE(SunshineIntegration::commandPrefix(true),
            QStringLiteral("flatpak-spawn --host omakade"));
   const QString nativePrefix = SunshineIntegration::commandPrefix(false);
   QVERIFY(nativePrefix == QStringLiteral("omakade") ||
-          nativePrefix.endsWith(QStringLiteral("/omakade'")));
+          nativePrefix.endsWith(QStringLiteral("/omakade")));
+  QVERIFY(!nativePrefix.contains(QLatin1Char('\'')));
 
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -5723,7 +5731,7 @@ void CoreTests::sunshineIntegrationWritesOnlyItsOwnEntries() {
   QCOMPARE(firstGame.value(QStringLiteral("omakade")).toString(), QStringLiteral("Demo::demo-1"));
   QCOMPARE(firstGame.value(QStringLiteral("cmd")).toString(), QString{});
   QCOMPARE(firstGame.value(QStringLiteral("detached")).toArray().at(0).toString(),
-           SunshineIntegration::commandPrefix(false) + QStringLiteral(" --play 'Demo::demo-1'"));
+           SunshineIntegration::commandPrefix(false) + QStringLiteral(" --play Demo::demo-1"));
   QVERIFY(!firstGame.contains(QStringLiteral("image-path")));
   // Two stores share a title, so both names carry their source.
   QCOMPARE(firstGame.value(QStringLiteral("name")).toString(), sharedTitle + QStringLiteral(" (Demo)"));

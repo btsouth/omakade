@@ -71,7 +71,7 @@ public:
   [[nodiscard]] static QString configuredOutputName(const QString& configPath = {});
   [[nodiscard]] static int outputScreenIndex(const QString& configuredOutput,
                                              const QStringList& screenNames);
-  [[nodiscard]] static QString shellQuote(const QString& value);
+  [[nodiscard]] static QString commandArgument(const QString& value);
   [[nodiscard]] static QString commandPrefix(bool flatpakSunshine);
   [[nodiscard]] static bool isOmakadeEntry(const QJsonObject& entry);
   [[nodiscard]] static QJsonObject omakadeEntry(const QString& prefix, const QString& imagePath);
