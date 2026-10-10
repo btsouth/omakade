@@ -32,9 +32,11 @@ public:
 
   [[nodiscard]] bool connected() const;
   [[nodiscard]] bool driving() const { return m_driving; }
-  // Real input from the window system arrives spontaneously; the events this class sends on the
-  // controller's behalf do not. That is what tells the two apart.
+  // Real input from the window system arrives spontaneously. Controller presses are delivered
+  // through the same platform path (so window shortcuts consume them as they do a real key),
+  // and are marked while they are, so they do not count as the keyboard.
   bool eventFilter(QObject* watched, QEvent* event) override;
+  void setDeliveringKeys(bool delivering) { m_deliveringKeys = delivering; }
   [[nodiscard]] QString name() const;
   [[nodiscard]] int controllerCount() const;
   [[nodiscard]] QString primaryGlyph() const;
@@ -90,6 +92,7 @@ private:
   bool m_sdlReady = false;
   bool m_focusNavigation = false;
   bool m_driving = false;
+  bool m_deliveringKeys = false;
   void setDriving(bool driving);
   bool m_inputEnabled = true;
 };

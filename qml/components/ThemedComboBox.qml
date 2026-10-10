@@ -6,6 +6,11 @@ ComboBox {
 
     property real uiScale: 1
     property string availabilityRole: ""
+    // Arrows move between controls; with the list open they move through the list.
+    property bool controllerNavigation: !popup.visible
+    property bool spatialFocusDestination: true
+    Keys.onReturnPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
+    Keys.onEnterPressed: event => { if (!popup.visible) { popup.open(); event.accepted = true } else event.accepted = false }
     implicitWidth: 180 * uiScale
     implicitHeight: 40 * uiScale
     spacing: 8 * uiScale

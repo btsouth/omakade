@@ -102,7 +102,7 @@
 #include <QUrl>
 #include <QWindow>
 #include <QWheelEvent>
-#ifdef OMAKADE_PLATFORM_INPUT_TESTS
+#ifdef OMAKADE_PLATFORM_INPUT
 #include <qpa/qwindowsysteminterface.h>
 #endif
 
@@ -830,8 +830,9 @@ int main(int argc, char* argv[]) {
   const bool couchNavigationTest =
       application.arguments().contains(QStringLiteral("--couch-navigation-test"));
   const bool couchNavigationContract = application.arguments().contains(QStringLiteral("--couch-navigation-contract"));
+  const bool couchNavigationSweep = application.arguments().contains(QStringLiteral("--couch-navigation-sweep"));
   const bool startupNavigationTest = application.arguments().contains(QStringLiteral("--startup-navigation-test"));
-  const bool navigationTest = couchNavigationTest || couchNavigationContract || startupNavigationTest ||
+  const bool navigationTest = couchNavigationTest || couchNavigationContract || couchNavigationSweep || startupNavigationTest ||
                               application.arguments().contains(
                                   QStringLiteral("--controller-navigation-test"));
   const bool ownedLayoutTest =
@@ -997,7 +998,7 @@ int main(int argc, char* argv[]) {
   if (demoMode || stressMode || navigationTest || detailsDirectionTest) {
     games =
         std::make_unique<MockGameModel>(nullptr, stressMode ? stressGameCount : 100,
-                                        uninstalledLayoutTest, statsFixture || repairNavigationFixture || couchNavigationContract);
+                                        uninstalledLayoutTest, statsFixture || repairNavigationFixture || couchNavigationContract || couchNavigationSweep);
     if (consolePortalTest) {
       // A few hundred cartridges behind one portal, next to the demo library.
       consoleFixture = std::make_unique<QTemporaryDir>();
@@ -2154,10 +2155,21 @@ int main(int argc, char* argv[]) {
                        }
                        const auto keyboardModifiers =
                            static_cast<Qt::KeyboardModifiers>(modifiers);
+#ifdef OMAKADE_PLATFORM_INPUT
+                       // The keyboard's path: a press a window shortcut takes is not also
+                       // delivered to the focused control, which made one press move twice.
+                       controller.setDeliveringKeys(true);
+                       QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
+                           target, QEvent::KeyPress, key, keyboardModifiers);
+                       QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
+                           target, QEvent::KeyRelease, key, keyboardModifiers);
+                       controller.setDeliveringKeys(false);
+#else
                        QKeyEvent press(QEvent::KeyPress, key, keyboardModifiers);
                        QKeyEvent release(QEvent::KeyRelease, key, keyboardModifiers);
                        QCoreApplication::sendEvent(target, &press);
                        QCoreApplication::sendEvent(target, &release);
+#endif
                      });
   }
   if (rootWindow != nullptr && startInCouchMode && !gameModeRequest && !renderMode && (!navigationTest || startupNavigationTest) && !smokeTest) {
@@ -2618,7 +2630,7 @@ int main(int argc, char* argv[]) {
               for (int step = 0; step < 8; ++step) {
                 const int key = forward ? Qt::Key_Tab : Qt::Key_Backtab;
                 const auto modifiers = forward ? Qt::NoModifier : Qt::ShiftModifier;
-#ifdef OMAKADE_PLATFORM_INPUT_TESTS
+#ifdef OMAKADE_PLATFORM_INPUT
                 QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
                     quickWindow, QEvent::KeyPress, key, modifiers);
                 QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
@@ -5031,6 +5043,12 @@ int main(int argc, char* argv[]) {
       });
     }
 
+    if (couchNavigationSweep) {
+      QTimer::singleShot(150, quickWindow, [quickWindow, &application, &controller] {
+        application.exit(runCouchNavigationSweep(quickWindow, controller) ? EXIT_SUCCESS : EXIT_FAILURE);
+      });
+    }
+
     if (startupNavigationTest) {
       QTimer::singleShot(500, quickWindow, [quickWindow, &application, &controller] {
         application.exit(runStartupNavigationContract(quickWindow, controller) ? EXIT_SUCCESS : EXIT_FAILURE);
@@ -6020,7 +6038,7 @@ int main(int argc, char* argv[]) {
         };
         (*step)();
       });
-    } else if (navigationTest && !couchNavigationContract && !startupNavigationTest) {
+    } else if (navigationTest && !couchNavigationContract && !couchNavigationSweep && !startupNavigationTest) {
       QTimer::singleShot(150, quickWindow, [quickWindow, &application, &controller, ownedLayoutTest] {
         auto fail = [&application](const QString& message) {
           qCritical().noquote() << message;

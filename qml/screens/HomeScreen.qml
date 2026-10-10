@@ -397,20 +397,28 @@ FocusScope {
             font.family: Theme.fontFamily
             font.pixelSize: UiMetrics.supporting * root.scaleFactor
         }
+        // Paging to the end disables the button just pressed; focus moves to the other one
+        // rather than disappearing with it.
+        function pageBy(direction, pressed, other) {
+            pager.shelf.page(direction)
+            if (!pressed.enabled && other.enabled) other.forceActiveFocus(Qt.TabFocusReason)
+        }
         GlassButton {
+            id: previousPage
             compact: true
             text: "PREVIOUS"
             enabled: pager.shelf && pager.shelf.contentX > 1
             Accessible.name: "Previous games in shelf"
-            onClicked: pager.shelf.page(-1)
+            onClicked: pager.pageBy(-1, previousPage, nextPage)
             onActiveFocusChanged: if (activeFocus) root.reveal(this)
         }
         GlassButton {
+            id: nextPage
             compact: true
             text: "NEXT"
             enabled: pager.shelf && pager.shelf.contentX < pager.shelf.contentWidth - pager.shelf.width - 1
             Accessible.name: "Next games in shelf"
-            onClicked: pager.shelf.page(1)
+            onClicked: pager.pageBy(1, nextPage, previousPage)
             onActiveFocusChanged: if (activeFocus) root.reveal(this)
         }
     }
@@ -437,7 +445,8 @@ FocusScope {
             id: openButton
             objectName: "homeTile-" + root.focusKey(tile.game)
             property string homeIdentity: root.focusKey(tile.game)
-            property Item controllerDownTarget: tileAction
+            // X runs the card's action, so Down and Up stay free to move between shelves.
+            function secondaryAction() { tileAction.clicked() }
             anchors.fill: parent
             focusPolicy: Qt.StrongFocus
             Accessible.name: tile.game.title + (tile.game.available ? "" : ", unavailable")
@@ -524,9 +533,6 @@ FocusScope {
                     property string homeIdentity: root.focusKey(tile.game)
                     objectName: "homeTileAction-" + root.focusKey(tile.game)
                     property Item controllerUpTarget: openButton
-                    property Item controllerDownTarget: tile.shelf && tile.shelf.nextShelf
-                        && tile.shelf.nextShelf.count > 0 && tile.shelf.nextShelf.itemAt(0)
-                            ? tile.shelf.nextShelf.itemAt(0).openControl : null
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     anchors.margins: 6
@@ -536,7 +542,8 @@ FocusScope {
                     compact: true
                     displayScale: tile.buttonScale
                     maximumLabelWidth: Math.max(30, width - 24)
-                    text: tile.queued ? "QUEUE ACTIONS" : "+ UP NEXT"
+                    text: (Controller.connected ? Controller.favoriteGlyph + "  " : "")
+                          + (tile.queued ? "QUEUE ACTIONS" : "+ UP NEXT")
                     Accessible.name: text + " for " + tile.game.title
                     onActiveFocusChanged: if (activeFocus) {
                         root.focusedIdentity = root.focusKey(tile.game)
@@ -589,14 +596,13 @@ FocusScope {
             visible: root.couchMode
             Text { text: "HOME"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 25 * root.scaleFactor }
             Item { Layout.fillWidth: true }
-            Flow {
-                Layout.preferredWidth: Math.min(410, root.width - 160, implicitWidth)
-                Layout.preferredHeight: implicitHeight
+            // One row, so Left and Right reach every button.
+            Row {
                 spacing: 6
                 GlassButton { id: libraryButton; objectName: "homeLibraryButton"; text: "LIBRARY"; compact: true; onActiveFocusChanged: if (activeFocus) root.focusedIdentity = ""; onClicked: root.libraryRequested() }
-                GlassButton { text: "SEARCH"; compact: true; onClicked: root.Window.window.openLibrarySearch() }
-                GlassButton { text: "SETTINGS"; compact: true; onClicked: root.Window.window.diagnosticsOpen = true }
-                GlassButton { text: "DESKTOP"; compact: true; onClicked: root.Window.window.setCouchMode(false) }
+                GlassButton { objectName: "homeCouchSearchButton"; text: "SEARCH"; compact: true; onClicked: root.Window.window.openLibrarySearch() }
+                GlassButton { objectName: "homeCouchSettingsButton"; text: "SETTINGS"; compact: true; onClicked: root.Window.window.diagnosticsOpen = true }
+                GlassButton { objectName: "homeCouchDesktopButton"; text: "DESKTOP"; compact: true; onClicked: root.Window.window.setCouchMode(false) }
             }
         }
         Flickable {

@@ -174,6 +174,20 @@ foreach(size IN ITEMS 900x700 1280x720 1920x1080 2560x1080 3840x2160)
   )
 endforeach()
 
+# Every direction from every control on each couch screen, and Back one screen at a time.
+foreach(size IN ITEMS 900x700 1280x720 1920x1080 3840x2160)
+  add_test(NAME omakade_couch_navigation_sweep_${size}
+    COMMAND omakade --couch --couch-navigation-sweep --render-size=${size} --reduced-motion
+  )
+  add_test(NAME omakade_desktop_navigation_sweep_${size}
+    COMMAND omakade --couch-navigation-sweep --render-size=${size} --reduced-motion
+  )
+  set_tests_properties(omakade_couch_navigation_sweep_${size} omakade_desktop_navigation_sweep_${size} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 300
+  )
+endforeach()
+
 foreach(layout IN ITEMS desktop couch-detail couch-grid)
   foreach(input IN ITEMS keyboard controller)
     foreach(state IN ITEMS populated empty delayed)

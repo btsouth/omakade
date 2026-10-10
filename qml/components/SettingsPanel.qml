@@ -24,6 +24,13 @@ import QtQuick.Layouts
             }
         }
         component ConnectionButton: WrappingButton { readonly property bool connectionStatusButton: true }
+        // Left from a page control with nothing beside it goes back to the page's entry in
+        // the section list, wherever the page is scrolled.
+        function navigateFallback(current, key) {
+            if (key !== Qt.Key_Left || !sectionNavigation.visible || !host.isWithin(current, settingsScroll))
+                return false
+            return settingsOverlay.focusCurrentSection()
+        }
         function reveal(item) {
             if (host.isWithin(item, settingsScroll)) host.revealInScrollView(settingsScroll, item)
             else if (host.isWithin(item, categoryList)) host.revealInScrollView(categoryList, item)
@@ -92,7 +99,23 @@ import QtQuick.Layouts
             Qt.callLater(function() {
                 settingsScroll.contentItem.contentY = 0
                 host.focusWithin(settingsScroll, true)
+                // A page with nothing to focus (or whose controls are all hidden) leaves focus
+                // on its entry in the section list instead of a control from the last page.
+                const current = host.activeFocusItem
+                if (!current || !current.visible || !host.isWithin(current, settingsOverlay))
+                    settingsOverlay.focusCurrentSection()
             })
+        }
+        function focusCurrentSection() {
+            for (let index = 0; index < sectionButtons.count; ++index) {
+                const button = sectionButtons.itemAt(index)
+                if (button && button.visible && button.modelData.section === settingsOverlay.section) {
+                    button.forceActiveFocus(Qt.TabFocusReason)
+                    return true
+                }
+            }
+            if (compactSections.visible) { compactSections.forceActiveFocus(Qt.TabFocusReason); return true }
+            return false
         }
         function back() {
             if (categoriesOpen) { categoriesOpen = false; compactSections.forceActiveFocus(); return }
@@ -159,6 +182,7 @@ import QtQuick.Layouts
                 width: 190 * settingsPanel.layoutScale
                 spacing: 8
                 Repeater {
+                    id: sectionButtons
                     model: settingsOverlay.sections
                     WrappingButton {
                         required property int index
@@ -1440,8 +1464,6 @@ import QtQuick.Layouts
                     objectName: "gameModeDisplayButton"
                     uiScale: settingsPanel.uiScale
                     Layout.fillWidth: true
-                    property bool controllerNavigation: false
-                    property bool spatialFocusDestination: true
                     availabilityRole: "available"
                     model: GameMode.displayOptions
                     textRole: "label"
@@ -1469,8 +1491,6 @@ import QtQuick.Layouts
                     objectName: "gameModeSoundButton"
                     uiScale: settingsPanel.uiScale
                     Layout.fillWidth: true
-                    property bool controllerNavigation: false
-                    property bool spatialFocusDestination: true
                     availabilityRole: "available"
                     model: GameMode.soundOptions
                     textRole: "label"

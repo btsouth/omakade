@@ -23,12 +23,12 @@ ColumnLayout {
         id: sizeSlider
         objectName: root.couch ? "couchCoverSizeSlider" : "coverSizeSlider"
         property bool controllerNavigation: false
+        property bool controllerVerticalNavigation: true
         Layout.fillWidth: true
         from: 60; to: 160; stepSize: 10; value: root.percent
         snapMode: Slider.SnapAlways
         Accessible.name: root.couch ? "Couch grid cover size" : "Library cover size"
         onMoved: root.apply(value)
-        Keys.onUpPressed: event => { if (resetSize.enabled) resetSize.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }
         Keys.onReturnPressed: root.editingFinished()
         Keys.onEnterPressed: root.editingFinished()
         background: Rectangle {

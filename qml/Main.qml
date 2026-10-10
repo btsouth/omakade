@@ -232,10 +232,14 @@ ApplicationWindow {
         return null
     }
 
-    function arrowNavigationEnabled() {
+    // A control that adjusts a value with Left and Right (a slider) sets
+    // controllerVerticalNavigation, so Up and Down still move between controls.
+    function arrowNavigationEnabled(key) {
         const current = root.activeFocusItem
-        return root.navigationContainer() !== null
-                && (!current || current.controllerNavigation !== false)
+        if (root.navigationContainer() === null) return false
+        if (!current || current.controllerNavigation !== false) return true
+        return current.controllerVerticalNavigation === true
+                && (key === Qt.Key_Up || key === Qt.Key_Down)
     }
 
     function focusWithin(container, forward, preferred) {
@@ -264,10 +268,23 @@ ApplicationWindow {
         }
     }
 
+    // The same press can reach both the window's arrow shortcut and a panel's key handler
+    // below. Only the first moves focus; otherwise one press moved two steps.
+    property bool arrowHandled: false
+    function arrowShortcut(key) {
+        root.arrowHandled = true
+        Qt.callLater(function() { root.arrowHandled = false })
+        root.focusSpatial(root.navigationContainer(), key)
+    }
+
     // Fallback for arrow keys that reach an overlay loader directly.
     function handleArrowKey(container, event) {
         if (event.key !== Qt.Key_Up && event.key !== Qt.Key_Down
                 && event.key !== Qt.Key_Left && event.key !== Qt.Key_Right) {
+            return
+        }
+        if (root.arrowHandled) {
+            event.accepted = true
             return
         }
         if (root.activeFocusItem
@@ -304,6 +321,7 @@ ApplicationWindow {
         }
         if (explicitTarget && root.isWithin(explicitTarget, container)
                 && explicitTarget.visible && explicitTarget.enabled) {
+            root.leaveScrollAreas(current, explicitTarget, key)
             explicitTarget.forceActiveFocus(Qt.TabFocusReason)
             root.revealNavigationItem(container, explicitTarget)
             return true
@@ -326,11 +344,24 @@ ApplicationWindow {
         let bestScore = Number.MAX_VALUE
         let aside = null
         let asideScore = Number.MAX_VALUE
+        // Anything further out of line, but on the same scrolling page. Taken only when the
+        // page has nothing nearer that way, so a control in a corner of a narrow page is never
+        // left out of reach.
+        let far = null
+        let farScore = Number.MAX_VALUE
         // How far out of line a candidate may sit when nothing overlaps. Scaled by the current
         // item so a tall card tolerates more than a compact button, and floored so small
         // controls in a row can still reach each other.
         const vertical = key === Qt.Key_Up || key === Qt.Key_Down
         const sideways = Math.max(64, current.width * 0.75)
+        // While the page has more in this direction, Up and Down stay on it and scroll it.
+        // A toolbar that does not scroll can sit nearer than a part of the page scrolled out
+        // of view, and taking it skipped that part of the page.
+        let page = null
+        for (let item = current.parent; vertical && item && item !== container; item = item.parent) {
+            if (item.contentY !== undefined && item.contentHeight > item.height + 1) { page = item; break }
+        }
+        const offPage = page ? 1000000 : 0
         let candidate = current.nextItemInFocusChain(true)
         for (let attempts = 0; candidate && candidate !== current
              && attempts < 300; ++attempts) {
@@ -341,7 +372,8 @@ ApplicationWindow {
                     && candidate.enabled && candidate.activeFocusOnTab
                     && !root.isWithin(current, candidate)
                     && (candidate["controllerNavigation"] !== false
-                        || candidate["spatialFocusDestination"] === true)) {
+                        || candidate["spatialFocusDestination"] === true
+                        || candidate["controllerVerticalNavigation"] === true)) {
                 const center = candidate.mapToItem(container, candidate.width / 2,
                                                    candidate.height / 2)
                 const dx = center.x - currentCenter.x
@@ -376,6 +408,7 @@ ApplicationWindow {
                 }
                 if (primary >= -1) {
                     const score = Math.max(0, primary) + crossGap * 2.5 + cross * 0.01
+                                + (page && !root.isWithin(candidate, page) ? offPage : 0)
                     if (crossGap <= 0) {
                         if (score < bestScore) {
                             best = candidate
@@ -387,6 +420,9 @@ ApplicationWindow {
                         // row is never what is meant by pressing left or right.
                         aside = candidate
                         asideScore = score
+                    } else if (vertical && page && root.isWithin(candidate, page) && score < farScore) {
+                        far = candidate
+                        farScore = score
                     }
                 }
             }
@@ -395,12 +431,18 @@ ApplicationWindow {
         // Staying put is the right answer when nothing is really in that direction. Moving
         // somewhere far away because it was the only thing in the half plane is what made this
         // feel random.
-        const chosen = best !== null ? best : aside
+        const onPage = score => !page || score < offPage
+        const chosen = best !== null && onPage(bestScore) ? best
+                     : aside !== null && onPage(asideScore) ? aside
+                     : far !== null ? far
+                     : best !== null ? best : aside
         if (chosen) {
+            root.leaveScrollAreas(current, chosen, key)
             chosen.forceActiveFocus(Qt.TabFocusReason)
             root.revealNavigationItem(container, chosen)
             return true
         }
+        if (container === settingsOverlay && settingsOverlay.navigateFallback(current, key)) return true
         return false
     }
 
@@ -485,6 +527,20 @@ ApplicationWindow {
         }
     }
 
+    // Moving up out of a scrolled page onto something above it (a toolbar, a header) shows
+    // the page from its top again, and down out of it shows its end, so the page reads as
+    // it does when you arrive.
+    function leaveScrollAreas(from, to, key) {
+        if (key !== Qt.Key_Up && key !== Qt.Key_Down) return
+        for (let item = from ? from.parent : null; item; item = item.parent) {
+            if (item.contentY === undefined || item.originY === undefined
+                    || item.contentHeight <= item.height + 1 || root.isWithin(to, item)) continue
+            if (typeof item.stopWheelScroll === "function") item.stopWheelScroll("navigation")
+            item.contentY = key === Qt.Key_Up ? item.originY
+                                              : item.originY + item.contentHeight - item.height
+        }
+    }
+
     function revealNavigationItem(container, item) {
         if (root.gameModeNavigationRestoring) return
         if (root.activeActionMenu && container === root.activeActionMenu.contentItem) {
@@ -507,14 +563,14 @@ ApplicationWindow {
         }
     }
 
+    // Checked once the closing panel's change has settled: the screen under it (Home under
+    // Settings) is still hidden at the moment the panel closes.
     function restoreFocus(item) {
-        if (item && item.visible && item.enabled) {
-            Qt.callLater(item.forceActiveFocus)
-        } else if (detailOpen && detailsLoader.item) {
-            Qt.callLater(function() { root.focusWithin(detailsLoader.item, true) })
-        } else {
-            Qt.callLater(root.focusLibrary)
-        }
+        Qt.callLater(function() {
+            if (item && item.visible && item.enabled) item.forceActiveFocus()
+            else if (detailOpen && detailsLoader.item) root.focusWithin(detailsLoader.item, true)
+            else root.focusLibrary()
+        })
     }
 
     // Whether typing needs help from the app rather than a keyboard on the desk. Couch mode
@@ -1583,23 +1639,23 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Up"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled())
-        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Up)
+        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Up))
+        onActivated: root.arrowShortcut(Qt.Key_Up)
     }
     Shortcut {
         sequence: "Down"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled())
-        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Down)
+        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Down))
+        onActivated: root.arrowShortcut(Qt.Key_Down)
     }
     Shortcut {
         sequence: "Left"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled())
-        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Left)
+        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Left))
+        onActivated: root.arrowShortcut(Qt.Key_Left)
     }
     Shortcut {
         sequence: "Right"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled())
-        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Right)
+        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Right))
+        onActivated: root.arrowShortcut(Qt.Key_Right)
     }
     Shortcut {
         sequence: "Escape"
@@ -1607,7 +1663,11 @@ ApplicationWindow {
         // child. Every shortcut here stands aside while it is up; it handles its own keys.
         enabled: !gameModeOverlay.visible
         onActivated: {
-            if (activeActionMenu && activeActionMenu.opened) {
+            const focusedPopup = root.activeFocusItem ? root.activeFocusItem.popup : null
+            if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
+                // An open dropdown closes first; the panel it sits in stays.
+                focusedPopup.close()
+            } else if (activeActionMenu && activeActionMenu.opened) {
                 activeActionMenu.close()
             } else if (coverSizePopup.opened) {
                 coverSizePopup.close()
@@ -3663,6 +3723,10 @@ ApplicationWindow {
                            : couchLibraryView.searchOpen ? couchLibraryView.searchKeyboard : null
             if (keyboard) { keyboard.activateKey(40); return }
             const focused = root.activeFocusItem
+            if (focused && typeof focused.secondaryAction === "function" && focused.visible) {
+                focused.secondaryAction()
+                return
+            }
             if (focused && focused.sourceName !== undefined && focused.visible) {
                 // On a source chip the favorite button means "add or remove this source".
                 focused.secondaryClicked()

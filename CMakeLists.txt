@@ -375,9 +375,10 @@ qt_add_executable(omakade
   src/app/IdleInhibitor.h
 )
 if(TARGET Qt6::GuiPrivate)
-  # Input fixtures use Qt's platform path so window shortcuts receive real key events.
+  # Controller presses and input fixtures use Qt's platform path, so a key a window
+  # shortcut handles is consumed there, as it is for a real keyboard.
   target_link_libraries(omakade PRIVATE Qt6::GuiPrivate)
-  target_compile_definitions(omakade PRIVATE OMAKADE_PLATFORM_INPUT_TESTS=1)
+  target_compile_definitions(omakade PRIVATE OMAKADE_PLATFORM_INPUT=1)
 endif()
 if(OMAKADE_IDLE_INHIBIT)
   target_sources(omakade PRIVATE "${OMAKADE_IDLE_INHIBIT_HEADER}" "${OMAKADE_IDLE_INHIBIT_SOURCE}")

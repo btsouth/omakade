@@ -378,9 +378,9 @@ void ControllerInput::setDriving(bool driving) {
 
 bool ControllerInput::eventFilter(QObject* watched, QEvent* event) {
   // Only genuine input from the window system counts as the person reaching for something else.
-  // The key events this class sends on the controller's behalf are not spontaneous, so they do
-  // not put the controller down.
-  if (event->spontaneous()) {
+  // Key events sent on the controller's behalf are either not spontaneous or marked while they
+  // are delivered, so they do not put the controller down.
+  if (event->spontaneous() && !m_deliveringKeys) {
     switch (event->type()) {
     case QEvent::KeyPress:
     case QEvent::MouseButtonPress:
