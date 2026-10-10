@@ -203,10 +203,9 @@ QString HyprlandGameModeCompositor::openScript(const QString& workspace, const Q
     return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-open\", %1, enabled = false })")
         .arg(match);
   // Focusing the output first makes the workspace open there, not wherever focus was.
-  // A float rule is read at the first commit, so Hyprland sends no tiled size prediction
-  // (half the screen beside an open window) and the first frame is drawn at full size.
+  // Never float the root: a floating library that leaves fullscreen draws over the game.
   return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-open\", %1, workspace = %2, "
-                        "float = true, fullscreen = true, no_anim = true })\n"
+                        "fullscreen = true, no_anim = true })\n"
                         "hl.dispatch(hl.dsp.focus({ monitor = %3 }))")
       .arg(match, luaString(workspace), luaString(output));
 }
