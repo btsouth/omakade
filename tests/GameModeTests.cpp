@@ -1439,8 +1439,7 @@ private slots:
     // Lua rejects "\." in a string: the regex's backslashes must be escaped.
     QVERIFY(open.contains(QStringLiteral("class = \"^io\\\\.github\\\\.tsouth89\\\\.Omakade$\"")));
     QVERIFY(!open.contains(QStringLiteral("\"^io\\.github")));
-    QVERIFY(open.contains("workspace = \"name:omakade\", fullscreen = true, no_anim = true"));
-    QVERIFY(!open.contains("float"));
+    QVERIFY(open.contains("workspace = \"name:omakade\", float = false, fullscreen = true, no_anim = true"));
     QVERIFY(open.endsWith(QStringLiteral("hl.dispatch(hl.dsp.focus({ monitor = \"%1\" }))").arg(kTv)));
     QVERIFY(HyprlandGameModeCompositor::openScript({}, {}).contains("enabled = false"));
   }

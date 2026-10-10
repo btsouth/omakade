@@ -204,8 +204,10 @@ QString HyprlandGameModeCompositor::openScript(const QString& workspace, const Q
         .arg(match);
   // Focusing the output first makes the workspace open there, not wherever focus was.
   // Never float the root: a floating library that leaves fullscreen draws over the game.
+  // Say so outright: re-registering a named rule keeps effects it no longer lists, so a
+  // rule registered by an earlier build would otherwise keep floating it.
   return QStringLiteral("hl.window_rule({ name = \"omakade-game-mode-open\", %1, workspace = %2, "
-                        "fullscreen = true, no_anim = true })\n"
+                        "float = false, fullscreen = true, no_anim = true })\n"
                         "hl.dispatch(hl.dsp.focus({ monitor = %3 }))")
       .arg(match, luaString(workspace), luaString(output));
 }
