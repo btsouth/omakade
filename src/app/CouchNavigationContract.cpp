@@ -49,7 +49,9 @@ bool within(QQuickItem* item, QQuickItem* container) {
 
 class VirtualPad {
 public:
-  explicit VirtualPad(ControllerInput& controller, bool startController = true) {
+  explicit VirtualPad(ControllerInput& controller, bool startController = true,
+                      Uint16 vendor = 0xffff, Uint16 product = 0xffff,
+                      const char* padName = "Omakade navigation regression controller") {
     const int previousCount = controller.controllerCount();
     if (startController) controller.start();
     require(until([] { return SDL_WasInit(SDL_INIT_GAMEPAD) != 0; }),
@@ -61,10 +63,10 @@ public:
     desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
     desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_COUNT) - 1;
     desc.button_mask = (1u << SDL_GAMEPAD_BUTTON_COUNT) - 1;
-    desc.name = "Omakade navigation regression controller";
-    // Isolated test runs only allow this VID/PID, so physical pads stay out of the test.
-    desc.vendor_id = 0xffff;
-    desc.product_id = 0xffff;
+    desc.name = padName;
+    // Isolated test runs only allow this VID/PID and Steam's, so physical pads stay out of the test.
+    desc.vendor_id = vendor;
+    desc.product_id = product;
     id = SDL_AttachVirtualJoystick(&desc);
     require(id != 0, QString::fromUtf8(SDL_GetError()));
     joystick = SDL_OpenJoystick(id);
@@ -77,10 +79,10 @@ public:
     if (id) SDL_DetachVirtualJoystick(id);
   }
   void button(SDL_GamepadButton button, int holdMs = 20) {
-    require(SDL_SetJoystickVirtualButton(joystick, button, true), QString::fromUtf8(SDL_GetError()));
+    setButton(button, true);
     SDL_UpdateJoysticks();
     settle(holdMs);
-    require(SDL_SetJoystickVirtualButton(joystick, button, false), QString::fromUtf8(SDL_GetError()));
+    setButton(button, false);
     SDL_UpdateJoysticks();
     settle();
   }
@@ -94,14 +96,24 @@ public:
     const int axis = key == Qt::Key_Left || key == Qt::Key_Right
                          ? SDL_GAMEPAD_AXIS_LEFTX : SDL_GAMEPAD_AXIS_LEFTY;
     const Sint16 value = key == Qt::Key_Left || key == Qt::Key_Up ? -30000 : 30000;
-    require(SDL_SetJoystickVirtualAxis(joystick, axis, value), QString::fromUtf8(SDL_GetError()));
+    setAxis(axis, value);
     SDL_UpdateJoysticks();
     settle();
-    require(SDL_SetJoystickVirtualAxis(joystick, axis, 0), QString::fromUtf8(SDL_GetError()));
+    setAxis(axis, 0);
     SDL_UpdateJoysticks();
     settle();
   }
+  // A pad that repeats every press of this one, as Steam Input's virtual pad does.
+  VirtualPad* echo = nullptr;
 private:
+  void setButton(SDL_GamepadButton button, bool down) {
+    require(SDL_SetJoystickVirtualButton(joystick, button, down), QString::fromUtf8(SDL_GetError()));
+    if (echo) echo->setButton(button, down);
+  }
+  void setAxis(int axis, Sint16 value) {
+    require(SDL_SetJoystickVirtualAxis(joystick, axis, value), QString::fromUtf8(SDL_GetError()));
+    if (echo) echo->setAxis(axis, value);
+  }
   SDL_JoystickID id = 0;
   SDL_Joystick* joystick = nullptr;
 };
@@ -739,6 +751,30 @@ bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) 
       return !window->property("diagnosticsOpen").toBool() && window->property("homeOpen").toBool() &&
              homeSettings->hasActiveFocus();
     });
+    // Steam Input repeats every press on a virtual pad of its own. Each press still counts once.
+    {
+      VirtualPad steam(controller, false, 0x28de, 0x11ff, "Microsoft X-Box 360 pad 0");
+      homeSettings->forceActiveFocus();
+      pad.direction(Qt::Key_Right, false);
+      QQuickItem* single = window->activeFocusItem();
+      pad.echo = &steam;
+      homeSettings->forceActiveFocus();
+      pad.direction(Qt::Key_Right, false);
+      if (window->activeFocusItem() != single)
+        sweep.failures << QStringLiteral("Right with Steam Input running went to %1, not %2")
+                              .arg(describe(window->activeFocusItem()), describe(single));
+      homeSettings->forceActiveFocus();
+      pad.button(SDL_GAMEPAD_BUTTON_SOUTH);
+      require(until([&] { return window->property("diagnosticsOpen").toBool(); }),
+              QStringLiteral("Home SETTINGS did not open Settings with Steam Input running"));
+      back(QStringLiteral("Settings opened from Home with Steam Input running"), [&] {
+        return !window->property("diagnosticsOpen").toBool() && window->property("homeOpen").toBool() &&
+               homeSettings->hasActiveFocus();
+      });
+      pad.echo = nullptr;
+    }
+    require(until([&] { return controller.controllerCount() == 1; }),
+            QStringLiteral("Steam Input's pad was not disconnected"));
     // From wherever focus is in Settings, Back closes only Settings.
     for (const QVariant& entry : sections) {
       const auto page = entry.toMap();

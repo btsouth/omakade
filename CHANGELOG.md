@@ -14,6 +14,10 @@
 - Settings: Back from Settings opened on Home returns to Home. Sliders change only with
   Left and Right, dropdowns no longer trap the controller, and Left from a page goes to
   the section list.
+- With Steam running, each controller press counted twice, because Steam Input adds a
+  copy of the pad. B in Settings on Home went past Home to the library. Omakade now
+  ignores Steam's copy while the real pad is connected.
+- In Game Mode, DESKTOP on Home goes straight to the desktop, as holding Home does.
 
 [Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.1)
 

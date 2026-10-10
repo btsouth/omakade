@@ -150,7 +150,7 @@ void ControllerInput::pollEvents() {
       closeController(event.gdevice.which);
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-      if (m_inputEnabled) {
+      if (m_inputEnabled && !mirrorsAnotherController(event.gbutton.which)) {
         if (m_activeController != event.gbutton.which) {
           m_activeController = event.gbutton.which;
           emit controllerChanged();
@@ -159,12 +159,12 @@ void ControllerInput::pollEvents() {
       }
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
-      if (m_inputEnabled) {
+      if (m_inputEnabled && !mirrorsAnotherController(event.gbutton.which)) {
         handleButtonReleased(event.gbutton.button);
       }
       break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-      if (!m_inputEnabled) {
+      if (!m_inputEnabled || mirrorsAnotherController(event.gaxis.which)) {
         break;
       }
       if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) {
@@ -222,6 +222,21 @@ void ControllerInput::closeController(SDL_JoystickID id) {
     m_repeatTimer.setInterval(kInitialRepeatDelayMs);
     emit controllerChanged();
   }
+}
+
+// Steam Input takes over a pad by adding a virtual one that repeats every press, so with
+// both open each press would arrive twice. The virtual pad only counts while it is the only
+// pad, as with a controller Steam reads directly.
+bool ControllerInput::mirrorsAnotherController(SDL_JoystickID id) const {
+  const auto steamMirror = [](SDL_Gamepad* pad) {
+    return SDL_GetGamepadVendor(pad) == 0x28de && SDL_GetGamepadProduct(pad) == 0x11ff;
+  };
+  SDL_Gamepad* pad = m_controllers.value(id);
+  if (pad == nullptr || !steamMirror(pad)) return false;
+  for (SDL_Gamepad* other : m_controllers) {
+    if (other != pad && !steamMirror(other)) return true;
+  }
+  return false;
 }
 
 void ControllerInput::handleButtonPressed(int button) {

@@ -73,6 +73,7 @@ private:
   void pollEvents();
   void openAvailableControllers();
   void closeController(SDL_JoystickID id);
+  [[nodiscard]] bool mirrorsAnotherController(SDL_JoystickID id) const;
   void handleButtonPressed(int button);
   [[nodiscard]] bool nintendoFaceButtons() const;
   void handleButtonReleased(int button);

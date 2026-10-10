@@ -866,9 +866,9 @@ int main(int argc, char* argv[]) {
   const bool isolatedTest = smokeTest || renderMode || navigationTest || detailsDirectionTest ||
                             consolePortalTest || benchmarkMode || stressMode;
   if (isolatedTest) {
-    // Test runs drive SDL's virtual pad. Hide physical gamepads so a controller
-    // plugged into a developer machine cannot take focus or change controller counts.
-    qputenv("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT", "0xffff/0xffff");
+    // Test runs drive SDL's virtual pads, one posing as Steam Input's. Hide physical gamepads
+    // so a controller plugged into a developer machine cannot take focus or change counts.
+    qputenv("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT", "0xffff/0xffff,0x28de/0x11ff");
   }
   const bool reducedMotionRequest =
       application.arguments().contains(QStringLiteral("--reduced-motion"));
@@ -7893,6 +7893,30 @@ int main(int argc, char* argv[]) {
         gameMode.enter();
         if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
           fail(QStringLiteral("Game Mode did not resume after Home DESKTOP"));
+          return;
+        }
+        // B in Settings opened from Home closes only Settings, in Game Mode as on the desktop.
+        rootWindow->setProperty("homeOpen", true);
+        auto* homeSettings = rootWindow->findChild<QQuickItem*>(QStringLiteral("homeCouchSettingsButton"));
+        if (!homeSettings || !settled([homeSettings] { return homeSettings->isVisible(); })) {
+          fail(QStringLiteral("Home SETTINGS is not available in Game Mode"));
+          return;
+        }
+        QMetaObject::invokeMethod(homeSettings, "clicked");
+        if (!settled([rootWindow] { return rootWindow->property("diagnosticsOpen").toBool(); })) {
+          fail(QStringLiteral("Home SETTINGS did not open Settings in Game Mode"));
+          return;
+        }
+        QCoreApplication::processEvents();
+        controller.keyRequested(Qt::Key_Escape, Qt::NoModifier);
+        QCoreApplication::processEvents();
+        if (!settled([rootWindow] { return !rootWindow->property("diagnosticsOpen").toBool(); }) ||
+            !rootWindow->property("homeOpen").toBool()) {
+          fail(QStringLiteral("B in Settings from Home left Home in Game Mode (settings=%1, home=%2, focus=%3)")
+                   .arg(rootWindow->property("diagnosticsOpen").toBool())
+                   .arg(rootWindow->property("homeOpen").toBool())
+                   .arg(qobject_cast<QQuickWindow*>(rootWindow)->activeFocusItem()
+                            ? qobject_cast<QQuickWindow*>(rootWindow)->activeFocusItem()->objectName() : QString{}));
           return;
         }
         rootWindow->setProperty("homeOpen", false);
