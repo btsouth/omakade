@@ -9,3 +9,12 @@ exec = "usr/bin/omakade"
 [linux.aarch64]
 asset = "omakade-{version}-1-aarch64.pkg.tar.zst"
 exec = "usr/bin/omakade"
+
+# OmaStore installs into $HOME, so it writes its own unit for the session recorder.
+[services.sessiond]
+type = "systemd-user"
+unit = "omakade-sessiond.service"
+exec = "usr/bin/omakade-sessiond"
+enable = true
+start = true
+restart = "on-failure"
