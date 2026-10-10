@@ -30,6 +30,7 @@
 #include <QSettings>
 #include <QSaveFile>
 #include <QElapsedTimer>
+#include <QThread>
 #include <csignal>
 #include <fcntl.h>
 #include <linux/input.h>
@@ -437,10 +438,35 @@ void InGameGuide::setContext(const QJsonObject& context) {
 
 void InGameGuide::reopen(const QString& node) {
   if (showing() || !hasGame() || !usable()) return;
-  const auto window = gameWindow(m_session);
-  const auto open = [this, node] { if (!showing() && hasGame()) toggle(node, false); };
-  if (window.valid() && m_compositor) { m_compositor->focusWindow(window.address); open(); }
-  else restoreWindow([open](bool) { open(); });
+  const auto address = gameWindow(m_session).address;
+  if (!HyprlandGameModeCompositor::validAddress(address)) return;
+  // The library is mapped again and takes focus some time after the resume. Keep putting the
+  // game in front, the way closing the guide does, until Hyprland reports it active and it
+  // stays there; only then open the guide over it.
+  auto* watcher = new QFutureWatcher<int>(this);
+  connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher, node] {
+    const int elapsed = watcher->result(); watcher->deleteLater();
+    if (elapsed < 0) qWarning("Guide: the game did not stay in front of the library");
+    else qInfo("Guide: game in front after %d ms", elapsed);
+    if (!showing() && hasGame()) toggle(node, false);
+  });
+  watcher->setFuture(QtConcurrent::run([address, environment = m_environment] {
+    const auto hyprctl = [&environment](const QStringList& arguments) {
+      QProcess process; process.setProcessEnvironment(environment); process.start("hyprctl", arguments);
+      if (!process.waitForFinished(1000)) { process.kill(); process.waitForFinished(); return QByteArray(); }
+      return process.readAllStandardOutput();
+    };
+    QElapsedTimer clock; clock.start();
+    for (int stable = 0; clock.elapsed() < 3000; QThread::msleep(100)) {
+      if (QJsonDocument::fromJson(hyprctl({"-j", "activewindow"})).object().value("address").toString() == address) {
+        if (++stable >= 3) return int(clock.elapsed());
+        continue;
+      }
+      stable = 0;
+      hyprctl({"eval", "hl.dispatch(hl.dsp.focus({window=" + HyprlandGameModeCompositor::luaString("address:" + address) + "}))"});
+    }
+    return -1;
+  }));
 }
 
 bool InGameGuide::returnPending() const {
