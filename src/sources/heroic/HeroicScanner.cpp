@@ -266,6 +266,12 @@ void scanOwnedLibrary(const QString& root, bool flatpak, const QString& runner,
   }
   const QJsonDocument document = readJson(path, result);
   if (document.isNull()) return;
+  // Heroic can leave {} for an uninitialized store. Keep cached ownership without
+  // blocking valid installed inventories from other stores.
+  if (document.isObject() && document.object().isEmpty()) {
+    result->missingLibraries[root].append(runner);
+    return;
+  }
   if (!document.isObject() || !document.object().value(field).isArray()) {
     result->incomplete = true;
     result->warnings.append(QStringLiteral("Invalid Heroic library: %1").arg(path));
