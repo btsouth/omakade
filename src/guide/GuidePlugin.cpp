@@ -1,4 +1,8 @@
 #include "guide/GuidePlugin.h"
+#include <QDateTime>
+#include <QSaveFile>
+#include <QDirIterator>
+#include <QCryptographicHash>
 
 #include <QDir>
 #include <QFile>
@@ -41,6 +45,23 @@ Paths defaultPaths(const QString& configRoot, const QString& stateRoot, const QS
   return paths;
 }
 
+static QByteArray fingerprint(const QString& directory) {
+  // Every file the shell loads: a changed size or time means a different plugin.
+  QCryptographicHash hash(QCryptographicHash::Sha1);
+  QDirIterator files(directory, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories |
+                     QDirIterator::FollowSymlinks);
+  QStringList entries;
+  while (files.hasNext()) {
+    const QFileInfo file(files.next());
+    if (file.path().contains(QStringLiteral("__pycache__"))) continue;
+    entries.append(QStringLiteral("%1 %2 %3").arg(file.filePath().mid(directory.size()))
+                       .arg(file.size()).arg(file.lastModified().toMSecsSinceEpoch()));
+  }
+  entries.sort();
+  hash.addData(entries.join(QLatin1Char('\n')).toUtf8());
+  return hash.result().toHex();
+}
+
 bool usable(const Paths& paths) {
   if (!QFileInfo::exists(paths.pluginsDir + QLatin1Char('/') + kId + QStringLiteral("/manifest.json"))) return false;
   QFile file(paths.shellConfig);
@@ -62,7 +83,25 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     if (!QFile::link(paths.bundledDir, link)) qWarning("Guide: could not link %s", qPrintable(link));
   }
   if (!QFileInfo::exists(link + QStringLiteral("/manifest.json"))) return false;
-  if (QFileInfo::exists(paths.markerPath)) return usable(paths);
+  // The shell keeps a plugin's QML in memory. After an upgrade it would go on showing the
+  // old guide, so a changed plugin is reloaded once, here, while nothing is playing.
+  const QString loadedPath = paths.markerPath + QStringLiteral(".loaded");
+  const QByteArray current = fingerprint(link);
+  const auto recordLoaded = [&] {
+    QSaveFile loaded(loadedPath);
+    if (loaded.open(QIODevice::WriteOnly) && loaded.write(current + '\n') > 0) loaded.commit();
+  };
+  if (QFileInfo::exists(paths.markerPath)) {
+    if (!usable(paths)) return false;
+    QFile loaded(loadedPath);
+    const QByteArray recorded = loaded.open(QIODevice::ReadOnly) ? loaded.readAll().trimmed() : QByteArray{};
+    if (recorded != current && shellReply(paths, {"shell", "ping"}, environment) == "ok" &&
+        (!calm || calm())) {
+      shellReply(paths, {"shell", "rescanPlugins"}, environment);
+      recordLoaded();
+    }
+    return true;
+  }
 
   // Enabled once. After that, `omarchy plugin disable omakade.guide` stays disabled.
   bool enabled = usable(paths);
@@ -90,6 +129,7 @@ bool ensure(const Paths& paths, const std::shared_ptr<RetryState>& retry,
     QDir().mkpath(QFileInfo(paths.markerPath).absolutePath());
     QFile marker(paths.markerPath);
     if (marker.open(QIODevice::WriteOnly)) marker.write("1\n");
+    if (state->rescanned) recordLoaded(); // That rescan loaded these files.
   }
   return enabled;
 }
