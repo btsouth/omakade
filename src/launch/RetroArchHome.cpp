@@ -16,7 +16,8 @@ namespace RetroArchHome {
 namespace {
 
 const QString kProfilesKey = QStringLiteral("joypad_autoconfig_dir");
-const QString kCommandsKey = QStringLiteral("stdin_cmd_enable");
+const QString kComboKey = QStringLiteral("input_menu_toggle_gamepad_combo");
+const QString kL3R3 = QStringLiteral("2"); // RetroArch's L3 + R3 combo
 const QString kMissing = QStringLiteral("#missing");
 
 bool write(const QString& path, const QByteArray& data) {
@@ -60,7 +61,7 @@ QString quoted(const QString& key, const QString& value) {
 
 // What a launch appended, as RetroArch may have saved it back.
 bool appended(const Paths& paths, const QString& key, const QString& value) {
-  return key == kProfilesKey ? samePath(value, paths.profiles) : value == QStringLiteral("true");
+  return key == kProfilesKey ? samePath(value, paths.profiles) : value == kL3R3;
 }
 
 // The recorded original lines: key, then the line or #missing.
@@ -134,9 +135,26 @@ Paths paths(bool flatpak) {
           QDir(own).exists() ? own : QStringLiteral("/usr/share/libretro/autoconfig")};
 }
 
-QString commandPipe() {
-  return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) +
-         QStringLiteral("/omakade-retroarch-commands");
+QString menuCombo(qint64 pid) {
+  QFile commandLine(QStringLiteral("/proc/%1/cmdline").arg(pid));
+  if (pid <= 0 || !commandLine.open(QIODevice::ReadOnly)) return {};
+  const QByteArray arguments = commandLine.readAll();
+  for (const bool flatpak : {false, true}) {
+    const Paths own = paths(flatpak);
+    if (!arguments.contains(QFile::encodeName(own.override))) continue;
+    // The combo in force: appended, or the user's own, which an append never replaces.
+    QString combo;
+    find(read(own.override), kComboKey, &combo);
+    if (combo.isEmpty()) find(read(own.config), kComboKey, &combo);
+    static const QStringList names{QString{}, QStringLiteral("Down + Y + L1 + R1"), QStringLiteral("L3 + R3"),
+                                   QStringLiteral("L1 + R1 + Start + Select"), QStringLiteral("Start + Select"),
+                                   QStringLiteral("L3 + R1"), QStringLiteral("L1 + R1"), QStringLiteral("Hold Start"),
+                                   QStringLiteral("Hold Select"), QStringLiteral("Down + Select"), QStringLiteral("L2 + R2")};
+    bool number = false;
+    const int index = combo.toInt(&number);
+    return number && index > 0 && index < names.size() ? names.at(index) : QString{};
+  }
+  return {};
 }
 
 QString prepare(const Paths& paths) {
@@ -157,15 +175,19 @@ QString prepare(const Paths& paths) {
   if (!QDir(source).exists() || !copyProfiles(source, paths.profiles)) return {};
   if (!QFileInfo::exists(paths.marker)) {
     QStringList record;
-    for (const QString& key : {kProfilesKey, kCommandsKey}) {
+    for (const QString& key : {kProfilesKey, kComboKey}) {
       const int at = find(lines, key, nullptr);
       record.append(key + QLatin1Char('\t') + (at < 0 ? kMissing : lines.at(at)));
     }
     if (!write(paths.marker, record.join(QLatin1Char('\n')).toUtf8() + '\n')) return {};
   }
-  if (!write(paths.override, (quoted(kProfilesKey, paths.profiles) + QLatin1Char('\n') +
-                              quoted(kCommandsKey, QStringLiteral("true")) + QLatin1Char('\n')).toUtf8()))
-    return {};
+  // Keep RetroArch's menu on the controller: L3 + R3, unless the user chose a combo.
+  QString combo;
+  find(lines, kComboKey, &combo);
+  QString appendedLines = quoted(kProfilesKey, paths.profiles) + QLatin1Char('\n');
+  if (combo.isEmpty() || combo == QStringLiteral("0") || combo == kL3R3)
+    appendedLines += quoted(kComboKey, kL3R3) + QLatin1Char('\n');
+  if (!write(paths.override, appendedLines.toUtf8())) return {};
   return paths.override;
 }
 

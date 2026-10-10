@@ -193,4 +193,16 @@ Column {
     g: card.g
     anchors.horizontalCenter: parent.horizontalCenter
   }
+
+  // Home opens this card, so RetroArch's own menu moves to a combo.
+  Text {
+    visible: card.g.retroarchCombo !== ""
+    anchors.horizontalCenter: parent.horizontalCenter
+    topPadding: card.g.sized(Style.space(6))
+    textFormat: Text.PlainText
+    text: "RetroArch menu: " + card.g.retroarchCombo
+    color: card.g.quiet
+    font.family: card.g.fontFamily
+    font.pixelSize: card.g.sized(Style.font.body)
+  }
 }

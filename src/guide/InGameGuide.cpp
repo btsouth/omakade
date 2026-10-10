@@ -46,13 +46,6 @@ QString executable(const QString& name) {
   const auto adjacent = QCoreApplication::applicationDirPath() + '/' + name;
   return QFileInfo(adjacent).isExecutable() ? adjacent : QStandardPaths::findExecutable(name);
 }
-// A RetroArch Omakade started reads its commands from Omakade's pipe; that is how the
-// guide opens its menu. RetroArch started some other way gets no button.
-bool readsRetroArchCommands(qint64 pid) {
-  return pid > 0 && QFileInfo(QStringLiteral("/proc/%1/fd/0").arg(pid)).symLinkTarget() ==
-                        RetroArchHome::commandPipe();
-}
-
 QString preferenceKey(const QVariantMap& session) {
   return QString::fromLatin1(session.value("source").toString().toUtf8().toHex()) + '/' +
          QString::fromLatin1(session.value("path").toString().toUtf8().toHex());
@@ -225,7 +218,7 @@ void InGameGuide::setSnapshot(const QVariantMap& session, const QVariantMap& met
       if (tag.compare("online", Qt::CaseInsensitive) == 0 || tag.compare("multiplayer", Qt::CaseInsensitive) == 0) online = true;
     QSettings preferences("Omakade", "Omakade");
     m_pauseWhileOpen = preferences.value("guide/pause/" + preferenceKey(session), !online).toBool();
-    m_retroArchCommands = readsRetroArchCommands(session.value("pid").toLongLong());
+    m_retroArchCombo = RetroArchHome::menuCombo(session.value("pid").toLongLong());
   }
   cacheAchievements();
   if (m_enabled && changedGame) {
@@ -307,7 +300,8 @@ QJsonObject InGameGuide::payload() const {
   if (!m_session.isEmpty()) {
     auto game = model.value("game").toObject();
     game.insert("forceReady", m_forceReady);
-    game.insert("retroarchMenu", m_retroArchCommands);
+    // How to reach RetroArch's own menu now that Home opens the guide.
+    if (!m_retroArchCombo.isEmpty()) game.insert("retroarchMenu", m_retroArchCombo);
     const auto items = m_achievements;
     if (!items.isEmpty()) {
       auto achievements = game.value("achievements").toObject();
@@ -542,18 +536,6 @@ void InGameGuide::message(const QJsonObject& data) {
         qWarning("Guide: Game Mode did not park; resuming the game.");
         finishDesktop();
       }
-    });
-  } else if (action == "retroarch-menu" && m_opened && m_retroArchCommands) {
-    // Resume first: a paused RetroArch reads no commands. Closing refocuses the game.
-    close();
-    QTimer::singleShot(150, this, [] {
-      const int pipe = ::open(QFile::encodeName(RetroArchHome::commandPipe()).constData(),
-                              O_WRONLY | O_NONBLOCK | O_CLOEXEC);
-      if (pipe < 0) { qWarning("Guide: RetroArch's command pipe is not open"); return; }
-      static constexpr char kMenu[] = "MENU_TOGGLE\n";
-      if (::write(pipe, kMenu, sizeof(kMenu) - 1) != ssize_t(sizeof(kMenu) - 1))
-        qWarning("Guide: RetroArch did not take the menu command");
-      ::close(pipe);
     });
   } else if ((action == "quit-confirmed" || action == "force-quit") && m_opened) {
     stopGuard();

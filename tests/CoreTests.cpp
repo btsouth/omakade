@@ -4313,8 +4313,7 @@ void CoreTests::retroArchLaunchLeavesHomeToTheGuide() {
   QVERIFY(QDir().mkpath(bin));
   const QString recorded = directory.filePath(QStringLiteral("args"));
   writeFile(bin + QStringLiteral("/retroarch"),
-            QStringLiteral("#!/bin/sh\nreadlink /proc/$$/fd/0 > '%1.input'\n"
-                           "printf '%s\\n' \"$@\" > '%1.tmp' && mv '%1.tmp' '%1'\n").arg(recorded).toUtf8());
+            QStringLiteral("#!/bin/sh\nprintf '%s\\n' \"$@\" > '%1.tmp' && mv '%1.tmp' '%1'\n").arg(recorded).toUtf8());
   QVERIFY(QFile::setPermissions(bin + QStringLiteral("/retroarch"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
   qputenv("PATH", bin.toUtf8() + ':' + previousPath);
   QVERIFY(QDir().mkpath(directory.filePath(QStringLiteral("config/retroarch"))));
@@ -4348,10 +4347,6 @@ void CoreTests::retroArchLaunchLeavesHomeToTheGuide() {
   QCOMPARE(at, 0);
   QCOMPARE(arguments.value(1), directory.filePath(QStringLiteral("cache/omakade/retroarch-home.cfg")));
   QCOMPARE(arguments.constLast(), content);
-  // Its standard input is Omakade's command pipe, which the guide writes to.
-  QFile input(recorded + QStringLiteral(".input"));
-  QVERIFY(input.open(QIODevice::ReadOnly));
-  QCOMPARE(QString::fromUtf8(input.readAll()).trimmed(), RetroArchHome::commandPipe());
 }
 
 void CoreTests::battleNetScannerImportsInstalledGamesAndArtwork() {
@@ -5653,7 +5648,7 @@ void CoreTests::homeButtonSettingAndRetroArchMenuOverride() {
   // Every port reads the profiles' menu bind; the copy leaves those binds out.
   QVERIFY(write(paths.config, "video_driver = \"vulkan\"\n" + chosen + "\n"));
   QCOMPARE(RetroArchHome::prepare(paths), paths.override);
-  QCOMPARE(read(paths.override), "joypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\nstdin_cmd_enable = \"true\"\n");
+  QCOMPARE(read(paths.override), "joypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\ninput_menu_toggle_gamepad_combo = \"2\"\n");
   QCOMPARE(read(paths.profiles + QStringLiteral("/udev/Xbox 360 pad.cfg")),
            QByteArray("input_device = \"Microsoft X-Box 360 pad\"\ninput_a_btn = \"0\"\n"));
   // RetroArch saves the appended value on exit; the next launch still copies the original.
@@ -5662,12 +5657,17 @@ void CoreTests::homeButtonSettingAndRetroArchMenuOverride() {
   RetroArchHome::repair(paths);
   QCOMPARE(read(paths.config), "video_driver = \"vulkan\"\n" + chosen + "\n");
   QVERIFY(!QFileInfo::exists(paths.marker));
-  // The command interface it saved goes back to how it was set.
-  QVERIFY(write(paths.config, "stdin_cmd_enable = \"false\"\n" + chosen + "\n"));
+  // The menu combo it saved goes back to how it was set.
+  QVERIFY(write(paths.config, "input_menu_toggle_gamepad_combo = \"0\"\n" + chosen + "\n"));
   QCOMPARE(RetroArchHome::prepare(paths), paths.override);
-  QVERIFY(write(paths.config, "stdin_cmd_enable = \"true\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
+  QVERIFY(write(paths.config, "input_menu_toggle_gamepad_combo = \"2\"\njoypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n"));
   RetroArchHome::repair(paths);
-  QCOMPARE(read(paths.config), "stdin_cmd_enable = \"false\"\n" + chosen + "\n");
+  QCOMPARE(read(paths.config), "input_menu_toggle_gamepad_combo = \"0\"\n" + chosen + "\n");
+  // A combo the user chose stands: only the profiles are appended.
+  QVERIFY(write(paths.config, "input_menu_toggle_gamepad_combo = \"4\"\n" + chosen + "\n"));
+  QCOMPARE(RetroArchHome::prepare(paths), paths.override);
+  QCOMPARE(read(paths.override), "joypad_autoconfig_dir = \"" + paths.profiles.toUtf8() + "\"\n");
+  RetroArchHome::repair(paths);
   // It saves a path in the home folder as ~/...; that is still the copy.
   {
     const QByteArray previousHome = qgetenv("HOME");

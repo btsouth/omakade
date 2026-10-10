@@ -126,7 +126,7 @@ def main(scales):
 
     for fixture, path, act in (('lantern-road', ['down', 'a'], 'screenshot'), ('lantern-road', ['down', 'right', 'a'], 'record'),
                                ('desktop-retroarch', ['down', 'a'], 'desktop'),
-                               ('desktop-retroarch', ['down', 'right', 'a'], 'retroarch-menu')):
+                               ):
         summon(fixture)
         s = press(*path)
         expect(s['geometry']['lastAct'], act, f'A on {act}')
@@ -154,8 +154,8 @@ def main(scales):
     expect(s['opened'], True, 'a second B at once does not also close')
 
     s = summon('desktop-retroarch')
-    expect(s['rows'], ['resume', 'desktop', 'retroarch', 'screenshot', 'record', 'volume', 'quit'], 'Desktop and RetroArch rows')
-    expect(press('down', 'right', 'down')['cursor'], 'record', 'RetroArch menu leads down to Record')
+    expect(s['rows'], ['resume', 'desktop', 'screenshot', 'record', 'volume', 'quit'], 'Desktop row; RetroArch is a hint')
+    expect(press('down', 'down')['cursor'], 'screenshot', 'Desktop leads down to the tiles')
 
     s = summon('replay-buffer')
     expect(s['rows'][:4], ['resume', 'screenshot', 'record', 'replay'], 'replay is a third tile')

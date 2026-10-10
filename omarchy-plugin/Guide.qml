@@ -72,7 +72,10 @@ Item {
   // output, then Quit. Every control shown takes the cursor; `rows` is all of
   // them.
   readonly property bool showDesktop: !!root.game && !!root.model.desktop
-  readonly property bool showRetroarch: !!root.game && !!root.game.retroarchMenu
+  // RetroArch's menu has no tile: Omakade gives it a controller combo, shown as a hint.
+  readonly property bool showRetroarch: false
+  readonly property string retroarchCombo: root.game && typeof root.game.retroarchMenu === "string"
+                                           ? root.game.retroarchMenu : ""
   readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay,
                                           desktop: root.showDesktop, retroarch: root.showRetroarch,
                                           volume: root.volumeAvailable, outputs: root.outputs.length})
@@ -508,7 +511,6 @@ Item {
     switch (key) {
     case "resume": root.close(); break
     case "desktop": root.act("desktop"); break
-    case "retroarch": root.act("retroarch-menu"); break
     case "output": root.act("output", 1); break
     case "screenshot": root.act("screenshot"); break
     case "record": root.act("record"); break
@@ -535,7 +537,7 @@ Item {
         var list = root.outputs, at = Math.max(0, list.indexOf(root.currentOutput))
         var next = (at + value + list.length) % list.length
         root.setFixture("audio", Object.assign({}, root.model.audio, {outputs: list.map(function(o, i) { return {name: o.name, current: i === next} })}))
-      } else if (name === "record" || name === "desktop" || name === "retroarch-menu") root.close()
+      } else if (name === "record" || name === "desktop") root.close()
       return
     }
     switch (name) {
@@ -549,7 +551,7 @@ Item {
     case "save-replay": capture.saveReplay(); break
     // Omakade closes the guide itself: Desktop once Game Mode has parked the game,
     // the RetroArch menu once the game is running again to receive its key.
-    case "desktop": case "retroarch-menu":
+    case "desktop":
       if (root.backend) root.notify(name, null)
       else root.close()
       break

@@ -11,7 +11,7 @@
     "totalMinutes": 1080,
     "pauseWhileOpen": true,
     "paused": true,
-    "retroarchMenu": true
+    "retroarchMenu": "L3 + R3"
   },
   "performance": {
     "mangohud": true,
