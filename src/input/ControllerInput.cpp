@@ -1,4 +1,5 @@
 #include "input/ControllerInput.h"
+#include "input/KeyDelivery.h"
 
 #include <QCoreApplication>
 #include <QEvent>
@@ -374,6 +375,12 @@ void ControllerInput::setDriving(bool driving) {
   }
   m_driving = driving;
   emit drivingChanged();
+}
+
+void ControllerInput::deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers) {
+  m_deliveringKeys = true;
+  ::deliverKey(window, key, modifiers);
+  m_deliveringKeys = false;
 }
 
 bool ControllerInput::eventFilter(QObject* watched, QEvent* event) {

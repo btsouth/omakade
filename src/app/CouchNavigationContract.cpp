@@ -1,5 +1,6 @@
 #include "app/CouchNavigationContract.h"
 #include "input/ControllerInput.h"
+#include "input/KeyDelivery.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -106,10 +107,7 @@ private:
 };
 
 void keyboard(QQuickWindow* window, int key, Qt::KeyboardModifiers mods = Qt::NoModifier) {
-  QKeyEvent press(QEvent::KeyPress, key, mods);
-  QKeyEvent release(QEvent::KeyRelease, key, mods);
-  QCoreApplication::sendEvent(window, &press);
-  QCoreApplication::sendEvent(window, &release);
+  deliverKey(window, key, mods);
   settle();
 }
 } // namespace
@@ -604,13 +602,7 @@ struct Sweep {
         settle(5);
         if (!within(window->activeFocusItem(), source)) break;  // Not focusable after all.
         auto* scroll = scrollAncestor(source);
-        QMetaObject::Connection trace;
-        if (qEnvironmentVariableIsSet("OMAKADE_SWEEP_FOCUS") && describe(source).contains(qEnvironmentVariable("OMAKADE_SWEEP_FOCUS")))
-          trace = QObject::connect(window, &QQuickWindow::activeFocusItemChanged, window, [this] {
-            qInfo().noquote() << "FOCUS ->" << describe(window->activeFocusItem());
-          });
         press(key);
-        QObject::disconnect(trace);
         ++presses;
         auto* focus = window->activeFocusItem();
         const QString where = QStringLiteral("%1: %2 from %3").arg(name, keyName(key), describe(source));
@@ -621,13 +613,6 @@ struct Sweep {
         auto* landed = owner(focus);
         if (!landed) { landed = focus; items.append(focus); }  // A control the scan missed.
         edges[source].insert(landed);
-        if (qEnvironmentVariableIsSet("OMAKADE_SWEEP_EDGES") && name.contains(qEnvironmentVariable("OMAKADE_SWEEP_EDGES")))
-          qInfo().noquote() << "EDGE" << describe(source) << keyName(key) << "->" << describe(landed);
-        if (landed != source && !onScreen(landed, window) && qEnvironmentVariableIsSet("OMAKADE_SWEEP_EDGES")) {
-          const QRectF before = sceneRect(landed);
-          settle(200);
-          qInfo().noquote() << "DBG" << describe(landed) << before << "after 200 ms" << sceneRect(landed);
-        }
         if (landed != source && !onScreen(landed, window)) {
           QString clipper;
           const QRectF full = sceneRect(landed), visible = seen(landed, window, &clipper);
@@ -672,7 +657,8 @@ struct Sweep {
       reached.insert(item);
       for (auto* next : edges.value(item)) pending.append(next);
     }
-    if (qEnvironmentVariableIsSet("OMAKADE_SWEEP_EDGES") && name.contains(qEnvironmentVariable("OMAKADE_SWEEP_EDGES"))) {
+    // OMAKADE_SWEEP_GRAPH=<screen name> prints where each control's presses lead.
+    if (qEnvironmentVariableIsSet("OMAKADE_SWEEP_GRAPH") && name.contains(qEnvironmentVariable("OMAKADE_SWEEP_GRAPH"))) {
       qInfo().noquote() << "start" << describe(start);
       for (auto* item : items) {
         QStringList targets;

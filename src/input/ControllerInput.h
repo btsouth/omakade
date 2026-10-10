@@ -9,6 +9,8 @@
 
 #include <SDL3/SDL_gamepad.h>
 
+class QWindow;
+
 class ControllerInput final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool inputEnabled READ inputEnabled NOTIFY inputEnabledChanged)
@@ -32,11 +34,12 @@ public:
 
   [[nodiscard]] bool connected() const;
   [[nodiscard]] bool driving() const { return m_driving; }
-  // Real input from the window system arrives spontaneously. Controller presses are delivered
-  // through the same platform path (so window shortcuts consume them as they do a real key),
-  // and are marked while they are, so they do not count as the keyboard.
+  // Real input from the window system arrives spontaneously, and so do the controller's own
+  // presses (deliverKey). Those are marked while they are delivered, so only real keyboard and
+  // mouse input puts the controller down.
   bool eventFilter(QObject* watched, QEvent* event) override;
-  void setDeliveringKeys(bool delivering) { m_deliveringKeys = delivering; }
+  // A controller press, delivered as a real key would be (input/KeyDelivery.h).
+  void deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers);
   [[nodiscard]] QString name() const;
   [[nodiscard]] int controllerCount() const;
   [[nodiscard]] QString primaryGlyph() const;

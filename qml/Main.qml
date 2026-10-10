@@ -268,23 +268,10 @@ ApplicationWindow {
         }
     }
 
-    // The same press can reach both the window's arrow shortcut and a panel's key handler
-    // below. Only the first moves focus; otherwise one press moved two steps.
-    property bool arrowHandled: false
-    function arrowShortcut(key) {
-        root.arrowHandled = true
-        Qt.callLater(function() { root.arrowHandled = false })
-        root.focusSpatial(root.navigationContainer(), key)
-    }
-
     // Fallback for arrow keys that reach an overlay loader directly.
     function handleArrowKey(container, event) {
         if (event.key !== Qt.Key_Up && event.key !== Qt.Key_Down
                 && event.key !== Qt.Key_Left && event.key !== Qt.Key_Right) {
-            return
-        }
-        if (root.arrowHandled) {
-            event.accepted = true
             return
         }
         if (root.activeFocusItem
@@ -1640,22 +1627,22 @@ ApplicationWindow {
     Shortcut {
         sequence: "Up"
         enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Up))
-        onActivated: root.arrowShortcut(Qt.Key_Up)
+        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Up)
     }
     Shortcut {
         sequence: "Down"
         enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Down))
-        onActivated: root.arrowShortcut(Qt.Key_Down)
+        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Down)
     }
     Shortcut {
         sequence: "Left"
         enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Left))
-        onActivated: root.arrowShortcut(Qt.Key_Left)
+        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Left)
     }
     Shortcut {
         sequence: "Right"
         enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Right))
-        onActivated: root.arrowShortcut(Qt.Key_Right)
+        onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Right)
     }
     Shortcut {
         sequence: "Escape"

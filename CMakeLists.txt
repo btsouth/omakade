@@ -51,12 +51,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Concurrent Core DBus Gui Network Qml Quick QuickControls2 Sql Test)
-# GuiPrivate exposes the Wayland window native interface used by the idle inhibitor.
-find_package(Qt6 6.8 OPTIONAL_COMPONENTS GuiPrivate)
-if(OMAKADE_IDLE_INHIBIT AND NOT TARGET Qt6::GuiPrivate)
-  message(STATUS "Qt6::GuiPrivate is unavailable; disabling Wayland idle-inhibit")
-  set(OMAKADE_IDLE_INHIBIT OFF)
-endif()
+# GuiPrivate provides Qt's platform input path, which controller presses use (see
+# src/input/KeyDelivery.h), and the Wayland window interface used by the idle inhibitor.
+find_package(Qt6 6.8 REQUIRED COMPONENTS GuiPrivate)
 qt_standard_project_setup(REQUIRES 6.8)
 
 # Play session tracking, shared by the Omakade window and the omakade-sessiond
@@ -187,6 +184,8 @@ add_library(omakade_core STATIC
   src/input/ControllerFocusGuard.cpp
   src/input/ControllerFocusGuard.h
   src/input/ControllerInput.cpp
+  src/input/KeyDelivery.cpp
+  src/input/KeyDelivery.h
   src/input/ControllerInput.h
   src/input/CouchCursorManager.cpp
   src/input/CouchCursorManager.h
@@ -342,6 +341,7 @@ add_library(omakade_core STATIC
 )
 
 target_include_directories(omakade_core PUBLIC src)
+target_link_libraries(omakade_core PRIVATE Qt6::GuiPrivate)
 target_link_libraries(omakade_core PUBLIC
   omakade_guide_runtime
   omakade_tracking
@@ -374,12 +374,7 @@ qt_add_executable(omakade
   src/app/IdleInhibitor.cpp
   src/app/IdleInhibitor.h
 )
-if(TARGET Qt6::GuiPrivate)
-  # Controller presses and input fixtures use Qt's platform path, so a key a window
-  # shortcut handles is consumed there, as it is for a real keyboard.
-  target_link_libraries(omakade PRIVATE Qt6::GuiPrivate)
-  target_compile_definitions(omakade PRIVATE OMAKADE_PLATFORM_INPUT=1)
-endif()
+target_link_libraries(omakade PRIVATE Qt6::GuiPrivate)
 if(OMAKADE_IDLE_INHIBIT)
   target_sources(omakade PRIVATE "${OMAKADE_IDLE_INHIBIT_HEADER}" "${OMAKADE_IDLE_INHIBIT_SOURCE}")
   set_source_files_properties("${OMAKADE_IDLE_INHIBIT_SOURCE}" PROPERTIES

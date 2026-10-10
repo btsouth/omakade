@@ -6,8 +6,14 @@
   start from Omarchy keeps running on its own: the guide no longer shows it as its
   clip or stops it, and Omarchy's stop leaves the guide's clip alone.
 - The in-game guide shows GPU load and temperature on NVIDIA cards too.
-- Home with a controller: going up to the buttons at the top scrolls the page back to
-  the top.
+- Controller navigation is fixed across the app. A press could move two steps, which made
+  some buttons and Settings sections hard or impossible to reach. Every screen is now
+  tested from every control in every direction, in couch and desktop layouts.
+- Home: the top buttons stay on one row, Down moves straight between shelves, and X adds
+  a game to Up next. Going back up to the top buttons shows the top of the page.
+- Settings: Back from Settings opened on Home returns to Home. Sliders change only with
+  Left and Right, dropdowns no longer trap the controller, and Left from a page goes to
+  the section list.
 
 [Install Omakade](https://github.com/btsouth/omakade/releases/tag/v1.16.1)
 

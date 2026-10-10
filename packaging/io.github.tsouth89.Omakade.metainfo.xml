@@ -29,7 +29,8 @@
     <release version="1.16.1" date="2026-10-10">
       <description>
         <p>Record clip in the in-game guide now uses its own recorder, so a screen recording started from Omarchy keeps running and is no longer shown or stopped by the guide.</p>
-        <p>The guide shows GPU load on NVIDIA cards, and going up to the top buttons on Home with a controller scrolls back to the top of the page.</p>
+        <p>The guide shows GPU load on NVIDIA cards.</p>
+        <p>Controller navigation is fixed across Home, Settings and Stats: one press moves one step, every control can be reached, and Back from Settings returns to the screen you opened it from.</p>
       </description>
     </release>
     <release version="1.16.0" date="2026-10-10">
