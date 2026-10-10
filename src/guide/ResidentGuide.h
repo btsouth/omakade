@@ -2,6 +2,7 @@
 #include "guide/InGameGuide.h"
 #include <QLocalServer>
 #include <QJsonArray>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <atomic>
 
@@ -25,6 +26,9 @@ private:
   std::shared_ptr<std::atomic_uint> m_desktopGeneration = std::make_shared<std::atomic_uint>(0);
   void connectEvents();
   QJsonArray m_published;
+  // Home after the guide's Desktop: the pad to reopen the guide with once Game Mode is back.
+  QString m_reopenNode;
+  QElapsedTimer m_reopenClock;
   int m_refreshGeneration = 0;
   bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false, m_provisioning = false;
   QJsonObject command(const QJsonObject& command);

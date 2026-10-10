@@ -193,9 +193,9 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
           socket->write(QJsonDocument(command(data)).toJson(QJsonDocument::Compact) + '\n'); socket->flush(); socket->disconnectFromServer();
         };
         const auto action = data.value("action").toString();
-        const bool reconcile = (action == "shortcut" && !m_guide.showing() && !m_guide.hasGame()) || action == "reopen";
+        const bool reconcile = action == "shortcut" && !m_guide.showing() && !m_guide.hasGame();
         if ((!m_ready || reconcile) && !m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty() &&
-            (action == "shortcut" || action == "toggle" || action == "reopen")) {
+            (action == "shortcut" || action == "toggle")) {
           // A cache miss is reconciled from queries started after this request. An
           // already-running stale poll must not turn a newly launched game into GUI fallback.
           const int needed = m_refreshGeneration + (reconcile ? 1 : 0);
@@ -292,13 +292,16 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     const bool changed = sessionIdentities(published) != sessionIdentities(m_published);
     if (changed) ++*m_desktopGeneration;
     m_published = published; m_guide.setContext(data.value("context").toObject());
+    // Game Mode is back after the guide's Desktop: put the game in front and reopen the guide.
+    const auto context = data.value("context").toObject();
+    if (m_reopenClock.isValid() && context.value("gameModeActive").toBool() && !context.value("gameModeParked").toBool()) {
+      if (m_reopenClock.elapsed() < 8000) m_guide.reopen(m_reopenNode);
+      m_reopenClock.invalidate(); m_reopenNode.clear();
+    }
     if (changed || !m_ready) refresh();
   }
   else if (action == "close") m_guide.close();
-  else if (action == "reopen") {
-    // Game Mode has resumed with the game in front; never park or fall back from here.
-    m_guide.reopen(data.value("node").toString());
-  }
+
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
     const auto requested = data.value("requestNs").toString().toLongLong();
@@ -309,7 +312,9 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     if (action == "shortcut" && !m_guide.showing() && m_guide.returnPending()) {
       const auto node = data.value("node").toString();
       static const QRegularExpression device("^event[0-9]+$");
-      launch("--game-mode-return" + (device.match(node).hasMatch() ? " --guide-device " + node : QString()));
+      m_reopenNode = device.match(node).hasMatch() ? node : QString();
+      m_reopenClock.start();
+      launch("--game-mode-return");
       return reply;
     }
     if (!m_ready) return {{"result", "preparing"}};

@@ -45,7 +45,6 @@
 #include "metadata/GameInsightsService.h"
 #include "metadata/GameMetadata.h"
 #include "metadata/ProtonDbService.h"
-#include <optional>
 #include <QQmlProperty>
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeOverlay.h"
@@ -886,8 +885,7 @@ int main(int argc, char* argv[]) {
       QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)) +
       QStringLiteral("/omakade/game-mode.json");
   if (application.arguments().contains(QStringLiteral("--game-mode-return"))) {
-    const auto node = optionValue(application.arguments(), QStringLiteral("--guide-device"));
-    if (SingleInstance::sendCommand({}, "game-mode return " + node.toUtf8())) return EXIT_SUCCESS;
+    if (SingleInstance::sendCommand({}, "game-mode return")) return EXIT_SUCCESS;
     qCritical() << "No running Game Mode session to return to.";
     return EXIT_FAILURE;
   }
@@ -6952,26 +6950,10 @@ int main(int argc, char* argv[]) {
                    });
   QObject::connect(&singleInstance, &SingleInstance::gameModeDesktopRequested, &gameMode,
                    &GameModeSession::park);
-  // The guide's Desktop parked this session: Home comes back to the game with the guide open,
-  // as it was left, instead of to the library.
-  auto returnNode = std::make_shared<std::optional<QString>>();
+  // Home after the guide's Desktop: resume. The guide service brings the game in front of
+  // the library and reopens itself once it sees Game Mode active again.
   QObject::connect(&singleInstance, &SingleInstance::gameModeReturnRequested, &gameMode,
-                   [&gameMode, returnNode](const QString& node) {
-                     if (!gameMode.parked()) return;
-                     *returnNode = node;
-                     gameMode.enter();
-                   });
-  // The guide puts the game in front of the library itself, checking Hyprland until it is,
-  // then opens over it.
-  QObject::connect(&gameMode, &GameModeSession::resumed, &inGameGuide, [&inGameGuide, returnNode] {
-    if (!returnNode->has_value()) return;
-    const auto node = returnNode->value(); returnNode->reset();
-    GuideClient::request({{"action", "reopen"}, {"node", node}}, &inGameGuide);
-  });
-  for (const auto signal : {&GameModeSession::preparationCancelled, &GameModeSession::exited,
-                            &GameModeSession::parkedOnDesktop})
-    QObject::connect(&gameMode, signal, &gameMode, [returnNode] { returnNode->reset(); });
-  QObject::connect(&gameMode, &GameModeSession::failed, &gameMode, [returnNode] { returnNode->reset(); });
+                   [&gameMode] { if (gameMode.parked()) gameMode.enter(); });
   QObject::connect(&singleInstance, &SingleInstance::gameModeToggleRequested, &gameMode,
                    [&gameMode, &inGameGuide, rootWindow](const QString& node) {
                      if (node != "game-mode-fallback") { inGameGuide.toggle(node, true); return; }

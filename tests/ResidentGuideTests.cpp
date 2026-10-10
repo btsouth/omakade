@@ -193,11 +193,44 @@ echo ok
   QCOMPARE(control("shortcut").value("result").toString(), "fallback");
   QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", QJsonObject{{"gameModeParked", false}}}}).value("result").toString(), "handled");
   QVERIFY(write(config + "/omarchy/shell.json", R"({"plugins":[{"id":"omakade.guide"}]})"));
+  // Desktop from the guide parks Game Mode; the next Home resumes it and comes back to the
+  // game with the guide open, not to the library or a 1.15 toggle.
+  const auto summons = [&] { QFile calls(shellLog); return calls.open(QIODevice::ReadOnly) ? int(calls.readAll().count("shell summon omakade.guide")) : -1; };
+  const auto queried = [&](const QByteArray& text) { QFile calls(queryLog); return calls.open(QIODevice::ReadOnly) && calls.readAll().contains(text); };
+  const auto inGameMode = QJsonObject{{"gameModeActive", true}, {"gameModeParked", false}};
+  const auto parkedContext = QJsonObject{{"gameModeActive", false}, {"gameModeParked", true}};
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", inGameMode}}).value("result").toString(), "handled");
+  QCOMPARE(control("shortcut").value("result").toString(), "handled");
+  QTRY_COMPARE(summons(), 3);
+  {
+    QFile desktopSummon(summonFile); QVERIFY(desktopSummon.open(QIODevice::ReadOnly));
+    const auto desktopBackend = QJsonDocument::fromJson(desktopSummon.readAll()).object().value("backend").toObject();
+    QLocalSocket desktopPlugin; desktopPlugin.connectToServer(desktopBackend.value("socket").toString()); QVERIFY(desktopPlugin.waitForConnected());
+    for (const auto* action : {"opened", "desktop"}) {
+      desktopPlugin.write(QJsonDocument(QJsonObject{{"version", GuidePayload::kVersion}, {"token", desktopBackend.value("token")}, {"action", action}}).toJson(QJsonDocument::Compact) + '\n');
+      QVERIFY(desktopPlugin.waitForBytesWritten()); QTest::qWait(30);
+    }
+  }
+  QTRY_VERIFY(queried("--game-mode-desktop"));
+  QTRY_VERIFY(!stopped()); // Game Mode parks a running game, as when Home is held.
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", parkedContext}}).value("result").toString(), "handled");
+  QCOMPARE(control("shortcut", {{"node", "event29"}}).value("result").toString(), "handled");
+  QTRY_VERIFY(queried("--game-mode-return"));
+  QCOMPARE(summons(), 3);
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", inGameMode}}).value("result").toString(), "handled");
+  QTRY_COMPARE(summons(), 4);
+  QTRY_VERIFY(stopped());
+  QCOMPARE(control("close").value("result").toString(), "handled");
+  QTRY_VERIFY(!stopped());
+  // Back in Game Mode, a later park is not the guide's: Home resumes it the 1.15 way.
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", parkedContext}}).value("result").toString(), "handled");
+  QCOMPARE(control("shortcut").value("result").toString(), "fallback");
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", inGameMode}}).value("result").toString(), "handled");
   // Force a scheduling gap while the next payload is being written. Observing
   // the summon log must imply that its complete payload has been published.
   QVERIFY(write(slowSummon, ""));
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"}); QVERIFY(shortcut.waitForFinished(5000)); QCOMPARE(shortcut.exitCode(), 0);
-  QTRY_VERIFY(([&] { QFile calls(shellLog); return calls.open(QIODevice::ReadOnly) && calls.readAll().count("shell summon omakade.guide") == 3; })());
+  QTRY_VERIFY(([&] { QFile calls(shellLog); return calls.open(QIODevice::ReadOnly) && calls.readAll().count("shell summon omakade.guide") == 5; })());
   QFile thirdSummon(summonFile); QVERIFY(thirdSummon.open(QIODevice::ReadOnly));
   QJsonParseError payloadError;
   const auto thirdPayload = QJsonDocument::fromJson(thirdSummon.readAll(), &payloadError).object();
