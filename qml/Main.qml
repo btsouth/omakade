@@ -956,8 +956,8 @@ ApplicationWindow {
         // only flash that layout on its way out, and redo the library on resume.
         if (retainNavigation === true && GameMode.temporaryWindow()) return
         if (!retainNavigation) root.clearCouchNavigation()
-        root.updateCouchModeInternal(retainNavigation === true ? false : root.couchBeforeGameMode,
-                                     false, !GameMode.displayManaged, retainNavigation === true)
+        root.updateCouchModeInternal(root.couchBeforeGameMode, false,
+                                     !GameMode.displayManaged, retainNavigation === true)
     }
 
     function openGameModeControls() {

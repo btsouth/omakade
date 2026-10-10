@@ -7886,7 +7886,6 @@ int main(int argc, char* argv[]) {
         }
         QMetaObject::invokeMethod(homeDesktop, "clicked");
         if (!settled([&gameMode] { return gameMode.parked() && !gameMode.busy(); }) ||
-            rootWindow->property("couchMode").toBool() ||
             (mainPanel && mainPanel->property("visible").toBool())) {
           fail(QStringLiteral("Home DESKTOP did not go straight to the desktop"));
           return;
