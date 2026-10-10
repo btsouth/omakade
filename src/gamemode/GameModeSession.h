@@ -122,9 +122,6 @@ signals:
   void parking();
   void parkedOnDesktop();
   void resumed();
-  // focusGame() put the retained game, or the library when there is none, in front.
-  // Emitted from the worker thread.
-  void gameFocused();
   void windowVisibilityRequested(bool visible);
   // The display the next hidden root opens on, sent before windowVisibilityRequested.
   void openOutputRequested(const QString& output);

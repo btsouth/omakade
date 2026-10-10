@@ -6961,24 +6961,9 @@ int main(int argc, char* argv[]) {
                      *returnNode = node;
                      gameMode.enter();
                    });
-  QObject::connect(&gameMode, &GameModeSession::resumed, &gameMode, [&gameMode, rootWindow, returnNode] {
-    if (!returnNode->has_value()) return;
-    // The library is mapped again and takes focus a moment after the resume. Put the game in
-    // front only once it has, or it lands back on top.
-    auto connection = std::make_shared<QMetaObject::Connection>();
-    auto done = std::make_shared<bool>(false);
-    const auto focus = [&gameMode, connection, done] {
-      if (*done) return;
-      *done = true; QObject::disconnect(*connection);
-      QTimer::singleShot(100, &gameMode, [&gameMode] { gameMode.focusGame(); });
-    };
-    if (rootWindow == nullptr || rootWindow->isActive()) { focus(); return; }
-    *connection = QObject::connect(rootWindow, &QWindow::activeChanged, &gameMode, [rootWindow, focus] {
-      if (rootWindow->isActive()) focus();
-    });
-    QTimer::singleShot(2000, &gameMode, focus);
-  });
-  QObject::connect(&gameMode, &GameModeSession::gameFocused, &inGameGuide, [&inGameGuide, returnNode] {
+  // The guide puts the game in front of the library itself, checking Hyprland until it is,
+  // then opens over it.
+  QObject::connect(&gameMode, &GameModeSession::resumed, &inGameGuide, [&inGameGuide, returnNode] {
     if (!returnNode->has_value()) return;
     const auto node = returnNode->value(); returnNode->reset();
     GuideClient::request({{"action", "reopen"}, {"node", node}}, &inGameGuide);
