@@ -78,6 +78,7 @@ Focusable {
   }
 
   // PanelSlider rings its knob in its bar's background; the card is that bar.
+  // Omarchy 4.0 stable's slider has no bar, so it is set only where it exists.
   QtObject {
     id: sliderColors
     property color foreground: row.g.text
@@ -85,8 +86,9 @@ Focusable {
   }
 
   PanelSlider {
+    id: slider
     visible: row.kind === "slider"
-    bar: sliderColors
+    Component.onCompleted: if ("bar" in slider) slider.bar = sliderColors
     x: row.controlX
     width: row.width - x
     height: row.height
