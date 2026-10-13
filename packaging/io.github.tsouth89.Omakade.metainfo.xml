@@ -26,6 +26,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.16.2" date="2026-10-12">
+      <description>
+        <p>The in-game guide now works on Omarchy 4.0 stable releases.</p>
+      </description>
+    </release>
     <release version="1.16.1" date="2026-10-10">
       <description>
         <p>The in-game guide's Record clip action now uses its own recorder, so a screen recording started from Omarchy keeps running and is no longer shown or stopped by the guide.</p>

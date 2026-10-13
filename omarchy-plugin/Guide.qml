@@ -204,13 +204,13 @@ Item {
   // Ready means seen and usable: the surface has its real size and the card
   // has finished fading in.
   function ready() {
-    return root.presented && window.width > 1 && window.height > 1 && card.opacity === 1 && !fadeIn.running ? "ready" : "waiting"
+    return root.presented && root.overlayWidth > 1 && root.overlayHeight > 1 && card.opacity === 1 && !fadeIn.running ? "ready" : "waiting"
   }
 
   function state(unused) {
     return JSON.stringify({scale: root.couchScale, zoom: root.zoom, opened: root.opened, opening: root.opened && !root.presented, presented: root.presented, ready: root.ready(),
       token: root.backend ? root.backend.token : "", socket: root.backend ? root.backend.socket : "",
-      output: window.screen ? window.screen.name : "", surface: [window.width, window.height],
+      output: root.overlay && root.overlay.screen ? root.overlay.screen.name : "", surface: [root.overlayWidth, root.overlayHeight],
       cursor: root.cursor, rows: root.rows, view: root.view, confirming: root.confirming, confirmChoice: root.confirmChoice, pad: root.family, data: root.model,
       geometry: root.geometry(), palette: {text: String(Commons.Color.menu.text), quiet: String(root.quiet), dim: String(root.dim),
         background: String(Commons.Color.menu.background), border: String(Commons.Color.menu.border),
@@ -236,7 +236,7 @@ Item {
     if (content.titleTruncated) truncated.push("title")
     return {card: box(card), rows: rowBoxes, icons: iconBoxes,
       fits: card.height >= card.contentTopInset + content.implicitHeight + card.contentBottomInset
-        && card.y >= 0 && card.y + card.height <= window.height && card.width <= window.width,
+        && card.y >= 0 && card.y + card.height <= root.overlayHeight && card.width <= root.overlayWidth,
       truncated: truncated, readouts: content.readoutCount, lastAct: root.lastAct}
   }
 
@@ -280,7 +280,7 @@ Item {
     root.lastAct = ""
     root.backAt = 0
     pointerGate.reset()
-    window.targetScreen = root.gameScreen()
+    if (root.overlay) root.overlay.targetScreen = root.gameScreen()
     root.opened = true
     root.sizeAttempts = 0
     root.showSurface()
@@ -311,9 +311,9 @@ Item {
   // so one measurement says how far.
   function fitZoom() {
     var natural = (card.contentTopInset + content.implicitHeight + card.contentBottomInset) / root.zoom
-    var room = Math.min((window.height - Style.gapsOut * 2) / natural,
-                        (window.width - Style.gapsOut * 2) / Style.space(root.cardWidth))
-    var next = window.height > 1 ? Math.min(root.couchScale, Math.floor(room * 20) / 20) : root.couchScale
+    var room = Math.min((root.overlayHeight - Style.gapsOut * 2) / natural,
+                        (root.overlayWidth - Style.gapsOut * 2) / Style.space(root.cardWidth))
+    var next = root.overlayHeight > 1 ? Math.min(root.couchScale, Math.floor(room * 20) / 20) : root.couchScale
     next = Math.max(0.5, next)
     if (Math.abs(next - root.zoom) > 0.001) root.zoom = next
   }
@@ -321,7 +321,8 @@ Item {
   function gameScreen() {
     for (var i = 0; i < Quickshell.screens.length; i++)
       if (Quickshell.screens[i].name === root.outputName) return Quickshell.screens[i]
-    return window.focusedScreen() || window.targetScreen || Quickshell.screens[0] || null
+    var overlay = root.overlay
+    return (overlay && (overlay.focusedScreen() || overlay.targetScreen)) || Quickshell.screens[0] || null
   }
 
   FileView {
@@ -352,9 +353,10 @@ Item {
   property int sizeAttempts: 0
 
   function showSurface() {
+    if (!root.overlay) { root.notify("surface-failed", null); root.close(); return }
     // Newer Omarchy maps a fresh window and exposes contentReady. Older shells
     // park at 1x1, so keep their configure handoff without delaying a fresh map.
-    if (window.contentReady !== undefined || (window.width <= 1 && window.height <= 1)) { root.surfaceShown = true; return }
+    if (root.overlay.contentReady !== undefined || (root.overlayWidth <= 1 && root.overlayHeight <= 1)) { root.surfaceShown = true; return }
     parkWait.restart()
   }
 
@@ -365,15 +367,19 @@ Item {
   }
 
   Connections {
-    target: window
+    target: root.overlay
     ignoreUnknownSignals: true
+    // The payload names the game's output; follow it rather than the focus.
+    function onShownChanged() { if (root.overlay.shown) root.overlay.targetScreen = root.gameScreen() }
     function onContentReadyChanged() { root.surfaceSized() }
     function onWidthChanged() { root.surfaceSized(); Qt.callLater(root.fitZoom) }
     function onHeightChanged() { root.surfaceSized(); Qt.callLater(root.fitZoom) }
   }
 
   function surfaceSized() {
-    var sized = window.width > 1 && window.height > 1 && (window.contentReady === undefined || window.contentReady)
+    if (!root.overlay) return
+    root.syncSize()
+    var sized = root.overlayWidth > 1 && root.overlayHeight > 1 && (root.overlay.contentReady === undefined || root.overlay.contentReady)
     // Not from inside the resize itself: a show requested while the 1x1
     // configure is being applied is never answered with a full-size one.
     if (root.opened && !root.surfaceShown && !sized) { parkWait.stop(); Qt.callLater(root.showParked) }
@@ -394,8 +400,9 @@ Item {
   }
 
   onSurfaceShownChanged: {
-    if (!surfaceShown) return
-    if (window.width > 1 && window.height > 1 && (window.contentReady === undefined || window.contentReady)) root.present()
+    if (!surfaceShown || !root.overlay) return
+    root.syncSize()
+    if (root.overlayWidth > 1 && root.overlayHeight > 1 && (root.overlay.contentReady === undefined || root.overlay.contentReady)) root.present()
     else sizeWatch.restart()
   }
 
@@ -726,85 +733,107 @@ Item {
 
   // ------------------------------------------------------------ surface
 
-  OverlayWindow {
-    id: window
-    shown: root.surfaceShown
-    // The payload names the game's output; follow it rather than the focus.
-    onShownChanged: if (shown) targetScreen = root.gameScreen()
-    WlrLayershell.namespace: "omakade-guide"
+  // Omarchy's OverlayWindow where the shell has it; shells without it, such as
+  // the 4.0 stable releases, get the guide's own layer (surface/).
+  property var overlay: null
+  // Copied from the window on each of its signals: a binding through a var
+  // misses some of its size changes.
+  property real overlayWidth: 0
+  property real overlayHeight: 0
+  function syncSize() {
+    root.overlayWidth = root.overlay ? root.overlay.width : 0
+    root.overlayHeight = root.overlay ? root.overlay.height : 0
+  }
+
+  Component.onCompleted: {
+    var shell = Qt.createComponent("surface/ShellOverlay.qml")
+    var component = shell.status === Component.Ready ? shell : Qt.createComponent("surface/LayerOverlay.qml")
+    if (component !== shell) console.log("omakade.guide: no OverlayWindow in this shell, using its own layer")
+    root.overlay = component.createObject(root)
+    root.syncSize()
+    if (!root.overlay) console.warn("omakade.guide: no overlay surface", component.errorString())
+  }
+
+  Binding {
+    target: root.overlay
+    property: "shown"
+    value: root.surfaceShown
+    when: !!root.overlay
+  }
+
+  Item {
+    id: surface
+    parent: root.overlay ? root.overlay.contentItem : root
+    anchors.fill: parent
+    visible: !root.capturing
+
+    // The surface covers the screen: the theme's scrim over the game, a
+    // little lighter far from the panel and stronger beside it.
+    Rectangle {
+      id: scrimLayer
+      readonly property color scrim: Commons.Color.menu.scrim
+      anchors.fill: parent
+      gradient: Gradient {
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0; color: Util.alpha(scrimLayer.scrim, scrimLayer.scrim.a * 0.6) }
+        GradientStop { position: 0.6; color: Util.alpha(scrimLayer.scrim, Math.min(1, scrimLayer.scrim.a * 1.1)) }
+        GradientStop { position: 1; color: Util.alpha(scrimLayer.scrim, Math.min(1, scrimLayer.scrim.a * 1.4)) }
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.close()
+    }
 
     Item {
-      id: surface
-      anchors.fill: parent
-      visible: !root.capturing
+      id: keys
+      focus: true
+      Keys.onPressed: function(event) {
+        var a = root.keyAction(event)
+        if (a === "") return
+        if (root.family !== "keyboard") { root.family = "keyboard"; root.notify("input-family", "keyboard") }
+        root.input(a)
+        event.accepted = true
+      }
+    }
 
-      // The surface covers the screen: the theme's scrim over the game, a
-      // little lighter far from the panel and stronger beside it.
-      Rectangle {
-        id: scrimLayer
-        readonly property color scrim: Commons.Color.menu.scrim
-        anchors.fill: parent
-        gradient: Gradient {
-          orientation: Gradient.Horizontal
-          GradientStop { position: 0; color: Util.alpha(scrimLayer.scrim, scrimLayer.scrim.a * 0.6) }
-          GradientStop { position: 0.6; color: Util.alpha(scrimLayer.scrim, Math.min(1, scrimLayer.scrim.a * 1.1)) }
-          GradientStop { position: 1; color: Util.alpha(scrimLayer.scrim, Math.min(1, scrimLayer.scrim.a * 1.4)) }
-        }
+    // At the right edge, the window gaps plus a margin in from it, centred
+    // down the screen.
+    BorderSurface {
+      id: card
+      readonly property int pad: root.sized(Style.space(24))
+      readonly property int edge: Style.gapsOut + root.sized(Style.space(24))
+      width: Math.min(root.sized(Style.space(root.cardWidth)), root.overlayWidth - Style.gapsOut * 2)
+      height: Math.min(card.contentTopInset + content.implicitHeight + card.contentBottomInset, root.overlayHeight - Style.gapsOut * 2)
+      x: Math.max(Style.gapsOut, root.overlayWidth - card.width - card.edge)
+      y: Math.max(Style.gapsOut, Math.round((root.overlayHeight - card.height) / 2))
+      radius: root.sized(Style.cornerRadius)
+      color: Commons.Color.menu.background
+      borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
+      padding: card.pad
+      opacity: 0
+
+      NumberAnimation on opacity {
+        id: fadeIn
+        running: false
+        from: 0
+        to: 1
+        // Style.duration() honours reduced motion; Omarchy 4.0 stable predates it.
+        duration: typeof Style.duration === "function" ? Style.duration(140) : 140
+        easing.type: Easing.OutCubic
       }
 
-      MouseArea {
-        anchors.fill: parent
-        onClicked: root.close()
-      }
+      MouseArea { anchors.fill: parent }
 
-      Item {
-        id: keys
-        focus: true
-        Keys.onPressed: function(event) {
-          var a = root.keyAction(event)
-          if (a === "") return
-          if (root.family !== "keyboard") { root.family = "keyboard"; root.notify("input-family", "keyboard") }
-          root.input(a)
-          event.accepted = true
-        }
-      }
-
-      // At the right edge, the window gaps plus a margin in from it, centred
-      // down the screen.
-      BorderSurface {
-        id: card
-        readonly property int pad: root.sized(Style.space(24))
-        readonly property int edge: Style.gapsOut + root.sized(Style.space(24))
-        width: Math.min(root.sized(Style.space(root.cardWidth)), window.width - Style.gapsOut * 2)
-        height: Math.min(card.contentTopInset + content.implicitHeight + card.contentBottomInset, window.height - Style.gapsOut * 2)
-        x: Math.max(Style.gapsOut, window.width - card.width - card.edge)
-        y: Math.max(Style.gapsOut, Math.round((window.height - card.height) / 2))
-        radius: root.sized(Style.cornerRadius)
-        color: Commons.Color.menu.background
-        borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
-        padding: card.pad
-        opacity: 0
-
-        NumberAnimation on opacity {
-          id: fadeIn
-          running: false
-          from: 0
-          to: 1
-          duration: Style.duration(140)
-          easing.type: Easing.OutCubic
-        }
-
-        MouseArea { anchors.fill: parent }
-
-        GuideCard {
-          id: content
-          g: root
-          bleed: card.contentLeftInset
-          onImplicitHeightChanged: Qt.callLater(root.fitZoom)
-          x: card.contentLeftInset
-          y: card.contentTopInset
-          width: card.width - card.contentLeftInset - card.contentRightInset
-        }
+      GuideCard {
+        id: content
+        g: root
+        bleed: card.contentLeftInset
+        onImplicitHeightChanged: Qt.callLater(root.fitZoom)
+        x: card.contentLeftInset
+        y: card.contentTopInset
+        width: card.width - card.contentLeftInset - card.contentRightInset
       }
     }
   }
