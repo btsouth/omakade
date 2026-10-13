@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.16.2
+
+- The in-game guide works on Omarchy 4.0 stable releases. It needed a shell
+  surface that only newer Omarchy builds have, so on stable the guide did not load.
+
 ## 1.16.1
 
 - The in-game guide's Record clip action now uses its own recorder. A screen recording you
