@@ -353,6 +353,7 @@ Item {
   property int sizeAttempts: 0
 
   function showSurface() {
+    if (!root.overlay) { root.notify("surface-failed", null); root.close(); return }
     // Newer Omarchy maps a fresh window and exposes contentReady. Older shells
     // park at 1x1, so keep their configure handoff without delaying a fresh map.
     if (root.overlay.contentReady !== undefined || (root.overlayWidth <= 1 && root.overlayHeight <= 1)) { root.surfaceShown = true; return }
@@ -376,6 +377,7 @@ Item {
   }
 
   function surfaceSized() {
+    if (!root.overlay) return
     root.syncSize()
     var sized = root.overlayWidth > 1 && root.overlayHeight > 1 && (root.overlay.contentReady === undefined || root.overlay.contentReady)
     // Not from inside the resize itself: a show requested while the 1x1
@@ -398,7 +400,7 @@ Item {
   }
 
   onSurfaceShownChanged: {
-    if (!surfaceShown) return
+    if (!surfaceShown || !root.overlay) return
     root.syncSize()
     if (root.overlayWidth > 1 && root.overlayHeight > 1 && (root.overlay.contentReady === undefined || root.overlay.contentReady)) root.present()
     else sizeWatch.restart()
