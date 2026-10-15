@@ -126,6 +126,9 @@ public:
 
 private:
   [[nodiscard]] bool managed() const;
+  // Withdraws a launch hold a session left behind and returns what it held to the
+  // session workspace, where restoring the desktop finds it like any other window.
+  void endLaunchHold();
   [[nodiscard]] bool save(const GameModeState& state) const;
   [[nodiscard]] bool load(GameModeState* state) const;
   void forget() const;

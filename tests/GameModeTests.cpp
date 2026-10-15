@@ -293,6 +293,23 @@ public:
     currentFocus.output = name;
     return true;
   }
+  // Off unless a test holds launcher windows.
+  bool canHold = false;
+  QVector<GameModeHeldWindow> held;
+  bool setLaunchHold(const QString& workspace, QString*) override {
+    if (!canHold) return false;
+    log.append(QStringLiteral("launch-hold %1").arg(workspace));
+    return true;
+  }
+  bool heldWindows(QVector<GameModeHeldWindow>* windows, QString*) override {
+    *windows = held;
+    return canHold;
+  }
+  bool releaseWindow(const QString& address, const QString& workspace, QString*) override {
+    held.removeIf([&](const auto& window) { return window.address == address; });
+    log.append(QStringLiteral("release-held %1 %2").arg(address, workspace));
+    return true;
+  }
 };
 
 class FakeAudio final : public GameModeAudio {
@@ -2448,6 +2465,29 @@ private slots:
     QVERIFY(game.exit(100).ok);
     QCOMPARE(m_audio.current, QStringLiteral("headset"));
     QVERIFY(m_compositor.log.isEmpty());
+  }
+
+  void endingGameModeWithdrawsALaunchHold() {
+    deskAndTv(true);
+    GameModeController game = controller();
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+    m_compositor.canHold = true;
+    m_compositor.held = {{QStringLiteral("0x70"), 70, QStringLiteral("heroic"), QStringLiteral("Sign in")}};
+    m_compositor.log.clear();
+    QVERIFY(game.exit(100).ok);
+    QCOMPARE(m_compositor.log.at(0), QStringLiteral("launch-hold "));
+    QCOMPARE(m_compositor.log.at(1), QStringLiteral("release-held 0x70 name:omakade"));
+    QVERIFY(m_compositor.held.isEmpty());
+
+    // A crashed Omakade's hold is withdrawn by the next one's recovery too.
+    deskAndTv(true);
+    m_compositor.canHold = false;
+    QVERIFY(controller(false).enter(tvSettings(), 100).ok);
+    m_compositor.canHold = true;
+    m_compositor.held = {{QStringLiteral("0x71"), 71, QStringLiteral("steam"), QStringLiteral("Steam")}};
+    m_compositor.log.clear();
+    QVERIFY(controller(false).recover().ok);
+    QVERIFY(m_compositor.log.contains(QStringLiteral("release-held 0x71 name:omakade")));
   }
 
   void enteringTwiceIsRefused() {
