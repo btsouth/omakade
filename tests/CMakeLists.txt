@@ -546,6 +546,19 @@ foreach(couch_grid_variant IN ITEMS normal small large)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30)
 endforeach()
+foreach(launching_mode IN ITEMS desktop couch)
+  set(launching_options --render-overlay=launching
+      --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/launching-${launching_mode}.png)
+  if(launching_mode STREQUAL "couch")
+    list(APPEND launching_options --couch --render-size=1920x1080)
+  else()
+    list(APPEND launching_options --render-size=820x590)
+  endif()
+  add_test(NAME omakade_launching_${launching_mode} COMMAND omakade ${launching_options})
+  set_tests_properties(omakade_launching_${launching_mode} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 30)
+endforeach()
 add_test(NAME omakade_manual_editor COMMAND omakade --manual-editor-test)
 add_test(NAME omakade_manual_editor_couch COMMAND omakade --manual-editor-test --couch)
 add_test(NAME omakade_manual_editor_render COMMAND omakade

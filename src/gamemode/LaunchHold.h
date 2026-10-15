@@ -72,6 +72,9 @@ public:
   // Omakade has focus again after a shown window: put the library back in front.
   Q_INVOKABLE void returnToLibrary();
 
+  // Shows the Launching screen with these windows and holds nothing, for renders.
+  void preview(const QString& title, const QVector<GameModeHeldWindow>& windows);
+
   [[nodiscard]] static bool isGameWindow(const GameModeHeldWindow& window,
                                          const LaunchHoldTarget& target,
                                          const ProcessLookup& lookup);

@@ -2087,6 +2087,14 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
+  if (renderMode && renderOverlay == QStringLiteral("launching")) {
+    launchHold.preview(QStringLiteral("Grand Theft Auto V"),
+                       {{QStringLiteral("0x1"), 0, QStringLiteral("steam"), QStringLiteral("Steam")},
+                        {QStringLiteral("0x2"), 0, QStringLiteral("steam_app_271590"),
+                         QStringLiteral("Rockstar Games Launcher")},
+                        {QStringLiteral("0x3"), 0, QStringLiteral("steam_app_271590"),
+                         QStringLiteral("Sign in to Rockstar Games")}});
+  }
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeShortcut"), &gameModeShortcut);

@@ -135,6 +135,14 @@ bool LaunchHold::begin(const QVariantMap& game) {
   return true;
 }
 
+void LaunchHold::preview(const QString& title, const QVector<GameModeHeldWindow>& windows) {
+  m_target = {};
+  m_target.title = title;
+  m_windows = windows;
+  m_active = true;
+  emit changed();
+}
+
 void LaunchHold::launched(qint64 pid) {
   if (m_active) m_target.pid = pid;
 }
@@ -202,6 +210,10 @@ void LaunchHold::release(const QString& game) {
   emit changed();
   m_scanWatcher.waitForFinished();
   m_actionWatcher.waitForFinished();
+  if (!m_compositor) {
+    emit released();
+    return;
+  }
   const qint64 owner = QCoreApplication::applicationPid();
   // Stop holding first, then return what was held, so nothing opens out of sight after.
   m_actionWatcher.setFuture(QtConcurrent::run(
@@ -223,7 +235,7 @@ void LaunchHold::release(const QString& game) {
 }
 
 void LaunchHold::present(const QString& address) {
-  if (!m_active || m_actionWatcher.isRunning() ||
+  if (!m_active || !m_compositor || m_actionWatcher.isRunning() ||
       std::none_of(m_windows.cbegin(), m_windows.cend(),
                    [&](const auto& window) { return window.address == address; }))
     return;
@@ -248,7 +260,7 @@ void LaunchHold::present(const QString& address) {
 }
 
 void LaunchHold::returnToLibrary() {
-  if (m_presented.isEmpty()) return;
+  if (m_presented.isEmpty() || !m_compositor) return;
   m_presented.clear();
   emit changed();
   m_actionWatcher.waitForFinished();
