@@ -1583,6 +1583,32 @@ import QtQuick.Layouts
                 }
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: GameMode.displayManaged
+                    Text {
+                        Layout.fillWidth: true
+                        text: "HOLD LAUNCHER WINDOWS"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10 * settingsPanel.uiScale
+                    }
+                    GlassButton {
+                        objectName: "gameModeHoldLaunchersButton"
+                        compact: true
+                        text: GameMode.holdLaunchers ? "ON" : "OFF"
+                        onClicked: GameMode.holdLaunchers = !GameMode.holdLaunchers
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: GameMode.displayManaged
+                    text: "While a game starts, launcher, update and sign-in windows wait out of sight and Omakade stays in front. Any of them can be opened from the Launching screen."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
                     visible: GameModeShortcut.available
                     Text {
                         Layout.fillWidth: true

@@ -16,6 +16,8 @@ struct GameModeSettings {
   bool silenceNotifications = true;
   // Start the Steam client minimized when a session starts, so Steam games open sooner.
   bool warmSteam = false;
+  // Keep a launcher's windows out of sight while a game starts. See LaunchHold.
+  bool holdLaunchers = false;
 };
 
 // Everything a session changed, written to disk before each change so an interrupted

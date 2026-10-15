@@ -363,6 +363,7 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   if (!process.startDetached(&pid)) {
     return false;
   }
+  m_lastLaunchedPid = pid;
   if (track && pid > 0) {
     trackProcess(pid);
   }
@@ -768,6 +769,7 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
   m_launchIdentity = {{"source", source}, {"appId", id}, {"path", source == "Manual" ? id : installPath}};
+  m_lastLaunchedPid = 0;
   const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
           .contains(source))

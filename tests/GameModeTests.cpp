@@ -3217,6 +3217,10 @@ private slots:
     chosen.warmSteam = true;
     QVERIFY(GameModeSession::saveSettings(path, chosen));
     QVERIFY(GameModeSession::loadSettings(path).warmSteam);
+    QVERIFY(!defaults.holdLaunchers);
+    chosen.holdLaunchers = true;
+    QVERIFY(GameModeSession::saveSettings(path, chosen));
+    QVERIFY(GameModeSession::loadSettings(path).holdLaunchers);
   }
 };
 

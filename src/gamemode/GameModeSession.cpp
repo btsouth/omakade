@@ -58,6 +58,7 @@ GameModeSettings GameModeSession::loadSettings(const QString& path) {
   settings.sinkName = object.value("sink").toString();
   settings.silenceNotifications = object.value("silence_notifications").toBool(true);
   settings.warmSteam = object.value("warm_steam").toBool(false);
+  settings.holdLaunchers = object.value("hold_launchers").toBool(false);
   return settings;
 }
 
@@ -73,7 +74,8 @@ bool GameModeSession::saveSettings(const QString& path, const GameModeSettings& 
                                        {"output_description", settings.outputDescription},
                                        {"sink", settings.sinkName},
                                        {"silence_notifications", settings.silenceNotifications},
-                                       {"warm_steam", settings.warmSteam}})
+                                       {"warm_steam", settings.warmSteam},
+                                       {"hold_launchers", settings.holdLaunchers}})
                  .toJson(QJsonDocument::Indented));
   return file.commit();
 }
@@ -222,6 +224,13 @@ void GameModeSession::setSteamStarter(std::function<bool()> start) {
 void GameModeSession::startSteam() {
   if (!m_settings.warmSteam || !m_startSteam) return;
   if (!m_startSteam()) emit notice(QStringLiteral("Steam could not be started in the background."));
+}
+
+void GameModeSession::setHoldLaunchers(bool value) {
+  if (m_settings.holdLaunchers == value) return;
+  m_settings.holdLaunchers = value;
+  persist();
+  emit devicesChanged();
 }
 
 void GameModeSession::persist() {

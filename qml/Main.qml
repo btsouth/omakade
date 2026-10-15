@@ -1471,12 +1471,18 @@ ApplicationWindow {
         const installing = choice.installed === false && choice.source === "Steam"
         const openingHeroic = choice.installed === false && choice.source === "Heroic"
         let okay = false
+        // In Game Mode a launcher's own windows can wait out of sight until the game opens.
+        const holding = !DemoMode && !installing && !openingHeroic && GameMode.active && !GameMode.parked
+            && GameMode.holdLaunchers && LaunchHold.begin({title: request.title, source: choice.source,
+                                                           appId: choice.appId, installPath: choice.installPath || ""})
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
                                   choice.runner || "", choice.installPath || "", choice.launchTarget || "", choice.system || "")
         }
+        if (holding && okay) LaunchHold.launched(Launcher.lastLaunchedPid())
+        else if (holding) LaunchHold.cancel()
         const message = okay
             ? (installing ? "Opening Steam to install " : "Opening ") + request.title
                 + (installing ? "" : " in " + choice.source)
