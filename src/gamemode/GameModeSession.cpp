@@ -57,6 +57,7 @@ GameModeSettings GameModeSession::loadSettings(const QString& path) {
   settings.outputDescription = object.value("output_description").toString();
   settings.sinkName = object.value("sink").toString();
   settings.silenceNotifications = object.value("silence_notifications").toBool(true);
+  settings.warmSteam = object.value("warm_steam").toBool(false);
   return settings;
 }
 
@@ -71,7 +72,8 @@ bool GameModeSession::saveSettings(const QString& path, const GameModeSettings& 
   file.write(QJsonDocument(QJsonObject{{"output_name", settings.outputName},
                                        {"output_description", settings.outputDescription},
                                        {"sink", settings.sinkName},
-                                       {"silence_notifications", settings.silenceNotifications}})
+                                       {"silence_notifications", settings.silenceNotifications},
+                                       {"warm_steam", settings.warmSteam}})
                  .toJson(QJsonDocument::Indented));
   return file.commit();
 }
@@ -201,6 +203,25 @@ void GameModeSession::setSilenceNotifications(bool value) {
   m_settings.silenceNotifications = value;
   persist();
   emit devicesChanged();
+}
+
+void GameModeSession::setWarmSteam(bool value) {
+  if (m_settings.warmSteam == value) return;
+  m_settings.warmSteam = value;
+  persist();
+  emit devicesChanged();
+  // Turning it on during a session starts Steam now rather than at the next session.
+  if (value && m_active && !m_busy) startSteam();
+}
+
+void GameModeSession::setSteamStarter(std::function<bool()> start) {
+  m_startSteam = std::move(start);
+  emit devicesChanged();
+}
+
+void GameModeSession::startSteam() {
+  if (!m_settings.warmSteam || !m_startSteam) return;
+  if (!m_startSteam()) emit notice(QStringLiteral("Steam could not be started in the background."));
 }
 
 void GameModeSession::persist() {
@@ -490,6 +511,8 @@ void GameModeSession::finishChange() {
   const bool end = m_exitAfterChange;
   m_resumeAfterRefresh = false;
   m_exitAfterChange = false;
+  if (m_active && !end && (m_change == Change::Enter || m_change == Change::Resume))
+    startSteam();
   if (end && hasSession()) exit();
   else if (resume && m_parked) enter();
   else if (m_change != Change::RefreshParked) refresh();

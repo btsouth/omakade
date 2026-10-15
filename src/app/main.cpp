@@ -16,6 +16,7 @@
 #include "input/CouchCursorManager.h"
 #include "launch/GameLauncher.h"
 #include "launch/PlayRequest.h"
+#include "launch/SteamLauncher.h"
 #include "library/BattleNetGameModel.h"
 #include "library/CemuGameModel.h"
 #include "library/RommGameModel.h"
@@ -1839,6 +1840,10 @@ int main(int argc, char* argv[]) {
                    : configRoot + QStringLiteral("/omakade/game-mode.json"),
       isolatedTest ? gameModeFixture.filePath(QStringLiteral("game-mode-state.json"))
                    : gameModeStatePath);
+  // Test and render runs show the setting so navigation covers it, but never start Steam.
+  // Without Steam the setting is hidden.
+  if (isolatedTest) gameMode.setSteamStarter([] { return true; });
+  else if (SteamLauncher::installed()) gameMode.setSteamStarter(&SteamLauncher::startInBackground);
   // Omarchy keeps personal key bindings in this file and provides the `o.bind` helper the
   // Game Mode binding is written with.
   const QString omarchyPath = qEnvironmentVariable("OMARCHY_PATH");

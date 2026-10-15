@@ -4,6 +4,8 @@
 
 - Controller buttons now navigate and activate controls directly, avoiding duplicate
   presses and actions reaching the wrong control. Keyboard controls stay the same.
+- Game Mode can start Steam in the background when it starts, so Steam games open
+  without waiting for Steam to load. Turn it on in Settings → Controls.
 
 ## 1.16.2
 

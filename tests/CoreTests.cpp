@@ -1066,6 +1066,7 @@ private slots:
   void steamOwnedGamesRemainOptionalAndFilterByInstallation();
   void steamOwnedLibraryHandlesTwoThousandGames();
   void steamLauncherBuildsSafeUrls();
+  void steamStartsInTheBackground();
   void lutrisScannerImportsOnlyLaunchableGames();
   void lutrisModelIsRepeatableAndPreservesLocalState();
   void malformedLutrisDataDoesNotReplaceCachedGames();
@@ -2247,6 +2248,29 @@ void CoreTests::steamLauncherBuildsSafeUrls() {
                                        QStringLiteral("/usr/bin/steam"), true)
               .isEmpty());
   QVERIFY(SteamLauncher::steamCommands(QUrl{}, QStringLiteral("/usr/bin/steam"), true).isEmpty());
+}
+
+void CoreTests::steamStartsInTheBackground() {
+  const QList<LaunchCommand> both =
+      SteamLauncher::backgroundCommands(QStringLiteral("/usr/bin/steam"), true);
+  QCOMPARE(both.size(), 2);
+  QCOMPARE(both.at(0).program, QStringLiteral("/usr/bin/steam"));
+  QCOMPARE(both.at(0).arguments, QStringList{QStringLiteral("-silent")});
+  QCOMPARE(both.at(1).program, QStringLiteral("flatpak"));
+  QCOMPARE(both.at(1).arguments,
+           (QStringList{QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"),
+                        QStringLiteral("-silent")}));
+  QVERIFY(SteamLauncher::backgroundCommands(QString{}, false).isEmpty());
+
+  // A running client, or its launcher script, is found by process name only.
+  QTemporaryDir proc;
+  QVERIFY(proc.isValid());
+  writeFile(proc.filePath(QStringLiteral("100/comm")), "bash\n");
+  writeFile(proc.filePath(QStringLiteral("101/comm")), "steamwebhelper\n");
+  writeFile(proc.filePath(QStringLiteral("self/comm")), "steam\n");
+  QVERIFY(!SteamLauncher::clientRunning(proc.path()));
+  writeFile(proc.filePath(QStringLiteral("102/comm")), "steam\n");
+  QVERIFY(SteamLauncher::clientRunning(proc.path()));
 }
 
 void CoreTests::lutrisScannerImportsOnlyLaunchableGames() {

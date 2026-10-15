@@ -14,6 +14,8 @@ struct GameModeSettings {
   // Empty keeps the current sound output.
   QString sinkName;
   bool silenceNotifications = true;
+  // Start the Steam client minimized when a session starts, so Steam games open sooner.
+  bool warmSteam = false;
 };
 
 // Everything a session changed, written to disk before each change so an interrupted

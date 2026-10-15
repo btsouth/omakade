@@ -43,6 +43,9 @@ class GameModeSession final : public QObject {
   Q_PROPERTY(QString sessionSoundLabel READ sessionSoundLabel NOTIFY devicesChanged)
   Q_PROPERTY(bool silenceNotifications READ silenceNotifications WRITE setSilenceNotifications
                  NOTIFY devicesChanged)
+  Q_PROPERTY(bool warmSteam READ warmSteam WRITE setWarmSteam NOTIFY devicesChanged)
+  // False when Steam is not installed, or in test runs that must not start it.
+  Q_PROPERTY(bool steamAvailable READ steamAvailable NOTIFY devicesChanged)
 
 public:
   // Null ports leave that part of the desktop alone. `settingsPath` holds the choices and
@@ -77,6 +80,12 @@ public:
   [[nodiscard]] QString sessionSoundLabel() const;
   [[nodiscard]] bool silenceNotifications() const { return m_settings.silenceNotifications; }
   void setSilenceNotifications(bool value);
+  [[nodiscard]] bool warmSteam() const { return m_settings.warmSteam; }
+  void setWarmSteam(bool value);
+  [[nodiscard]] bool steamAvailable() const { return static_cast<bool>(m_startSteam); }
+  // Called when a session starts or resumes with warmSteam on. Returns false when Steam
+  // could not be started. Unset, the setting is hidden and nothing is started.
+  void setSteamStarter(std::function<bool()> start);
   [[nodiscard]] const GameModeSettings& settings() const { return m_settings; }
 
   // Rereads the connected displays and sound outputs. Also undoes a session that an
@@ -147,6 +156,7 @@ private:
   void setBusy(bool busy);
   void setStatus(const QString& text);
   void persist();
+  void startSteam();
   void finishRefresh();
   void finishChange();
   void startChange();
@@ -162,6 +172,7 @@ private:
   QString m_settingsPath;
   GameModeController m_controller;
   GameModeSettings m_settings;
+  std::function<bool()> m_startSteam;
   QVector<GameModeOutput> m_outputs;
   QVector<GameModeSink> m_sinks;
   QFutureWatcher<Devices> m_refreshWatcher;
