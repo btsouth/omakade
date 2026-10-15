@@ -48,16 +48,45 @@ bool under(const QString& candidate, const QString& path, bool folder,
                 : candidate.compare(path, sensitivity) == 0;
 }
 
+// Setup a game ships in its own folder, such as Steam's redistributables or EA's
+// installer, runs before the game and is not it.
+bool setupFolder(const QString& name) {
+  for (const char* folder : {"_CommonRedist", "CommonRedist", "__Installer", "Redist", "_Redist"})
+    if (name.compare(QLatin1String(folder), Qt::CaseInsensitive) == 0) return true;
+  return false;
+}
+
+enum class Place { Unknown, Inside, Outside };
+Place placeIn(const QString& candidate, const QString& installPath, bool folder,
+              Qt::CaseSensitivity sensitivity = Qt::CaseSensitive) {
+  if (!under(candidate, installPath, folder, sensitivity)) return Place::Unknown;
+  if (folder && setupFolder(candidate.mid(installPath.size() + 1).section(QLatin1Char('/'), 0, 0)))
+    return Place::Outside;
+  return Place::Inside;
+}
+
+// Steam runs a game's first-time setup through its install script evaluator, under the
+// game's own app id: reaper SteamLaunch AppId=N Install=1 -- ... iscriptevaluator.exe.
+bool steamSetup(const LaunchHoldProcess& process) {
+  const QStringList& arguments = process.arguments;
+  if (arguments.value(1) == QStringLiteral("SteamLaunch")) {
+    for (qsizetype index = 2; index < arguments.size() && arguments.at(index) != QStringLiteral("--"); ++index)
+      if (arguments.at(index) == QStringLiteral("Install=1")) return true;
+  }
+  return std::any_of(arguments.cbegin(), arguments.cend(), [](const QString& argument) {
+    return argument.endsWith(QStringLiteral("iscriptevaluator.exe"), Qt::CaseInsensitive);
+  });
+}
+
 // Where a process's own program is, against the game's install. Wine shows a process
 // its Windows program as the first argument. Wine's and Proton's own helpers under
 // C:\windows, and native programs elsewhere such as Steam or a shell, decide nothing.
-enum class Place { Unknown, Inside, Outside };
 Place placeOf(const LaunchHoldProcess& process, const QString& installPath, bool folder) {
   const QString program = process.arguments.value(0);
   if (windowsPath(program) && program.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive) &&
       !program.startsWith(QStringLiteral("C:\\windows\\"), Qt::CaseInsensitive)) {
-    if (under(hostPath(program, process.winePrefix), installPath, folder, Qt::CaseInsensitive))
-      return Place::Inside;
+    const Place place = placeIn(hostPath(program, process.winePrefix), installPath, folder, Qt::CaseInsensitive);
+    if (place != Place::Unknown) return place;
     // Only a program installed in the prefix itself, as publisher launchers are, is
     // surely another program. Proton shows the game's own folder through other drives,
     // whose paths may not match the one Omakade knows.
@@ -65,14 +94,15 @@ Place placeOf(const LaunchHoldProcess& process, const QString& installPath, bool
       return Place::Outside;
     return Place::Unknown;
   }
-  if (under(process.exePath, installPath, folder)) return Place::Inside;
+  if (const Place place = placeIn(process.exePath, installPath, folder); place != Place::Unknown)
+    return place;
   for (const QString& argument : process.arguments) {
-    if (windowsPath(argument)) {
-      if (under(hostPath(argument, process.winePrefix), installPath, folder, Qt::CaseInsensitive))
-        return Place::Inside;
-    } else if (argument.startsWith(QLatin1Char('/')) && under(canonical(argument), installPath, folder)) {
-      return Place::Inside;
-    }
+    Place place = Place::Unknown;
+    if (windowsPath(argument))
+      place = placeIn(hostPath(argument, process.winePrefix), installPath, folder, Qt::CaseInsensitive);
+    else if (argument.startsWith(QLatin1Char('/')))
+      place = placeIn(canonical(argument), installPath, folder);
+    if (place != Place::Unknown) return place;
   }
   return Place::Unknown;
 }
@@ -84,11 +114,14 @@ LaunchHold::LaunchHold(GameModeCompositor* compositor, QString workspace, Proces
       m_lookup(lookup ? std::move(lookup) : ProcessLookup(&LaunchHold::readProcess)) {
   m_poll.setInterval(400);
   connect(&m_poll, &QTimer::timeout, this, &LaunchHold::scan);
-  // Counted from the last window a launcher opened, so a slow first-run update on a
-  // handheld keeps the hold while it is still working.
+  // Gives up only when nothing is listed or shown, counted from the last window that
+  // opened or closed. Listed windows wait for the game or for B, however long a first-run
+  // update or Steam's shader processing takes on a handheld.
   m_timeout.setInterval(90 * 1000);
   m_timeout.setSingleShot(true);
-  connect(&m_timeout, &QTimer::timeout, this, [this] { release({}); });
+  connect(&m_timeout, &QTimer::timeout, this, [this] {
+    if (m_windows.isEmpty() && m_presented.isEmpty()) release({});
+  });
   connect(&m_scanWatcher, &QFutureWatcher<Scan>::finished, this, &LaunchHold::finishScan);
 }
 
@@ -158,6 +191,17 @@ bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHold
   const bool hasInstall = !target.installPath.isEmpty() && install.exists();
   const QString installPath = canonical(install.absoluteFilePath());
   const bool folder = install.isDir();
+  // Setup Steam runs for the game, such as its redistributables on a first launch, is
+  // held wherever its program is.
+  if (steam && lookup) {
+    qint64 pid = window.pid;
+    for (int depth = 0; pid > 1 && depth < kMaxAncestors; ++depth) {
+      const auto process = lookup(pid);
+      if (!process) break;
+      if (steamSetup(*process)) return false;
+      pid = process->parent;
+    }
+  }
   bool steamProcess = false;
   qint64 pid = window.pid;
   for (int depth = 0; pid > 1 && depth < kMaxAncestors; ++depth) {
@@ -292,8 +336,9 @@ void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
                                  return a.address == b.address && a.title == b.title;
                                });
   if (same) return;
-  // A new window means the launcher is still working: give it the full time again.
-  if (std::any_of(ordered.cbegin(), ordered.cend(), [&](const auto& window) {
+  // A new window means the launcher is still working: give it the full time again. So
+  // does the last one closing, as the time only runs out with nothing listed.
+  if (ordered.isEmpty() || std::any_of(ordered.cbegin(), ordered.cend(), [&](const auto& window) {
         return std::none_of(m_windows.cbegin(), m_windows.cend(),
                             [&](const auto& known) { return known.address == window.address; });
       }))
@@ -380,6 +425,8 @@ void LaunchHold::returnToLibrary() {
   if (m_presented.isEmpty()) return;
   const QString presented = m_presented;
   m_presented.clear();
+  // A sign-in can take any time; the hold's own time starts again from here.
+  if (m_active) m_timeout.start();
   emit changed();
   if (!m_compositor) return;
   m_actionWatcher.waitForFinished();
