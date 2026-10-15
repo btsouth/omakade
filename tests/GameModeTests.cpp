@@ -2932,12 +2932,12 @@ private slots:
     QVERIFY(hold.windows().isEmpty());
     QVERIFY(released.isEmpty());
     QTRY_VERIFY(compositor.entries().contains(QStringLiteral("focus 0x61")));
+    // The Steam client stays out of sight; the game takes over fullscreen.
     QCOMPARE(compositor.entries(),
              (QStringList{QStringLiteral("hold name:omakade"), QStringLiteral("hold "),
-                          QStringLiteral("release 0x60 name:omakade"),
                           QStringLiteral("mode %1 0 0").arg(kAddress),
                           QStringLiteral("release 0x61 name:omakade"),
-                          QStringLiteral("focus 0x61")}));
+                          QStringLiteral("mode 0x61 2 2"), QStringLiteral("focus 0x61")}));
   }
 
   void launchHoldShowsAWindowAndLetsGoInTime() {

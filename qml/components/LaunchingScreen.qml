@@ -19,12 +19,17 @@ Rectangle {
         return list.filter(button => button !== null)
     }
 
+    // Until someone moves, focus stays on the first window, so a quick A never lets
+    // everything go by landing on Show All Windows.
+    property bool moved: false
+
     function focusFirst() {
         if (buttons.length > 0) buttons[0].forceActiveFocus(Qt.TabFocusReason)
     }
 
     // Up and Down move through the list; Left and Right stay put.
     function navigate(key) {
+        moved = true
         const index = buttons.findIndex(button => button.activeFocus)
         if (index < 0) { focusFirst(); return true }
         const step = key === Qt.Key_Up ? -1 : key === Qt.Key_Down ? 1 : 0
@@ -33,9 +38,10 @@ Rectangle {
         return true
     }
 
-    onVisibleChanged: if (visible) Qt.callLater(focusFirst)
+    onVisibleChanged: if (visible) { moved = false; Qt.callLater(focusFirst) }
     // A window that opened or closed must not strand focus on a button that went away.
-    onButtonsChanged: if (visible && !buttons.some(button => button.activeFocus)) Qt.callLater(focusFirst)
+    onButtonsChanged: if (visible && (!moved || !buttons.some(button => button.activeFocus)))
+                          Qt.callLater(focusFirst)
 
     Keys.onUpPressed: event => event.accepted = navigate(Qt.Key_Up)
     Keys.onDownPressed: event => event.accepted = navigate(Qt.Key_Down)

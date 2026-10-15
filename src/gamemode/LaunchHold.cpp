@@ -215,19 +215,24 @@ void LaunchHold::release(const QString& game) {
     return;
   }
   const qint64 owner = QCoreApplication::applicationPid();
-  // Stop holding first, then return what was held, so nothing opens out of sight after.
+  // Stop holding first, so nothing opens out of sight after.
   m_actionWatcher.setFuture(QtConcurrent::run(
       [compositor = m_compositor, workspace = m_workspace, game, owner] {
         compositor->setLaunchHold({});
-        QVector<GameModeHeldWindow> held;
-        if (compositor->heldWindows(&held, nullptr)) {
-          for (const auto& window : std::as_const(held))
-            if (window.address != game) compositor->releaseWindow(window.address, workspace);
+        if (game.isEmpty()) {
+          // No game: everything comes back, as if there had been no hold.
+          QVector<GameModeHeldWindow> held;
+          if (compositor->heldWindows(&held, nullptr))
+            for (const auto& window : std::as_const(held))
+              compositor->releaseWindow(window.address, workspace);
+          return;
         }
-        if (game.isEmpty()) return;
+        // The launcher's windows stay out of sight until Game Mode ends. The game takes
+        // over fullscreen from the library, as any window opening in Game Mode does.
         const GameModeWindow root = compositor->windowForPid(owner);
         if (root.valid()) compositor->setWindowMode(root.address, 0, 0);
         compositor->releaseWindow(game, workspace);
+        compositor->setWindowMode(game, 2, 2);
         compositor->focusWindow(game);
       }));
   if (game.isEmpty()) emit released();

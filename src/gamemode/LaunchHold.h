@@ -33,9 +33,9 @@ struct LaunchHoldProcess {
 
 // While a game starts in Game Mode, the windows a launcher opens first (its client,
 // updates, splash screens, sign-ins) wait out of sight, and Omakade keeps focus. The
-// game's own window ends the hold: everything held returns to the session workspace and
-// the game is focused. A held window that needs an answer can be shown, and a hold that
-// finds no game lets everything go after a while, as if there had been no hold.
+// game's own window ends the hold: it goes fullscreen and is focused, and the launcher's
+// windows stay out of sight until Game Mode ends. A held window that needs an answer can
+// be shown, and a hold that is cancelled or finds no game lets everything go.
 class LaunchHold final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool active READ active NOTIFY changed)
