@@ -3,11 +3,14 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
 
 #include "sources/FlatpakInstall.h"
+
+#include <unistd.h>
 
 namespace {
 bool validAppId(const QString& appId) {
@@ -109,8 +112,11 @@ bool SteamLauncher::clientRunning(const QString& procRoot) {
     bool numeric = false;
     pid.toLongLong(&numeric);
     if (!numeric) continue;
+    // Another user's Steam does not serve this session.
+    const QString base = procRoot + QLatin1Char('/') + pid;
+    if (QFileInfo(base).ownerId() != static_cast<uint>(geteuid())) continue;
     // Flatpak Steam's sandboxed client is listed here under the same name.
-    QFile comm(procRoot + QLatin1Char('/') + pid + QStringLiteral("/comm"));
+    QFile comm(base + QStringLiteral("/comm"));
     if (comm.open(QIODevice::ReadOnly) && comm.readAll().trimmed() == "steam") return true;
   }
   return false;
