@@ -2,6 +2,7 @@
 #include "gamemode/GameModeDesktop.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/GameModeShortcut.h"
+#include "gamemode/LaunchHold.h"
 #include "tracking/ProcFs.h"
 
 #include <QCoreApplication>
@@ -9,6 +10,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QMetaMethod>
+#include <QMutex>
 #include <QSemaphore>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -384,6 +386,79 @@ const QString kTv = QStringLiteral("HDMI-A-2");
 const QString kTvDescription = QStringLiteral("Samsung Electric Company QBQ90 0x01000E00");
 const QString kTvSink = QStringLiteral("alsa_output.hdmi-stereo");
 const QString kAddress = QStringLiteral("0x55d0c0ffee00");
+
+// Only what a launch hold uses. Called from worker threads, so every access is locked.
+class HoldCompositor final : public GameModeCompositor {
+public:
+  bool available() override { return true; }
+  QVector<GameModeOutput> outputs(QString* = nullptr) override {
+    return {{0, kTv, kTvDescription, true, true, 1920, 1080, GameModeController::workspace()}};
+  }
+  bool setOutputEnabled(const QString&, bool, QString* = nullptr) override { return true; }
+  GameModeWindow windowForPid(qint64) override {
+    return {kAddress, GameModeController::workspace(), kTv};
+  }
+  int otherWindowsOn(const QString&, qint64) override { return 0; }
+  QStringList otherWindowAddressesOn(const QString&, qint64) override { return {}; }
+  GameModeWindow placeholderForPid(qint64) override { return {}; }
+  bool holdPlaceholder(QString* = nullptr) override { return true; }
+  bool placeWindow(const QString&, const QString&, const QString&, const QString&,
+                   QString* = nullptr) override {
+    return true;
+  }
+  bool returnWindow(const QString&, const QString&, const QString&, QString* = nullptr) override {
+    return true;
+  }
+  bool focusWindow(const QString& address, QString* = nullptr) override {
+    record(QStringLiteral("focus ") + address);
+    return true;
+  }
+  bool setWindowMode(const QString& address, int mode, int client, QString* = nullptr) override {
+    record(QStringLiteral("mode %1 %2 %3").arg(address).arg(mode).arg(client));
+    return true;
+  }
+  bool focusWorkspace(const QString&, QString* = nullptr) override { return true; }
+  bool focusOutput(const QString&, QString* = nullptr) override { return true; }
+  bool setLaunchHold(const QString& workspace, QString* = nullptr) override {
+    record(QStringLiteral("hold ") + workspace);
+    return true;
+  }
+  bool heldWindows(QVector<GameModeHeldWindow>* windows, QString*) override {
+    QMutexLocker lock(&mutex);
+    *windows = held;
+    return true;
+  }
+  bool releaseWindow(const QString& address, const QString& workspace, QString* = nullptr) override {
+    QMutexLocker lock(&mutex);
+    held.removeIf([&](const auto& window) { return window.address == address; });
+    log.append(QStringLiteral("release %1 %2").arg(address, workspace));
+    return true;
+  }
+  bool presentWindow(const QString& address, const QString& workspace, int width, int height,
+                     QString* = nullptr) override {
+    QMutexLocker lock(&mutex);
+    held.removeIf([&](const auto& window) { return window.address == address; });
+    log.append(QStringLiteral("present %1 %2 %3x%4").arg(address, workspace).arg(width).arg(height));
+    return true;
+  }
+  void open(const GameModeHeldWindow& window) {
+    QMutexLocker lock(&mutex);
+    held.append(window);
+  }
+  QStringList entries() {
+    QMutexLocker lock(&mutex);
+    return log;
+  }
+
+private:
+  void record(const QString& entry) {
+    QMutexLocker lock(&mutex);
+    log.append(entry);
+  }
+  QMutex mutex;
+  QVector<GameModeHeldWindow> held;
+  QStringList log;
+};
 
 } // namespace
 
@@ -2723,6 +2798,149 @@ private slots:
     QCOMPARE(held.at(0).windowClass, QStringLiteral("steam"));
     QCOMPARE(held.at(0).title, QStringLiteral("Steam"));
     QVERIFY(Compositor::parseHeldWindows("[").isEmpty());
+  }
+
+  void launchHoldKnowsTheGameWindow() {
+    // pid -> process; 50 is the Steam client, 60 Steam's reaper, 61 the game under it.
+    const QHash<qint64, LaunchHoldProcess> table{
+        {50, {1, QStringLiteral("/usr/lib/steam/steam"), {}, {}}},
+        {60, {50, QStringLiteral("/usr/lib/steam/reaper"), {}, QStringLiteral("367520")}},
+        {61, {60, QStringLiteral("/usr/bin/wine64-preloader"), {}, QStringLiteral("367520")}},
+        {70, {1, QStringLiteral("/opt/heroic/heroic"), {}, {}}},
+        {71, {70, QStringLiteral("/usr/bin/wine-preloader"),
+              {QStringLiteral("wine"), QStringLiteral("Z:\\games\\Celeste\\Celeste.exe")}, {}}},
+        {80, {1, QStringLiteral("/usr/bin/dolphin-emu"), {}, {}}},
+        {81, {80, QStringLiteral("/usr/bin/dolphin-emu"), {}, {}}},
+        {90, {90, QStringLiteral("/usr/bin/loop"), {}, {}}}};
+    const LaunchHold::ProcessLookup lookup = [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+      if (!table.contains(pid)) return std::nullopt;
+      return table.value(pid);
+    };
+    const auto window = [](qint64 pid, const QString& windowClass = QStringLiteral("app")) {
+      return GameModeHeldWindow{QStringLiteral("0x1"), pid, windowClass, {}};
+    };
+
+    const auto steam = LaunchHold::targetFor(
+        {{"source", "Steam"}, {"appId", "367520"}, {"title", "Hollow Knight"}});
+    QCOMPARE(steam.steamAppId, QStringLiteral("367520"));
+    QVERIFY(!steam.directProcess);
+    QVERIFY(!LaunchHold::isGameWindow(window(50, QStringLiteral("steam")), steam, lookup));
+    QVERIFY(LaunchHold::isGameWindow(window(61), steam, lookup));
+    QVERIFY(LaunchHold::isGameWindow(window(0, QStringLiteral("steam_app_367520")), steam, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(0, QStringLiteral("steam_app_10")), steam, lookup));
+
+    // A launcher's own window comes from the launched process too; only the install
+    // folder tells its game apart.
+    QTemporaryDir root;
+    QVERIFY(QDir(root.path()).mkpath(QStringLiteral("games/Celeste")));
+    QHash<qint64, LaunchHoldProcess> heroicTable = table;
+    heroicTable[71].arguments = {QStringLiteral("wine"),
+                                 QStringLiteral("Z:") + QDir::toNativeSeparators(
+                                     root.filePath(QStringLiteral("games/Celeste/Celeste.exe")))
+                                     .replace(QLatin1Char('/'), QLatin1Char('\\'))};
+    const LaunchHold::ProcessLookup heroicLookup = [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+      if (!heroicTable.contains(pid)) return std::nullopt;
+      return heroicTable.value(pid);
+    };
+    auto heroic = LaunchHold::targetFor({{"source", "Heroic"},
+                                         {"appId", "Salt"},
+                                         {"installPath", root.filePath(QStringLiteral("games/Celeste"))}});
+    heroic.pid = 70;
+    QVERIFY(!heroic.directProcess);
+    QVERIFY(!LaunchHold::isGameWindow(window(70), heroic, heroicLookup));
+    QVERIFY(LaunchHold::isGameWindow(window(71), heroic, heroicLookup));
+    heroic.installPath = root.filePath(QStringLiteral("games/Celes"));
+    QVERIFY(!LaunchHold::isGameWindow(window(71), heroic, heroicLookup));
+
+    // An emulator or native game is the launched process itself.
+    auto dolphin = LaunchHold::targetFor({{"source", "Dolphin"}, {"appId", "path:/roms/a.iso"}});
+    QVERIFY(dolphin.directProcess);
+    QVERIFY(!LaunchHold::isGameWindow(window(81), dolphin, lookup));
+    dolphin.pid = 80;
+    QVERIFY(LaunchHold::isGameWindow(window(81), dolphin, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(70), dolphin, lookup));
+    // A process that is its own parent ends the walk.
+    QVERIFY(!LaunchHold::isGameWindow(window(90), dolphin, lookup));
+  }
+
+  void launchHoldShowsTheGameAndReturnsTheRest() {
+    HoldCompositor compositor;
+    const QHash<qint64, LaunchHoldProcess> table{
+        {60, {1, QStringLiteral("/usr/lib/steam/steam"), {}, {}}},
+        {61, {1, QStringLiteral("/usr/bin/wine64-preloader"), {}, QStringLiteral("367520")}}};
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+                      if (!table.contains(pid)) return std::nullopt;
+                      return table.value(pid);
+                    });
+    hold.setPollInterval(10);
+    QSignalSpy shown(&hold, &LaunchHold::gameShown);
+    QSignalSpy released(&hold, &LaunchHold::released);
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "367520"}, {"title", "Hollow Knight"}}));
+    QVERIFY(hold.active());
+    QCOMPARE(hold.title(), QStringLiteral("Hollow Knight"));
+    QCOMPARE(compositor.entries(), QStringList{QStringLiteral("hold name:omakade")});
+
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("steam"), QStringLiteral("Steam")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    QCOMPARE(hold.windows().first().toMap().value("title").toString(), QStringLiteral("Steam"));
+    QVERIFY(shown.isEmpty());
+
+    compositor.open({QStringLiteral("0x61"), 61, QStringLiteral("hollow_knight"), QStringLiteral("Hollow Knight")});
+    QTRY_COMPARE(shown.size(), 1);
+    QVERIFY(!hold.active());
+    QVERIFY(hold.windows().isEmpty());
+    QVERIFY(released.isEmpty());
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("focus 0x61")));
+    QCOMPARE(compositor.entries(),
+             (QStringList{QStringLiteral("hold name:omakade"), QStringLiteral("hold "),
+                          QStringLiteral("release 0x60 name:omakade"),
+                          QStringLiteral("mode %1 0 0").arg(kAddress),
+                          QStringLiteral("release 0x61 name:omakade"),
+                          QStringLiteral("focus 0x61")}));
+  }
+
+  void launchHoldShowsAWindowAndLetsGoInTime() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    hold.setTimeout(1500);
+    QSignalSpy released(&hold, &LaunchHold::released);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    compositor.open({QStringLiteral("0x71"), 71, QStringLiteral("heroic"), QStringLiteral("Update")});
+    QTRY_COMPARE(hold.windows().size(), 2);
+
+    // Only a held window can be shown; the library leaves fullscreen so it is not covered.
+    hold.present(QStringLiteral("0x99"));
+    QVERIFY(hold.presented().isEmpty());
+    hold.present(QStringLiteral("0x70"));
+    QCOMPARE(hold.presented(), QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x70 name:omakade 1440x810")));
+    QVERIFY(compositor.entries().contains(QStringLiteral("mode %1 0 0").arg(kAddress)));
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.returnToLibrary();
+    QVERIFY(hold.presented().isEmpty());
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("mode %1 2 2").arg(kAddress)));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("focus ") + kAddress));
+
+    // No game in time: everything goes back, and focus stays with the library.
+    QTRY_COMPARE(released.size(), 1);
+    QVERIFY(!hold.active());
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("release 0x71 name:omakade")));
+    const QStringList log = compositor.entries();
+    QCOMPARE(log.at(log.indexOf(QStringLiteral("release 0x71 name:omakade")) - 1), QStringLiteral("hold "));
+    QVERIFY(!log.contains(QStringLiteral("focus 0x71")));
+  }
+
+  void launchHoldNeedsACompositorThatCanHold() {
+    m_compositor.usable = true;
+    LaunchHold hold(&m_compositor, GameModeController::workspace());
+    QVERIFY(!hold.begin({{"source", "Steam"}, {"appId", "10"}}));
+    QVERIFY(!hold.active());
+    LaunchHold none(nullptr, GameModeController::workspace());
+    QVERIFY(!none.begin({{"source", "Steam"}, {"appId", "10"}}));
   }
 
   void sinksAreParsed() {
