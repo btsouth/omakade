@@ -1,10 +1,10 @@
-#include "input/KeyDelivery.h"
+#include "app/KeyboardTestInput.h"
 
 #include <QEvent>
 #include <QWindow>
 #include <qpa/qwindowsysteminterface.h>
 
-void deliverKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers) {
+void deliverKeyboardTestKey(QWindow* window, int key, Qt::KeyboardModifiers modifiers) {
   if (window == nullptr) return;
   QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
       window, QEvent::KeyPress, key, modifiers);

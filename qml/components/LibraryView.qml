@@ -159,12 +159,14 @@ Item {
             }
         }
 
-        Keys.onReturnPressed: function(event) {
+        function acceptInput(event) {
             if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
                 event.accepted = true
             }
         }
+        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+        Keys.onReturnPressed: event => acceptInput(event)
         Keys.onEnterPressed: function(event) {
             if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
@@ -177,7 +179,8 @@ Item {
                 event.accepted = true
             }
         }
-        Keys.onUpPressed: function(event) {
+
+        function navigateUpInput(event) {
             if (currentIndex >= columns) {
                 currentIndex -= columns
                 positionViewAtIndex(currentIndex, GridView.Contain)
@@ -187,13 +190,18 @@ Item {
             }
             event.accepted = true
         }
-        Keys.onDownPressed: function(event) {
+        function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+        Keys.onUpPressed: event => navigateUpInput(event)
+
+        function navigateDownInput(event) {
             if (currentIndex >= 0 && currentIndex + columns < count) {
                 currentIndex += columns
                 positionViewAtIndex(currentIndex, GridView.Contain)
                 event.accepted = true
             }
         }
+        function controllerDown() { const action = { accepted: false }; navigateDownInput(action); return action.accepted }
+        Keys.onDownPressed: event => navigateDownInput(event)
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_F && currentIndex >= 0) {
                 root.favoriteToggled(currentIndex)

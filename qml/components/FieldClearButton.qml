@@ -87,7 +87,9 @@ Item {
         onClicked: root.clearField()
     }
 
-    Keys.onReturnPressed: function(event) { root.clearField(); event.accepted = true }
+    function acceptInput(event) { root.clearField(); event.accepted = true }
+    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+    Keys.onReturnPressed: event => acceptInput(event)
     Keys.onEnterPressed: function(event) { root.clearField(); event.accepted = true }
     Keys.onSpacePressed: function(event) { root.clearField(); event.accepted = true }
 }

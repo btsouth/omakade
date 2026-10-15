@@ -854,16 +854,21 @@ FocusScope {
             }
         }
 
-        Keys.onUpPressed: function(event) {
+        function navigateUpInput(event) {
             root.returnToControls()
             event.accepted = true
         }
-        Keys.onReturnPressed: function(event) {
+        function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+        Keys.onUpPressed: event => navigateUpInput(event)
+
+        function acceptInput(event) {
             if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
             }
             event.accepted = true
         }
+        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+        Keys.onReturnPressed: event => acceptInput(event)
         Keys.onEnterPressed: function(event) {
             if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
@@ -1053,7 +1058,7 @@ FocusScope {
             }
         }
 
-        Keys.onUpPressed: function(event) {
+        function navigateUpInput(event) {
             if (currentIndex >= 0 && currentIndex < columnCount) {
                 root.returnToControls()
                 event.accepted = true
@@ -1061,13 +1066,17 @@ FocusScope {
                 event.accepted = false
             }
         }
+        function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+        Keys.onUpPressed: event => navigateUpInput(event)
 
-        Keys.onReturnPressed: function(event) {
+        function acceptInput(event) {
             if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)
             }
             event.accepted = true
         }
+        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+        Keys.onReturnPressed: event => acceptInput(event)
         Keys.onEnterPressed: function(event) {
             if (currentIndex >= 0 && currentIndex < count) {
                 root.gameActivated(currentIndex)

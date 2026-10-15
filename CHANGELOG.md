@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Controller buttons now navigate and activate controls directly, avoiding duplicate
+  presses and actions reaching the wrong control. Keyboard controls stay the same.
+
 ## 1.16.2
 
 - The in-game guide works on Omarchy 4.0 stable releases. It needed a shell

@@ -172,12 +172,6 @@ FocusScope {
         else libraryModel.toggleSource(value)
         filtersChanged()
     }
-    Connections {
-        target: Controller
-        function onFavoriteRequested() {
-            if (root.visible && optionList.activeFocus) root.toggleSourceOption(optionList.currentIndex)
-        }
-    }
     function clearFilters() {
         libraryModel.mode = 0
         libraryModel.sortMode = 0
@@ -250,49 +244,83 @@ FocusScope {
             Flow {
                 Layout.fillWidth: true
                 spacing: 8
+                // Pad directions follow the same chain as the arrow keys.
+                function controllerNavigate(key) {
+                    const current = [organizeButton, savedButton, randomButton, clearButton, doneButton,
+                                     clearContextButton].find(button => button.activeFocus)
+                    if (!current) return false
+                    const next = key === Qt.Key_Left ? current.controllerLeftTarget
+                               : key === Qt.Key_Right ? current.controllerRightTarget
+                               : key === Qt.Key_Down ? current.controllerDownTarget : null
+                    if (!next || !next.visible || !next.enabled) return false
+                    next.forceActiveFocus(Qt.TabFocusReason)
+                    return true
+                }
             GlassButton {
                 id: organizeButton
+                objectName: "couchOrganizeButton"
                 text: "ORGANIZE"
-                KeyNavigation.right: savedButton
-                KeyNavigation.down: categoryList
+                property Item controllerRightTarget: savedButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.organizeRequested()
             }
             GlassButton {
                 id: savedButton
-                KeyNavigation.left: organizeButton
                 objectName: "couchSavedFiltersButton"
                 text: "SAVED FILTERS"
-                KeyNavigation.right: randomButton
-                KeyNavigation.down: categoryList
+                property Item controllerLeftTarget: organizeButton
+                property Item controllerRightTarget: randomButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.savedFiltersRequested()
             }
             GlassButton {
                 id: randomButton
-                KeyNavigation.left: savedButton
                 objectName: "couchRandomGameButton"
-                KeyNavigation.right: clearButton
-                KeyNavigation.down: categoryList
                 text: "PICK A GAME"
+                property Item controllerLeftTarget: savedButton
+                property Item controllerRightTarget: clearButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.randomRequested()
             }
             GlassButton {
                 id: clearButton
-                KeyNavigation.left: randomButton
                 text: "RESET BROWSING"
+                property Item controllerLeftTarget: randomButton
+                property Item controllerRightTarget: doneButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.clearFilters()
-                KeyNavigation.right: doneButton
-                KeyNavigation.down: categoryList
             }
             GlassButton {
                 id: doneButton
                 text: "DONE"
                 primary: true
+                property Item controllerLeftTarget: clearButton
+                property Item controllerRightTarget: clearContextButton
+                property Item controllerDownTarget: optionList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.closed()
-                KeyNavigation.left: clearButton
-                KeyNavigation.down: optionList
             }
             GlassButton {
+                id: clearContextButton
+                objectName: "couchClearFiltersButton"
                 text: "CLEAR FILTERS"
+                property Item controllerLeftTarget: doneButton
+                property Item controllerDownTarget: optionList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.clearContextFilters()
             }
             }
@@ -322,11 +350,14 @@ FocusScope {
 
                     onCurrentIndexChanged: root.categoryIndex = currentIndex
 
-                    Keys.onRightPressed: function(event) {
+                    function navigateRightInput(event) {
                         optionList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
                     }
-                    Keys.onUpPressed: function(event) {
+                    function controllerRight() { const action = { accepted: false }; navigateRightInput(action); return action.accepted }
+                    Keys.onRightPressed: event => navigateRightInput(event)
+
+                    function navigateUpInput(event) {
                         if (currentIndex === 0) {
                             clearButton.forceActiveFocus(Qt.TabFocusReason)
                             event.accepted = true
@@ -334,10 +365,15 @@ FocusScope {
                             event.accepted = false
                         }
                     }
-                    Keys.onReturnPressed: function(event) {
+                    function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+                    Keys.onUpPressed: event => navigateUpInput(event)
+
+                    function acceptInput(event) {
                         optionList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
                     }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: function(event) {
                         optionList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
@@ -397,11 +433,16 @@ FocusScope {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
 
-                    Keys.onLeftPressed: function(event) {
+                    function navigateLeftInput(event) {
                         categoryList.forceActiveFocus(Qt.TabFocusReason)
                         event.accepted = true
                     }
-                    Keys.onUpPressed: function(event) {
+                    function controllerLeft() { const action = { accepted: false }; navigateLeftInput(action); return action.accepted }
+                    function secondaryAction() { root.toggleSourceOption(currentIndex) }
+
+                    Keys.onLeftPressed: event => navigateLeftInput(event)
+
+                    function navigateUpInput(event) {
                         if (currentIndex === 0) {
                             doneButton.forceActiveFocus(Qt.TabFocusReason)
                             event.accepted = true
@@ -409,11 +450,16 @@ FocusScope {
                             event.accepted = false
                         }
                     }
-                    Keys.onReturnPressed: function(event) {
+                    function controllerUp() { const action = { accepted: false }; navigateUpInput(action); return action.accepted }
+                    Keys.onUpPressed: event => navigateUpInput(event)
+
+                    function acceptInput(event) {
                         if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) root.toggleSourceOption(currentIndex)
                         else root.applyOption(currentIndex)
                         event.accepted = true
                     }
+                    function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+                    Keys.onReturnPressed: event => acceptInput(event)
                     Keys.onEnterPressed: function(event) {
                         if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) root.toggleSourceOption(currentIndex)
                         else root.applyOption(currentIndex)

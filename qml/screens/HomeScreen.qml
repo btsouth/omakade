@@ -456,7 +456,10 @@ FocusScope {
                 if (tile.shelf) tile.shelf.revealItem(openButton)
             }
             onClicked: root.openGame(tile.game)
-            Keys.onReturnPressed: clicked()
+
+            function acceptInput(event) { clicked() }
+            function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+            Keys.onReturnPressed: event => acceptInput(event)
             Keys.onEnterPressed: clicked()
             padding: 0
             background: Rectangle { color: Theme.background; radius: 7; border.width: openButton.activeFocus ? 3 : 1; border.color: openButton.activeFocus ? Theme.accent : Qt.alpha(Theme.foreground, 0.15) }

@@ -62,9 +62,12 @@ Rectangle {
         color: Theme.foreground
         placeholderTextColor: Theme.mutedText
         Accessible.name: fieldTitle
-        Keys.onReturnPressed: function(event) {
-            if (TextEntry.keyboardNeeded) { editor.textEntryRequested(this, fieldTitle); event.accepted = true }
+
+        function acceptInput(event) {
+            if (TextEntry.keyboardNeeded) { editor.textEntryRequested(entryField, fieldTitle); event.accepted = true }
         }
+        function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
+        Keys.onReturnPressed: event => acceptInput(event)
         Keys.onEnterPressed: function(event) {
             if (TextEntry.keyboardNeeded) { editor.textEntryRequested(this, fieldTitle); event.accepted = true }
         }
