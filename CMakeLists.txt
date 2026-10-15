@@ -330,6 +330,8 @@ add_library(omakade_core STATIC
   src/gamemode/GameModePorts.h
   src/gamemode/GameModeSession.cpp
   src/gamemode/GameModeSession.h
+  src/gamemode/LaunchHold.cpp
+  src/gamemode/LaunchHold.h
   src/gamemode/GameModeShortcut.cpp
   src/gamemode/GameModeShortcut.h
   src/streaming/SunshineIntegration.cpp
@@ -413,6 +415,7 @@ qt_add_qml_module(omakade
     qml/components/LibraryRepairPanel.qml
     qml/components/RommSettings.qml
     qml/components/LaunchFeedback.qml
+    qml/components/LaunchingScreen.qml
     qml/components/ProtonDbBadge.qml
     qml/components/GameCard.qml
     qml/components/CouchLibraryView.qml

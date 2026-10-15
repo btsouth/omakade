@@ -54,6 +54,9 @@ public:
   // so this is polled from /proc rather than reported by QProcess.
   [[nodiscard]] bool gameRunning() const;
   [[nodiscard]] QVariantList trackedGames() const;
+  // The process the last launch() started itself, or 0 when it handed off to another
+  // client such as Steam, or started nothing.
+  Q_INVOKABLE qint64 lastLaunchedPid() const { return m_lastLaunchedPid; }
   // Starts a detached process and follows it through gameRunning() until it exits.
   bool startTracked(const LaunchCommand& command, const QString& workingDirectory = {});
   [[nodiscard]] static LaunchCommand lutrisCommand(const QString& id, bool flatpak);
@@ -176,5 +179,6 @@ private:
   void repairRetroArchHome() const;
   QList<TrackedProcess> m_trackedProcesses;
   QVariantMap m_launchIdentity;
+  qint64 m_lastLaunchedPid = 0;
   QTimer m_trackTimer;
 };

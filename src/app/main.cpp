@@ -54,6 +54,7 @@
 #include "guide/InGameGuide.h"
 #include "guide/GuideClient.h"
 #include "gamemode/GameModeSession.h"
+#include "gamemode/LaunchHold.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
 #include "streaming/SunshineIntegration.h"
@@ -1844,6 +1845,11 @@ int main(int argc, char* argv[]) {
   // Without Steam the setting is hidden.
   if (isolatedTest) gameMode.setSteamStarter([] { return true; });
   else if (SteamLauncher::installed()) gameMode.setSteamStarter(&SteamLauncher::startInBackground);
+  // Test runs get no hold: their compositors cannot keep windows.
+  LaunchHold launchHold(gameModeTest   ? static_cast<GameModeCompositor*>(&gameModeTestCompositor)
+                        : isolatedTest ? nullptr
+                                       : &gameModeCompositor,
+                        GameModeController::workspace());
   // Omarchy keeps personal key bindings in this file and provides the `o.bind` helper the
   // Game Mode binding is written with.
   const QString omarchyPath = qEnvironmentVariable("OMARCHY_PATH");
@@ -2080,6 +2086,15 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("ProtonDB"), &protonDb);
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
+  engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
+  if (renderMode && renderOverlay == QStringLiteral("launching")) {
+    launchHold.preview(QStringLiteral("Assassin's Creed Valhalla"),
+                       {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"),
+                         QStringLiteral("Heroic Games Launcher")},
+                        {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Ubisoft Connect")},
+                        {QStringLiteral("0x3"), 0, QStringLiteral("upc.exe"),
+                         QStringLiteral("Sign in to Ubisoft Connect")}});
+  }
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeShortcut"), &gameModeShortcut);

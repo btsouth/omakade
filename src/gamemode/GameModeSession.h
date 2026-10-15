@@ -46,6 +46,7 @@ class GameModeSession final : public QObject {
   Q_PROPERTY(bool warmSteam READ warmSteam WRITE setWarmSteam NOTIFY devicesChanged)
   // False when Steam is not installed, or in test runs that must not start it.
   Q_PROPERTY(bool steamAvailable READ steamAvailable NOTIFY devicesChanged)
+  Q_PROPERTY(bool holdLaunchers READ holdLaunchers WRITE setHoldLaunchers NOTIFY devicesChanged)
 
 public:
   // Null ports leave that part of the desktop alone. `settingsPath` holds the choices and
@@ -86,6 +87,8 @@ public:
   // Called when a session starts or resumes with warmSteam on. Returns false when Steam
   // could not be started. Unset, the setting is hidden and nothing is started.
   void setSteamStarter(std::function<bool()> start);
+  [[nodiscard]] bool holdLaunchers() const { return m_settings.holdLaunchers; }
+  void setHoldLaunchers(bool value);
   [[nodiscard]] const GameModeSettings& settings() const { return m_settings; }
 
   // Rereads the connected displays and sound outputs. Also undoes a session that an

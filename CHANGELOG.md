@@ -6,6 +6,9 @@
   presses and actions reaching the wrong control. Keyboard controls stay the same.
 - Game Mode can start Steam in the background when it starts, so Steam games open
   without waiting for Steam to load. Turn it on in Settings → Controls.
+- Game Mode can hold a launcher's own windows while a game starts, so updates, splash
+  screens and sign-ins no longer take focus from Omakade. A Starting screen lists them,
+  and any of them can be opened from there. Turn it on in Settings → Controls.
 
 ## 1.16.2
 

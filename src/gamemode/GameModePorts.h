@@ -58,6 +58,13 @@ struct GameModeGameWindow {
   int fullscreen = 0;
   int fullscreenClient = 0;
 };
+// A window the launch hold is keeping out of sight.
+struct GameModeHeldWindow {
+  QString address;
+  qint64 pid = 0;
+  QString windowClass;
+  QString title;
+};
 struct GameModeDesktopFocus {
   QString output;
   QString workspace;
@@ -146,6 +153,35 @@ public:
   }
   virtual bool focusWorkspace(const QString& workspace, QString* error = nullptr) = 0;
   virtual bool focusOutput(const QString& name, QString* error = nullptr) = 0;
+
+  // While a game starts, windows opening on `workspace`, except Omakade's own, open out of
+  // sight and without focus, so a launcher's splash and update windows cannot take focus
+  // from the library. An empty workspace withdraws the hold; held windows stay held.
+  virtual bool setLaunchHold(const QString&, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Launcher windows cannot be held.");
+    return false;
+  }
+  // False means unknown, not that nothing is held.
+  virtual bool heldWindows(QVector<GameModeHeldWindow>*, QString* error) {
+    if (error) *error = QStringLiteral("Held windows cannot be listed.");
+    return false;
+  }
+  // Puts a shown window back out of sight with the held ones.
+  virtual bool holdWindow(const QString&, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Windows cannot be held.");
+    return false;
+  }
+  // Puts a held window on `workspace` without focusing it.
+  virtual bool releaseWindow(const QString&, const QString&, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Held windows cannot be released.");
+    return false;
+  }
+  // Shows a held window floating at `width` by `height` in the middle of `workspace` and
+  // focuses it, so a sign-in or prompt can be answered.
+  virtual bool presentWindow(const QString&, const QString&, int, int, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Held windows cannot be shown.");
+    return false;
+  }
 };
 
 class GameModeAudio {

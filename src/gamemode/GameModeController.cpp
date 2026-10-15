@@ -752,6 +752,7 @@ GameModeController::Result GameModeController::park(qint64 windowPid) {
     result.error = QStringLiteral("Game Mode is not active.");
     return result;
   }
+  endLaunchHold();
   QString error;
   QVector<GameModeGameWindow> games;
   if (!managed() || !m_compositor->gameWindows(workspace(), windowPid, &games, &error)) {
@@ -1096,9 +1097,20 @@ GameModeController::Result GameModeController::refreshParked() {
   return result;
 }
 
+void GameModeController::endLaunchHold() {
+  if (m_compositor == nullptr) return;
+  // Compositors without a hold report failure here, which leaves nothing to undo.
+  if (!m_compositor->setLaunchHold({})) return;
+  QVector<GameModeHeldWindow> held;
+  if (!m_compositor->heldWindows(&held, nullptr)) return;
+  for (const auto& window : std::as_const(held))
+    m_compositor->releaseWindow(window.address, workspace());
+}
+
 GameModeController::Result GameModeController::exit(qint64 windowPid) {
   if (!m_active && !m_parked)
     return recover();
+  endLaunchHold();
   Result result;
   result.output = m_state.output;
   if (m_parked) {
@@ -1146,6 +1158,8 @@ GameModeController::Result GameModeController::recover() {
   }
   result.output = state.output;
   m_state = state;
+  // An Omakade that ended mid-launch leaves the hold on in the compositor.
+  endLaunchHold();
   const bool retained = state.phase == GameModePhase::DesktopRetained;
   // A parked crash must not replay already-consumed desktop changes.
   result.ok = restore(m_state, currentOwner ? self : 0, !currentOwner, &result.notes, retained);

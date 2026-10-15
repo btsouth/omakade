@@ -239,6 +239,15 @@ ApplicationWindow {
         if (!Controller.inputEnabled || (!root.active && !gameModeOverlay.active)) return
         const overlay = gameModeOverlay.visible
         const focused = overlay ? gameModeOverlay.activeFocusItem : root.activeFocusItem
+        if (!overlay && launchingScreen.visible) {
+            // While a game starts, the pad only moves through the held windows.
+            if (action === "back") LaunchHold.cancel()
+            else if (action === "accept") {
+                if (!focused || !root.isWithin(focused, launchingScreen)) launchingScreen.focusFirst()
+                else if (typeof focused.clicked === "function") focused.clicked()
+            } else if (typeof action === "number") launchingScreen.navigate(action)
+            return
+        }
         if (action === "back") {
             if (overlay) {
                 if (overlayHost.activeActionMenu) overlayHost.activeActionMenu.close()
@@ -370,7 +379,9 @@ ApplicationWindow {
 
     function goBack() {
         const focusedPopup = root.activeFocusItem ? root.activeFocusItem.popup : null
-        if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
+        if (LaunchHold.active) {
+            LaunchHold.cancel()
+        } else if (focusedPopup && focusedPopup.visible !== undefined && focusedPopup.visible) {
             // An open dropdown closes first; the panel it sits in stays.
             focusedPopup.close()
         } else if (activeActionMenu && activeActionMenu.opened) {
@@ -943,6 +954,10 @@ ApplicationWindow {
 
     function focusCurrentSurface() {
         if (root.gameModeNavigationRestoring) return
+        if (launchingScreen.visible) {
+            if (!root.isWithin(root.activeFocusItem, launchingScreen)) launchingScreen.focusFirst()
+            return
+        }
         const container = root.navigationContainer()
         const current = root.activeFocusItem
         if (container && root.isWithin(current, container)
@@ -1471,12 +1486,18 @@ ApplicationWindow {
         const installing = choice.installed === false && choice.source === "Steam"
         const openingHeroic = choice.installed === false && choice.source === "Heroic"
         let okay = false
+        // In Game Mode a launcher's own windows can wait out of sight until the game opens.
+        const holding = !DemoMode && !installing && !openingHeroic && GameMode.active && !GameMode.parked
+            && !GameMode.busy && GameMode.holdLaunchers && LaunchHold.begin({title: request.title, source: choice.source,
+                                                           appId: choice.appId, installPath: choice.installPath || ""})
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
                                   choice.runner || "", choice.installPath || "", choice.launchTarget || "", choice.system || "")
         }
+        if (holding && okay) LaunchHold.launched(Launcher.lastLaunchedPid())
+        else if (holding) LaunchHold.cancel()
         const message = okay
             ? (installing ? "Opening Steam to install " : "Opening ") + request.title
                 + (installing ? "" : " in " + choice.source)
@@ -1884,6 +1905,9 @@ ApplicationWindow {
 
     onActiveChanged: {
         if (active) {
+            // A window shown from the Launching screen was answered or closed: the
+            // library goes back to fullscreen in front of it.
+            if (LaunchHold.presented) LaunchHold.returnToLibrary()
             // A game can replace the workspace's fullscreen window. Reassert it
             // when the library regains focus, without raising it over the game.
             // Not while Game Mode is leaving: the window is on its way back to the desktop.
@@ -3775,6 +3799,23 @@ ApplicationWindow {
         gridObjectName: "couchTextEntryGrid"
         onAccepted: root.closeCouchTextEntry(true)
         onCanceled: root.closeCouchTextEntry(false)
+    }
+
+    LaunchingScreen {
+        id: launchingScreen
+        anchors.fill: parent
+        z: 110
+        uiScale: root.couchMode ? Math.max(1, Math.min(2.4, root.height / 900)) : 1
+        onVisibleChanged: if (!visible) Qt.callLater(root.focusCurrentSurface)
+    }
+
+    // Leaving or parking Game Mode puts held windows back itself; the hold just stops.
+    Connections {
+        target: GameMode
+        function onStateChanged() {
+            if (LaunchHold.active && (!GameMode.active || GameMode.parked || GameMode.busy))
+                LaunchHold.abandon()
+        }
     }
 
     Component.onCompleted: {

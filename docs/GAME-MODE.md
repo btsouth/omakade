@@ -20,6 +20,13 @@ Open **Settings → Controls** and look under **Game Mode**.
   resumes, so a Steam game opens without waiting for Steam to load. It is off until you
   turn it on and is shown only when Steam is installed. Steam keeps running after you
   leave Game Mode.
+- **Hold launcher windows** keeps a launcher's own windows out of sight while a game
+  starts: its client, updates, splash screens and sign-ins. Omakade stays in front with a
+  **Starting** screen that lists them. Pick one to answer it, such as a sign-in; when it
+  closes, Omakade comes back. When the game's window opens, it goes fullscreen and the
+  launcher's windows stay out of sight until you leave Game Mode. B or **Show All
+  Windows** stops holding, and after 90 seconds without a game everything is shown. It is
+  off until you turn it on. See [Hold launcher windows](#hold-launcher-windows).
 - **Keyboard shortcut** adds Super + Ctrl + G, which Omarchy leaves free. It starts Game
   Mode, returns to the desktop when active, and resumes the same session on the next
   press. If the key is already used for something else,
@@ -210,6 +217,18 @@ what was missing.
   and focused window return. Super + Ctrl + G resumes the same session and focuses
   the game, rather than opening a new library over it. Gameplay continues unless
   the game or emulator supports pausing while unfocused.
+
+## Hold launcher windows
+
+Omakade knows the game's window by its Steam app, by its install folder for Heroic,
+Lutris, GOG, Faugus and Battle.net games, or as the process it started for emulators and
+games you added yourself. Everything else that opens on the Game Mode display while the
+game starts is held.
+
+Under Proton, a publisher launcher such as Rockstar's or EA's carries the game's Steam app
+name, so the hold ends on it and you see it as usual. Windows that open on another
+display or workspace are never held. If Omakade quits while it holds windows, the next
+start, **End Game Mode** or `omakade --game-mode-exit` brings them back.
 
 ## Limits
 

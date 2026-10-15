@@ -16,6 +16,8 @@ struct GameModeSettings {
   bool silenceNotifications = true;
   // Start the Steam client minimized when a session starts, so Steam games open sooner.
   bool warmSteam = false;
+  // Keep a launcher's windows out of sight while a game starts. See LaunchHold.
+  bool holdLaunchers = false;
 };
 
 // Everything a session changed, written to disk before each change so an interrupted
@@ -126,6 +128,9 @@ public:
 
 private:
   [[nodiscard]] bool managed() const;
+  // Withdraws a launch hold a session left behind and returns what it held to the
+  // session workspace, where restoring the desktop finds it like any other window.
+  void endLaunchHold();
   [[nodiscard]] bool save(const GameModeState& state) const;
   [[nodiscard]] bool load(GameModeState* state) const;
   void forget() const;
