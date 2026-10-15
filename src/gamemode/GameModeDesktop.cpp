@@ -447,6 +447,18 @@ QString HyprlandGameModeCompositor::launchHoldScript(const QString& workspace) {
            luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
 }
 
+QString HyprlandGameModeCompositor::steamHoldScript(const QString& workspace) {
+  // Steam's client, its updater and its sign-in all carry the class "steam".
+  const QString match =
+      QStringLiteral("match = { class = %1, workspace = %2 }")
+          .arg(luaString(QStringLiteral("^([Ss]team)$")),
+               luaString(workspace.isEmpty() ? QStringLiteral("name:omakade") : workspace));
+  return QStringLiteral("hl.window_rule({ name = \"omakade-steam-hold\", enabled = %1, %2, "
+                        "workspace = %3, no_initial_focus = true })")
+      .arg(workspace.isEmpty() ? QStringLiteral("false") : QStringLiteral("true"), match,
+           luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
+}
+
 QVector<GameModeHeldWindow> HyprlandGameModeCompositor::parseHeldWindows(
     const QByteArray& clientsJson) {
   QVector<GameModeHeldWindow> windows;
@@ -482,6 +494,10 @@ QString HyprlandGameModeCompositor::presentScript(const QString& address, const 
 
 bool HyprlandGameModeCompositor::setLaunchHold(const QString& workspace, QString* error) {
   return eval(launchHoldScript(workspace), error);
+}
+
+bool HyprlandGameModeCompositor::setSteamHold(const QString& workspace, QString* error) {
+  return eval(steamHoldScript(workspace), error);
 }
 
 bool HyprlandGameModeCompositor::heldWindows(QVector<GameModeHeldWindow>* windows,

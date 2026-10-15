@@ -31,6 +31,10 @@ GameModeSession::GameModeSession(GameModeCompositor* compositor, GameModeAudio* 
     emit leaving(true);
   });
   m_parkTimer.setInterval(1000);
+  // Steam on a handheld under emulation can take minutes to update and start.
+  m_steamHoldTimer.setInterval(3 * 60 * 1000);
+  m_steamHoldTimer.setSingleShot(true);
+  connect(&m_steamHoldTimer, &QTimer::timeout, this, [this] { endSteamHold(true); });
   connect(&m_parkTimer, &QTimer::timeout, this, &GameModeSession::refreshParked);
   connect(&m_workspaceWatcher, &QFutureWatcher<int>::finished, this,
           [this] { emit workspaceChecked(m_workspaceWatcher.result()); });
@@ -216,19 +220,53 @@ void GameModeSession::setWarmSteam(bool value) {
   if (value && m_active && !m_busy) startSteam();
 }
 
-void GameModeSession::setSteamStarter(std::function<bool()> start) {
+void GameModeSession::setSteamStarter(std::function<SteamStart()> start) {
   m_startSteam = std::move(start);
   emit devicesChanged();
 }
 
 void GameModeSession::startSteam() {
   if (!m_settings.warmSteam || !m_startSteam) return;
-  if (!m_startSteam()) emit notice(QStringLiteral("Steam could not be started in the background."));
+  // With launcher windows held, Steam's update and sign-in windows wait out of sight too
+  // and are listed on the next Starting screen. A Steam that was already running is left
+  // alone, so its windows open as usual.
+  endSteamHold(false);
+  QVector<GameModeHeldWindow> held;
+  const bool hold = m_settings.holdLaunchers && m_compositor != nullptr &&
+                    m_compositor->heldWindows(&held, nullptr) &&
+                    m_compositor->setSteamHold(GameModeController::workspace());
+  const SteamStart result = m_startSteam();
+  if (result == SteamStart::Failed)
+    emit notice(QStringLiteral("Steam could not be started in the background."));
+  if (!hold) return;
+  m_steamHolding = true;
+  m_heldBeforeSteam.clear();
+  for (const auto& window : std::as_const(held)) m_heldBeforeSteam.append(window.address);
+  if (result == SteamStart::Started) m_steamHoldTimer.start();
+  else endSteamHold(false);
+}
+
+void GameModeSession::endSteamHold(bool release) {
+  m_steamHoldTimer.stop();
+  if (!m_steamHolding) return;
+  m_steamHolding = false;
+  if (m_compositor == nullptr) return;
+  m_compositor->setSteamHold({});
+  // Leaving or parking Game Mode brings every held window back by itself.
+  if (!release || !m_active || m_parked || m_busy) return;
+  QVector<GameModeHeldWindow> held;
+  if (!m_compositor->heldWindows(&held, nullptr)) return;
+  for (const auto& window : std::as_const(held)) {
+    const bool steam = window.windowClass.compare(QStringLiteral("steam"), Qt::CaseInsensitive) == 0;
+    if (steam && !m_heldBeforeSteam.contains(window.address))
+      m_compositor->releaseWindow(window.address, GameModeController::workspace());
+  }
 }
 
 void GameModeSession::setHoldLaunchers(bool value) {
   if (m_settings.holdLaunchers == value) return;
   m_settings.holdLaunchers = value;
+  if (!value) endSteamHold(true);
   persist();
   emit devicesChanged();
 }
@@ -481,6 +519,8 @@ void GameModeSession::finishChange() {
   m_active = m_controller.active();
   m_parked = m_controller.parked();
   m_busy = false;
+  // The controller brought back every held window as Game Mode left or parked.
+  if (!m_active || m_parked) endSteamHold(false);
   m_output = hasSession() ? result.output : QString{};
   const bool sessionChanged = wasActive != m_active || wasParked != m_parked ||
                               previousOutput != m_output;
@@ -538,6 +578,7 @@ void GameModeSession::screenRemoved(QScreen* screen) {
 
 void GameModeSession::shutdown() {
   m_parkTimer.stop();
+  m_steamHoldTimer.stop();
   m_refreshWatcher.waitForFinished();
   m_changeWatcher.waitForFinished();
   m_focusFuture.waitForFinished();

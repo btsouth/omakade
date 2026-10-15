@@ -1060,6 +1060,15 @@ ApplicationWindow {
     property int gameModeDesktopVisibilityBeforePreparation: Window.Windowed
 
     onActiveFocusItemChanged: {
+        // Nothing behind the Starting screen may take focus: a key would reach it there.
+        if (launchingScreen.visible && root.activeFocusItem
+                && !root.isWithin(root.activeFocusItem, launchingScreen)) {
+            Qt.callLater(function() {
+                if (launchingScreen.visible && !root.isWithin(root.activeFocusItem, launchingScreen))
+                    launchingScreen.focusFirst()
+            })
+            return
+        }
         // Only the dismissed Game Mode controls need their underlying return focus.
         if (GameMode.active && !GameMode.busy && !root.gameModeControlsMenuOpen()
                 && !root.gameModeNavigationRestoring && root.activeFocusItem)
@@ -1490,6 +1499,9 @@ ApplicationWindow {
         const holding = !DemoMode && !installing && !openingHeroic && GameMode.active && !GameMode.parked
             && !GameMode.busy && GameMode.holdLaunchers && LaunchHold.begin({title: request.title, source: choice.source,
                                                            appId: choice.appId, installPath: choice.installPath || ""})
+        // A launch hold lists what Steam opened as it started; anything else shows it now,
+        // and Steam's next window, such as an install dialog, opens as usual.
+        GameMode.endSteamHold(!holding)
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
@@ -1796,22 +1808,27 @@ ApplicationWindow {
 
     font.family: Theme.fontFamily
 
+    // Qt offers a window's shortcuts before the focused control sees the key. While the
+    // Starting screen covers the library, the library's keys must not act behind it;
+    // Escape still goes back, which lets the held windows go.
+    readonly property bool windowShortcutsEnabled: !gameModeOverlay.visible && !launchingScreen.visible
+
     Shortcut {
         sequence: "Ctrl+F"
-        enabled: !gameModeOverlay.visible && (!root.couchTextEntryOpen && !root.detailOpen
+        enabled: root.windowShortcutsEnabled && (!root.couchTextEntryOpen && !root.detailOpen
                  && (root.navigationContainer() === null || root.navigationContainer() === homeScreen
                      || (root.activeActionMenu && root.activeActionMenu.opened)))
         onActivated: root.openLibrarySearch()
     }
     Shortcut {
         sequence: "F11"
-        enabled: !gameModeOverlay.visible
+        enabled: root.windowShortcutsEnabled
         onActivated: root.toggleCouchMode()
     }
 
     Shortcut {
         sequence: "Ctrl+M"
-        enabled: !gameModeOverlay.visible
+        enabled: root.windowShortcutsEnabled
         onActivated: {
             Preferences.reducedMotion = !Preferences.reducedMotion
             root.showToast(Preferences.reducedMotion ? "Reduced motion enabled" : "Reduced motion disabled")
@@ -1819,7 +1836,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Ctrl+D"
-        enabled: !gameModeOverlay.visible && (!root.couchTextEntryOpen && !couchLibraryView.searchOpen && !root.linkDialogOpen && !root.collectionDeleteOpen
+        enabled: root.windowShortcutsEnabled && (!root.couchTextEntryOpen && !couchLibraryView.searchOpen && !root.linkDialogOpen && !root.collectionDeleteOpen
                  && !root.backupEditorOpen && !root.manualEditorOpen && !root.artworkEditorOpen && !root.bulkOrganizationOpen && !root.savedFiltersOpen)
         onActivated: {
             if (root.activeActionMenu && root.activeActionMenu.opened) root.activeActionMenu.close()
@@ -1828,39 +1845,39 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "F6"
-        enabled: !gameModeOverlay.visible && (root.navigationContainer() === null)
+        enabled: root.windowShortcutsEnabled && (root.navigationContainer() === null)
         onActivated: root.toggleLibraryControls()
     }
     Shortcut {
         objectName: "navigationTabForward"
         sequence: "Tab"
-        enabled: !gameModeOverlay.visible && (root.navigationContainer() !== null)
+        enabled: root.windowShortcutsEnabled && (root.navigationContainer() !== null)
         onActivated: root.focusWithin(root.navigationContainer(), true)
     }
     Shortcut {
         objectName: "navigationTabBackward"
         sequence: "Shift+Tab"
-        enabled: !gameModeOverlay.visible && (root.navigationContainer() !== null)
+        enabled: root.windowShortcutsEnabled && (root.navigationContainer() !== null)
         onActivated: root.focusWithin(root.navigationContainer(), false)
     }
     Shortcut {
         sequence: "Up"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Up))
+        enabled: root.windowShortcutsEnabled && (root.arrowNavigationEnabled(Qt.Key_Up))
         onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Up)
     }
     Shortcut {
         sequence: "Down"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Down))
+        enabled: root.windowShortcutsEnabled && (root.arrowNavigationEnabled(Qt.Key_Down))
         onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Down)
     }
     Shortcut {
         sequence: "Left"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Left))
+        enabled: root.windowShortcutsEnabled && (root.arrowNavigationEnabled(Qt.Key_Left))
         onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Left)
     }
     Shortcut {
         sequence: "Right"
-        enabled: !gameModeOverlay.visible && (root.arrowNavigationEnabled(Qt.Key_Right))
+        enabled: root.windowShortcutsEnabled && (root.arrowNavigationEnabled(Qt.Key_Right))
         onActivated: root.focusSpatial(root.navigationContainer(), Qt.Key_Right)
     }
     Shortcut {
@@ -1883,21 +1900,21 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Return"
-        enabled: !gameModeOverlay.visible && (!root.couchMode && root.navigationContainer() === null
+        enabled: root.windowShortcutsEnabled && (!root.couchMode && root.navigationContainer() === null
                  && libraryView.gridFocused
                  && libraryView.currentIndex >= 0)
         onActivated: root.openGame(libraryView.currentIndex)
     }
     Shortcut {
         sequence: "Enter"
-        enabled: !gameModeOverlay.visible && (!root.couchMode && root.navigationContainer() === null
+        enabled: root.windowShortcutsEnabled && (!root.couchMode && root.navigationContainer() === null
                  && libraryView.gridFocused
                  && libraryView.currentIndex >= 0)
         onActivated: root.openGame(libraryView.currentIndex)
     }
     Shortcut {
         sequence: "Space"
-        enabled: !gameModeOverlay.visible && (!root.couchMode && root.navigationContainer() === null
+        enabled: root.windowShortcutsEnabled && (!root.couchMode && root.navigationContainer() === null
                  && libraryView.gridFocused
                  && libraryView.currentIndex >= 0)
         onActivated: root.openGame(libraryView.currentIndex)
@@ -3813,8 +3830,7 @@ ApplicationWindow {
     Connections {
         target: GameMode
         function onStateChanged() {
-            if (LaunchHold.active && (!GameMode.active || GameMode.parked || GameMode.busy))
-                LaunchHold.abandon()
+            if (!GameMode.active || GameMode.parked || GameMode.busy) LaunchHold.abandon()
         }
     }
 

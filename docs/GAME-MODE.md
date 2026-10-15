@@ -18,15 +18,18 @@ Open **Settings → Controls** and look under **Game Mode**.
 - **Notifications in Game Mode** silences Omarchy notifications for the session.
 - **Start Steam in the background** starts Steam minimized when Game Mode starts or
   resumes, so a Steam game opens without waiting for Steam to load. It is off until you
-  turn it on and is shown only when Steam is installed. Steam keeps running after you
-  leave Game Mode.
+  turn it on and is shown only when Steam is installed. A Steam that is already running is
+  left alone, and Steam keeps running after you leave Game Mode. With **Hold launcher
+  windows** on, the windows Steam opens as it starts, such as a sign-in, are held too and
+  listed on the next **Starting** screen. They come back on their own if no game starts
+  within 3 minutes, when you install a game, or when you turn holding off.
 - **Hold launcher windows** keeps a launcher's own windows out of sight while a game
   starts: its client, updates, splash screens and sign-ins. Omakade stays in front with a
   **Starting** screen that lists them. Pick one to answer it, such as a sign-in; when it
   closes, Omakade comes back. When the game's window opens, it goes fullscreen and the
   launcher's windows stay out of sight until you leave Game Mode. B or **Show All
-  Windows** stops holding, and after 90 seconds without a game everything is shown. It is
-  off until you turn it on. See [Hold launcher windows](#hold-launcher-windows).
+  Windows** stops holding, and after 90 seconds with no game and no new window everything
+  is shown. It is off until you turn it on. See [Hold launcher windows](#hold-launcher-windows).
 - **Keyboard shortcut** adds Super + Ctrl + G, which Omarchy leaves free. It starts Game
   Mode, returns to the desktop when active, and resumes the same session on the next
   press. If the key is already used for something else,
@@ -225,9 +228,11 @@ Lutris, GOG, Faugus and Battle.net games, or as the process it started for emula
 games you added yourself. Everything else that opens on the Game Mode display while the
 game starts is held.
 
-Under Proton, a publisher launcher such as Rockstar's or EA's carries the game's Steam app
-name, so the hold ends on it and you see it as usual. Windows that open on another
-display or workspace are never held. If Omakade quits while it holds windows, the next
+Under Proton, every window a Steam game opens carries its Steam app name, including a
+publisher launcher such as Rockstar's or EA's. Omakade tells them apart by the program
+Wine runs: a launcher installed in the game's Proton prefix stays held, and a program
+from the game's install folder is the game. Windows that open on another display or
+workspace are never held. If Omakade quits while it holds windows, the next
 start, **End Game Mode** or `omakade --game-mode-exit` brings them back.
 
 ## Limits

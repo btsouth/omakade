@@ -837,7 +837,9 @@ int main(int argc, char* argv[]) {
   const bool manualEditorTest = application.arguments().contains(QStringLiteral("--manual-editor-test"));
   const bool detailsDirectionTest =
       application.arguments().contains(QStringLiteral("--details-direction-test"));
-  const bool smokeTest = gogSettingsTest || linkedPreferenceTest || backupEditorTest || bulkEditorTest || savedFilterTest || randomSelectionTest || staleSelectionTest || filterBackTest || gameModeTest || artworkEditorTest || manualEditorTest || application.arguments().contains(QStringLiteral("--smoke-test"));
+  const bool launchingNavigationTest =
+      application.arguments().contains(QStringLiteral("--launching-navigation-test"));
+  const bool smokeTest = gogSettingsTest || linkedPreferenceTest || backupEditorTest || bulkEditorTest || savedFilterTest || randomSelectionTest || staleSelectionTest || filterBackTest || gameModeTest || artworkEditorTest || manualEditorTest || launchingNavigationTest || application.arguments().contains(QStringLiteral("--smoke-test"));
   const bool couchNavigationTest =
       application.arguments().contains(QStringLiteral("--couch-navigation-test"));
   const bool couchNavigationContract = application.arguments().contains(QStringLiteral("--couch-navigation-contract"));
@@ -1843,8 +1845,15 @@ int main(int argc, char* argv[]) {
                    : gameModeStatePath);
   // Test and render runs show the setting so navigation covers it, but never start Steam.
   // Without Steam the setting is hidden.
-  if (isolatedTest) gameMode.setSteamStarter([] { return true; });
-  else if (SteamLauncher::installed()) gameMode.setSteamStarter(&SteamLauncher::startInBackground);
+  if (isolatedTest) {
+    gameMode.setSteamStarter([] { return GameModeSession::SteamStart::Running; });
+  } else if (SteamLauncher::installed()) {
+    gameMode.setSteamStarter([] {
+      if (SteamLauncher::clientRunning()) return GameModeSession::SteamStart::Running;
+      return SteamLauncher::startInBackground() ? GameModeSession::SteamStart::Started
+                                                : GameModeSession::SteamStart::Failed;
+    });
+  }
   // Test runs get no hold: their compositors cannot keep windows.
   LaunchHold launchHold(gameModeTest   ? static_cast<GameModeCompositor*>(&gameModeTestCompositor)
                         : isolatedTest ? nullptr
@@ -7660,6 +7669,131 @@ int main(int argc, char* argv[]) {
         if (rootWindow->property("detailOpen").toBool()) { fail("Random selection cannot close"); return; }
         application.quit();
       });
+    });
+  } else if (launchingNavigationTest) {
+    // While launcher windows are held, the pad only moves through the Starting screen:
+    // A opens a window, B lets everything go, and a quick A never lands on Show All.
+    QTimer::singleShot(200, &application, [&application, rootWindow, &controller, &launchHold] {
+      bool failed = false;
+      const auto fail = [&application, &failed](const QString& message) {
+        qCritical().noquote() << message;
+        failed = true;
+        application.exit(EXIT_FAILURE);
+      };
+      auto* quickWindow = qobject_cast<QQuickWindow*>(rootWindow);
+      const auto settle = [] {
+        QEventLoop events;
+        QTimer::singleShot(60, &events, &QEventLoop::quit);
+        events.exec();
+      };
+      const auto item = [quickWindow](const QString& name) {
+        return quickWindow ? findVisualItem(quickWindow->contentItem(), name) : nullptr;
+      };
+      const auto focused = [quickWindow] { return quickWindow->activeFocusItem(); };
+      const auto within = [](QQuickItem* candidate, QQuickItem* container) {
+        for (; candidate; candidate = candidate->parentItem())
+          if (candidate == container) return true;
+        return false;
+      };
+      const auto expectFocus = [&](QQuickItem* expected, const QString& step) {
+        if (!failed && focused() != expected)
+          fail(QStringLiteral("Starting screen: %1, focus was %2")
+                   .arg(step, focused() ? focused()->objectName() : QStringLiteral("nothing")));
+      };
+      auto* screen = item(QStringLiteral("launchingScreen"));
+      if (!quickWindow || !screen) { fail(QStringLiteral("Starting screen is missing")); return; }
+
+      launchHold.preview(QStringLiteral("Celeste"),
+                         {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"), QStringLiteral("Heroic Games Launcher")},
+                          {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Sign in to Ubisoft Connect")}});
+      settle();
+      QQuickItem* first = item(QStringLiteral("launchingWindow_0x1"));
+      QQuickItem* second = item(QStringLiteral("launchingWindow_0x2"));
+      auto* showAll = item(QStringLiteral("launchingShowAllButton"));
+      if (!screen->isVisible() || !first || !second || !showAll) {
+        fail(QStringLiteral("Starting screen did not list the held windows (visible %1, windows %2 %3, show all %4)")
+                 .arg(screen->isVisible()).arg(first != nullptr).arg(second != nullptr).arg(showAll != nullptr));
+        return;
+      }
+      expectFocus(first, QStringLiteral("the first window was not focused"));
+      controller.focusDirectionRequested(Qt::Key_Down); settle();
+      expectFocus(second, QStringLiteral("Down did not reach the second window"));
+      controller.focusDirectionRequested(Qt::Key_Down); settle();
+      controller.focusDirectionRequested(Qt::Key_Down); settle();
+      expectFocus(showAll, QStringLiteral("Down did not stop on Show All Windows"));
+      controller.focusDirectionRequested(Qt::Key_Up); settle();
+      controller.focusDirectionRequested(Qt::Key_Up); settle();
+      controller.focusDirectionRequested(Qt::Key_Left); settle();
+      controller.focusDirectionRequested(Qt::Key_Right); settle();
+      expectFocus(first, QStringLiteral("Up, Left or Right left the first window"));
+      const bool couch = rootWindow->property("couchMode").toBool();
+      controller.favoriteRequested(); controller.toolbarRequested(); controller.startRequested(); settle();
+      if (!failed && (!launchHold.active() || rootWindow->property("couchMode").toBool() != couch))
+        fail(QStringLiteral("Starting screen let Start, Y or X act on the library"));
+      controller.focusDirectionRequested(Qt::Key_Down); settle();
+      controller.acceptRequested(); settle();
+      if (!failed && launchHold.presented() != QStringLiteral("0x2"))
+        fail(QStringLiteral("A did not open the focused held window"));
+      launchHold.returnToLibrary();
+      controller.backRequested(); settle();
+      if (!failed && (launchHold.active() || screen->isVisible() || !focused() || within(focused(), screen)))
+        fail(QStringLiteral("B did not end the hold and return to the library"));
+
+      // The keyboard moves through the same list, even over a game's page, whose window
+      // shortcuts and Play button must not act behind the screen.
+      QMetaObject::invokeMethod(rootWindow, "openGame", Q_ARG(QVariant, QVariant(0)));
+      settle();
+      auto* play = item(QStringLiteral("playButton"));
+      if (!failed && (!play || !play->hasActiveFocus())) {
+        fail(QStringLiteral("Starting screen test could not open a game page"));
+        return;
+      }
+      launchHold.preview(QStringLiteral("Celeste"),
+                         {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"), QStringLiteral("Heroic Games Launcher")},
+                          {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Sign in to Ubisoft Connect")}});
+      settle();
+      first = item(QStringLiteral("launchingWindow_0x1"));
+      second = item(QStringLiteral("launchingWindow_0x2"));
+      expectFocus(first, QStringLiteral("the first window was not focused over a game page"));
+      // A page that takes focus late does not keep it.
+      play->forceActiveFocus(Qt::OtherFocusReason);
+      settle();
+      expectFocus(first, QStringLiteral("the game page kept focus behind the screen"));
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Down); settle();
+      expectFocus(second, QStringLiteral("keyboard Down did not reach the second window"));
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Tab); settle();
+      expectFocus(showAll, QStringLiteral("Tab did not reach Show All Windows"));
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Backtab, Qt::ShiftModifier); settle();
+      expectFocus(second, QStringLiteral("Shift+Tab did not return to the second window"));
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Left); settle();
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Right); settle();
+      expectFocus(second, QStringLiteral("keyboard Left or Right left the list"));
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Return); settle();
+      if (!failed && (launchHold.presented() != QStringLiteral("0x2") ||
+                      launchHold.title() != QStringLiteral("Celeste")))
+        fail(QStringLiteral("Return did not open the focused window, or reached the game page"));
+      launchHold.returnToLibrary();
+      launchHold.cancel();
+      settle();
+
+      // Nothing held yet: A does nothing, and Show All Windows is a deliberate move.
+      launchHold.preview(QStringLiteral("Hollow Knight"), {});
+      settle();
+      expectFocus(screen, QStringLiteral("focus did not rest on the screen with no windows"));
+      controller.acceptRequested(); settle();
+      if (!failed && !launchHold.active()) fail(QStringLiteral("A with no windows ended the hold"));
+      controller.focusDirectionRequested(Qt::Key_Down); settle();
+      expectFocus(showAll, QStringLiteral("Down did not reach Show All Windows"));
+      controller.acceptRequested(); settle();
+      if (!failed && launchHold.active()) fail(QStringLiteral("Show All Windows did not end the hold"));
+
+      // The keyboard's Escape lets go too.
+      launchHold.preview(QStringLiteral("Hollow Knight"), {});
+      settle();
+      deliverKeyboardTestKey(quickWindow, Qt::Key_Escape);
+      settle();
+      if (!failed && launchHold.active()) fail(QStringLiteral("Escape did not end the hold"));
+      if (!failed) application.quit();
     });
   } else if (staleSelectionTest) {
     // Narrowing the library to a single game leaves the grid holding delegates for the hundred

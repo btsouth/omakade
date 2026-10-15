@@ -5,10 +5,13 @@
 - Controller buttons now navigate and activate controls directly, avoiding duplicate
   presses and actions reaching the wrong control. Keyboard controls stay the same.
 - Game Mode can start Steam in the background when it starts, so Steam games open
-  without waiting for Steam to load. Turn it on in Settings → Controls.
+  without waiting for Steam to load. Turn it on in Settings → Controls. With launcher
+  windows held, Steam's own windows wait on the Starting screen too.
 - Game Mode can hold a launcher's own windows while a game starts, so updates, splash
-  screens and sign-ins no longer take focus from Omakade. A Starting screen lists them,
-  and any of them can be opened from there. Turn it on in Settings → Controls.
+  screens and sign-ins no longer take focus from Omakade. This includes publisher
+  launchers that run under Proton, such as Rockstar's and EA's. A Starting screen lists
+  them, and any of them can be opened from there with a controller or the keyboard.
+  Turn it on in Settings → Controls.
 
 ## 1.16.2
 
