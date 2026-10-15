@@ -125,10 +125,12 @@ private slots:
     QCOMPARE(launcher.inspect(rescanned)["mode"].toString(), QString("snes9x"));
     QVERIFY(launcher.launch("RetroArch", "stable", false, {},
                             installation["installPath"].toString(), {}, "snes"));
-    QTRY_VERIFY(QFileInfo::exists(output));
-    QFile result(output);
-    QVERIFY(result.open(QIODevice::ReadOnly));
-    QCOMPARE(QString::fromUtf8(result.readAll()), path);
+    // The shell creates the file before printf fills it, so wait for the content.
+    const auto launched = [&] {
+      QFile result(output);
+      return result.open(QIODevice::ReadOnly) ? QString::fromUtf8(result.readAll()) : QString();
+    };
+    QTRY_COMPARE(launched(), path);
     QVERIFY(launcher.saveSetup(installation, "RetroArch", {}, false, path));
     QVERIFY(!launcher.inspect(installation)["available"]
                  .toBool()); // explicit RetroArch cannot fall back
