@@ -28,8 +28,9 @@ Open **Settings → Controls** and look under **Game Mode**.
   **Starting** screen that lists them. Pick one to answer it, such as a sign-in; when it
   closes, Omakade comes back. When the game's window opens, it goes fullscreen and the
   launcher's windows stay out of sight until you leave Game Mode. B or **Show All
-  Windows** stops holding, and after 90 seconds with no game and no new window everything
-  is shown. It is off until you turn it on. See [Hold launcher windows](#hold-launcher-windows).
+  Windows** stops holding and shows everything. Listed windows wait as long as the
+  launcher takes, such as a first-run update or Steam's shader processing; a launch that
+  leaves nothing listed ends after 90 seconds. It is off until you turn it on. See [Hold launcher windows](#hold-launcher-windows).
 - **Keyboard shortcut** adds Super + Ctrl + G, which Omarchy leaves free. It starts Game
   Mode, returns to the desktop when active, and resumes the same session on the next
   press. If the key is already used for something else,
@@ -231,7 +232,9 @@ game starts is held.
 Under Proton, every window a Steam game opens carries its Steam app name, including a
 publisher launcher such as Rockstar's or EA's. Omakade tells them apart by the program
 Wine runs: a launcher installed in the game's Proton prefix stays held, and a program
-from the game's install folder is the game. Windows that open on another display or
+from the game's install folder is the game. The setup Steam runs on a game's first
+launch, such as its redistributables, and installers a game keeps in its own folder,
+such as `_CommonRedist` or `__Installer`, are held too. Windows that open on another display or
 workspace are never held. If Omakade quits while it holds windows, the next
 start, **End Game Mode** or `omakade --game-mode-exit` brings them back.
 

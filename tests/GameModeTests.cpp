@@ -484,6 +484,7 @@ public:
   void close(const QString& address) {
     QMutexLocker lock(&mutex);
     held.removeIf([&](const auto& window) { return window.address == address; });
+    shown.removeIf([&](const auto& window) { return window.address == address; });
   }
   QStringList entries() {
     QMutexLocker lock(&mutex);
@@ -3034,6 +3035,68 @@ private slots:
     QVERIFY(LaunchHold::isGameWindow(window(63), bare, lookup));
   }
 
+  void launchHoldKeepsFirstRunSetupHeld() {
+    // A first launch through Steam: Steam's install script evaluator runs the game's
+    // redistributables under the game's app id, as Steam's own log shows it:
+    // reaper SteamLaunch AppId=N Install=1 -- ... proton run .../iscriptevaluator.exe ...
+    QTemporaryDir root;
+    const QString library = root.filePath(QStringLiteral("SteamLibrary"));
+    const QString install = library + QStringLiteral("/steamapps/common/Grand Theft Auto V");
+    const QString prefix = library + QStringLiteral("/steamapps/compatdata/271590/pfx");
+    QVERIFY(QDir().mkpath(install + QStringLiteral("/_CommonRedist/vcredist/2019")));
+    QVERIFY(QDir().mkpath(install + QStringLiteral("/__Installer")));
+    QVERIFY(QDir().mkpath(prefix));
+    const auto zPath = [](QString path) { return QStringLiteral("Z:") + path.replace(QLatin1Char('/'), QLatin1Char('\\')); };
+    const auto wine = [&](qint64 parent, const QString& program) {
+      return LaunchHoldProcess{parent, QStringLiteral("/proton/files/bin/wine64-preloader"),
+                               {program}, QStringLiteral("271590"), prefix};
+    };
+    const QString steam = QStringLiteral("/home/player/.steam/steam");
+    QHash<qint64, LaunchHoldProcess> table{
+        {50, {1, steam + QStringLiteral("/ubuntu12_32/steam"), {}, {}, {}}},
+        {60, {50, steam + QStringLiteral("/ubuntu12_32/reaper"),
+              {steam + QStringLiteral("/ubuntu12_32/reaper"), QStringLiteral("SteamLaunch"),
+               QStringLiteral("AppId=271590"), QStringLiteral("Install=1"), QStringLiteral("--"),
+               QStringLiteral("/steamapps/common/Proton - Experimental/proton"), QStringLiteral("run"),
+               steam + QStringLiteral("/legacycompat/iscriptevaluator.exe"),
+               QStringLiteral("legacycompat\\evaluatorscript_271590.vdf")},
+              QStringLiteral("271590"), {}}},
+        {61, wine(60, zPath(steam + QStringLiteral("/legacycompat/iscriptevaluator.exe")))},
+        {62, wine(61, zPath(install + QStringLiteral("/_CommonRedist/vcredist/2019/VC_redist.x64.exe")))},
+        {63, wine(61, zPath(library + QStringLiteral("/steamapps/common/Steamworks Shared/_CommonRedist/DirectX/Jun2010/DXSETUP.exe")))},
+        {70, {50, steam + QStringLiteral("/ubuntu12_32/reaper"),
+              {QStringLiteral("reaper"), QStringLiteral("SteamLaunch"), QStringLiteral("AppId=271590"),
+               QStringLiteral("--"), install + QStringLiteral("/GTA5.exe"), QStringLiteral("Install=1")},
+              QStringLiteral("271590"), {}}},
+        {71, wine(70, zPath(install + QStringLiteral("/GTA5.exe")))},
+        {72, wine(70, zPath(install + QStringLiteral("/__INSTALLER/Touchup.exe")))},
+        {73, wine(70, zPath(install + QStringLiteral("/_commonredist/vcredist/2019/VC_redist.x64.exe")))}};
+    const LaunchHold::ProcessLookup lookup = [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+      if (!table.contains(pid)) return std::nullopt;
+      return table.value(pid);
+    };
+    const auto window = [](qint64 pid) {
+      return GameModeHeldWindow{QStringLiteral("0x1"), pid, QStringLiteral("steam_app_271590"), {}};
+    };
+    const auto gta = LaunchHold::targetFor(
+        {{"source", "Steam"}, {"appId", "271590"}, {"installPath", install}});
+
+    // Setup carries the game's app id and window class, from inside its folder or not.
+    QVERIFY(!LaunchHold::isGameWindow(window(61), gta, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(62), gta, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(63), gta, lookup));
+    // Even with no install known.
+    auto bare = gta;
+    bare.installPath.clear();
+    QVERIFY(!LaunchHold::isGameWindow(window(63), bare, lookup));
+    // The game's own arguments after reaper's -- decide nothing about setup.
+    QVERIFY(LaunchHold::isGameWindow(window(71), gta, lookup));
+    QVERIFY(LaunchHold::isGameWindow(window(71), bare, lookup));
+    // Setup a publisher runs from the game's folder is not the game either.
+    QVERIFY(!LaunchHold::isGameWindow(window(72), gta, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(73), gta, lookup));
+  }
+
   void launchHoldListsSteamsWindowsAndWaitsWhileLaunchersWork() {
     HoldCompositor compositor;
     LaunchHold hold(&compositor, GameModeController::workspace(),
@@ -3057,8 +3120,48 @@ private slots:
       QTRY_COMPARE(hold.windows().size(), 2 + window);
       QVERIFY(released.isEmpty());
     }
+    // Listed windows wait, however long a first-run update takes.
+    QTest::qWait(1500);
+    QVERIFY(released.isEmpty());
+    QVERIFY(hold.active());
+
+    // With nothing listed, the time runs from the last window closing.
+    for (const auto& address : {QStringLiteral("0x50"), QStringLiteral("0x60"), QStringLiteral("0x61"),
+                                QStringLiteral("0x62")})
+      compositor.close(address);
+    QTRY_VERIFY(hold.windows().isEmpty());
+    clock.restart();
     QTRY_COMPARE(released.size(), 1);
-    QVERIFY(clock.elapsed() >= 3 * 600 + 1000);
+    QVERIFY(clock.elapsed() >= 800);
+  }
+
+  void launchHoldGivesUpOnlyWithNothingListed() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    hold.setTimeout(300);
+    QSignalSpy released(&hold, &LaunchHold::released);
+    // A launch that opens nothing at all ends on its own.
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    QTRY_COMPARE(released.size(), 1);
+
+    // A window being answered is not given up on, though nothing else is listed.
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x80"), 80, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x80"));
+    QTRY_VERIFY(hold.windows().isEmpty());
+    QTest::qWait(800);
+    QCOMPARE(released.size(), 1);
+    QVERIFY(hold.active());
+    // Signed in and closed: the time starts again from the return to the list.
+    compositor.close(QStringLiteral("0x80"));
+    QElapsedTimer clock;
+    clock.start();
+    hold.returnToLibrary();
+    QTRY_COMPARE(released.size(), 2);
+    QVERIFY(clock.elapsed() >= 250);
   }
 
   void launchHoldShowsTheGameAndReturnsTheRest() {
@@ -3162,7 +3265,12 @@ private slots:
     QVERIFY(compositor.entries().contains(QStringLiteral("hold-window 0x71")));
     QTRY_COMPARE(hold.windows().size(), 2);
 
-    // No game in time: everything goes back, and focus stays with the library.
+    // Listed windows are not given up on; B puts everything back, and focus stays with
+    // the library.
+    QTest::qWait(2000);
+    QVERIFY(released.isEmpty());
+    QVERIFY(hold.active());
+    hold.cancel();
     QTRY_COMPARE(released.size(), 1);
     QVERIFY(!hold.active());
     QTRY_VERIFY(compositor.entries().contains(QStringLiteral("release 0x71 name:omakade")));

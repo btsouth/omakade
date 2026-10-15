@@ -9,9 +9,10 @@
   windows held, Steam's own windows wait on the Starting screen too.
 - Game Mode can hold a launcher's own windows while a game starts, so updates, splash
   screens and sign-ins no longer take focus from Omakade. This includes publisher
-  launchers that run under Proton, such as Rockstar's and EA's. A Starting screen lists
-  them, and any of them can be opened from there with a controller or the keyboard.
-  Turn it on in Settings → Controls.
+  launchers that run under Proton, such as Rockstar's and EA's, and the setup Steam runs on
+  a game's first launch. A Starting screen lists them, and any of them can be opened from
+  there with a controller or the keyboard. Listed windows wait as long as a slow update
+  takes. Turn it on in Settings → Controls.
 
 ## 1.16.2
 
