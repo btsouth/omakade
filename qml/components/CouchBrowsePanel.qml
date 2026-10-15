@@ -244,46 +244,71 @@ FocusScope {
             Flow {
                 Layout.fillWidth: true
                 spacing: 8
+                // Pad directions follow the same chain as the arrow keys.
+                function controllerNavigate(key) {
+                    const current = [organizeButton, savedButton, randomButton, clearButton, doneButton]
+                                    .find(button => button.activeFocus)
+                    if (!current) return false
+                    const next = key === Qt.Key_Left ? current.controllerLeftTarget
+                               : key === Qt.Key_Right ? current.controllerRightTarget
+                               : key === Qt.Key_Down ? current.controllerDownTarget : null
+                    if (!next || !next.visible || !next.enabled) return false
+                    next.forceActiveFocus(Qt.TabFocusReason)
+                    return true
+                }
             GlassButton {
                 id: organizeButton
                 text: "ORGANIZE"
-                KeyNavigation.right: savedButton
-                KeyNavigation.down: categoryList
+                property Item controllerRightTarget: savedButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.organizeRequested()
             }
             GlassButton {
                 id: savedButton
-                KeyNavigation.left: organizeButton
                 objectName: "couchSavedFiltersButton"
                 text: "SAVED FILTERS"
-                KeyNavigation.right: randomButton
-                KeyNavigation.down: categoryList
+                property Item controllerLeftTarget: organizeButton
+                property Item controllerRightTarget: randomButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.savedFiltersRequested()
             }
             GlassButton {
                 id: randomButton
-                KeyNavigation.left: savedButton
                 objectName: "couchRandomGameButton"
-                KeyNavigation.right: clearButton
-                KeyNavigation.down: categoryList
                 text: "PICK A GAME"
+                property Item controllerLeftTarget: savedButton
+                property Item controllerRightTarget: clearButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.randomRequested()
             }
             GlassButton {
                 id: clearButton
-                KeyNavigation.left: randomButton
                 text: "RESET BROWSING"
+                property Item controllerLeftTarget: randomButton
+                property Item controllerRightTarget: doneButton
+                property Item controllerDownTarget: categoryList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.clearFilters()
-                KeyNavigation.right: doneButton
-                KeyNavigation.down: categoryList
             }
             GlassButton {
                 id: doneButton
                 text: "DONE"
                 primary: true
+                property Item controllerLeftTarget: clearButton
+                property Item controllerDownTarget: optionList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.closed()
-                KeyNavigation.left: clearButton
-                KeyNavigation.down: optionList
             }
             GlassButton {
                 text: "CLEAR FILTERS"

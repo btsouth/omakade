@@ -5288,6 +5288,29 @@ int main(int argc, char* argv[]) {
             fail(QStringLiteral("Couch Browse did not open with category focus"));
             return;
           }
+          // The header row is reached from the first category and walked with the pad alone.
+          auto* savedFiltersButton =
+              browsePanel->findChild<QQuickItem*>(QStringLiteral("couchSavedFiltersButton"));
+          auto* pickGameButton =
+              browsePanel->findChild<QQuickItem*>(QStringLiteral("couchRandomGameButton"));
+          sendKey(Qt::Key_Up);
+          sendKey(Qt::Key_Left);
+          if (!pickGameButton || !pickGameButton->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Left did not move along the couch Browse header"));
+            return;
+          }
+          sendKey(Qt::Key_Left);
+          sendKey(Qt::Key_Right);
+          sendKey(Qt::Key_Left);
+          if (!savedFiltersButton || !savedFiltersButton->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Right did not move along the couch Browse header"));
+            return;
+          }
+          sendKey(Qt::Key_Down);
+          if (!browseCategories->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Down did not leave the couch Browse header"));
+            return;
+          }
           sendKey(Qt::Key_Right);
           if (!browseOptions->hasActiveFocus()) {
             fail(QStringLiteral("Controller Right did not reach couch Browse options"));
@@ -5615,7 +5638,7 @@ int main(int argc, char* argv[]) {
                     fail(QStringLiteral("Controller Back did not restore the couch library"));
                     return;
                   }
-                  deliverKeyboardTestKey(QGuiApplication::focusWindow(), Qt::Key_F11, Qt::NoModifier);
+                  controller.startRequested();
                   QTimer::singleShot(50, quickWindow, [quickWindow, &application, fail] {
                     if (quickWindow->property("couchMode").toBool()) {
                       fail(QStringLiteral("Controller Start did not return to desktop mode"));
