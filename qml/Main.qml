@@ -10,6 +10,8 @@ ApplicationWindow {
     id: root
 
     property var activeActionMenu: null
+    // The dropdown whose popup is open; set by ThemedComboBox so pad commands need no tree walk.
+    property Item controllerCombo: null
     property bool randomSelection: false
     property bool backupEditorOpen: false
     property bool bulkOrganizationOpen: false
@@ -362,13 +364,8 @@ ApplicationWindow {
     }
 
     function openControllerCombo() {
-        function find(item) {
-            if (!item || !item.visible || !item.enabled) return null
-            if (item.popup && item.popup.visible && typeof item.controllerNavigate === "function") return item
-            for (let child of item.children) { const found = find(child); if (found) return found }
-            return null
-        }
-        return find(root.contentItem)
+        const combo = root.controllerCombo
+        return combo && combo.visible && combo.enabled && combo.popup.visible ? combo : null
     }
 
     function goBack() {

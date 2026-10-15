@@ -28,6 +28,10 @@ ComboBox {
             popup.close()
         }
     }
+    function releaseControllerCombo() {
+        const window = control.Window.window
+        if (window && window.controllerCombo === control) window.controllerCombo = null
+    }
     function optionEnabled(index) {
         return !availabilityRole || !!model[index][availabilityRole]
     }
@@ -103,7 +107,12 @@ ComboBox {
     }
 
     popup: Popup {
-        onAboutToShow: control.controllerIndex = control.currentIndex
+        onAboutToShow: {
+            control.controllerIndex = control.currentIndex
+            const window = control.Window.window
+            if (window && window.controllerCombo !== undefined) window.controllerCombo = control
+        }
+        onClosed: control.releaseControllerCombo()
         y: control.height
         width: control.width
         implicitHeight: Math.min(listView.contentHeight, 8 * 40 * control.uiScale) + 2
