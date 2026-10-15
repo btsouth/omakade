@@ -415,6 +415,7 @@ qt_add_qml_module(omakade
     qml/components/LibraryRepairPanel.qml
     qml/components/RommSettings.qml
     qml/components/LaunchFeedback.qml
+    qml/components/LaunchingScreen.qml
     qml/components/ProtonDbBadge.qml
     qml/components/GameCard.qml
     qml/components/CouchLibraryView.qml
