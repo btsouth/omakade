@@ -2088,12 +2088,12 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
   if (renderMode && renderOverlay == QStringLiteral("launching")) {
-    launchHold.preview(QStringLiteral("Grand Theft Auto V"),
-                       {{QStringLiteral("0x1"), 0, QStringLiteral("steam"), QStringLiteral("Steam")},
-                        {QStringLiteral("0x2"), 0, QStringLiteral("steam_app_271590"),
-                         QStringLiteral("Rockstar Games Launcher")},
-                        {QStringLiteral("0x3"), 0, QStringLiteral("steam_app_271590"),
-                         QStringLiteral("Sign in to Rockstar Games")}});
+    launchHold.preview(QStringLiteral("Assassin's Creed Valhalla"),
+                       {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"),
+                         QStringLiteral("Heroic Games Launcher")},
+                        {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Ubisoft Connect")},
+                        {QStringLiteral("0x3"), 0, QStringLiteral("upc.exe"),
+                         QStringLiteral("Sign in to Ubisoft Connect")}});
   }
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);

@@ -39,7 +39,6 @@ Rectangle {
 
     Keys.onUpPressed: event => event.accepted = navigate(Qt.Key_Up)
     Keys.onDownPressed: event => event.accepted = navigate(Qt.Key_Down)
-    Keys.onEscapePressed: LaunchHold.cancel()
 
     // Takes clicks and wheel events so the library underneath stays still.
     MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: wheel => wheel.accepted = true }
