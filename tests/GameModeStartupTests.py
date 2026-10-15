@@ -118,7 +118,8 @@ class GameModeStartupTests(unittest.TestCase):
             for stat in Path("/proc").glob("[0-9]*/stat"):
                 try:
                     fields = stat.read_text().rsplit(")", 1)[1].split()
-                except FileNotFoundError:
+                except (FileNotFoundError, ProcessLookupError):
+                    # The process exited between listing /proc and reading it.
                     continue
                 if int(fields[2]) == process.pid and fields[0] not in ("Z", "X"):
                     members.append(int(stat.parent.name))
