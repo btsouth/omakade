@@ -409,7 +409,7 @@ class HoldCompositor final : public GameModeCompositor {
 public:
   bool available() override { return true; }
   QVector<GameModeOutput> outputs(QString* = nullptr) override {
-    return {{0, kTv, kTvDescription, true, true, 1920, 1080, GameModeController::workspace()}};
+    return {{0, kTv, kTvDescription, true, true, 2560, 1440, GameModeController::workspace()}};
   }
   bool setOutputEnabled(const QString&, bool, QString* = nullptr) override { return true; }
   GameModeWindow windowForPid(qint64) override {
@@ -2900,6 +2900,8 @@ private slots:
     QVERIFY(!heroic.directProcess);
     QVERIFY(!LaunchHold::isGameWindow(window(70), heroic, heroicLookup));
     QVERIFY(LaunchHold::isGameWindow(window(71), heroic, heroicLookup));
+    // A folder whose name only starts the same is a different game.
+    QVERIFY(QDir(root.path()).mkpath(QStringLiteral("games/Celes")));
     heroic.installPath = root.filePath(QStringLiteral("games/Celes"));
     QVERIFY(!LaunchHold::isGameWindow(window(71), heroic, heroicLookup));
 
@@ -3003,15 +3005,23 @@ private slots:
     QVERIFY(hold.presented().isEmpty());
     hold.present(QStringLiteral("0x70"));
     QCOMPARE(hold.presented(), QStringLiteral("0x70"));
-    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x70 name:omakade 1440x810")));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x70 name:omakade 1920x1080")));
     QVERIFY(compositor.entries().contains(QStringLiteral("mode %1 0 0").arg(kAddress)));
     QTRY_COMPARE(hold.windows().size(), 1);
+    // Showing another window first puts the shown one back with the others.
+    hold.present(QStringLiteral("0x71"));
+    QCOMPARE(hold.presented(), QStringLiteral("0x71"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x71 name:omakade 1920x1080")));
+    QVERIFY(compositor.entries().indexOf(QStringLiteral("hold-window 0x70")) <
+            compositor.entries().indexOf(QStringLiteral("present 0x71 name:omakade 1920x1080")));
+    QTRY_COMPARE(hold.windows().size(), 1);
+    QCOMPARE(hold.windows().first().toMap().value("address").toString(), QStringLiteral("0x70"));
     hold.returnToLibrary();
     QVERIFY(hold.presented().isEmpty());
     QTRY_VERIFY(compositor.entries().contains(QStringLiteral("mode %1 2 2").arg(kAddress)));
     QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("focus ") + kAddress));
     // A sign-in left open waits in the list again.
-    QVERIFY(compositor.entries().contains(QStringLiteral("hold-window 0x70")));
+    QVERIFY(compositor.entries().contains(QStringLiteral("hold-window 0x71")));
     QTRY_COMPARE(hold.windows().size(), 2);
 
     // No game in time: everything goes back, and focus stays with the library.
@@ -3019,7 +3029,9 @@ private slots:
     QVERIFY(!hold.active());
     QTRY_VERIFY(compositor.entries().contains(QStringLiteral("release 0x71 name:omakade")));
     const QStringList log = compositor.entries();
-    QCOMPARE(log.at(log.indexOf(QStringLiteral("release 0x71 name:omakade")) - 1), QStringLiteral("hold "));
+    // The hold is off before anything comes back, so nothing opens out of sight after.
+    QVERIFY(log.lastIndexOf(QStringLiteral("hold ")) < log.indexOf(QStringLiteral("release 0x70 name:omakade")));
+    QVERIFY(log.lastIndexOf(QStringLiteral("hold ")) < log.indexOf(QStringLiteral("release 0x71 name:omakade")));
     QVERIFY(!log.contains(QStringLiteral("focus 0x71")));
   }
 

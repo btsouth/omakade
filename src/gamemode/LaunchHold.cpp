@@ -279,11 +279,14 @@ void LaunchHold::present(const QString& address) {
       std::none_of(m_windows.cbegin(), m_windows.cend(),
                    [&](const auto& window) { return window.address == address; }))
     return;
+  // One window at a time: one already shown goes back with the others first.
+  const QString previous = m_presented == address ? QString{} : m_presented;
   m_presented = address;
   emit changed();
   const qint64 owner = QCoreApplication::applicationPid();
   m_actionWatcher.setFuture(QtConcurrent::run(
-      [compositor = m_compositor, workspace = m_workspace, address, owner] {
+      [compositor = m_compositor, workspace = m_workspace, address, owner, previous] {
+        if (!previous.isEmpty()) compositor->holdWindow(previous);
         const GameModeWindow root = compositor->windowForPid(owner);
         int width = 1440;
         int height = 810;
