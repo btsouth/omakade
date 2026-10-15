@@ -430,6 +430,83 @@ bool HyprlandGameModeCompositor::focusOutput(const QString& name, QString* error
               error);
 }
 
+QString HyprlandGameModeCompositor::launchHoldWorkspace() {
+  return QStringLiteral("special:omakade-launch");
+}
+
+QString HyprlandGameModeCompositor::launchHoldScript(const QString& workspace) {
+  // Only windows opening on the session's workspace are held, never Omakade's own, so
+  // windows on other displays and workspaces open as usual.
+  const QString match =
+      QStringLiteral("match = { class = %1, workspace = %2 }")
+          .arg(luaString(QStringLiteral("negative:^(io\\.github\\.tsouth89\\.Omakade)$")),
+               luaString(workspace.isEmpty() ? QStringLiteral("name:omakade") : workspace));
+  return QStringLiteral("hl.window_rule({ name = \"omakade-launch-hold\", enabled = %1, %2, "
+                        "workspace = %3, no_initial_focus = true })")
+      .arg(workspace.isEmpty() ? QStringLiteral("false") : QStringLiteral("true"), match,
+           luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
+}
+
+QVector<GameModeHeldWindow> HyprlandGameModeCompositor::parseHeldWindows(
+    const QByteArray& clientsJson) {
+  QVector<GameModeHeldWindow> windows;
+  for (const QJsonValue& value : QJsonDocument::fromJson(clientsJson).array()) {
+    const QJsonObject client = value.toObject();
+    const QString address = client.value(QLatin1String("address")).toString();
+    if (!client.value(QLatin1String("mapped")).toBool() || !validAddress(address) ||
+        workspaceSelector(client.value(QLatin1String("workspace")).toObject()) !=
+            launchHoldWorkspace()) {
+      continue;
+    }
+    windows.append({address, client.value(QLatin1String("pid")).toVariant().toLongLong(),
+                    client.value(QLatin1String("class")).toString(),
+                    client.value(QLatin1String("title")).toString()});
+  }
+  return windows;
+}
+
+QString HyprlandGameModeCompositor::presentScript(const QString& address, const QString& workspace,
+                                                  int width, int height) {
+  if (!validAddress(address) || workspace.isEmpty() || width <= 0 || height <= 0) return {};
+  const QString window = luaString(QStringLiteral("address:") + address);
+  return QStringLiteral(
+             "hl.dispatch(hl.dsp.window.move({ window = %1, workspace = %2, follow = false }))\n"
+             "hl.dispatch(hl.dsp.window.float({ action = \"on\", window = %1 }))\n"
+             "hl.dispatch(hl.dsp.window.resize({ window = %1, x = %3, y = %4, relative = false }))\n"
+             "hl.dispatch(hl.dsp.window.center({ window = %1 }))\n"
+             "hl.dispatch(hl.dsp.focus({ window = %1 }))")
+      .arg(window, luaString(workspace))
+      .arg(width)
+      .arg(height);
+}
+
+bool HyprlandGameModeCompositor::setLaunchHold(const QString& workspace, QString* error) {
+  return eval(launchHoldScript(workspace), error);
+}
+
+bool HyprlandGameModeCompositor::heldWindows(QVector<GameModeHeldWindow>* windows,
+                                             QString* error) {
+  QByteArray json;
+  if (!windows || !run(QStringLiteral("hyprctl"), {"-j", "clients"}, &json)) {
+    setError(error, QStringLiteral("hyprctl did not answer"));
+    return false;
+  }
+  *windows = parseHeldWindows(json);
+  return true;
+}
+
+bool HyprlandGameModeCompositor::releaseWindow(const QString& address, const QString& workspace,
+                                               QString* error) {
+  return validAddress(address) && !workspace.isEmpty() &&
+         eval(returnScript(address, workspace), error);
+}
+
+bool HyprlandGameModeCompositor::presentWindow(const QString& address, const QString& workspace,
+                                               int width, int height, QString* error) {
+  const QString script = presentScript(address, workspace, width, height);
+  return !script.isEmpty() && eval(script, error);
+}
+
 bool PactlGameModeAudio::available() {
   return run(QStringLiteral("pactl"), {QStringLiteral("get-default-sink")});
 }

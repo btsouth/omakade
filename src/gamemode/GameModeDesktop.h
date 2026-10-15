@@ -40,6 +40,12 @@ public:
                        QString* error = nullptr) override;
   bool focusWorkspace(const QString& workspace, QString* error = nullptr) override;
   bool focusOutput(const QString& name, QString* error = nullptr) override;
+  bool setLaunchHold(const QString& workspace, QString* error = nullptr) override;
+  bool heldWindows(QVector<GameModeHeldWindow>* windows, QString* error) override;
+  bool releaseWindow(const QString& address, const QString& workspace,
+                     QString* error = nullptr) override;
+  bool presentWindow(const QString& address, const QString& workspace, int width, int height,
+                     QString* error = nullptr) override;
 
   // Parses `hyprctl -j monitors all`.
   [[nodiscard]] static QVector<GameModeOutput> parseOutputs(const QByteArray& json,
@@ -76,6 +82,12 @@ public:
   [[nodiscard]] static QString tradeScript(const QString& address, const QString& placeholder);
   [[nodiscard]] static QString focusGameScript(const GameModeGameWindow& game,
                                                const QString& ownerAddress);
+  // The hidden workspace held launcher windows wait on.
+  [[nodiscard]] static QString launchHoldWorkspace();
+  [[nodiscard]] static QString launchHoldScript(const QString& workspace);
+  [[nodiscard]] static QVector<GameModeHeldWindow> parseHeldWindows(const QByteArray& clientsJson);
+  [[nodiscard]] static QString presentScript(const QString& address, const QString& workspace,
+                                             int width, int height);
 
 private:
   bool eval(const QString& script, QString* error);

@@ -2687,6 +2687,44 @@ private slots:
     QVERIFY(Compositor::workspaceSelector({{"id", 0}, {"name", ""}}).isEmpty());
   }
 
+  void launchHoldScriptsKeepOmakadeAndOtherWorkspacesOut() {
+    using Compositor = HyprlandGameModeCompositor;
+    const QString hold = Compositor::launchHoldScript(GameModeController::workspace());
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-hold\", enabled = true")));
+    QVERIFY(hold.contains(
+        QStringLiteral("class = \"negative:^(io\\\\.github\\\\.tsouth89\\\\.Omakade)$\"")));
+    QVERIFY(hold.contains(QStringLiteral("workspace = \"name:omakade\" }")));
+    QVERIFY(hold.contains(
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true")));
+    QVERIFY(Compositor::launchHoldScript({}).contains(QStringLiteral("enabled = false")));
+
+    const QString present = Compositor::presentScript(kAddress, QStringLiteral("name:omakade"), 1440, 810);
+    QVERIFY(present.contains(QStringLiteral("workspace = \"name:omakade\", follow = false")));
+    QVERIFY(present.contains(QStringLiteral("x = 1440, y = 810, relative = false")));
+    QVERIFY(present.endsWith(QStringLiteral("hl.dispatch(hl.dsp.focus({ window = \"address:%1\" }))")
+                                 .arg(kAddress)));
+    QVERIFY(Compositor::presentScript(QStringLiteral("nope"), QStringLiteral("name:omakade"), 1, 1)
+                .isEmpty());
+    QVERIFY(Compositor::presentScript(kAddress, {}, 1, 1).isEmpty());
+    QVERIFY(Compositor::presentScript(kAddress, QStringLiteral("1"), 0, 1).isEmpty());
+
+    const auto held = Compositor::parseHeldWindows(R"([
+        {"address":"0x10","mapped":true,"pid":41,"class":"steam","title":"Steam",
+         "workspace":{"id":-98,"name":"special:omakade-launch"}},
+        {"address":"0x11","mapped":true,"pid":42,"class":"game","title":"Game",
+         "workspace":{"id":-1337,"name":"omakade"}},
+        {"address":"0x12","mapped":false,"pid":43,"class":"hidden","title":"",
+         "workspace":{"id":-98,"name":"special:omakade-launch"}},
+        {"address":"bad","mapped":true,"pid":44,"class":"bad","title":"",
+         "workspace":{"id":-98,"name":"special:omakade-launch"}}])");
+    QCOMPARE(held.size(), 1);
+    QCOMPARE(held.at(0).address, QStringLiteral("0x10"));
+    QCOMPARE(held.at(0).pid, 41);
+    QCOMPARE(held.at(0).windowClass, QStringLiteral("steam"));
+    QCOMPARE(held.at(0).title, QStringLiteral("Steam"));
+    QVERIFY(Compositor::parseHeldWindows("[").isEmpty());
+  }
+
   void sinksAreParsed() {
     const auto sinks = PactlGameModeAudio::parseSinks(
         R"([{"index":51,"name":"alsa_output.hdmi-stereo","description":"QBQ90 HDMI"},
