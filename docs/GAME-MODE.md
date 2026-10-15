@@ -16,6 +16,10 @@ Open **Settings → Controls** and look under **Game Mode**.
 - **Sound** is the output used while Game Mode is on. **Keep current sound output** leaves
   sound alone.
 - **Notifications in Game Mode** silences Omarchy notifications for the session.
+- **Start Steam in the background** starts Steam minimized when Game Mode starts or
+  resumes, so a Steam game opens without waiting for Steam to load. It is off until you
+  turn it on and is shown only when Steam is installed. Steam keeps running after you
+  leave Game Mode.
 - **Keyboard shortcut** adds Super + Ctrl + G, which Omarchy leaves free. It starts Game
   Mode, returns to the desktop when active, and resumes the same session on the next
   press. If the key is already used for something else,

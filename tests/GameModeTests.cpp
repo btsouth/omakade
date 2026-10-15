@@ -13,6 +13,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <algorithm>
 #include <atomic>
 #include <functional>
 #include <sys/prctl.h>
@@ -2833,6 +2834,41 @@ private slots:
     QVERIFY(!QFile::exists(statePath()));
   }
 
+  void steamStartsWithTheSessionWhenChosen() {
+    deskAndTv(true);
+    const QString settingsPath = m_directory.filePath("steam/game-mode.json");
+    QVERIFY(GameModeSession::saveSettings(settingsPath, tvSettings()));
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    QVERIFY(!session.steamAvailable());
+    int starts = 0;
+    bool startWorks = true;
+    session.setSteamStarter([&] { ++starts; return startWorks; });
+    QVERIFY(session.steamAvailable());
+
+    // Off by default: a session starts nothing.
+    session.enter();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QCOMPARE(starts, 0);
+    // Turning it on during a session starts Steam straight away.
+    session.setWarmSteam(true);
+    QCOMPARE(starts, 1);
+    QVERIFY(GameModeSession::loadSettings(settingsPath).warmSteam);
+    session.exit();
+    QTRY_VERIFY(!session.active() && !session.busy());
+    QCOMPARE(starts, 1);
+
+    QSignalSpy notice(&session, &GameModeSession::notice);
+    startWorks = false;
+    session.enter();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QCOMPARE(starts, 2);
+    QVERIFY(std::any_of(notice.cbegin(), notice.cend(), [](const QList<QVariant>& args) {
+      return args.first().toString().contains("Steam could not be started");
+    }));
+    session.exit();
+    QTRY_VERIFY(!session.active() && !session.busy());
+  }
+
   void sessionSaysWhyItCouldNotStart() {
     m_compositor.list = {
         output(0, kDesk, QStringLiteral("Dell S2721DGF"), true, true, QStringLiteral("3"))};
@@ -2881,6 +2917,10 @@ private slots:
     QCOMPARE(loaded.outputDescription, kTvDescription);
     QCOMPARE(loaded.sinkName, kTvSink);
     QVERIFY(!loaded.silenceNotifications);
+    QVERIFY(!defaults.warmSteam);
+    chosen.warmSteam = true;
+    QVERIFY(GameModeSession::saveSettings(path, chosen));
+    QVERIFY(GameModeSession::loadSettings(path).warmSteam);
   }
 };
 

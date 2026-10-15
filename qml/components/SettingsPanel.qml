@@ -1557,6 +1557,32 @@ import QtQuick.Layouts
                 }
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: GameMode.steamAvailable
+                    Text {
+                        Layout.fillWidth: true
+                        text: "START STEAM IN THE BACKGROUND"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10 * settingsPanel.uiScale
+                    }
+                    GlassButton {
+                        objectName: "gameModeWarmSteamButton"
+                        compact: true
+                        text: GameMode.warmSteam ? "ON" : "OFF"
+                        onClicked: GameMode.warmSteam = !GameMode.warmSteam
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: GameMode.steamAvailable
+                    text: "Starts Steam minimized when Game Mode starts, so Steam games open without waiting for it. Steam keeps running after you leave."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true
                     visible: GameModeShortcut.available
                     Text {
                         Layout.fillWidth: true

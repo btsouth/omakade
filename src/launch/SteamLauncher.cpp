@@ -1,6 +1,8 @@
 #include "launch/SteamLauncher.h"
 
 #include <QDesktopServices>
+#include <QDir>
+#include <QFile>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -80,6 +82,49 @@ bool SteamLauncher::openUrl(const QUrl& url) {
     }
   }
   return QDesktopServices::openUrl(url);
+}
+
+QList<LaunchCommand> SteamLauncher::backgroundCommands(const QString& steamExecutable,
+                                                       bool flatpakSteamInstalled) {
+  const QString silent = QStringLiteral("-silent");
+  QList<LaunchCommand> commands;
+  if (!steamExecutable.isEmpty()) commands.append(LaunchCommand{steamExecutable, {silent}});
+  if (flatpakSteamInstalled) {
+    commands.append(LaunchCommand{
+        QStringLiteral("flatpak"),
+        {QStringLiteral("run"), QStringLiteral("com.valvesoftware.Steam"), silent}});
+  }
+  return commands;
+}
+
+bool SteamLauncher::installed() {
+  return !backgroundCommands(QStandardPaths::findExecutable(QStringLiteral("steam")),
+                             flatpakAppInstalled(QStringLiteral("com.valvesoftware.Steam")))
+              .isEmpty();
+}
+
+bool SteamLauncher::clientRunning(const QString& procRoot) {
+  const QStringList processes = QDir(procRoot).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+  for (const QString& pid : processes) {
+    bool numeric = false;
+    pid.toLongLong(&numeric);
+    if (!numeric) continue;
+    // Flatpak Steam's sandboxed client is listed here under the same name.
+    QFile comm(procRoot + QLatin1Char('/') + pid + QStringLiteral("/comm"));
+    if (comm.open(QIODevice::ReadOnly) && comm.readAll().trimmed() == "steam") return true;
+  }
+  return false;
+}
+
+bool SteamLauncher::startInBackground() {
+  if (clientRunning()) return true;
+  const QList<LaunchCommand> commands =
+      backgroundCommands(QStandardPaths::findExecutable(QStringLiteral("steam")),
+                         flatpakAppInstalled(QStringLiteral("com.valvesoftware.Steam")));
+  for (const LaunchCommand& command : commands) {
+    if (QProcess::startDetached(command.program, command.arguments)) return true;
+  }
+  return false;
 }
 
 bool SteamLauncher::launch(const QString& appId) { return open(launchUrl(appId)); }

@@ -26,6 +26,16 @@ public:
   // handler. Some Steam packages register no x-scheme-handler, in which case the
   // handler fallback alone would open a web browser instead of Steam.
   [[nodiscard]] static bool openUrl(const QUrl& url);
+  // Commands that start the Steam client minimized to its tray, in the same order as
+  // steamCommands. Empty when Steam is not installed.
+  [[nodiscard]] static QList<LaunchCommand> backgroundCommands(const QString& steamExecutable,
+                                                               bool flatpakSteamInstalled);
+  [[nodiscard]] static bool installed();
+  // True while a Steam client, or its launcher script, is running for this user.
+  [[nodiscard]] static bool clientRunning(const QString& procRoot = QStringLiteral("/proc"));
+  // Starts Steam minimized unless it is already running, so a later steam:// launch
+  // reaches a client that is ready. False only when no command could be started.
+  static bool startInBackground();
 
   Q_INVOKABLE bool launch(const QString& appId);
   Q_INVOKABLE bool manage(const QString& appId);
