@@ -41,6 +41,7 @@ public:
   bool focusWorkspace(const QString& workspace, QString* error = nullptr) override;
   bool focusOutput(const QString& name, QString* error = nullptr) override;
   bool setLaunchHold(const QString& workspace, QString* error = nullptr) override;
+  bool setSteamHold(const QString& workspace, QString* error = nullptr) override;
   bool heldWindows(QVector<GameModeHeldWindow>* windows, QString* error) override;
   bool releaseWindow(const QString& address, const QString& workspace,
                      QString* error = nullptr) override;
@@ -86,6 +87,7 @@ public:
   // The hidden workspace held launcher windows wait on.
   [[nodiscard]] static QString launchHoldWorkspace();
   [[nodiscard]] static QString launchHoldScript(const QString& workspace);
+  [[nodiscard]] static QString steamHoldScript(const QString& workspace);
   [[nodiscard]] static QVector<GameModeHeldWindow> parseHeldWindows(const QByteArray& clientsJson);
   [[nodiscard]] static QString presentScript(const QString& address, const QString& workspace,
                                              int width, int height);

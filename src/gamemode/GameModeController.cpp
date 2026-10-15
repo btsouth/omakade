@@ -1099,6 +1099,7 @@ GameModeController::Result GameModeController::refreshParked() {
 
 void GameModeController::endLaunchHold() {
   if (m_compositor == nullptr) return;
+  m_compositor->setSteamHold({});
   // Compositors without a hold report failure here, which leaves nothing to undo.
   if (!m_compositor->setLaunchHold({})) return;
   QVector<GameModeHeldWindow> held;

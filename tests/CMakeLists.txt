@@ -559,6 +559,17 @@ foreach(launching_mode IN ITEMS desktop couch)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30)
 endforeach()
+foreach(launching_mode IN ITEMS desktop couch)
+  set(launching_navigation_options --launching-navigation-test --owned-layout-test --render-size=1600x900)
+  if(launching_mode STREQUAL "couch")
+    list(APPEND launching_navigation_options --couch)
+  endif()
+  add_test(NAME omakade_launching_navigation_${launching_mode}
+    COMMAND omakade ${launching_navigation_options})
+  set_tests_properties(omakade_launching_navigation_${launching_mode} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+    TIMEOUT 30)
+endforeach()
 add_test(NAME omakade_manual_editor COMMAND omakade --manual-editor-test)
 add_test(NAME omakade_manual_editor_couch COMMAND omakade --manual-editor-test --couch)
 add_test(NAME omakade_manual_editor_render COMMAND omakade

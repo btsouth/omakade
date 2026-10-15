@@ -112,7 +112,10 @@ private:
   ProcessLookup m_lookup;
   LaunchHoldTarget m_target;
   QVector<GameModeHeldWindow> m_windows;
-  // Windows an earlier launch left held. They wait for Game Mode to end, not this game.
+  // Windows an earlier launch left held once its game opened. They wait for Game Mode to
+  // end, not for this game. Windows held for any other reason, such as Steam starting in
+  // the background, are listed for the next launch.
+  QStringList m_kept;
   QStringList m_ignored;
   // Tells a scan that finishes after its hold ended from one for the current hold.
   int m_generation = 0;

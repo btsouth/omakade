@@ -51,6 +51,9 @@ Rectangle {
 
     Keys.onUpPressed: event => event.accepted = navigate(Qt.Key_Up)
     Keys.onDownPressed: event => event.accepted = navigate(Qt.Key_Down)
+    // Tab stays in the list too, rather than reaching the library underneath.
+    Keys.onTabPressed: event => event.accepted = navigate(Qt.Key_Down)
+    Keys.onBacktabPressed: event => event.accepted = navigate(Qt.Key_Up)
 
     // Takes clicks and wheel events so the library underneath stays still.
     MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: wheel => wheel.accepted = true }

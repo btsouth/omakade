@@ -161,6 +161,12 @@ public:
     if (error) *error = QStringLiteral("Launcher windows cannot be held.");
     return false;
   }
+  // Like setLaunchHold, but only for Steam's own windows, while Steam starts in the
+  // background. An empty workspace withdraws it.
+  virtual bool setSteamHold(const QString&, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Steam's windows cannot be held.");
+    return false;
+  }
   // False means unknown, not that nothing is held.
   virtual bool heldWindows(QVector<GameModeHeldWindow>*, QString* error) {
     if (error) *error = QStringLiteral("Held windows cannot be listed.");

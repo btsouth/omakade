@@ -13,21 +13,68 @@ namespace {
 // Deep enough for Steam's reaper, Proton and Wine, shallow enough to stop on a loop.
 constexpr int kMaxAncestors = 32;
 
-bool underPath(QString candidate, const QString& path, bool folder, const QString& winePrefix) {
+// Symlinks resolved where the path exists, so a library reached through a link, such as
+// Flatpak Steam's, matches the path Omakade found it by.
+QString canonical(const QString& path) {
+  const QString resolved = QFileInfo(path).canonicalFilePath();
+  return resolved.isEmpty() ? QDir::cleanPath(path) : resolved;
+}
+
+// The host path behind a Wine path, by the prefix's drive links, or Wine's defaults when
+// it has none: Z: is the host's root and C: the prefix's drive_c, where Battle.net and
+// other prefix installs live. Empty when it cannot be told.
+QString hostPath(const QString& windowsPath, const QString& winePrefix) {
+  const QChar drive = windowsPath.at(0).toLower();
+  QString root;
+  const QFileInfo link(winePrefix + QStringLiteral("/dosdevices/") + drive + QLatin1Char(':'));
+  if (!winePrefix.isEmpty() && link.isSymLink()) root = link.symLinkTarget();
+  else if (drive == QLatin1Char('z')) root = QStringLiteral("/");
+  else if (drive == QLatin1Char('c') && !winePrefix.isEmpty()) root = winePrefix + QStringLiteral("/drive_c");
+  if (root.isEmpty()) return {};
+  // The drive on its own too, as a path Wine names in another case does not exist here.
+  return canonical(canonical(root) + windowsPath.mid(2).replace(QLatin1Char('\\'), QLatin1Char('/')));
+}
+
+bool windowsPath(const QString& path) {
+  return path.size() > 2 && path.at(0).isLetter() && path.at(1) == QLatin1Char(':') &&
+         path.at(2) == QLatin1Char('\\');
+}
+
+// Wine paths are matched without case, as Windows programs name them either way.
+bool under(const QString& candidate, const QString& path, bool folder,
+           Qt::CaseSensitivity sensitivity = Qt::CaseSensitive) {
   if (candidate.isEmpty()) return false;
-  // Wine shows a process its Windows path: Z: is the host's root, and C: the prefix's
-  // drive_c, where Battle.net and other prefix installs live.
-  if (candidate.size() > 2 && candidate.at(1) == QLatin1Char(':') &&
-      candidate.at(2) == QLatin1Char('\\')) {
-    const QChar drive = candidate.at(0).toLower();
-    const QString rest = candidate.mid(2).replace(QLatin1Char('\\'), QLatin1Char('/'));
-    if (drive == QLatin1Char('z')) candidate = rest;
-    else if (drive == QLatin1Char('c') && !winePrefix.isEmpty())
-      candidate = winePrefix + QStringLiteral("/drive_c") + rest;
-    else return false;
+  return folder ? candidate.startsWith(path + QLatin1Char('/'), sensitivity)
+                : candidate.compare(path, sensitivity) == 0;
+}
+
+// Where a process's own program is, against the game's install. Wine shows a process
+// its Windows program as the first argument. Wine's and Proton's own helpers under
+// C:\windows, and native programs elsewhere such as Steam or a shell, decide nothing.
+enum class Place { Unknown, Inside, Outside };
+Place placeOf(const LaunchHoldProcess& process, const QString& installPath, bool folder) {
+  const QString program = process.arguments.value(0);
+  if (windowsPath(program) && program.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive) &&
+      !program.startsWith(QStringLiteral("C:\\windows\\"), Qt::CaseInsensitive)) {
+    if (under(hostPath(program, process.winePrefix), installPath, folder, Qt::CaseInsensitive))
+      return Place::Inside;
+    // Only a program installed in the prefix itself, as publisher launchers are, is
+    // surely another program. Proton shows the game's own folder through other drives,
+    // whose paths may not match the one Omakade knows.
+    if (program.at(0).toLower() == QLatin1Char('c') && !process.winePrefix.isEmpty())
+      return Place::Outside;
+    return Place::Unknown;
   }
-  const QString clean = QDir::cleanPath(candidate);
-  return folder ? clean.startsWith(path + QLatin1Char('/')) : clean == path;
+  if (under(process.exePath, installPath, folder)) return Place::Inside;
+  for (const QString& argument : process.arguments) {
+    if (windowsPath(argument)) {
+      if (under(hostPath(argument, process.winePrefix), installPath, folder, Qt::CaseInsensitive))
+        return Place::Inside;
+    } else if (argument.startsWith(QLatin1Char('/')) && under(canonical(argument), installPath, folder)) {
+      return Place::Inside;
+    }
+  }
+  return Place::Unknown;
 }
 } // namespace
 
@@ -37,7 +84,8 @@ LaunchHold::LaunchHold(GameModeCompositor* compositor, QString workspace, Proces
       m_lookup(lookup ? std::move(lookup) : ProcessLookup(&LaunchHold::readProcess)) {
   m_poll.setInterval(400);
   connect(&m_poll, &QTimer::timeout, this, &LaunchHold::scan);
-  // Long enough for a first-run update or a slow launcher on a handheld.
+  // Counted from the last window a launcher opened, so a slow first-run update on a
+  // handheld keeps the hold while it is still working.
   m_timeout.setInterval(90 * 1000);
   m_timeout.setSingleShot(true);
   connect(&m_timeout, &QTimer::timeout, this, [this] { release({}); });
@@ -106,27 +154,30 @@ std::optional<LaunchHoldProcess> LaunchHold::readProcess(qint64 pid) {
 bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHoldTarget& target,
                               const ProcessLookup& lookup) {
   const bool steam = !target.steamAppId.isEmpty() && target.steamAppId != QStringLiteral("0");
-  // Proton names a game's windows after its app. A publisher launcher started for the
-  // same app shares the name, which only ends the hold on a window that wants an answer.
-  if (steam && window.windowClass == QStringLiteral("steam_app_") + target.steamAppId) return true;
   const QFileInfo install(target.installPath);
   const bool hasInstall = !target.installPath.isEmpty() && install.exists();
-  const QString installPath = QDir::cleanPath(install.absoluteFilePath());
+  const QString installPath = canonical(install.absoluteFilePath());
   const bool folder = install.isDir();
+  bool steamProcess = false;
   qint64 pid = window.pid;
   for (int depth = 0; pid > 1 && depth < kMaxAncestors; ++depth) {
     if (target.directProcess && target.pid > 0 && pid == target.pid) return true;
     const auto process = lookup ? lookup(pid) : std::nullopt;
-    if (!process) return false;
-    if (steam && process->steamAppId == target.steamAppId) return true;
+    if (!process) break;
+    // The nearest program that can be placed decides. A publisher's launcher, such as
+    // Rockstar's or EA's, is a program of its own outside the game's folder even when
+    // the game started it, so it stays held while it asks for a sign-in.
     if (hasInstall) {
-      if (underPath(process->exePath, installPath, folder, process->winePrefix)) return true;
-      for (const QString& argument : process->arguments)
-        if (underPath(argument, installPath, folder, process->winePrefix)) return true;
+      const Place place = placeOf(*process, installPath, folder);
+      if (place == Place::Inside) return true;
+      if (place == Place::Outside) return false;
     }
+    if (steam && process->steamAppId == target.steamAppId) steamProcess = true;
     pid = process->parent;
   }
-  return false;
+  // Nothing placed it: Steam's own word for the app is all there is. Proton names a
+  // game's windows after its app, and Steam marks the processes it starts for it.
+  return steam && (steamProcess || window.windowClass == QStringLiteral("steam_app_") + target.steamAppId);
 }
 
 bool LaunchHold::begin(const QVariantMap& game) {
@@ -135,10 +186,16 @@ bool LaunchHold::begin(const QVariantMap& game) {
   m_actionWatcher.waitForFinished();
   if (!m_compositor || !m_compositor->available() || !m_compositor->setLaunchHold(m_workspace))
     return false;
-  QVector<GameModeHeldWindow> earlier;
+  // This hold covers every window, Steam's included, and ends when the game opens.
+  m_compositor->setSteamHold({});
+  // What earlier launches left held, if it is still held; a closed window's address
+  // can come back on a new one.
   m_ignored.clear();
-  if (m_compositor->heldWindows(&earlier, nullptr))
-    for (const auto& window : std::as_const(earlier)) m_ignored.append(window.address);
+  QVector<GameModeHeldWindow> held;
+  if (!m_kept.isEmpty() && m_compositor->heldWindows(&held, nullptr))
+    for (const auto& window : std::as_const(held))
+      if (m_kept.contains(window.address)) m_ignored.append(window.address);
+  m_kept = m_ignored;
   ++m_generation;
   m_target = targetFor(game);
   m_windows.clear();
@@ -167,6 +224,8 @@ void LaunchHold::cancel() {
 }
 
 void LaunchHold::abandon() {
+  // Game Mode puts every held window back as it leaves or parks.
+  m_kept.clear();
   if (m_active) stop();
 }
 
@@ -174,6 +233,7 @@ void LaunchHold::stop() {
   m_poll.stop();
   m_timeout.stop();
   m_active = false;
+  m_kept.clear();
   m_windows.clear();
   m_presented.clear();
   ++m_generation;
@@ -205,6 +265,8 @@ void LaunchHold::finishScan() {
   const Scan scan = m_scanWatcher.result();
   if (!scan.ok || scan.generation != m_generation) return;
   if (!scan.game.isEmpty()) {
+    // Record what opened alongside the game, so it is kept out of the next launch.
+    setWindows(scan.windows);
     release(scan.game);
     return;
   }
@@ -230,6 +292,12 @@ void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
                                  return a.address == b.address && a.title == b.title;
                                });
   if (same) return;
+  // A new window means the launcher is still working: give it the full time again.
+  if (std::any_of(ordered.cbegin(), ordered.cend(), [&](const auto& window) {
+        return std::none_of(m_windows.cbegin(), m_windows.cend(),
+                            [&](const auto& known) { return known.address == window.address; });
+      }))
+    m_timeout.start();
   m_windows = ordered;
   emit changed();
 }
@@ -238,6 +306,10 @@ void LaunchHold::release(const QString& game) {
   m_poll.stop();
   m_timeout.stop();
   m_active = false;
+  if (!game.isEmpty()) {
+    for (const auto& window : std::as_const(m_windows))
+      if (window.address != game && !m_kept.contains(window.address)) m_kept.append(window.address);
+  }
   m_windows.clear();
   m_presented.clear();
   ++m_generation;
@@ -275,7 +347,7 @@ void LaunchHold::release(const QString& game) {
 }
 
 void LaunchHold::present(const QString& address) {
-  if (!m_active || !m_compositor || m_actionWatcher.isRunning() ||
+  if (!m_active || m_actionWatcher.isRunning() ||
       std::none_of(m_windows.cbegin(), m_windows.cend(),
                    [&](const auto& window) { return window.address == address; }))
     return;
@@ -283,6 +355,8 @@ void LaunchHold::present(const QString& address) {
   const QString previous = m_presented == address ? QString{} : m_presented;
   m_presented = address;
   emit changed();
+  // A preview only records the choice.
+  if (!m_compositor) return;
   const qint64 owner = QCoreApplication::applicationPid();
   m_actionWatcher.setFuture(QtConcurrent::run(
       [compositor = m_compositor, workspace = m_workspace, address, owner, previous] {
@@ -303,10 +377,11 @@ void LaunchHold::present(const QString& address) {
 }
 
 void LaunchHold::returnToLibrary() {
-  if (m_presented.isEmpty() || !m_compositor) return;
+  if (m_presented.isEmpty()) return;
   const QString presented = m_presented;
   m_presented.clear();
   emit changed();
+  if (!m_compositor) return;
   m_actionWatcher.waitForFinished();
   const qint64 owner = QCoreApplication::applicationPid();
   m_actionWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, owner, presented] {
