@@ -246,8 +246,8 @@ FocusScope {
                 spacing: 8
                 // Pad directions follow the same chain as the arrow keys.
                 function controllerNavigate(key) {
-                    const current = [organizeButton, savedButton, randomButton, clearButton, doneButton]
-                                    .find(button => button.activeFocus)
+                    const current = [organizeButton, savedButton, randomButton, clearButton, doneButton,
+                                     clearContextButton].find(button => button.activeFocus)
                     if (!current) return false
                     const next = key === Qt.Key_Left ? current.controllerLeftTarget
                                : key === Qt.Key_Right ? current.controllerRightTarget
@@ -258,6 +258,7 @@ FocusScope {
                 }
             GlassButton {
                 id: organizeButton
+                objectName: "couchOrganizeButton"
                 text: "ORGANIZE"
                 property Item controllerRightTarget: savedButton
                 property Item controllerDownTarget: categoryList
@@ -305,13 +306,21 @@ FocusScope {
                 text: "DONE"
                 primary: true
                 property Item controllerLeftTarget: clearButton
+                property Item controllerRightTarget: clearContextButton
                 property Item controllerDownTarget: optionList
                 KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.right: controllerRightTarget
                 KeyNavigation.down: controllerDownTarget
                 onClicked: root.closed()
             }
             GlassButton {
+                id: clearContextButton
+                objectName: "couchClearFiltersButton"
                 text: "CLEAR FILTERS"
+                property Item controllerLeftTarget: doneButton
+                property Item controllerDownTarget: optionList
+                KeyNavigation.left: controllerLeftTarget
+                KeyNavigation.down: controllerDownTarget
                 onClicked: root.clearContextFilters()
             }
             }

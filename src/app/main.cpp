@@ -5293,6 +5293,10 @@ int main(int argc, char* argv[]) {
               browsePanel->findChild<QQuickItem*>(QStringLiteral("couchSavedFiltersButton"));
           auto* pickGameButton =
               browsePanel->findChild<QQuickItem*>(QStringLiteral("couchRandomGameButton"));
+          auto* organizeButton =
+              browsePanel->findChild<QQuickItem*>(QStringLiteral("couchOrganizeButton"));
+          auto* clearFiltersButton =
+              browsePanel->findChild<QQuickItem*>(QStringLiteral("couchClearFiltersButton"));
           sendKey(Qt::Key_Up);
           sendKey(Qt::Key_Left);
           if (!pickGameButton || !pickGameButton->hasActiveFocus()) {
@@ -5300,10 +5304,19 @@ int main(int argc, char* argv[]) {
             return;
           }
           sendKey(Qt::Key_Left);
-          sendKey(Qt::Key_Right);
           sendKey(Qt::Key_Left);
+          if (!organizeButton || !organizeButton->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Left did not reach Organize in couch Browse"));
+            return;
+          }
+          for (int step = 0; step < 5; ++step) sendKey(Qt::Key_Right);
+          if (!clearFiltersButton || !clearFiltersButton->hasActiveFocus()) {
+            fail(QStringLiteral("Controller Right did not reach Clear Filters in couch Browse"));
+            return;
+          }
+          for (int step = 0; step < 4; ++step) sendKey(Qt::Key_Left);
           if (!savedFiltersButton || !savedFiltersButton->hasActiveFocus()) {
-            fail(QStringLiteral("Controller Right did not move along the couch Browse header"));
+            fail(QStringLiteral("Controller Left did not return along the couch Browse header"));
             return;
           }
           sendKey(Qt::Key_Down);
