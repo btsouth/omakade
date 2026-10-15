@@ -13,12 +13,19 @@ namespace {
 // Deep enough for Steam's reaper, Proton and Wine, shallow enough to stop on a loop.
 constexpr int kMaxAncestors = 32;
 
-bool underPath(QString candidate, const QString& path, bool folder) {
+bool underPath(QString candidate, const QString& path, bool folder, const QString& winePrefix) {
   if (candidate.isEmpty()) return false;
-  // Wine and Proton are often given the game as a Windows path on the Z: drive.
+  // Wine shows a process its Windows path: Z: is the host's root, and C: the prefix's
+  // drive_c, where Battle.net and other prefix installs live.
   if (candidate.size() > 2 && candidate.at(1) == QLatin1Char(':') &&
-      candidate.at(0).toLower() == QLatin1Char('z') && candidate.at(2) == QLatin1Char('\\'))
-    candidate = candidate.mid(2).replace(QLatin1Char('\\'), QLatin1Char('/'));
+      candidate.at(2) == QLatin1Char('\\')) {
+    const QChar drive = candidate.at(0).toLower();
+    const QString rest = candidate.mid(2).replace(QLatin1Char('\\'), QLatin1Char('/'));
+    if (drive == QLatin1Char('z')) candidate = rest;
+    else if (drive == QLatin1Char('c') && !winePrefix.isEmpty())
+      candidate = winePrefix + QStringLiteral("/drive_c") + rest;
+    else return false;
+  }
   const QString clean = QDir::cleanPath(candidate);
   return folder ? clean.startsWith(path + QLatin1Char('/')) : clean == path;
 }
@@ -86,9 +93,12 @@ std::optional<LaunchHoldProcess> LaunchHold::readProcess(qint64 pid) {
   }
   QFile environment(base + QStringLiteral("/environ"));
   if (environment.open(QIODevice::ReadOnly)) {
-    // Only Steam's app identity is kept. Never log or expose the environment.
-    for (const QByteArray& field : environment.read(1024 * 1024).split('\0'))
+    // Only Steam's app identity and the Wine prefix are kept. Never log or expose the
+    // environment.
+    for (const QByteArray& field : environment.read(1024 * 1024).split('\0')) {
       if (field.startsWith("SteamAppId=")) process.steamAppId = QString::fromLocal8Bit(field.mid(11));
+      if (field.startsWith("WINEPREFIX=")) process.winePrefix = QString::fromLocal8Bit(field.mid(11));
+    }
   }
   return process;
 }
@@ -110,9 +120,9 @@ bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHold
     if (!process) return false;
     if (steam && process->steamAppId == target.steamAppId) return true;
     if (hasInstall) {
-      if (underPath(process->exePath, installPath, folder)) return true;
+      if (underPath(process->exePath, installPath, folder, process->winePrefix)) return true;
       for (const QString& argument : process->arguments)
-        if (underPath(argument, installPath, folder)) return true;
+        if (underPath(argument, installPath, folder, process->winePrefix)) return true;
     }
     pid = process->parent;
   }
@@ -125,6 +135,11 @@ bool LaunchHold::begin(const QVariantMap& game) {
   m_actionWatcher.waitForFinished();
   if (!m_compositor || !m_compositor->available() || !m_compositor->setLaunchHold(m_workspace))
     return false;
+  QVector<GameModeHeldWindow> earlier;
+  m_ignored.clear();
+  if (m_compositor->heldWindows(&earlier, nullptr))
+    for (const auto& window : std::as_const(earlier)) m_ignored.append(window.address);
+  ++m_generation;
   m_target = targetFor(game);
   m_windows.clear();
   m_presented.clear();
@@ -151,12 +166,30 @@ void LaunchHold::cancel() {
   if (m_active) release({});
 }
 
+void LaunchHold::abandon() {
+  if (m_active) stop();
+}
+
+void LaunchHold::stop() {
+  m_poll.stop();
+  m_timeout.stop();
+  m_active = false;
+  m_windows.clear();
+  m_presented.clear();
+  ++m_generation;
+  emit changed();
+  emit released();
+}
+
 void LaunchHold::scan() {
   if (!m_active || m_scanWatcher.isRunning() || m_actionWatcher.isRunning()) return;
   m_scanWatcher.setFuture(QtConcurrent::run(
-      [compositor = m_compositor, target = m_target, lookup = m_lookup] {
+      [compositor = m_compositor, target = m_target, lookup = m_lookup, ignored = m_ignored,
+       generation = m_generation] {
         Scan scan;
+        scan.generation = generation;
         scan.ok = compositor->heldWindows(&scan.windows, nullptr);
+        scan.windows.removeIf([&](const auto& window) { return ignored.contains(window.address); });
         for (const auto& window : std::as_const(scan.windows)) {
           if (isGameWindow(window, target, lookup)) {
             scan.game = window.address;
@@ -170,7 +203,7 @@ void LaunchHold::scan() {
 void LaunchHold::finishScan() {
   if (!m_active) return;
   const Scan scan = m_scanWatcher.result();
-  if (!scan.ok) return;
+  if (!scan.ok || scan.generation != m_generation) return;
   if (!scan.game.isEmpty()) {
     release(scan.game);
     return;
@@ -207,6 +240,7 @@ void LaunchHold::release(const QString& game) {
   m_active = false;
   m_windows.clear();
   m_presented.clear();
+  ++m_generation;
   emit changed();
   m_scanWatcher.waitForFinished();
   m_actionWatcher.waitForFinished();
@@ -217,14 +251,15 @@ void LaunchHold::release(const QString& game) {
   const qint64 owner = QCoreApplication::applicationPid();
   // Stop holding first, so nothing opens out of sight after.
   m_actionWatcher.setFuture(QtConcurrent::run(
-      [compositor = m_compositor, workspace = m_workspace, game, owner] {
+      [compositor = m_compositor, workspace = m_workspace, game, owner, ignored = m_ignored] {
         compositor->setLaunchHold({});
         if (game.isEmpty()) {
-          // No game: everything comes back, as if there had been no hold.
+          // No game: this launch's windows come back, as if there had been no hold.
           QVector<GameModeHeldWindow> held;
           if (compositor->heldWindows(&held, nullptr))
             for (const auto& window : std::as_const(held))
-              compositor->releaseWindow(window.address, workspace);
+              if (!ignored.contains(window.address))
+                compositor->releaseWindow(window.address, workspace);
           return;
         }
         // The launcher's windows stay out of sight until Game Mode ends. The game takes
@@ -266,11 +301,14 @@ void LaunchHold::present(const QString& address) {
 
 void LaunchHold::returnToLibrary() {
   if (m_presented.isEmpty() || !m_compositor) return;
+  const QString presented = m_presented;
   m_presented.clear();
   emit changed();
   m_actionWatcher.waitForFinished();
   const qint64 owner = QCoreApplication::applicationPid();
-  m_actionWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, owner] {
+  m_actionWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, owner, presented] {
+    // A sign-in left half done can be opened again from the list. A closed window is gone.
+    compositor->holdWindow(presented);
     const GameModeWindow root = compositor->windowForPid(owner);
     if (!root.valid()) return;
     compositor->setWindowMode(root.address, 2, 2);

@@ -20,18 +20,24 @@ Rectangle {
     }
 
     // Until someone moves, focus stays on the first window, so a quick A never lets
-    // everything go by landing on Show All Windows.
+    // everything go by landing on Show All Windows. With no window yet it rests on the
+    // screen itself, and Show All Windows is a deliberate move away.
     property bool moved: false
 
     function focusFirst() {
-        if (buttons.length > 0) buttons[0].forceActiveFocus(Qt.TabFocusReason)
+        if (windowRepeater.count > 0 && buttons.length > 0) buttons[0].forceActiveFocus(Qt.TabFocusReason)
+        else screen.forceActiveFocus(Qt.OtherFocusReason)
     }
 
     // Up and Down move through the list; Left and Right stay put.
     function navigate(key) {
         moved = true
         const index = buttons.findIndex(button => button.activeFocus)
-        if (index < 0) { focusFirst(); return true }
+        if (index < 0) {
+            if (key === Qt.Key_Up || key === Qt.Key_Down)
+                buttons[key === Qt.Key_Up ? buttons.length - 1 : 0].forceActiveFocus(Qt.TabFocusReason)
+            return true
+        }
         const step = key === Qt.Key_Up ? -1 : key === Qt.Key_Down ? 1 : 0
         const next = Math.max(0, Math.min(buttons.length - 1, index + step))
         buttons[next].forceActiveFocus(Qt.TabFocusReason)

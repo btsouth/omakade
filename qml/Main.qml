@@ -243,9 +243,8 @@ ApplicationWindow {
             // While a game starts, the pad only moves through the held windows.
             if (action === "back") LaunchHold.cancel()
             else if (action === "accept") {
-                if (focused && root.isWithin(focused, launchingScreen) && typeof focused.clicked === "function")
-                    focused.clicked()
-                else launchingScreen.focusFirst()
+                if (!focused || !root.isWithin(focused, launchingScreen)) launchingScreen.focusFirst()
+                else if (typeof focused.clicked === "function") focused.clicked()
             } else if (typeof action === "number") launchingScreen.navigate(action)
             return
         }
@@ -955,6 +954,10 @@ ApplicationWindow {
 
     function focusCurrentSurface() {
         if (root.gameModeNavigationRestoring) return
+        if (launchingScreen.visible) {
+            if (!root.isWithin(root.activeFocusItem, launchingScreen)) launchingScreen.focusFirst()
+            return
+        }
         const container = root.navigationContainer()
         const current = root.activeFocusItem
         if (container && root.isWithin(current, container)
@@ -1485,7 +1488,7 @@ ApplicationWindow {
         let okay = false
         // In Game Mode a launcher's own windows can wait out of sight until the game opens.
         const holding = !DemoMode && !installing && !openingHeroic && GameMode.active && !GameMode.parked
-            && GameMode.holdLaunchers && LaunchHold.begin({title: request.title, source: choice.source,
+            && !GameMode.busy && GameMode.holdLaunchers && LaunchHold.begin({title: request.title, source: choice.source,
                                                            appId: choice.appId, installPath: choice.installPath || ""})
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
@@ -3804,6 +3807,15 @@ ApplicationWindow {
         z: 110
         uiScale: root.couchMode ? Math.max(1, Math.min(2.4, root.height / 900)) : 1
         onVisibleChanged: if (!visible) Qt.callLater(root.focusCurrentSurface)
+    }
+
+    // Leaving or parking Game Mode puts held windows back itself; the hold just stops.
+    Connections {
+        target: GameMode
+        function onStateChanged() {
+            if (LaunchHold.active && (!GameMode.active || GameMode.parked || GameMode.busy))
+                LaunchHold.abandon()
+        }
     }
 
     Component.onCompleted: {

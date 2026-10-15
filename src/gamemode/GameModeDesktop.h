@@ -44,6 +44,7 @@ public:
   bool heldWindows(QVector<GameModeHeldWindow>* windows, QString* error) override;
   bool releaseWindow(const QString& address, const QString& workspace,
                      QString* error = nullptr) override;
+  bool holdWindow(const QString& address, QString* error = nullptr) override;
   bool presentWindow(const QString& address, const QString& workspace, int width, int height,
                      QString* error = nullptr) override;
 

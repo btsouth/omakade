@@ -454,8 +454,18 @@ public:
   bool presentWindow(const QString& address, const QString& workspace, int width, int height,
                      QString* = nullptr) override {
     QMutexLocker lock(&mutex);
+    for (const auto& window : std::as_const(held))
+      if (window.address == address) shown.append(window);
     held.removeIf([&](const auto& window) { return window.address == address; });
     log.append(QStringLiteral("present %1 %2 %3x%4").arg(address, workspace).arg(width).arg(height));
+    return true;
+  }
+  bool holdWindow(const QString& address, QString* = nullptr) override {
+    QMutexLocker lock(&mutex);
+    for (const auto& window : std::as_const(shown))
+      if (window.address == address) held.append(window);
+    shown.removeIf([&](const auto& window) { return window.address == address; });
+    log.append(QStringLiteral("hold-window %1").arg(address));
     return true;
   }
   void open(const GameModeHeldWindow& window) {
@@ -474,6 +484,7 @@ private:
   }
   QMutex mutex;
   QVector<GameModeHeldWindow> held;
+  QVector<GameModeHeldWindow> shown;
   QStringList log;
 };
 
@@ -2892,6 +2903,24 @@ private slots:
     heroic.installPath = root.filePath(QStringLiteral("games/Celes"));
     QVERIFY(!LaunchHold::isGameWindow(window(71), heroic, heroicLookup));
 
+    // Battle.net installs inside its prefix, and Wine shows the game as C:\...
+    const QString prefix = root.filePath(QStringLiteral("battlenet"));
+    QVERIFY(QDir(prefix).mkpath(QStringLiteral("drive_c/Program Files (x86)/World of Warcraft")));
+    QHash<qint64, LaunchHoldProcess> prefixTable = table;
+    prefixTable[71].arguments = {QStringLiteral("C:\\Program Files (x86)\\World of Warcraft\\Wow.exe")};
+    prefixTable[71].winePrefix = prefix;
+    const LaunchHold::ProcessLookup prefixLookup = [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+      if (!prefixTable.contains(pid)) return std::nullopt;
+      return prefixTable.value(pid);
+    };
+    const auto warcraft = LaunchHold::targetFor(
+        {{"source", "Battle.net"},
+         {"appId", "WoW"},
+         {"installPath", prefix + QStringLiteral("/drive_c/Program Files (x86)/World of Warcraft")}});
+    QVERIFY(LaunchHold::isGameWindow(window(71), warcraft, prefixLookup));
+    prefixTable[71].winePrefix.clear();
+    QVERIFY(!LaunchHold::isGameWindow(window(71), warcraft, prefixLookup));
+
     // An emulator or native game is the launched process itself.
     auto dolphin = LaunchHold::targetFor({{"source", "Dolphin"}, {"appId", "path:/roms/a.iso"}});
     QVERIFY(dolphin.directProcess);
@@ -2938,6 +2967,23 @@ private slots:
                           QStringLiteral("mode %1 0 0").arg(kAddress),
                           QStringLiteral("release 0x61 name:omakade"),
                           QStringLiteral("mode 0x61 2 2"), QStringLiteral("focus 0x61")}));
+
+    // The next launch neither lists nor lets go of the Steam client this one left held.
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "10"}, {"title", "Next"}}));
+    compositor.open({QStringLiteral("0x62"), 62, QStringLiteral("splash"), QStringLiteral("Splash")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    QCOMPARE(hold.windows().first().toMap().value("address").toString(), QStringLiteral("0x62"));
+    hold.cancel();
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("release 0x62 name:omakade")));
+    QVERIFY(!compositor.entries().contains(QStringLiteral("release 0x60 name:omakade")));
+
+    // Leaving Game Mode stops a hold without touching windows; Game Mode returns them.
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "10"}, {"title", "Next"}}));
+    const auto before = compositor.entries().size();
+    hold.abandon();
+    QVERIFY(!hold.active());
+    QTest::qWait(50);
+    QCOMPARE(compositor.entries().size(), before);
   }
 
   void launchHoldShowsAWindowAndLetsGoInTime() {
@@ -2964,6 +3010,9 @@ private slots:
     QVERIFY(hold.presented().isEmpty());
     QTRY_VERIFY(compositor.entries().contains(QStringLiteral("mode %1 2 2").arg(kAddress)));
     QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("focus ") + kAddress));
+    // A sign-in left open waits in the list again.
+    QVERIFY(compositor.entries().contains(QStringLiteral("hold-window 0x70")));
+    QTRY_COMPARE(hold.windows().size(), 2);
 
     // No game in time: everything goes back, and focus stays with the library.
     QTRY_COMPARE(released.size(), 1);

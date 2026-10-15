@@ -166,6 +166,11 @@ public:
     if (error) *error = QStringLiteral("Held windows cannot be listed.");
     return false;
   }
+  // Puts a shown window back out of sight with the held ones.
+  virtual bool holdWindow(const QString&, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Windows cannot be held.");
+    return false;
+  }
   // Puts a held window on `workspace` without focusing it.
   virtual bool releaseWindow(const QString&, const QString&, QString* error = nullptr) {
     if (error) *error = QStringLiteral("Held windows cannot be released.");

@@ -501,6 +501,10 @@ bool HyprlandGameModeCompositor::releaseWindow(const QString& address, const QSt
          eval(returnScript(address, workspace), error);
 }
 
+bool HyprlandGameModeCompositor::holdWindow(const QString& address, QString* error) {
+  return validAddress(address) && eval(returnScript(address, launchHoldWorkspace()), error);
+}
+
 bool HyprlandGameModeCompositor::presentWindow(const QString& address, const QString& workspace,
                                                int width, int height, QString* error) {
   const QString script = presentScript(address, workspace, width, height);

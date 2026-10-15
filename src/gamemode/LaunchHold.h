@@ -29,6 +29,8 @@ struct LaunchHoldProcess {
   QString exePath;
   QStringList arguments;
   QString steamAppId;
+  // Wine shows a game inside its prefix as C:\..., resolved under this folder.
+  QString winePrefix;
 };
 
 // While a game starts in Game Mode, the windows a launcher opens first (its client,
@@ -67,9 +69,13 @@ public:
   Q_INVOKABLE void launched(qint64 pid);
   // Lets everything go now, leaving focus where it is.
   Q_INVOKABLE void cancel();
+  // Game Mode is leaving or parking and puts held windows back itself: stop at once,
+  // without touching any window.
+  Q_INVOKABLE void abandon();
   // Shows a held window over the library and focuses it.
   Q_INVOKABLE void present(const QString& address);
-  // Omakade has focus again after a shown window: put the library back in front.
+  // Omakade has focus again after a shown window: that window waits with the others
+  // again, if it is still open, and the library goes back in front.
   Q_INVOKABLE void returnToLibrary();
 
   // Shows the Launching screen with these windows and holds nothing, for renders.
@@ -90,10 +96,12 @@ signals:
 
 private:
   struct Scan {
+    int generation = 0;
     bool ok = false;
     QVector<GameModeHeldWindow> windows;
     QString game;
   };
+  void stop();
   void scan();
   void finishScan();
   void release(const QString& game);
@@ -104,6 +112,10 @@ private:
   ProcessLookup m_lookup;
   LaunchHoldTarget m_target;
   QVector<GameModeHeldWindow> m_windows;
+  // Windows an earlier launch left held. They wait for Game Mode to end, not this game.
+  QStringList m_ignored;
+  // Tells a scan that finishes after its hold ended from one for the current hold.
+  int m_generation = 0;
   QString m_presented;
   bool m_active = false;
   QTimer m_poll;
