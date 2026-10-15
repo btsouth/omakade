@@ -1601,7 +1601,7 @@ import QtQuick.Layouts
                 Text {
                     Layout.fillWidth: true
                     visible: GameMode.displayManaged
-                    text: "While a game starts, launcher, update and sign-in windows wait out of sight and Omakade stays in front. Any of them can be opened from the Launching screen."
+                    text: "While a game starts, launcher, update and sign-in windows wait out of sight and Omakade stays in front. Any of them can be opened from the Starting screen."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 10 * settingsPanel.uiScale
