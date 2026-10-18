@@ -2831,22 +2831,29 @@ private slots:
   void launchHoldScriptsKeepOmakadeAndOtherWorkspacesOut() {
     using Compositor = HyprlandGameModeCompositor;
     const QString hold = Compositor::launchHoldScript(GameModeController::workspace());
+    const QString guard = QStringLiteral("name = \"omakade-held-focus\", "
+                                        "match = { workspace = \"special:omakade-launch\" }, "
+                                        "focus_on_activate = false");
+    QVERIFY(hold.contains(guard));
     QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-hold\", enabled = true")));
     QVERIFY(hold.contains(
         QStringLiteral("class = \"negative:^(io\\\\.github\\\\.tsouth89\\\\.Omakade)$\"")));
     QVERIFY(hold.contains(QStringLiteral("workspace = \"name:omakade\" }")));
     QVERIFY(hold.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true, "
-                       "suppress_event = \"activate activatefocus\" })")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false, "
+                       "suppress_event = \"\" })")));
     QVERIFY(Compositor::launchHoldScript({}).contains(QStringLiteral("enabled = false")));
+    // Publisher windows kept after the game opens still cannot activate from hiding.
+    QVERIFY(Compositor::launchHoldScript({}).contains(guard));
 
     const QString steam = Compositor::steamHoldScript(GameModeController::workspace());
+    QVERIFY(steam.contains(guard));
     QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = true")));
     QVERIFY(steam.contains(
         QStringLiteral("match = { class = \"^([Ss]team)$\", workspace = \"name:omakade\" }")));
     QVERIFY(steam.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true, "
-                       "suppress_event = \"activate activatefocus\" })")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false, "
+                       "suppress_event = \"\" })")));
     QVERIFY(Compositor::steamHoldScript({}).contains(QStringLiteral("enabled = false")));
 
     const QString present = Compositor::presentScript(kAddress, QStringLiteral("name:omakade"), 1440, 810);
