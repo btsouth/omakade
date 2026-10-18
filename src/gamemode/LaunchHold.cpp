@@ -78,13 +78,18 @@ bool steamSetup(const LaunchHoldProcess& process) {
   });
 }
 
+// Wine's and Proton's own programs, such as explorer.exe or Proton's steam.exe.
+bool wineSystemProgram(const LaunchHoldProcess& process) {
+  return process.arguments.value(0).startsWith(QStringLiteral("C:\\windows\\"), Qt::CaseInsensitive);
+}
+
 // Where a process's own program is, against the game's install. Wine shows a process
 // its Windows program as the first argument. Wine's and Proton's own helpers under
 // C:\windows, and native programs elsewhere such as Steam or a shell, decide nothing.
 Place placeOf(const LaunchHoldProcess& process, const QString& installPath, bool folder) {
   const QString program = process.arguments.value(0);
   if (windowsPath(program) && program.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive) &&
-      !program.startsWith(QStringLiteral("C:\\windows\\"), Qt::CaseInsensitive)) {
+      !wineSystemProgram(process)) {
     const Place place = placeIn(hostPath(program, process.winePrefix), installPath, folder, Qt::CaseInsensitive);
     if (place != Place::Unknown) return place;
     // Only a program installed in the prefix itself, as publisher launchers are, is
@@ -208,6 +213,9 @@ bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHold
     if (target.directProcess && target.pid > 0 && pid == target.pid) return true;
     const auto process = lookup ? lookup(pid) : std::nullopt;
     if (!process) break;
+    // A window of Wine's own, such as the untitled one explorer.exe opens under Proton
+    // while Rockstar's launcher starts, carries the game's Steam name but is not the game.
+    if (depth == 0 && wineSystemProgram(*process)) return false;
     // The nearest program that can be placed decides. A publisher's launcher, such as
     // Rockstar's or EA's, is a program of its own outside the game's folder even when
     // the game started it, so it stays held while it asks for a sign-in.

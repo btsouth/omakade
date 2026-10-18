@@ -3002,8 +3002,18 @@ private slots:
     QVERIFY(!LaunchHold::isGameWindow(window(63), gta, lookup));
     QVERIFY(LaunchHold::isGameWindow(window(64), gta, lookup));
     QVERIFY(LaunchHold::isGameWindow(window(62), gta, lookup));
-    // Wine's own windows decide nothing; Steam's word for the app is the fallback.
-    QVERIFY(LaunchHold::isGameWindow(window(65), gta, lookup));
+    // Wine's own windows are never the game, wherever Wine started them: Red Dead
+    // Redemption's explorer.exe opened an untitled window under PlayRDR.exe that ended the
+    // hold before Rockstar's sign-in. Without an install to place it, the same.
+    QVERIFY(!LaunchHold::isGameWindow(window(65), gta, lookup));
+    table[68] = wine(62, QStringLiteral("C:\\windows\\system32\\explorer.exe"));
+    table[68].arguments.append(QStringLiteral("/desktop"));
+    QVERIFY(!LaunchHold::isGameWindow(window(68), gta, lookup));
+    auto unplaced = gta;
+    unplaced.installPath.clear();
+    QVERIFY(!LaunchHold::isGameWindow(window(68), unplaced, lookup));
+    // A game started through one of them is still the game.
+    QVERIFY(LaunchHold::isGameWindow(window(64), unplaced, lookup));
     QVERIFY(!LaunchHold::isGameWindow({QStringLiteral("0x2"), 50, QStringLiteral("steam"), {}}, gta, lookup));
     // Wine names paths in any case.
     table[64].arguments = {QStringLiteral("s:\\COMMON\\grand theft auto v\\GTA5.exe")};
