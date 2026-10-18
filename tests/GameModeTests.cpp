@@ -3586,7 +3586,8 @@ int main(int argc, char** argv) {
   const QByteArray shardArgument(argv[1]);
   bool valid = false;
   const int shard = shardArgument.mid(sizeof("--test-shard=") - 1).toInt(&valid);
-  if (!valid || shard < 0 || shard > 1) return 2;
+  constexpr int kShards = 3;  // Matches the shard range in tests/CMakeLists.txt.
+  if (!valid || shard < 0 || shard >= kShards) return 2;
   QStringList arguments{QString::fromLocal8Bit(argv[0])};
   const QMetaObject* meta = tests.metaObject();
   int testIndex = 0;
@@ -3596,7 +3597,7 @@ int main(int argc, char** argv) {
     if (method.methodType() != QMetaMethod::Slot || method.parameterCount() != 0 ||
         name.endsWith("_data") || name == "init" || name == "cleanup" ||
         name == "initTestCase" || name == "cleanupTestCase") continue;
-    if (testIndex++ % 2 == shard) arguments.append(QString::fromLatin1(name));
+    if (testIndex++ % kShards == shard) arguments.append(QString::fromLatin1(name));
   }
   return QTest::qExec(&tests, arguments);
 }
