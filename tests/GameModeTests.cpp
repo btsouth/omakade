@@ -2835,26 +2835,31 @@ private slots:
                                         "match = { workspace = \"special:omakade-launch\" }, "
                                         "focus_on_activate = false");
     QVERIFY(hold.contains(guard));
-    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-hold\", enabled = true")));
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-hold\", enabled = false")));
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = false")));
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-route\", enabled = true")));
+    QVERIFY(!hold.contains(QStringLiteral("suppress_event")));
     QVERIFY(hold.contains(
         QStringLiteral("class = \"negative:^(io\\\\.github\\\\.tsouth89\\\\.Omakade)$\"")));
     QVERIFY(hold.contains(QStringLiteral("workspace = \"name:omakade\" }")));
     QVERIFY(hold.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false, "
-                       "suppress_event = \"\" })")));
-    QVERIFY(Compositor::launchHoldScript({}).contains(QStringLiteral("enabled = false")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false })")));
+    QVERIFY(Compositor::launchHoldScript({}).contains(
+        QStringLiteral("name = \"omakade-launch-route\", enabled = false")));
     // Publisher windows kept after the game opens still cannot activate from hiding.
     QVERIFY(Compositor::launchHoldScript({}).contains(guard));
 
     const QString steam = Compositor::steamHoldScript(GameModeController::workspace());
     QVERIFY(steam.contains(guard));
+    QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-route\", enabled = true")));
+    QVERIFY(!steam.contains(QStringLiteral("suppress_event")));
     QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = true")));
     QVERIFY(steam.contains(
         QStringLiteral("match = { class = \"^([Ss]team)$\", workspace = \"name:omakade\" }")));
     QVERIFY(steam.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false, "
-                       "suppress_event = \"\" })")));
-    QVERIFY(Compositor::steamHoldScript({}).contains(QStringLiteral("enabled = false")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false })")));
+    QVERIFY(Compositor::steamHoldScript({}).contains(
+        QStringLiteral("name = \"omakade-steam-route\", enabled = false")));
 
     const QString present = Compositor::presentScript(kAddress, QStringLiteral("name:omakade"), 1440, 810);
     QVERIFY(present.contains(QStringLiteral("workspace = \"name:omakade\", follow = false")));
