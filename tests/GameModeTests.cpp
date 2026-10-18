@@ -2853,7 +2853,7 @@ private slots:
     QVERIFY(steam.contains(guard));
     QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-route\", enabled = true")));
     QVERIFY(!steam.contains(QStringLiteral("suppress_event")));
-    QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = true")));
+    QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = false")));
     QVERIFY(steam.contains(
         QStringLiteral("match = { class = \"^([Ss]team)$\", workspace = \"name:omakade\" }")));
     QVERIFY(steam.contains(
