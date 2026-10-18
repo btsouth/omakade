@@ -970,7 +970,9 @@ ApplicationWindow {
                     && root.gameModeNavigation.focus === current) return
             root.revealNavigationItem(container, current)
         } else if (container) {
-            root.focusWithin(container, true)
+            // Focus lost inside a page, such as on the Starting screen that hid when a
+            // game closed, goes to the page's main action rather than its first control.
+            root.focusWithin(container, true, container.primaryFocusItem || null)
         } else if (current && current.visible && current.enabled
                    && ((root.couchMode && current !== couchLibraryView
                         && root.isWithin(current, couchLibraryView))
