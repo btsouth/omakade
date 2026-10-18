@@ -26,6 +26,14 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.17.0" date="2026-10-18">
+      <description>
+        <p>Game Mode can hold a launcher's own windows while a game starts, so updates, splash screens and sign-ins no longer take focus. A Starting screen shows the game's artwork, lists them and any can be opened with a controller.</p>
+        <p>Game Mode can start Steam in the background, so Steam games open without waiting for Steam to load.</p>
+        <p>Controller buttons navigate and activate controls directly, avoiding duplicate presses.</p>
+        <p>A game's page keeps every action in view while it runs, and the Game Mode search finishes with Enter after typing.</p>
+      </description>
+    </release>
     <release version="1.16.2" date="2026-10-12">
       <description>
         <p>The in-game guide now works on Omarchy 4.0 stable releases.</p>
