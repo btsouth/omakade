@@ -2831,21 +2831,35 @@ private slots:
   void launchHoldScriptsKeepOmakadeAndOtherWorkspacesOut() {
     using Compositor = HyprlandGameModeCompositor;
     const QString hold = Compositor::launchHoldScript(GameModeController::workspace());
-    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-hold\", enabled = true")));
+    const QString guard = QStringLiteral("name = \"omakade-held-focus\", "
+                                        "match = { workspace = \"special:omakade-launch\" }, "
+                                        "focus_on_activate = false");
+    QVERIFY(hold.contains(guard));
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-hold\", enabled = false")));
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = false")));
+    QVERIFY(hold.contains(QStringLiteral("name = \"omakade-launch-route\", enabled = true")));
+    QVERIFY(!hold.contains(QStringLiteral("suppress_event")));
     QVERIFY(hold.contains(
         QStringLiteral("class = \"negative:^(io\\\\.github\\\\.tsouth89\\\\.Omakade)$\"")));
     QVERIFY(hold.contains(QStringLiteral("workspace = \"name:omakade\" }")));
     QVERIFY(hold.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true")));
-    QVERIFY(Compositor::launchHoldScript({}).contains(QStringLiteral("enabled = false")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false })")));
+    QVERIFY(Compositor::launchHoldScript({}).contains(
+        QStringLiteral("name = \"omakade-launch-route\", enabled = false")));
+    // Publisher windows kept after the game opens still cannot activate from hiding.
+    QVERIFY(Compositor::launchHoldScript({}).contains(guard));
 
     const QString steam = Compositor::steamHoldScript(GameModeController::workspace());
-    QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = true")));
+    QVERIFY(steam.contains(guard));
+    QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-route\", enabled = true")));
+    QVERIFY(!steam.contains(QStringLiteral("suppress_event")));
+    QVERIFY(steam.contains(QStringLiteral("name = \"omakade-steam-hold\", enabled = false")));
     QVERIFY(steam.contains(
         QStringLiteral("match = { class = \"^([Ss]team)$\", workspace = \"name:omakade\" }")));
     QVERIFY(steam.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true")));
-    QVERIFY(Compositor::steamHoldScript({}).contains(QStringLiteral("enabled = false")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = false })")));
+    QVERIFY(Compositor::steamHoldScript({}).contains(
+        QStringLiteral("name = \"omakade-steam-route\", enabled = false")));
 
     const QString present = Compositor::presentScript(kAddress, QStringLiteral("name:omakade"), 1440, 810);
     QVERIFY(present.contains(QStringLiteral("workspace = \"name:omakade\", follow = false")));
@@ -3002,8 +3016,18 @@ private slots:
     QVERIFY(!LaunchHold::isGameWindow(window(63), gta, lookup));
     QVERIFY(LaunchHold::isGameWindow(window(64), gta, lookup));
     QVERIFY(LaunchHold::isGameWindow(window(62), gta, lookup));
-    // Wine's own windows decide nothing; Steam's word for the app is the fallback.
-    QVERIFY(LaunchHold::isGameWindow(window(65), gta, lookup));
+    // Wine's own windows are never the game, wherever Wine started them: Red Dead
+    // Redemption's explorer.exe opened an untitled window under PlayRDR.exe that ended the
+    // hold before Rockstar's sign-in. Without an install to place it, the same.
+    QVERIFY(!LaunchHold::isGameWindow(window(65), gta, lookup));
+    table[68] = wine(62, QStringLiteral("C:\\windows\\system32\\explorer.exe"));
+    table[68].arguments.append(QStringLiteral("/desktop"));
+    QVERIFY(!LaunchHold::isGameWindow(window(68), gta, lookup));
+    auto unplaced = gta;
+    unplaced.installPath.clear();
+    QVERIFY(!LaunchHold::isGameWindow(window(68), unplaced, lookup));
+    // A game started through one of them is still the game.
+    QVERIFY(LaunchHold::isGameWindow(window(64), unplaced, lookup));
     QVERIFY(!LaunchHold::isGameWindow({QStringLiteral("0x2"), 50, QStringLiteral("steam"), {}}, gta, lookup));
     // Wine names paths in any case.
     table[64].arguments = {QStringLiteral("s:\\COMMON\\grand theft auto v\\GTA5.exe")};

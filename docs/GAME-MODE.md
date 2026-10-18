@@ -232,8 +232,9 @@ game starts is held.
 Under Proton, every window a Steam game opens carries its Steam app name, including a
 publisher launcher such as Rockstar's or EA's. Omakade tells them apart by the program
 Wine runs: a launcher installed in the game's Proton prefix stays held, and a program
-from the game's install folder is the game. The setup Steam runs on a game's first
-launch, such as its redistributables, and installers a game keeps in its own folder,
+from the game's install folder is the game. Wine's own windows are never the game, such
+as the untitled one explorer.exe opens while Rockstar's launcher starts. The setup Steam
+runs on a game's first launch, such as its redistributables, and installers a game keeps in its own folder,
 such as `_CommonRedist` or `__Installer`, are held too. Windows that open on another display or
 workspace are never held. If Omakade quits while it holds windows, the next
 start, **End Game Mode** or `omakade --game-mode-exit` brings them back.

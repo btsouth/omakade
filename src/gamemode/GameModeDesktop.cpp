@@ -40,6 +40,20 @@ void setError(QString* error, const QString& text) {
     *error = text;
   }
 }
+
+QString heldFocusScript() {
+  // This is a dynamic property of the hidden workspace, so a game or a sign-in
+  // regains its normal activation behaviour as soon as it is moved out. Static
+  // suppress_event flags would remain on the window after the hold ended.
+  // Empty effects do not clear an existing named rule's static suppression.
+  // Retire the old rules and use fresh names for routing future windows.
+  return QStringLiteral("hl.window_rule({ name = \"omakade-launch-hold\", enabled = false })\n"
+                        "hl.window_rule({ name = \"omakade-steam-hold\", enabled = false })\n"
+                        "hl.window_rule({ name = \"omakade-held-focus\", "
+                        "match = { workspace = %1 }, focus_on_activate = false })\n")
+      .arg(HyprlandGameModeCompositor::luaString(
+          HyprlandGameModeCompositor::launchHoldWorkspace()));
+}
 } // namespace
 
 bool HyprlandGameModeCompositor::available() {
@@ -437,12 +451,15 @@ QString HyprlandGameModeCompositor::launchHoldWorkspace() {
 QString HyprlandGameModeCompositor::launchHoldScript(const QString& workspace) {
   // Only windows opening on the session's workspace are held, never Omakade's own, so
   // windows on other displays and workspaces open as usual.
+  // The silent workspace already preserves focus. no_initial_focus would also discard
+  // a game's initial fullscreen request, so explicitly clear it when replacing old rules.
+  // The workspace guard blocks later activation requests, such as Rockstar's sign-in.
   const QString match =
       QStringLiteral("match = { class = %1, workspace = %2 }")
           .arg(luaString(QStringLiteral("negative:^(io\\.github\\.tsouth89\\.Omakade)$")),
                luaString(workspace.isEmpty() ? QStringLiteral("name:omakade") : workspace));
-  return QStringLiteral("hl.window_rule({ name = \"omakade-launch-hold\", enabled = %1, %2, "
-                        "workspace = %3, no_initial_focus = true })")
+  return heldFocusScript() + QStringLiteral("hl.window_rule({ name = \"omakade-launch-route\", enabled = %1, %2, "
+                        "workspace = %3, no_initial_focus = false })")
       .arg(workspace.isEmpty() ? QStringLiteral("false") : QStringLiteral("true"), match,
            luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
 }
@@ -453,8 +470,8 @@ QString HyprlandGameModeCompositor::steamHoldScript(const QString& workspace) {
       QStringLiteral("match = { class = %1, workspace = %2 }")
           .arg(luaString(QStringLiteral("^([Ss]team)$")),
                luaString(workspace.isEmpty() ? QStringLiteral("name:omakade") : workspace));
-  return QStringLiteral("hl.window_rule({ name = \"omakade-steam-hold\", enabled = %1, %2, "
-                        "workspace = %3, no_initial_focus = true })")
+  return heldFocusScript() + QStringLiteral("hl.window_rule({ name = \"omakade-steam-route\", enabled = %1, %2, "
+                        "workspace = %3, no_initial_focus = false })")
       .arg(workspace.isEmpty() ? QStringLiteral("false") : QStringLiteral("true"), match,
            luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
 }
