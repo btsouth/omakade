@@ -2836,7 +2836,8 @@ private slots:
         QStringLiteral("class = \"negative:^(io\\\\.github\\\\.tsouth89\\\\.Omakade)$\"")));
     QVERIFY(hold.contains(QStringLiteral("workspace = \"name:omakade\" }")));
     QVERIFY(hold.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true, "
+                       "suppress_event = \"activate activatefocus\" })")));
     QVERIFY(Compositor::launchHoldScript({}).contains(QStringLiteral("enabled = false")));
 
     const QString steam = Compositor::steamHoldScript(GameModeController::workspace());
@@ -2844,7 +2845,8 @@ private slots:
     QVERIFY(steam.contains(
         QStringLiteral("match = { class = \"^([Ss]team)$\", workspace = \"name:omakade\" }")));
     QVERIFY(steam.contains(
-        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true")));
+        QStringLiteral("workspace = \"special:omakade-launch silent\", no_initial_focus = true, "
+                       "suppress_event = \"activate activatefocus\" })")));
     QVERIFY(Compositor::steamHoldScript({}).contains(QStringLiteral("enabled = false")));
 
     const QString present = Compositor::presentScript(kAddress, QStringLiteral("name:omakade"), 1440, 810);

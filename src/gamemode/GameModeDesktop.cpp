@@ -437,12 +437,15 @@ QString HyprlandGameModeCompositor::launchHoldWorkspace() {
 QString HyprlandGameModeCompositor::launchHoldScript(const QString& workspace) {
   // Only windows opening on the session's workspace are held, never Omakade's own, so
   // windows on other displays and workspaces open as usual.
+  // A held window that asks for focus later, as Rockstar's sign-in does, is not given it:
+  // with Omarchy's focus_on_activate, Hyprland would open the hidden workspace for it.
   const QString match =
       QStringLiteral("match = { class = %1, workspace = %2 }")
           .arg(luaString(QStringLiteral("negative:^(io\\.github\\.tsouth89\\.Omakade)$")),
                luaString(workspace.isEmpty() ? QStringLiteral("name:omakade") : workspace));
   return QStringLiteral("hl.window_rule({ name = \"omakade-launch-hold\", enabled = %1, %2, "
-                        "workspace = %3, no_initial_focus = true })")
+                        "workspace = %3, no_initial_focus = true, "
+                        "suppress_event = \"activate activatefocus\" })")
       .arg(workspace.isEmpty() ? QStringLiteral("false") : QStringLiteral("true"), match,
            luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
 }
@@ -454,7 +457,8 @@ QString HyprlandGameModeCompositor::steamHoldScript(const QString& workspace) {
           .arg(luaString(QStringLiteral("^([Ss]team)$")),
                luaString(workspace.isEmpty() ? QStringLiteral("name:omakade") : workspace));
   return QStringLiteral("hl.window_rule({ name = \"omakade-steam-hold\", enabled = %1, %2, "
-                        "workspace = %3, no_initial_focus = true })")
+                        "workspace = %3, no_initial_focus = true, "
+                        "suppress_event = \"activate activatefocus\" })")
       .arg(workspace.isEmpty() ? QStringLiteral("false") : QStringLiteral("true"), match,
            luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
 }
