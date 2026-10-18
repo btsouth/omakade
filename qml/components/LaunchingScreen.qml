@@ -99,7 +99,7 @@ Rectangle {
             cache: true
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: Math.ceil(width / 64) * 64
-            opacity: status === Image.Ready ? 0.62 : 0
+            opacity: status === Image.Ready ? 0.86 : 0
             Behavior on opacity {
                 enabled: !Preferences.reducedMotion
                 NumberAnimation { duration: 600; easing.type: Easing.OutCubic }
@@ -138,18 +138,19 @@ Rectangle {
             anchors.fill: parent
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: screen.alpha(Theme.darkerBackground, 0.94) }
-                GradientStop { position: 0.5; color: screen.alpha(Theme.darkerBackground, 0.62) }
-                GradientStop { position: 1.0; color: screen.alpha(Theme.darkerBackground, 0.38) }
+                GradientStop { position: 0.0; color: screen.alpha(Theme.darkerBackground, 0.9) }
+                GradientStop { position: 0.42; color: screen.alpha(Theme.darkerBackground, 0.55) }
+                GradientStop { position: 1.0; color: screen.alpha(Theme.darkerBackground, 0.1) }
             }
         }
 
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
-                GradientStop { position: 0.0; color: screen.alpha(Theme.darkerBackground, 0.2) }
-                GradientStop { position: 0.45; color: "transparent" }
-                GradientStop { position: 1.0; color: screen.alpha(Theme.darkerBackground, 0.96) }
+                GradientStop { position: 0.0; color: screen.alpha(Theme.darkerBackground, 0.25) }
+                GradientStop { position: 0.3; color: "transparent" }
+                GradientStop { position: 0.62; color: screen.alpha(Theme.darkerBackground, 0.35) }
+                GradientStop { position: 1.0; color: screen.alpha(Theme.darkerBackground, 0.95) }
             }
         }
     }
@@ -178,18 +179,43 @@ Rectangle {
                 Layout.preferredHeight: coverWidth * 1.5
                 Layout.alignment: Qt.AlignBottom
                 radius: Math.max(6, Theme.cornerRadius)
-                clip: true
-                border.color: screen.alpha(Theme.foreground, 0.22)
+
+                // A soft shadow from a few widening, fading layers lifts the cover off
+                // the backdrop.
+                Repeater {
+                    model: 4
+                    Rectangle {
+                        required property int index
+                        readonly property real spread: (index + 1) * 7 * screen.uiScale
+                        z: -1
+                        x: -spread
+                        y: -spread + 14 * screen.uiScale
+                        width: coverCard.width + spread * 2
+                        height: coverCard.height + spread * 2
+                        radius: coverCard.radius + spread
+                        color: Qt.rgba(0, 0, 0, 0.13 - index * 0.025)
+                    }
+                }
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
                     GradientStop { position: 0.0; color: screen.accentStart }
                     GradientStop { position: 1.0; color: screen.accentEnd }
                 }
 
-                CoverArtwork {
-                    id: cover
+                Item {
                     anchors.fill: parent
-                    source: screen.game.coverPath || ""
+                    clip: true
+                    CoverArtwork {
+                        id: cover
+                        anchors.fill: parent
+                        source: screen.game.coverPath || ""
+                    }
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: coverCard.radius
+                    color: "transparent"
+                    border.color: screen.alpha(Theme.foreground, 0.22)
                 }
 
                 Text {
