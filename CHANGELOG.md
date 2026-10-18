@@ -1,18 +1,26 @@
 # Changelog
 
-## Unreleased
+## 1.17.0
 
+Game Mode keeps launchers out of the way while a game starts.
+
+- **Hold launcher windows**: updates, splash screens, sign-ins and the setup Steam runs
+  on a game's first launch no longer take focus from Omakade. A Starting screen lists
+  them, and any of them can be opened from there with a controller or the keyboard. When
+  the game opens it goes fullscreen and the rest stay out of sight. Publisher launchers that run
+  under Proton, such as Rockstar's and EA's, are told apart from the game. Listed windows
+  wait as long as a slow update takes. Turn it on in Settings → Controls.
+- The Starting screen shows the game's cover and artwork while it starts.
+- **Start Steam in the background** when Game Mode starts, so Steam games open without
+  waiting for Steam to load. With launcher windows held, Steam's own windows wait on the
+  Starting screen too. Turn it on in Settings → Controls.
 - Controller buttons now navigate and activate controls directly, avoiding duplicate
   presses and actions reaching the wrong control. Keyboard controls stay the same.
-- Game Mode can start Steam in the background when it starts, so Steam games open
-  without waiting for Steam to load. Turn it on in Settings → Controls. With launcher
-  windows held, Steam's own windows wait on the Starting screen too.
-- Game Mode can hold a launcher's own windows while a game starts, so updates, splash
-  screens and sign-ins no longer take focus from Omakade. This includes publisher
-  launchers that run under Proton, such as Rockstar's and EA's, and the setup Steam runs on
-  a game's first launch. A Starting screen lists them, and any of them can be opened from
-  there with a controller or the keyboard. Listed windows wait as long as a slow update
-  takes. Turn it on in Settings → Controls.
+- A game's page keeps every action in view while the game runs. Stop Game no longer
+  pushes Manage past the edge in Game Mode or in a narrow window.
+- In the Game Mode search, Enter on a keyboard after typing finishes the search, and a
+  search with no match leaves you on Search to change it.
+- Closing a game started from its page in Game Mode returns to Play, not Back.
 
 ## 1.16.2
 
