@@ -11,3 +11,14 @@ void deliverKeyboardTestKey(QWindow* window, int key, Qt::KeyboardModifiers modi
   QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
       window, QEvent::KeyRelease, key, modifiers);
 }
+
+void deliverKeyboardTestText(QWindow* window, const QString& text) {
+  if (window == nullptr) return;
+  for (const QChar character : text) {
+    const int key = character.toUpper().unicode();
+    QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
+        window, QEvent::KeyPress, key, Qt::NoModifier, QString(character));
+    QWindowSystemInterface::handleKeyEvent<QWindowSystemInterface::SynchronousDelivery>(
+        window, QEvent::KeyRelease, key, Qt::NoModifier, QString(character));
+  }
+}

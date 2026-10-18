@@ -5427,6 +5427,32 @@ int main(int argc, char* argv[]) {
             fail(QStringLiteral("Controller confirm did not type with the on-screen keyboard"));
             return;
           }
+          // Enter after typing on a physical keyboard is done, not the highlighted key.
+          // With no match, focus stays on Search so the text can be changed.
+          deliverKeyboardTestText(quickWindow, QStringLiteral("zq"));
+          deliverKeyboardTestKey(quickWindow, Qt::Key_Return);
+          QCoreApplication::processEvents();
+          auto* searchModel = couch->property("libraryModel").value<QObject*>();
+          if (couch->property("searchOpen").toBool() || searchModel == nullptr ||
+              searchModel->property("searchText").toString() != QStringLiteral("Azq")) {
+            fail(QStringLiteral("Enter after typing did not finish the couch search"));
+            return;
+          }
+          {
+            QEventLoop settle;
+            QTimer::singleShot(30, &settle, &QEventLoop::quit);
+            settle.exec();
+          }
+          if (!search->hasActiveFocus()) {
+            fail(QStringLiteral("A search with no match did not return focus to Search"));
+            return;
+          }
+          searchModel->setProperty("searchText", QString());
+          sendKey(Qt::Key_Return);
+          if (!couch->property("searchOpen").toBool() || !keyboardGrid->hasActiveFocus()) {
+            fail(QStringLiteral("Couch Search did not reopen after a finished search"));
+            return;
+          }
           deliverKeyboardTestKey(quickWindow, Qt::Key_F11);
           if (quickWindow->property("couchMode").toBool() ||
               couch->property("searchOpen").toBool() || keyboard->isVisible() ||
@@ -7775,6 +7801,11 @@ int main(int argc, char* argv[]) {
       launchHold.returnToLibrary();
       launchHold.cancel();
       settle();
+      // The window is active again once the game closes: the page's Play takes focus,
+      // not the first control on the page.
+      QMetaObject::invokeMethod(rootWindow, "focusCurrentSurface");
+      settle();
+      expectFocus(play, QStringLiteral("returning to the game page did not focus Play"));
 
       // Nothing held yet: A does nothing, and Show All Windows is a deliberate move.
       launchHold.preview(QStringLiteral("Hollow Knight"), {});

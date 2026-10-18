@@ -238,6 +238,7 @@ Item {
     signal collectionCreateRequested(string name)
     signal textEntryRequested(var target, string title, bool password, string placeholder)
 
+    readonly property Item primaryFocusItem: playButton
     function focusPrimary() {
         playButton.forceActiveFocus(Qt.TabFocusReason)
         const flickable = detailsScroll.navigationFlickable

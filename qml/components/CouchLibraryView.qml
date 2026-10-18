@@ -282,7 +282,8 @@ FocusScope {
         searchOpen = false
         currentIndex = libraryModel.rowCount() > 0 ? 0 : -1
         Qt.callLater(function() {
-            if (accepted) {
+            // With no match there is no grid to focus: stay on Search to change it.
+            if (accepted && root.libraryModel.rowCount() > 0) {
                 root.focusGrid()
             } else {
                 searchButton.forceActiveFocus(Qt.TabFocusReason)
