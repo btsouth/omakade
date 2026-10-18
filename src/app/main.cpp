@@ -2096,13 +2096,33 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
+  // The game a launching render shows, and the windows it holds, from
+  // --render-game-info-file when one is given.
+  QVariantMap launchingPreview;
+  QVector<GameModeHeldWindow> launchingWindows{
+      {QStringLiteral("0x1"), 0, QStringLiteral("heroic"), QStringLiteral("Heroic Games Launcher")},
+      {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Ubisoft Connect")},
+      {QStringLiteral("0x3"), 0, QStringLiteral("upc.exe"), QStringLiteral("Sign in to Ubisoft Connect")}};
+  if (renderMode && renderOverlay == QStringLiteral("launching") &&
+      optionSupplied(application.arguments(), QStringLiteral("--render-game-info-file"))) {
+    QFile fixture(optionValue(application.arguments(), QStringLiteral("--render-game-info-file")));
+    if (!fixture.open(QIODevice::ReadOnly)) return EXIT_FAILURE;
+    const QJsonObject data = QJsonDocument::fromJson(fixture.readAll()).object();
+    launchingPreview = data.value("game").toObject().toVariantMap();
+    if (data.contains("windows")) {
+      launchingWindows.clear();
+      for (const QJsonValue& value : data.value("windows").toArray()) {
+        const QJsonObject window = value.toObject();
+        launchingWindows.append({window.value("address").toString(), 0,
+                                 window.value("class").toString(), window.value("title").toString()});
+      }
+    }
+  }
+  engine.rootContext()->setContextProperty(QStringLiteral("LaunchingPreview"), launchingPreview);
   if (renderMode && renderOverlay == QStringLiteral("launching")) {
-    launchHold.preview(QStringLiteral("Assassin's Creed Valhalla"),
-                       {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"),
-                         QStringLiteral("Heroic Games Launcher")},
-                        {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Ubisoft Connect")},
-                        {QStringLiteral("0x3"), 0, QStringLiteral("upc.exe"),
-                         QStringLiteral("Sign in to Ubisoft Connect")}});
+    launchHold.preview(launchingPreview.value(QStringLiteral("title"),
+                                              QStringLiteral("Assassin's Creed Valhalla")).toString(),
+                       launchingWindows);
   }
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);

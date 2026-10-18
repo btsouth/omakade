@@ -27,6 +27,8 @@ ApplicationWindow {
     property bool manualEditorOpen: false
     property bool detailOpen: false
     property var selectedGame: ({})
+    // The game a launch hold is starting, with the artwork its Starting screen shows.
+    property var launchingGame: LaunchingPreview && LaunchingPreview.title ? LaunchingPreview : ({})
     property var selectedInstallation: ({})
     property var selectedInstallations: []
     property var linkResults: []
@@ -1486,7 +1488,21 @@ ApplicationWindow {
     function playSelected() {
         if (launchFeedback.pending) { showToast(launchFeedback.message); return }
         launchFeedback.begin({gameKey: launchIdentity(selectedGame),
-            title: selectedGame.title, installation: selectedInstallation})
+            title: selectedGame.title, installation: selectedInstallation, art: launchArt(selectedGame)})
+    }
+
+    // What the Starting screen shows of a game: the details page's cover, backdrop and
+    // colours, kept with the launch request as selection can change before dispatch.
+    function launchArt(game) {
+        const entry = Metadata !== null && Metadata.current ? Metadata.current : ({})
+        const screenshot = entry.heroKind === "screenshot" && !entry.identityAmbiguous && !entry.rejected
+        return {
+            coverPath: String(game.coverPath || ""),
+            heroPath: String(game.heroPath || (screenshot ? entry.heroUrl || "" : "")),
+            accentStart: game.accentStart ? String(game.accentStart) : "",
+            accentEnd: game.accentEnd ? String(game.accentEnd) : "",
+            coverMark: game.coverMark || ""
+        }
     }
 
     function dispatchLaunch(request) {
@@ -1501,6 +1517,7 @@ ApplicationWindow {
                                                            appId: choice.appId, installPath: choice.installPath || ""})
         // A launch hold lists what Steam opened as it started; anything else shows it now,
         // and Steam's next window, such as an install dialog, opens as usual.
+        if (holding) launchingGame = Object.assign({title: request.title}, request.art || {})
         GameMode.endSteamHold(!holding)
         if (!DemoMode) {
             okay = installing ? Launcher.install(choice.source, choice.appId)
@@ -3823,6 +3840,8 @@ ApplicationWindow {
         anchors.fill: parent
         z: 110
         uiScale: root.couchMode ? Math.max(1, Math.min(2.4, root.height / 900)) : 1
+        couchMode: root.couchMode
+        game: root.launchingGame
         onVisibleChanged: if (!visible) Qt.callLater(root.focusCurrentSurface)
     }
 
