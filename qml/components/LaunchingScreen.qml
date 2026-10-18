@@ -155,6 +155,18 @@ Rectangle {
         }
     }
 
+    // Keeps the window list readable over a bright backdrop.
+    Rectangle {
+        visible: windowRepeater.count > 0
+        x: content.x + windowColumn.x - 22 * screen.uiScale
+        y: content.y + windowColumn.y - 20 * screen.uiScale
+        width: windowColumn.width + 44 * screen.uiScale
+        height: windowColumn.height + 40 * screen.uiScale
+        radius: Math.max(8, Theme.cornerRadius * 2)
+        color: screen.alpha(Theme.darkerBackground, 0.55)
+        border.color: screen.alpha(Theme.foreground, 0.08)
+    }
+
     GridLayout {
         id: content
         anchors.left: parent.left
@@ -306,10 +318,12 @@ Rectangle {
         }
 
         ColumnLayout {
+            id: windowColumn
             Layout.fillWidth: !screen.wide
             Layout.preferredWidth: screen.wide ? 560 * screen.uiScale : -1
             Layout.alignment: Qt.AlignBottom | Qt.AlignRight
             spacing: 10 * screen.uiScale
+
 
             Text {
                 visible: windowRepeater.count > 0
