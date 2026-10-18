@@ -717,6 +717,26 @@ int testRestoreStartup(QGuiApplication& application, OmarchyTheme& theme, const 
   }
   return EXIT_SUCCESS;
 }
+
+// The Details action grid's columns: Stop Game holds every cell to its scaled minimum.
+int expectedDetailActionColumns(qreal width, qreal scale, bool running) {
+  if (!running) return width < 300 ? 1 : width < 620 ? 2 : 4;
+  const auto fits = [width, scale](int count) {
+    return count * 220 * scale + (count - 1) * 10 <= width;
+  };
+  return fits(5) ? 5 : fits(3) ? 3 : fits(2) ? 2 : 1;
+}
+
+// Names the first visible action that reaches past the details column, or returns empty.
+QString clippedDetailAction(QQuickItem* content, QQuickItem* actions) {
+  const qreal right = content->mapToScene(QPointF(content->width(), 0)).x();
+  for (QQuickItem* action : actions->childItems()) {
+    if (!action->isVisible()) continue;
+    if (action->mapToScene(QPointF(action->width(), 0)).x() > right + 0.5)
+      return action->objectName();
+  }
+  return {};
+}
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -5980,10 +6000,9 @@ int main(int argc, char* argv[]) {
               application.exit(EXIT_FAILURE);
               return;
             }
-            const auto expectedColumns = [content](bool running) {
-              const qreal width = content->width();
-              return width < 300 ? 1 : width < 620 ? 2
-                   : width < 1140 && running ? 3 : width < 1140 ? 4 : running ? 5 : 4;
+            const auto expectedColumns = [content, details](bool running) {
+              return expectedDetailActionColumns(content->width(),
+                                                 details->property("uiScale").toReal(), running);
             };
             if (actionGrid->property("columns").toInt() != expectedColumns(false)) {
               qCritical() << "The hidden Stop Game state used the wrong action columns"
@@ -6002,6 +6021,18 @@ int main(int argc, char* argv[]) {
               qCritical() << "An active emulator session did not expose the five-button action layout"
                           << stop->isVisible() << actionGrid->property("actionCount")
                           << actionGrid->property("columns") << content->width();
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            {
+              QEventLoop actionLayout;
+              QTimer::singleShot(50, &actionLayout, &QEventLoop::quit);
+              actionLayout.exec();
+            }
+            if (const QString clipped = clippedDetailAction(content, actionGrid); !clipped.isEmpty()) {
+              qCritical() << "The five-button action layout clipped" << clipped
+                          << "at width" << content->width() << "scale" << details->property("uiScale")
+                          << "columns" << actionGrid->property("columns");
               application.exit(EXIT_FAILURE);
               return;
             }
@@ -6508,10 +6539,9 @@ int main(int argc, char* argv[]) {
                             gameActions->property("actionCount").toInt() != 4) {
                           fail("A game without an active session showed Stop Game"); return;
                         }
-                        const auto expectedColumns = [detailsContent](bool running) {
-                          const qreal width = detailsContent->width();
-                          return width < 300 ? 1 : width < 620 ? 2
-                               : width < 1140 && running ? 3 : width < 1140 ? 4 : running ? 5 : 4;
+                        const auto expectedColumns = [detailsContent, details](bool running) {
+                          return expectedDetailActionColumns(
+                              detailsContent->width(), details->property("uiScale").toReal(), running);
                         };
                         const auto moveControllerFocus =
                             [quickWindow, &controller, fail](int direction, QQuickItem* expected,
@@ -6587,6 +6617,12 @@ int main(int argc, char* argv[]) {
                         if (!stop->isVisible() || gameActions->property("actionCount").toInt() != 5 ||
                             columns != expectedColumns(true)) {
                           fail(QStringLiteral("An active session did not expose the five-button layout"));
+                          return;
+                        }
+                        if (const QString clipped = clippedDetailAction(detailsContent, gameActions);
+                            !clipped.isEmpty()) {
+                          fail(QStringLiteral("The five-button layout clipped %1 at width %2 in %3 columns")
+                                   .arg(clipped).arg(detailsContent->width()).arg(columns));
                           return;
                         }
                         QQuickItem* actionChain[] = {play, favorite, queue, stop, manage};

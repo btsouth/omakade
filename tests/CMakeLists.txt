@@ -62,9 +62,18 @@ add_test(NAME omakade_details_directions_four_columns COMMAND omakade --details-
   --render-size=1200x900)
 add_test(NAME omakade_details_directions_five_columns COMMAND omakade --details-direction-test
   --render-size=1920x1080)
+# Stop Game's scaled minimum width: a 2560x1440 display at 1.25 scale, then tiled halves of it.
+add_test(NAME omakade_details_directions_couch_scaled COMMAND omakade --couch --details-direction-test
+  --render-size=2048x1152)
+add_test(NAME omakade_details_directions_couch_tiled COMMAND omakade --couch --details-direction-test
+  --render-size=1019x1152)
+add_test(NAME omakade_details_directions_tiled COMMAND omakade --details-direction-test
+  --render-size=1019x1152)
 set_tests_properties(omakade_details_directions omakade_details_directions_couch
   omakade_details_directions_single_column omakade_details_directions_two_columns
-  omakade_details_directions_four_columns omakade_details_directions_five_columns PROPERTIES
+  omakade_details_directions_four_columns omakade_details_directions_five_columns
+  omakade_details_directions_couch_scaled omakade_details_directions_couch_tiled
+  omakade_details_directions_tiled PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 30)
 

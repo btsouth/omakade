@@ -716,11 +716,17 @@ Item {
                     // same reason as the status grid: a GridLayout overflows rather than
                     // shrinking a child under its own label.
                     readonly property int actionCount: root.stopGameAvailable ? 5 : 4
-                    columns: detailsContent.width < 300 ? 1
-                           : detailsContent.width < 620 ? 2
-                           : detailsContent.width < 1140 && root.stopGameAvailable ? 3
-                           : detailsContent.width < 1140 ? 4
-                           : root.stopGameAvailable ? 5 : 4
+                    // Stop Game holds every cell to its scaled minimum, so with it showing,
+                    // only take as many columns as that minimum fits; a fixed breakpoint
+                    // pushed MANAGE past the edge at couch scale.
+                    readonly property real stopCellWidth: 220 * root.uiScale
+                    function fits(count) {
+                        return count * stopCellWidth + (count - 1) * columnSpacing
+                               <= detailsContent.width
+                    }
+                    columns: !root.stopGameAvailable
+                             ? (detailsContent.width < 300 ? 1 : detailsContent.width < 620 ? 2 : 4)
+                             : fits(5) ? 5 : fits(3) ? 3 : fits(2) ? 2 : 1
                     columnSpacing: 10
                     rowSpacing: 8
 
