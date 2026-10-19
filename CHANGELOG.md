@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
+
+- **F11, Start and the GAME MODE button** start Game Mode on the display you are using.
+  Sound and notifications are left alone, and the screen is kept awake only while a game
+  runs, so a handheld can still sleep while you browse. `omakade --couch`, a Moonlight
+  stream and a fullscreen start Omakade remembers do the same. If Game Mode cannot start,
+  the library opens fullscreen without it and a message says why.
+- **Super + Ctrl + G, the controller Home button and Start Game Mode** still use the
+  display and sound output chosen in Settings. Those choices stay open to change while
+  Game Mode started with F11 is running.
+- Game Mode opens on Home, and Home and the library share one header. The desktop window
+  keeps opening on the library.
+- **LEAVE**, Start and F11 end Game Mode at once when no game is running. With a game
+  running they open the Game Mode controls, as before.
+- `omakade --couch` and the `couch_mode_enabled` setting keep working.
+
 ## 1.17.0
 
 Game Mode keeps launchers out of the way while a game starts.

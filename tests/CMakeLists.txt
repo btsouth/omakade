@@ -18,7 +18,7 @@ set_tests_properties(omakade_details_recovery_isolation PROPERTIES TIMEOUT 20)
 
 qt_add_executable(omakade_game_mode_tests GameModeTests.cpp)
 target_link_libraries(omakade_game_mode_tests PRIVATE omakade_core Qt6::Test)
-foreach(shard RANGE 0 2)
+foreach(shard RANGE 0 4)
   add_test(NAME omakade_game_mode_tests_${shard}
     COMMAND omakade_game_mode_tests --test-shard=${shard})
   set_tests_properties(omakade_game_mode_tests_${shard} PROPERTIES TIMEOUT 60)
@@ -635,10 +635,10 @@ set_tests_properties(omakade_game_mode omakade_game_mode_couch PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
-foreach(shard RANGE 0 1)
+foreach(shard RANGE 0 2)
   add_test(NAME omakade_game_mode_startup_lifecycle_${shard}
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/GameModeStartupTests.py
-            $<TARGET_FILE:omakade> --shard=${shard}/2)
+            $<TARGET_FILE:omakade> --shard=${shard}/3)
   set_tests_properties(omakade_game_mode_startup_lifecycle_${shard} PROPERTIES TIMEOUT 60)
 endforeach()
 

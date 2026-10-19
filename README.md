@@ -20,8 +20,8 @@ GOG, and supported emulators with a keyboard, mouse, or controller.
 - One library for installed games, with optional Steam and Heroic owned-library views
 - Console libraries for RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Cemu, melonDS,
   shadPS4, Dolphin, and Xenia
-- Controller-first Couch Mode, plus [Game Mode](docs/GAME-MODE.md) for a chosen
-  display and sound output with desktop restoration when you leave
+- Controller-first fullscreen [Game Mode](docs/GAME-MODE.md), on the display you are
+  using or on a chosen display and sound output, with desktop restoration when you leave
 - Favorites, collections, tags, saved filters, custom artwork, and a random pick
 - Optional playtime recording, session history, stats, and a Year in Review image
 - Steam achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
@@ -84,14 +84,16 @@ appear automatically. Use `omakade --demo` to try a fictional library.
 | `Ctrl+F` | Search |
 | Arrow keys / Enter | Navigate / open details |
 | Escape | Go back |
-| F11 / controller Start | Toggle Couch Mode |
+| F11 / controller Start | Start or leave Game Mode on this display |
 | `Super+Ctrl+G` | In-game guide over a game; otherwise return to the desktop / resume Game Mode (add in Settings) |
 | Controller Home button | Same as `Super+Ctrl+G`; hold it to switch Game Mode and the desktop (turn on in Settings) |
 | `Ctrl+D` | Settings and source diagnostics |
 | `Ctrl+M` | Toggle reduced motion |
 
-`omakade --couch` starts fullscreen. Use **Settings → Controls → Start Game Mode**
-or `omakade --game-mode` for a dedicated gaming display and sound output.
+Fullscreen is always Game Mode. F11, Start and `omakade --couch` start it on the display
+you are using and leave sound and notifications alone. Use **Settings → Controls → Start
+Game Mode**, `Super+Ctrl+G` or `omakade --game-mode` for a dedicated gaming display and
+sound output.
 
 The [guide](docs/GUIDE.md) covers sources, owned libraries, organization, recording,
 backups, and streaming. See the [Game Mode guide](docs/GAME-MODE.md) for setup and recovery.

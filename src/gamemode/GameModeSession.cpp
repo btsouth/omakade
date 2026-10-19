@@ -50,6 +50,28 @@ GameModeSession::~GameModeSession() {
   m_workspaceWatcher.waitForFinished();
 }
 
+GameModeSettings GameModeSession::inPlaceSettings(GameModeSettings settings) {
+  settings.outputName.clear();
+  settings.outputDescription.clear();
+  settings.sinkName.clear();
+  settings.silenceNotifications = false;
+  return settings;
+}
+
+bool GameModeSession::keepsScreenAwake(bool gameRunning) const {
+  if (m_parked) return false;
+  return gameRunning || (m_active && !m_inPlace);
+}
+
+QJsonObject GameModeSession::guideState(bool fullscreenLayout) const {
+  return {{"gameModeActive", m_active}, {"gameModeParked", m_parked},
+          {"scale", fullscreenLayout ? 1.7 : 1.0}};
+}
+
+bool GameModeSession::choicesLocked() const {
+  return m_busy || (hasSession() && !m_inPlace);
+}
+
 GameModeSettings GameModeSession::loadSettings(const QString& path) {
   GameModeSettings settings;
   QFile file(path);
@@ -203,7 +225,7 @@ QString GameModeSession::sessionSoundLabel() const {
 }
 
 void GameModeSession::setSilenceNotifications(bool value) {
-  if (hasSession() || m_busy || m_settings.silenceNotifications == value) {
+  if (choicesLocked() || m_settings.silenceNotifications == value) {
     return;
   }
   m_settings.silenceNotifications = value;
@@ -342,7 +364,7 @@ void GameModeSession::cycleDisplay() {
 }
 
 void GameModeSession::selectDisplay(int index) {
-  if (m_busy || hasSession() || index < 0 || index >= displayChoices()) {
+  if (choicesLocked() || index < 0 || index >= displayChoices()) {
     return;
   }
   if (index == 0) {
@@ -361,7 +383,7 @@ void GameModeSession::cycleSound() {
 }
 
 void GameModeSession::selectSound(int index) {
-  if (m_busy || hasSession() || index < 0 || index >= soundChoices()) {
+  if (choicesLocked() || index < 0 || index >= soundChoices()) {
     return;
   }
   m_settings.sinkName = index == 0 ? QString{} : m_sinks.at(index - 1).name;
@@ -373,12 +395,18 @@ void GameModeSession::setTemporaryWindow(bool temporary) {
   m_controller.setTemporaryWindow(temporary);
 }
 
-void GameModeSession::enter() {
+void GameModeSession::enter() { start(false); }
+
+void GameModeSession::enterInPlace() { start(true); }
+
+void GameModeSession::start(bool inPlace) {
   if (m_busy) {
     if (m_change == Change::RefreshParked) m_resumeAfterRefresh = true;
     return;
   }
   if (m_active) return;
+  // A resume keeps the kind of session it parked.
+  if (!m_parked) m_inPlace = inPlace;
   m_change = m_parked ? Change::Resume : Change::Enter;
   m_statusText =
       m_parked ? QStringLiteral("Returning to Game Mode") : QStringLiteral("Starting Game Mode");
@@ -424,7 +452,7 @@ void GameModeSession::startChange() {
   m_changePending = m_refreshWatcher.isRunning();
   if (m_changePending) return;
   const qint64 pid = QCoreApplication::applicationPid();
-  const GameModeSettings settings = m_settings;
+  const GameModeSettings settings = m_inPlace ? inPlaceSettings(m_settings) : m_settings;
   const Change change = m_change;
   // Snapshot on the GUI thread; the worker must not read its mutable futures or watcher.
   QFuture<void> focusFuture = m_focusFuture;
@@ -512,6 +540,9 @@ void GameModeSession::finishChange() {
   const QString notes = result.notes.join(QLatin1Char(' '));
   const QString failure = notes.isEmpty() ? result.error : result.error + QLatin1Char(' ') + notes;
   const bool parkedRefresh = m_change == Change::RefreshParked;
+  // An End queued during the start wanted the desktop, not a fullscreen fallback.
+  const bool fallback = m_inPlace && m_change == Change::Enter && !m_controller.active() &&
+                        !m_exitAfterChange;
   const bool wasParked = m_parked;
   const bool wasActive = m_active;
   const QString previousOutput = m_output;
@@ -519,6 +550,7 @@ void GameModeSession::finishChange() {
   m_active = m_controller.active();
   m_parked = m_controller.parked();
   m_busy = false;
+  if (!hasSession()) m_inPlace = false;
   // The controller brought back every held window as Game Mode left or parked.
   if (!m_active || m_parked) endSteamHold(false);
   m_output = hasSession() ? result.output : QString{};
@@ -535,6 +567,7 @@ void GameModeSession::finishChange() {
 
   if (!m_active && (m_change == Change::Enter || m_change == Change::Resume))
     emit preparationCancelled();
+  if (fallback) emit fullscreenFallback();
   if (m_change == Change::Enter && m_active) emit entered();
   else if (m_change == Change::Park) {
     if (m_parked) emit parkedOnDesktop();
@@ -549,7 +582,8 @@ void GameModeSession::finishChange() {
   if (!hasSession() && (wasActive || wasParked)) emit exited();
   if (!result.ok && (m_change != Change::RefreshParked || failure != m_lastParkError)) {
     qWarning().noquote() << "Game Mode:" << failure;
-    emit failed(failure);
+    emit failed(fallback ? failure + QStringLiteral(" Playing fullscreen without Game Mode instead.")
+                         : failure);
   }
   if (m_change == Change::RefreshParked) m_lastParkError = result.ok ? QString{} : failure;
   else m_lastParkError.clear();
@@ -588,4 +622,5 @@ void GameModeSession::shutdown() {
   }
   m_active = false;
   m_parked = false;
+  m_inPlace = false;
 }

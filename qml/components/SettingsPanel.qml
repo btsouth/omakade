@@ -1467,7 +1467,7 @@ import QtQuick.Layouts
                     spacing: 14
                     visible: settingsOverlay.section === 3
                 Text { Layout.fillWidth: true; text: Controller.connected ? "CONTROLLER · " + Controller.name : "CONTROLLER · NOT CONNECTED"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 12 * settingsPanel.uiScale }
-                GlassButton { compact: true; enabled: !GameMode.hasSession; text: host.couchMode ? "SWITCH TO DESKTOP" : "SWITCH TO COUCH MODE"; onClicked: host.setCouchMode(!host.couchMode) }
+                GlassButton { compact: true; enabled: !GameMode.hasSession; text: host.couchMode ? "SWITCH TO DESKTOP" : "GAME MODE ON THIS DISPLAY"; onClicked: host.setCouchMode(!host.couchMode) }
                 Text {
                     Layout.topMargin: 10
                     text: "GAME MODE"
@@ -1478,7 +1478,7 @@ import QtQuick.Layouts
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "Game Mode opens Couch Mode on the display you choose and sends sound there. Leaving puts the display, sound and notifications back the way they were."
+                    text: "F11, Start and the GAME MODE button play fullscreen on the display you are using and leave sound and notifications alone. Start Game Mode, " + (GameModeShortcut.available ? GameModeShortcut.keyLabel : "Super + Ctrl + G") + " and the controller Home button use the display and sound chosen here. Leaving puts the display, sound and notifications back the way they were."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 9 * settingsPanel.uiScale
@@ -1498,7 +1498,7 @@ import QtQuick.Layouts
                     model: GameMode.displayOptions
                     textRole: "label"
                     currentIndex: GameMode.displayIndex
-                    enabled: !GameMode.hasSession && !GameMode.busy
+                    enabled: (!GameMode.hasSession || GameMode.inPlace) && !GameMode.busy
                     onActivated: index => GameMode.selectDisplay(index)
                     Accessible.name: "Game Mode display"
                 }
@@ -1525,7 +1525,7 @@ import QtQuick.Layouts
                     model: GameMode.soundOptions
                     textRole: "label"
                     currentIndex: GameMode.soundIndex
-                    enabled: !GameMode.hasSession && !GameMode.busy
+                    enabled: (!GameMode.hasSession || GameMode.inPlace) && !GameMode.busy
                     onActivated: index => GameMode.selectSound(index)
                     Accessible.name: "Game Mode sound output"
                 }
@@ -1550,7 +1550,7 @@ import QtQuick.Layouts
                     GlassButton {
                         objectName: "gameModeNotificationsButton"
                         compact: true
-                        enabled: !GameMode.hasSession && !GameMode.busy
+                        enabled: (!GameMode.hasSession || GameMode.inPlace) && !GameMode.busy
                         text: GameMode.silenceNotifications ? "SILENCED" : "UNCHANGED"
                         onClicked: GameMode.silenceNotifications = !GameMode.silenceNotifications
                     }

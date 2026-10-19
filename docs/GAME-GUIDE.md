@@ -69,8 +69,8 @@ clip or stop it.
 Screenshot success is reported only after a file exists. Volume and sound output
 use Omarchy's output selection and PipeWire.
 
-Couch Mode sends top-level `scale: 1.7`, matching Omakade's existing couch reading
-scale. The running library window supplies its current mode; without a library
+Game Mode's fullscreen layout sends top-level `scale: 1.7`, matching Omakade's fullscreen
+reading scale. The running library window supplies its current mode; without a library
 window the resident service reads `couch_mode_enabled` from `config.toml` at
 startup. Desktop mode sends 1. The card scales its Omarchy sizes and gaps and
 shrinks to fit the output. There is no separate guide scale setting.

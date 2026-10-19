@@ -9,7 +9,7 @@ How each source is discovered and how the main features work. The
 - [Include uninstalled Steam games](#include-uninstalled-steam-games)
 - [Non-Steam games, Proton, and Steam Input](#non-steam-games-proton-and-steam-input)
 - [Add a native game manually](#add-a-native-game-manually)
-- [Keyboard and Couch Mode](#keyboard-and-couch-mode)
+- [Keyboard and Game Mode](#keyboard-and-game-mode)
 - [Game Mode](#game-mode)
 - [Organize several games at once](#organize-several-games-at-once)
 - [Save a library view](#save-a-library-view)
@@ -100,7 +100,7 @@ use **All Games** or **Ready to Install** in the library. Installation is handed
 off to Steam. With **All Games**, choose **Sort: Installed** to group installed
 games first, then sort each group by title. Sources that do not report install
 state are treated as installed. Uninstalled covers are dimmed in the desktop
-library and both Couch layouts, while the selected card keeps its focus border.
+library and both Game Mode layouts, while the selected card keeps its focus border.
 
 ## Non-Steam games, Proton, and Steam Input
 
@@ -128,30 +128,39 @@ Use **Edit Manual Game** in details to repair paths or remove the library entry.
 Removing it never deletes the game files. Manual games support the existing
 artwork, favorites, tags, collections, linking, launch history, and streaming flows.
 
-Couch Mode supports typing and editing launch details with the on-screen keyboard;
-file browsing is available in Desktop Mode. Desktop entries requiring a terminal
+Game Mode supports typing and editing launch details with the on-screen keyboard;
+file browsing is available on the desktop. Desktop entries requiring a terminal
 are not supported. Windows games should be configured in Steam, Heroic, Lutris,
 or Faugus so those applications retain responsibility for their runners.
 
-## Keyboard and Couch Mode
+## Keyboard and Game Mode
 
 Use `Ctrl+F` to search, arrow keys to navigate, Enter to open details, Escape
-to return, and F11 to enter or leave Couch Mode. The controller Start button
-does the same. Couch Mode offers detail and grid library views and remembers
-the preferred launch mode. Its cursor hides during controller or keyboard use,
-returns on mouse movement, and remains visible in Desktop Mode. `Ctrl+M`
-toggles reduced motion and `Ctrl+D` opens settings and source diagnostics.
+to return, and F11 to enter or leave fullscreen Game Mode. The controller Start
+button and the **GAME MODE** button in the header do the same. Game Mode opens
+on Home, with one header for Home and the library, offers detail and grid
+library views, and Omakade remembers whether it was last fullscreen. Its cursor
+hides during controller or keyboard use, returns on mouse movement, and remains
+visible on the desktop. `Ctrl+M` toggles reduced motion and `Ctrl+D` opens
+settings and source diagnostics.
 
 ## Game Mode
 
-Choose a display and sound output in **Settings → Controls**, then select
-**Start Game Mode**. `omakade --game-mode` also starts it, even when Omakade is
-already open. Game Mode uses Couch Mode on its own workspace, silences notifications,
-and keeps the screen awake. Leaving restores the changes it made.
+Fullscreen is always Game Mode. F11, Start, the header button and
+`omakade --couch` open it on the display you are using, leave sound and
+notifications alone, and keep the screen awake only while a game runs.
 
-Start, F11, and the Couch Leave button open the Game Mode controls. Choose
-**Leave Game Mode** to return, or run `omakade --game-mode-exit`. Sound switching
-affects the whole desktop. Gamescope and HDR remain launcher settings.
+For a TV or another dedicated display, choose a display and sound output in
+**Settings → Controls**, then select **Start Game Mode**, press Super + Ctrl + G
+once it is added, or run `omakade --game-mode`, even when Omakade is already
+open. That Game Mode uses its own workspace on the chosen display, silences
+notifications, and keeps the screen awake. Leaving restores the changes it made.
+
+With no game running, LEAVE, Start and F11 end Game Mode and return to the
+desktop library. With a game running they open the Game Mode controls, where
+**End Game Mode** or **Stop Games and Leave…** ends it; `omakade --game-mode-exit`
+ends it too. Sound switching affects the whole desktop. Gamescope and HDR remain
+launcher settings.
 
 **Controller Home button** in the same section lets the Xbox, PlayStation or Home button
 do the same as the keyboard shortcut.
@@ -159,7 +168,7 @@ See [Game Mode](GAME-MODE.md) for disabled displays, recovery, and limitations.
 
 ## Organize several games at once
 
-Open **Organize** above the desktop library or in Couch Mode's **Browse** panel.
+Open **Organize** above the desktop library or in Game Mode's **Browse** panel.
 Select individual games or choose **Select Results** for the current filtered
 library. Actions explicitly favorite, unfavorite, hide, unhide, set completion
 status, add/remove tags, or add/remove collection membership for the selection.
@@ -174,7 +183,7 @@ are 20 per game and 32 characters per tag.
 
 ## Save a library view
 
-Open **Saved Filters** above the desktop library or from Couch Mode's **Browse**
+Open **Saved Filters** above the desktop library or from Game Mode's **Browse**
 panel. Enter a name and choose **Save Current** to keep the current search,
 source, availability, favorites/recent/hidden mode, status, collection, tag, and
 sort order. Select a saved view to rename or delete it, or choose **Apply**.
@@ -187,7 +196,7 @@ the view usable again. Saved views stay local and persist across restarts.
 
 ## Pick something to play
 
-Choose **Pick a Game** above the desktop library or in Couch Mode's **Browse**
+Choose **Pick a Game** above the desktop library or in Game Mode's **Browse**
 panel. Omakade picks an available game from the current results and opens its
 details for review. **Pick Another** chooses again; **Play** launches only when
 you choose it. Search, source, favorites, status, collection, and tag filters
@@ -201,7 +210,7 @@ background, or logo. Select a PNG, JPEG, or WebP file up to 32 MB. Transparent
 logos are supported. Each image is copied into Omakade's data folder, so moving
 the original or clearing downloaded caches does not remove your choice.
 Use **Reset** beside an artwork type to restore its provider fallback without
-changing the other images. Desktop Mode includes a file picker; Couch Mode can
+changing the other images. The desktop window includes a file picker; Game Mode can
 enter an image path with the on-screen keyboard.
 
 ## Back up your library
@@ -222,7 +231,7 @@ anything. An interrupted restore can finish or be undone before the library open
 
 Account-service identifiers and Sunshine publishing choices stay local. Missing
 manual paths remain repairable, and disconnected game identities stay stored.
-Restoring never launches imported games. In Couch Mode, confirm the path field
+Restoring never launches imported games. In Game Mode, confirm the path field
 to use the on-screen keyboard, and use the arrows to scroll the preview.
 
 ## Track play sessions
@@ -271,14 +280,15 @@ list when it starts, so press **Restart Sunshine** after a change. Omakade
 leaves the other Sunshine apps alone and keeps a one-time backup next to
 `apps.json`.
 
-Starting Omakade from Moonlight opens it in Couch Mode on the streamed display.
+Starting Omakade from Moonlight opens Game Mode on the streamed display and leaves
+the stream's sound alone. Ending the stream closes Omakade, which ends Game Mode.
 Starting a game from Moonlight launches it through its own launcher, the same
 as pressing Play. The same entry points work from a terminal or a keybinding:
 
 ```bash
 omakade --play Steam::620          # Source:runner:id, the runner is often empty
 omakade --play Heroic:legendary:Sugar
-omakade --couch                     # Start directly in Couch Mode
+omakade --couch                     # Start in Game Mode on the current display
 omakade --quit
 ```
 
@@ -313,7 +323,7 @@ separate windows; CPU, RAM and GPU resources remain shared with desktop work.
 
 ARM64 packages pass automated build and lifecycle checks. Testing reported in
 [issue #13](https://github.com/btsouth/omakade/issues/13) confirmed installation,
-discovery, and Couch Mode on Apple Silicon with Asahi Linux. The `fex-steam`
+discovery, and the fullscreen controller layout on Apple Silicon with Asahi Linux. The `fex-steam`
 wrapper that provides `/usr/bin/steam` can still fail to start games from any
 `steam://` request, including Steam's own client. That is a wrapper limitation,
 not something Omakade can work around; see issue #13 for details and workarounds.
