@@ -86,7 +86,7 @@ appear automatically. Use `omakade --demo` to try a fictional library.
 | Escape | Go back |
 | F11 / controller Start | Start or leave Game Mode on this display |
 | `Super+Ctrl+G` | In-game guide over a game; otherwise return to the desktop / resume Game Mode (add in Settings) |
-| Controller Home button | Same as `Super+Ctrl+G`; hold it to switch Game Mode and the desktop (turn on in Settings) |
+| Controller Home button | In-game guide over a game; otherwise same as Start; hold it to switch Game Mode and the desktop (turn on in Settings) |
 | `Ctrl+D` | Settings and source diagnostics |
 | `Ctrl+M` | Toggle reduced motion |
 

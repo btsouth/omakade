@@ -3,7 +3,8 @@
 Press the controller Home button or Super + Ctrl + G over a known running game.
 A panel opens at the right edge of the screen, with your theme's colors, type
 and spacing. Resume starts the game again. B or Escape backs out of a
-confirmation first, then resumes. With no game, Home and the shortcut keep the
+confirmation first, then resumes. With no game, Home does what Start does in
+Omakade, fullscreen Game Mode where Omakade is and back, and the shortcut keeps the
 existing Game Mode behavior.
 
 The panel shows the game's art, session and total time, the clock and any
@@ -16,7 +17,8 @@ In Game Mode the panel adds **Desktop**, which parks the session as Home did
 before the guide: the game is hidden and muted and keeps running. Home on the
 desktop brings you back to the game, paused, with the guide open. Holding Home
 for half a second goes to the desktop and back without the guide; after that
-kind of park, Home returns to the library as before.
+kind of park, Home returns to the library as before. A game you start from the
+desktop while Game Mode is parked gets the guide.
 
 When Omakade starts RetroArch, Home opens only the guide: RetroArch's controller
 profiles bind Home to its menu, so that run uses a copy of the profiles without

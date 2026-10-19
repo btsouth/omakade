@@ -1478,7 +1478,7 @@ import QtQuick.Layouts
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "F11, Start and the GAME MODE button play fullscreen on the display you are using and leave sound and notifications alone. Start Game Mode, " + (GameModeShortcut.available ? GameModeShortcut.keyLabel : "Super + Ctrl + G") + " and the controller Home button use the display and sound chosen here. Leaving puts the display, sound and notifications back the way they were."
+                    text: "F11, Start, the GAME MODE button and the controller Home button play fullscreen on the display you are using and leave sound and notifications alone. Start Game Mode, " + (GameModeShortcut.available ? GameModeShortcut.keyLabel : "Super + Ctrl + G") + " and holding the controller Home button use the display and sound chosen here. Leaving puts the display, sound and notifications back the way they were."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 9 * settingsPanel.uiScale
@@ -1671,8 +1671,8 @@ import QtQuick.Layouts
                     text: (GameModeGuideButton.statusText !== "" ? GameModeGuideButton.statusText
                             + (/[.!?]$/.test(GameModeGuideButton.statusText) ? "" : ".")
                           : GameModeGuideButton.enabled
-                            ? "The Xbox, PlayStation or Home button on any controller starts Game Mode and returns to your desktop."
-                            : "Use the Xbox, PlayStation or Home button on any controller to start Game Mode and return to your desktop. Omakade only reads that button.")
+                            ? "The Xbox, PlayStation or Home button on any controller starts and leaves Game Mode, even with Omakade closed."
+                            : "Use the Xbox, PlayStation or Home button on any controller to start and leave Game Mode, even with Omakade closed. Omakade only reads that button.")
                           + " With Steam open, turn off \"Guide button focuses Steam\" and \"Enable Guide Button Chords\" in Steam's controller settings."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
@@ -1701,7 +1701,7 @@ import QtQuick.Layouts
                     Layout.fillWidth: true
                     visible: GameModeGuideButton.available && GameModeGuideButton.enabled
                     text: Preferences.homeButtonOpensGuide
-                          ? "Home opens the guide over a game. Hold Home, or choose Desktop in the guide, to switch between Game Mode and your desktop."
+                          ? "Home opens the guide over a game and does what Start does otherwise. Hold Home, or choose Desktop in the guide, to switch between Game Mode and your desktop."
                           : "Home switches between Game Mode and your desktop, as before the guide."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily

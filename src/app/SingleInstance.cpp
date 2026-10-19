@@ -40,6 +40,8 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
           emit gameModeReturnRequested();
         } else if (command.startsWith("game-mode toggle")) {
           emit gameModeToggleRequested(QString::fromUtf8(command.mid(16)).trimmed());
+        } else if (command == "fullscreen toggle") {
+          emit fullscreenToggleRequested();
         } else if (command.startsWith("guide toggle")) {
           emit guideToggleRequested(QString::fromUtf8(command.mid(12)).trimmed());
         } else if (command == "quit") {

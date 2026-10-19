@@ -31,6 +31,8 @@ private:
   QElapsedTimer m_reopenClock;
   int m_refreshGeneration = 0;
   bool m_refreshing = false, m_ready = false, m_locked = false, m_provisioned = false, m_provisioning = false;
+  // The game is the focused window, so it is in view even while Game Mode is parked.
+  bool m_gameFocused = false;
   QJsonObject command(const QJsonObject& command);
   void fallback();
   // Runs the omakade command line in the desktop session, outside this service.

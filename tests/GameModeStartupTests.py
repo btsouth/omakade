@@ -469,6 +469,50 @@ class GameModeStartupTests(unittest.TestCase):
         self.assert_in_place_session()
         self.assert_quit_ends_session()
 
+    def test_controller_home_without_a_game_toggles_fullscreen_in_place(self):
+        # With no game running, the Home button service runs --fullscreen-toggle, which
+        # does what Start does: fullscreen where Omakade is, never on the configured
+        # television, and back. A parked session comes back instead.
+        self.retained_fixture(with_game=False)
+        self.configure_television()
+        self.launch("--fullscreen-toggle")
+        self.assert_in_place_session()
+        # Offscreen has no native unmap events: model the end's window-server side.
+        self.fixture_update(ending=True)
+        self.command("--fullscreen-toggle")
+        self.wait_for(lambda: not self.state.exists(), "A second Home press did not end Game Mode")
+        self.assertIsNone(self.primary.poll(), "Ending Game Mode with Home closed Omakade")
+        self.fixture_update(ending=False)
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.command("--fullscreen-toggle")
+        self.assert_in_place_session()
+        # The count above is cumulative: wait for this entry's own handoff to settle.
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) > refreshes
+                      and json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Home in the open window did not settle into Game Mode")
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.command("--game-mode-desktop")
+        self.phase("parked")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) > refreshes
+                      and json.loads(self.fixture.read_text())["focus"] == "0xdd",
+                      "Return to Desktop did not settle")
+        self.command("--fullscreen-toggle")
+        self.phase("active")
+        resume_refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Home did not resume the parked session")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0)
+                      > resume_refreshes, "Home's resume did not settle")
+        # A press while Game Mode is still parking waits for the park, then resumes.
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.command("--game-mode-desktop")
+        self.command("--fullscreen-toggle")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= refreshes + 2
+                      and json.loads(self.state.read_text())["phase"] == "active"
+                      and json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Home during Return to Desktop did not resume once parked")
+        self.assert_quit_ends_session()
+
     def test_library_only_cold_session_retains_owner_until_explicit_end(self):
         self.assert_library_session_retained(cold=True)
 

@@ -747,14 +747,20 @@ int main(int argc, char* argv[]) {
   for (int index = 0; index < argc; ++index) rawArguments.append(QString::fromLocal8Bit(argv[index]));
   const bool guideShortcut = rawArguments.contains("--game-mode-toggle") || rawArguments.contains("--guide-toggle");
   bool guideFallback = rawArguments.contains("--game-mode-fallback");
-  if (guideShortcut && !guideFallback) {
+  // A controller's Home with no game running does what Start does in Omakade.
+  bool fullscreenToggleRequest = rawArguments.contains("--fullscreen-toggle");
+  if (guideShortcut && !guideFallback && !fullscreenToggleRequest) {
     // This path exits before loading a Qt platform, theme, library, models or QML.
     QCoreApplication commandApplication(argc, argv);
     const auto result = GuideClient::routeShortcut(optionValue(rawArguments, "--guide-device"));
     if (result == "handled" || result == "locked") return EXIT_SUCCESS;
-    // Missing/old/masked services retain the 1.15 Game Mode path.
-    if (result != "fallback" && result != "unavailable" && result != "preparing") return EXIT_FAILURE;
-    guideFallback = true;
+    if (result == "fullscreen") {
+      fullscreenToggleRequest = true;
+    } else {
+      // Missing/old/masked services retain the 1.15 Game Mode path.
+      if (result != "fallback" && result != "unavailable" && result != "preparing") return EXIT_FAILURE;
+      guideFallback = true;
+    }
   }
   QElapsedTimer startupTimer;
   startupTimer.start();
@@ -911,7 +917,7 @@ int main(int argc, char* argv[]) {
   const bool reducedMotionRequest =
       application.arguments().contains(QStringLiteral("--reduced-motion"));
   const bool couchRequest = application.arguments().contains(QStringLiteral("--couch")) ||
-                            SunshineIntegration::streaming();
+                            SunshineIntegration::streaming() || fullscreenToggleRequest;
   if (benchmarkMode) {
     qInfo() << "Theme ready in" << startupTimer.elapsed() << "ms";
   }
@@ -930,6 +936,10 @@ int main(int argc, char* argv[]) {
     if (SingleInstance::sendCommand({}, "game-mode desktop")) return EXIT_SUCCESS;
     qCritical() << "No running Game Mode session to return from.";
     return EXIT_FAILURE;
+  }
+  // With no window running, this falls through to a fullscreen start, as --couch does.
+  if (fullscreenToggleRequest && SingleInstance::sendCommand({}, "fullscreen toggle")) {
+    return EXIT_SUCCESS;
   }
   if (gameModeToggleRequest) {
     if (SingleInstance::sendCommand({}, "game-mode toggle game-mode-fallback")) {
@@ -961,6 +971,7 @@ int main(int argc, char* argv[]) {
   const QByteArray instanceCommand =
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
       : gameModeRequest                  ? QByteArray("game-mode enter")
+      : fullscreenToggleRequest          ? QByteArray("fullscreen toggle")
       : couchRequest                     ? QByteArray("activate stream")
                                          : QByteArray("activate");
   if (!isolatedTest && !singleInstance.claimOrNotify(instanceCommand)) {
@@ -7135,6 +7146,34 @@ int main(int argc, char* argv[]) {
                          !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) {
                        gameMode.toggle();
                      }
+                   });
+  // Home on a controller with no game running: what Start does in this window. A parked
+  // session comes back first, as any other activation brings it back. A press while
+  // Game Mode starts, parks or resumes waits for that to finish, so it is not read as a
+  // leave halfway through.
+  const auto homeWaiting = std::make_shared<bool>(false);
+  const auto homePress = [&gameMode, rootWindow, homeWaiting] {
+    if (gameMode.busy()) {
+      *homeWaiting = true;
+      return;
+    }
+    if (gameMode.parked()) {
+      gameMode.enter();
+      return;
+    }
+    rootWindow->requestActivate();
+    QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+  };
+  QObject::connect(&singleInstance, &SingleInstance::fullscreenToggleRequested, &gameMode,
+                   [rootWindow, homePress] {
+                     if (rootWindow != nullptr) homePress();
+                   });
+  QObject::connect(&gameMode, &GameModeSession::stateChanged, &gameMode,
+                   [&gameMode, homeWaiting, homePress] {
+                     if (!*homeWaiting || gameMode.busy()) return;
+                     *homeWaiting = false;
+                     // After the finished change's own handlers have run.
+                     QTimer::singleShot(0, &gameMode, homePress);
                    });
   // The shell was unreachable when the guide was requested: do what the shortcut did before the guide.
   QObject::connect(&inGameGuide, &GuideClient::summonFailed, &gameMode, [&gameMode, rootWindow] {

@@ -4,13 +4,13 @@ Game Mode turns the computer into a console for a while. Fullscreen is always Ga
 the controller layout, opened on Home, with the same header on Home and the library. It
 works with every source Omakade supports, not only Steam. It starts one of two ways.
 
-- **Here.** F11, the controller Start button, the **GAME MODE** button in the header,
-  `omakade --couch`, a Moonlight stream and a fullscreen start Omakade remembers all open
-  Game Mode on the display you are using. Sound and notifications are left alone, and the
+- **Here.** F11, the controller Start button, the controller Home button with no game
+  running, the **GAME MODE** button in the header, `omakade --couch`, a Moonlight stream
+  and a fullscreen start Omakade remembers all open Game Mode on the display you are using. Sound and notifications are left alone, and the
   screen is kept awake only while a game runs, so a handheld can still sleep while you
   browse. If Game Mode cannot start, Omakade shows the library fullscreen without it and
   says why.
-- **On your Game Mode display.** Super + Ctrl + G, the controller Home button,
+- **On your Game Mode display.** Super + Ctrl + G, holding the controller Home button,
   **Start Game Mode** in Settings, the desktop entry's **Game Mode** action and
   `omakade --game-mode` open it on the display you chose, send sound there, silence
   notifications and keep the screen awake.
@@ -53,7 +53,8 @@ not use them, so they stay open to change while it runs.
   press. If the key is already used for something else,
   Omakade says what and adds nothing.
 - **Controller Home button** lets the Xbox, PlayStation or Home button on any controller
-  do what the keyboard shortcut does. It is off until you turn it on. See
+  open the in-game guide over a game, and do what Start does when no game is running.
+  Holding it does what the keyboard shortcut does. It is off until you turn it on. See
   [Use a controller's Home button](#use-a-controllers-home-button).
 
 Choose **Start Game Mode**, or run:
@@ -119,11 +120,19 @@ the game visible and explains why Return to Desktop could not complete.
 ## Use a controller's Home button
 
 Turn on **Controller Home button** in **Settings → Controls**. A short press of the
-Xbox, PlayStation or Home button on any connected controller then does what
-Super + Ctrl + G does: with no game it starts Game Mode, returns to the desktop and
-resumes; over a running game it opens the [in-game guide](GAME-GUIDE.md). Holding
-the button for half a second always switches between Game Mode and the desktop,
-without the guide. It works while a game has focus and when Omakade is closed.
+Xbox, PlayStation or Home button on any connected controller then works like this:
+
+- **Over a running game** it opens the [in-game guide](GAME-GUIDE.md), and pressing it
+  again goes back to the game. That includes a game started from the desktop while Game
+  Mode is parked.
+- **With no game running** it does what Start does in Omakade: Game Mode starts on the
+  display Omakade is on, and the next press ends it. Your Game Mode display, sound output
+  and notification choices are not used. With Omakade closed, it opens Omakade fullscreen
+  on the display you are using. A parked session comes back instead.
+
+Holding the button for half a second always switches between Game Mode on your Game
+Mode display and the desktop, as Super + Ctrl + G does, without the guide. It works
+while a game has focus and when Omakade is closed.
 
 To have a short press switch Game Mode and the desktop as before the guide, set
 **Home button in games** to **Game Mode**.
@@ -334,9 +343,10 @@ observations separately:
 6. Kill Omakade during Game Mode, then start it again. The display, sound and
    notifications are put back.
 7. Unplug or disable the display during Game Mode. Game Mode ends and sound returns.
-8. Controller Home button, with Steam open and Steam Input on: a short press starts,
-   returns and resumes, including from inside a game. A long hold and a Home button
-   chord do nothing, and the game and Steam still receive ordinary input.
+8. Controller Home button, with Steam open and Steam Input on: with no game a short
+   press starts and ends Game Mode in place, and over a game it opens and closes the
+   guide. A long hold starts, returns and resumes Game Mode on the Game Mode display.
+   A Home button chord does nothing, and the game and Steam still receive ordinary input.
 9. With the display powered off, start Game Mode. If Hyprland cannot enable its
    output, it reports the failure and rolls back. If the display still advertises
    an active connection, Game Mode may start; verify this separately from the

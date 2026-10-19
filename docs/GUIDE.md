@@ -163,7 +163,8 @@ ends it too. Sound switching affects the whole desktop. Gamescope and HDR remain
 launcher settings.
 
 **Controller Home button** in the same section lets the Xbox, PlayStation or Home button
-do the same as the keyboard shortcut.
+open the in-game guide over a game and do what Start does otherwise. Holding it does the
+same as the keyboard shortcut.
 See [Game Mode](GAME-MODE.md) for disabled displays, recovery, and limitations.
 
 ## Organize several games at once

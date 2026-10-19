@@ -317,8 +317,9 @@ QJsonObject InGameGuide::payload() const {
     const auto stats = GuideActions::performance(m_session.value("performanceSource").toMap());
     if (!stats.isEmpty()) model.insert("performance", stats);
   }
-  // Desktop is Game Mode's park; a game outside Game Mode is already on the desktop.
-  model.insert("desktop", !m_session.isEmpty() && m_context.value("gameModeActive").toBool());
+  // Desktop is Game Mode's park; a game outside Game Mode or parked is already on the desktop.
+  model.insert("desktop", !m_session.isEmpty() && m_context.value("gameModeActive").toBool() &&
+                              !m_context.value("gameModeParked").toBool());
   const auto scale = m_context.value("scale").toDouble(1);
   data.insert("scale", scale); // Explicit 1 also clears an earlier couch open.
   data.insert("data", model);

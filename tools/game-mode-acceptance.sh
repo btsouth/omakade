@@ -430,6 +430,32 @@ expect "F11 ended it" $? 0
 until_true 5 '[[ $(window fullscreen) == 0 ]]'
 expect "Omakade is windowed again" "$(window fullscreen)" 0
 
+section "11b. The controller Home button with no game plays here, as Start does"
+# With no game running, the Home button service runs --fullscreen-toggle.
+reset $TV $TV_SINK
+omabox run -d -- "$BIN" --demo --fullscreen-toggle >/dev/null 2>&1
+until_true 15 app_running
+until_true 15 in_game_mode
+expect "Home with Omakade closed started Game Mode" $? 0
+expect "on the desk display" "$(window_output)" "$DESK"
+expect "the TV stayed off" "$(output_field $TV disabled)" true
+expect "sound was left alone" "$(default_sink)" "$DESK_SINK"
+expect "notifications were left alone" "$(dnd)" off
+box "$BIN" --fullscreen-toggle
+until_true 15 state_gone
+expect "the next Home ended it" $? 0
+until_true 5 '[[ $(window fullscreen) == 0 ]]'
+expect "Omakade stayed open, windowed" "$(window fullscreen)" 0
+box "$BIN" --fullscreen-toggle
+until_true 15 in_game_mode
+expect "Home in the open window started Game Mode again" $? 0
+expect "on the display Omakade is on" "$(window_output)" "$DESK"
+box "$BIN" --fullscreen-toggle
+until_true 15 state_gone
+expect "and the next Home ended it" $? 0
+expect "leaving is remembered" "$(remembered)" false
+quit_app
+
 section "12. A Sunshine stream plays here, and its --quit ends Game Mode"
 reset $TV $TV_SINK
 omabox run -d -- env SUNSHINE_APP_ID=1 "$BIN" --demo >/dev/null 2>&1
