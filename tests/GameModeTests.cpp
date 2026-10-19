@@ -288,8 +288,15 @@ public:
     currentFocus.address.clear();
     return true;
   }
+  // Like Hyprland, focusing a display that is gone or off fails when this is set.
+  bool focusNeedsLiveOutput = false;
   bool focusOutput(const QString& name, QString*) override {
     log.append(QStringLiteral("focus-output %1").arg(name));
+    if (focusNeedsLiveOutput &&
+        std::none_of(list.cbegin(), list.cend(), [&](const GameModeOutput& output) {
+          return output.name == name && output.enabled;
+        }))
+      return false;
     currentFocus.output = name;
     return true;
   }
@@ -3804,6 +3811,34 @@ private slots:
     // Launcher hold and Steam warm-up still apply when turned on.
     QVERIFY(here.warmSteam);
     QVERIFY(here.holdLaunchers);
+  }
+
+  // A television unplugged or switched off during Game Mode ends the session, and the
+  // desktop comes back on the displays that are left, instead of the session waiting on
+  // a display that is gone.
+  void sessionOnARemovedDisplayStillEnds_data() {
+    QTest::addColumn<bool>("unplugged");
+    QTest::newRow("unplugged") << true;
+    QTest::newRow("switched off") << false;
+  }
+  void sessionOnARemovedDisplayStillEnds() {
+    QFETCH(bool, unplugged);
+    deskAndTv(true);
+    m_compositor.focusNeedsLiveOutput = true;
+    m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
+    GameModeController game = controller();
+    const auto entered = game.enter(tvSettings(kTvSink), 100);
+    QVERIFY2(entered.ok, qPrintable(entered.error));
+    QCOMPARE(m_compositor.window.output, kTv);
+    if (unplugged) m_compositor.list.removeLast();
+    else m_compositor.list[1].enabled = false;
+    const auto left = game.exit(100);
+    QVERIFY2(left.ok, qPrintable(left.error + left.notes.join(' ')));
+    QVERIFY(!game.active());
+    QCOMPARE(m_audio.current, QStringLiteral("headset"));
+    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
+    QCOMPARE(m_compositor.currentFocus.output, kDesk);
+    QVERIFY(!QFile::exists(statePath()));
   }
 
   void closingOmakadeLeavesGameMode() {

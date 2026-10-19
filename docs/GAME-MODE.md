@@ -76,8 +76,9 @@ stay in memory. Returning never opens the controls or stops a game.
 
 If Game Mode launched Omakade, returning hides its window while keeping the same
 session and IPC owner. If Omakade was already open, it returns to its previous window,
-layout and mode. Resuming uses that same window and library. Reopening Omakade while
-parked resumes the session too. Each completed return/resume cycle captures the current
+layout, mode and page, and resuming goes back to the Game Mode page you left. Resuming
+uses that same window and library. Reopening Omakade while parked resumes the session
+too. Each completed return/resume cycle captures the current
 desktop and the warm window's current home and compositor mode.
 
 The desktop entry also carries a **Game Mode** action for launchers that show actions.

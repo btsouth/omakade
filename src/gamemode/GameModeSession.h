@@ -134,7 +134,7 @@ public:
   // workspaceChecked, so the Game Mode key can tell whether leaving strands a game.
   Q_INVOKABLE void checkWorkspace();
   // Leaves Game Mode before the process ends. Blocks until the desktop is put back.
-  void shutdown();
+  Q_INVOKABLE void shutdown();
 
   [[nodiscard]] static QString outputLabel(const GameModeOutput& output);
   // The configured choices with the display, sound and notification overrides of an

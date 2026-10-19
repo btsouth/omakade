@@ -540,5 +540,30 @@ void ResidentGuideTests::gameLaunchCancelsRescan() {
   QFile calls(log); QVERIFY(calls.open(QIODevice::ReadOnly)); QVERIFY(!calls.readAll().contains("rescanPlugins"));
 }
 
-QTEST_GUILESS_MAIN(ResidentGuideTests)
+int main(int argc, char** argv) {
+  QCoreApplication application(argc, argv);
+  ResidentGuideTests tests;
+  // Several cases start the resident service and wait out its real deadlines. CTest runs
+  // them in shards so each stays well inside its timeout without dropping a case.
+  // Ordinary direct invocations still support QTest's individual-test arguments.
+  if (argc != 2 || !QByteArray(argv[1]).startsWith("--test-shard="))
+    return QTest::qExec(&tests, argc, argv);
+  const QByteArray shardArgument(argv[1]);
+  bool valid = false;
+  const int shard = shardArgument.mid(sizeof("--test-shard=") - 1).toInt(&valid);
+  constexpr int kShards = 3;  // Matches the shard range in tests/CMakeLists.txt.
+  if (!valid || shard < 0 || shard >= kShards) return 2;
+  QStringList arguments{QString::fromLocal8Bit(argv[0])};
+  const QMetaObject* meta = tests.metaObject();
+  int testIndex = 0;
+  for (int index = meta->methodOffset(); index < meta->methodCount(); ++index) {
+    const QMetaMethod method = meta->method(index);
+    const QByteArray name = method.name();
+    if (method.methodType() != QMetaMethod::Slot || method.parameterCount() != 0 ||
+        name.endsWith("_data") || name == "init" || name == "cleanup" ||
+        name == "initTestCase" || name == "cleanupTestCase") continue;
+    if (testIndex++ % kShards == shard) arguments.append(QString::fromLatin1(name));
+  }
+  return QTest::qExec(&tests, arguments);
+}
 #include "ResidentGuideTests.moc"

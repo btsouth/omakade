@@ -1120,6 +1120,11 @@ ApplicationWindow {
     // Game Mode lands on Home. The desktop goes back to the page it showed before.
     property bool homeBeforeGameMode: false
     property bool statsBeforeGameMode: false
+    // While the session is parked the desktop shows its own page, and Game Mode's page
+    // waits here for the resume.
+    property bool gameModeParkedPage: false
+    property bool gameModeHomeOpen: false
+    property bool gameModeStatsOpen: false
     property bool couchBeforeGameMode: false
     property int desktopBeforeGameModeVisibility: Window.Windowed
     property var gameModeNavigation: null
@@ -1189,6 +1194,19 @@ ApplicationWindow {
         root.homeOpen = root.homeBeforeGameMode
         root.statsOpen = root.statsBeforeGameMode
     }
+    function parkGameModePage() {
+        if (root.gameModeParkedPage) return
+        root.gameModeHomeOpen = root.homeOpen
+        root.gameModeStatsOpen = root.statsOpen
+        root.gameModeParkedPage = true
+        root.restoreGameModeDesktopPage()
+    }
+    function resumeGameModePage() {
+        if (!root.gameModeParkedPage) return
+        root.gameModeParkedPage = false
+        root.homeOpen = root.gameModeHomeOpen
+        root.statsOpen = root.gameModeStatsOpen
+    }
 
     function endGameMode() {
         root.gameModeNavigation = null
@@ -1198,7 +1216,9 @@ ApplicationWindow {
         // End also runs from a parked session whose desktop mode is already set.
         // Cleanup must not depend on updateCouchModeInternal changing that mode.
         root.clearCouchNavigation()
-        root.restoreGameModeDesktopPage()
+        // Ended while parked, the desktop already shows its own page, perhaps one chosen since.
+        if (!root.gameModeParkedPage) root.restoreGameModeDesktopPage()
+        root.gameModeParkedPage = false
         root.updateCouchModeInternal(root.couchBeforeGameMode, false, !GameMode.displayManaged)
         if (root.gameModeInPlace) {
             // A window that was already fullscreen when the session began, as at a
@@ -1245,15 +1265,20 @@ ApplicationWindow {
         root.updateCouchModeInternal(true, false, false, retainNavigation, true)
         root.desktopVisibility = retainNavigation ? desktopMode : root.desktopBeforeGameModeVisibility
         if (!retainNavigation) {
+            root.gameModeParkedPage = false
             root.statsOpen = false
             root.homeOpen = true
+        } else {
+            root.resumeGameModePage()
         }
     }
 
     function cancelGameModeLayout() {
         root.updateCouchModeInternal(root.couchBeforeGameMode, false, false, true, true)
         root.desktopVisibility = root.gameModeDesktopVisibilityBeforePreparation
+        // A resume that failed stays parked, on the desktop's page.
         if (!GameMode.hasSession) root.restoreGameModeDesktopPage()
+        else if (GameMode.parked && !GameMode.temporaryWindow()) root.parkGameModePage()
         root.gameModeNavigationRestoring = false
     }
 
@@ -1277,6 +1302,7 @@ ApplicationWindow {
         // compositor mode while the library is being moved and remapped.
         const desktopMode = root.desktopVisibility
         root.gameModeNavigationRestoring = true
+        root.resumeGameModePage()
         root.updateCouchModeInternal(true, false, true, true)
         root.desktopVisibility = desktopMode
         root.visibility = Window.FullScreen
@@ -1294,6 +1320,8 @@ ApplicationWindow {
         if (!retainNavigation) {
             root.clearCouchNavigation()
             root.restoreGameModeDesktopPage()
+        } else {
+            root.parkGameModePage()
         }
         root.updateCouchModeInternal(root.couchBeforeGameMode, false,
                                      !GameMode.displayManaged, retainNavigation === true)
@@ -2069,6 +2097,9 @@ ApplicationWindow {
     }
     onClosing: function(close) {
         close.accepted = true
+        // Quitting closes this window, and a session cannot put back a window that is gone,
+        // so Game Mode ends first.
+        if (GameMode.hasSession || GameMode.busy) GameMode.shutdown()
         Qt.quit()
     }
 

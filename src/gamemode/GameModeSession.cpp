@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDebug>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -618,7 +619,19 @@ void GameModeSession::shutdown() {
   m_focusFuture.waitForFinished();
   m_workspaceWatcher.waitForFinished();
   if (m_controller.active() || m_controller.parked()) {
-    (void)m_controller.exit(QCoreApplication::applicationPid());
+    // Leaving hides windows this process owns, such as the layout placeholder, and waits
+    // for the compositor to see them go. That needs the GUI thread, so the exit runs on a
+    // worker as an ordinary leave does while this thread keeps handling everything but
+    // input. Run here, it would wait out the placeholder and leave the session behind.
+    const qint64 pid = QCoreApplication::applicationPid();
+    QFuture<GameModeController::Result> leaving =
+        QtConcurrent::run([this, pid] { return m_controller.exit(pid); });
+    while (!leaving.isFinished())
+      QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 20);
+    const GameModeController::Result result = leaving.result();
+    if (!result.ok)
+      qWarning().noquote() << "Game Mode could not be ended on quit:" << result.error
+                           << result.notes.join(QLatin1Char(' '));
   }
   m_active = false;
   m_parked = false;

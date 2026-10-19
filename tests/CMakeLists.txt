@@ -1293,8 +1293,11 @@ target_compile_definitions(omakade_resident_guide_tests PRIVATE
   OMAKADE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
   OMAKADE_GUIDE_BUTTON="$<TARGET_FILE:omakade-guide-button>")
 add_dependencies(omakade_resident_guide_tests omakade-sessiond omakade omakade-guide-button)
-add_test(NAME omakade_resident_guide_tests COMMAND omakade_resident_guide_tests)
+foreach(shard RANGE 0 2)
+  add_test(NAME omakade_resident_guide_tests_${shard}
+    COMMAND omakade_resident_guide_tests --test-shard=${shard})
+  set_tests_properties(omakade_resident_guide_tests_${shard} PROPERTIES TIMEOUT 30)
+endforeach()
 # The guide's clip and a screen recording started from Omarchy never take each other's place.
 add_test(NAME omakade_guide_recorder COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/GuideRecorderTests.py ${PROJECT_SOURCE_DIR}/omarchy-plugin/guide-files.py)
-set_tests_properties(omakade_resident_guide_tests PROPERTIES TIMEOUT 30)

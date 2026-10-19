@@ -17,6 +17,13 @@ One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 - **LEAVE**, Start and F11 end Game Mode at once when no game is running. With a game
   running they open the Game Mode controls, as before.
 - `omakade --couch` and the `couch_mode_enabled` setting keep working.
+- `omakade --quit` during Game Mode, as a Moonlight stream sends when it ends, and closing
+  Omakade's window now put the display, sound and notifications back before Omakade closes.
+  Before, the window closed first and the session was only undone at the next start.
+- Unplugging or switching off the Game Mode display now ends the session cleanly. Before,
+  the desktop came back but the session stayed recorded and was undone at the next start.
+- Return to Desktop shows the page the desktop had before Game Mode, and resuming goes
+  back to the Game Mode page you left.
 
 ## 1.17.0
 

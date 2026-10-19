@@ -2245,6 +2245,13 @@ int main(int argc, char* argv[]) {
       if (screenIndex >= 0) {
         rootWindow->setScreen(screens.at(screenIndex));
       }
+    } else if (!isolatedTest) {
+      // Fullscreen goes to the window's screen, which Qt sets to the primary one. Game
+      // Mode starts in place, so open on the display that has focus instead.
+      for (const auto& output : gameModeCompositor.outputs()) {
+        const int screenIndex = output.focused ? screenNames.indexOf(output.name) : -1;
+        if (screenIndex >= 0) rootWindow->setScreen(screens.at(screenIndex));
+      }
     }
     rootWindow->showFullScreen();
   }
@@ -7321,8 +7328,13 @@ int main(int argc, char* argv[]) {
                        melondsLibrary->refresh();
                      }
                    });
+  // Quitting closes every window before aboutToQuit, and a session cannot put back a window
+  // that is gone. End it first, as a Moonlight stream's `omakade --quit` expects.
   QObject::connect(&singleInstance, &SingleInstance::quitRequested, &application,
-                   &QCoreApplication::quit);
+                   [&application, &gameMode] {
+                     gameMode.shutdown();
+                     application.quit();
+                   });
 
   // Keep the empty library's loading state continuous across staggered source
   // starts. A gap between scans must not briefly claim that no games exist.
@@ -8092,10 +8104,12 @@ int main(int argc, char* argv[]) {
         return;
       }
       gameMode.setTemporaryWindow(false);
-      QObject::disconnect(mappingStateCheck);
       rootWindow->setWindowState(originalState);
-      gameModeTestCompositor.mapped.store(true);
+      // Shown again, the root maps as a new client on the desktop workspace, as it does
+      // in Hyprland. The mapping check models that until it is shown.
       rootWindow->show();
+      QObject::disconnect(mappingStateCheck);
+      gameModeTestCompositor.mapped.store(true);
       // Smoke fixtures skip the normal --couch startup fullscreen step. Match the
       // real startup state before exercising a transient overlay and its focus.
       if (couchBefore) {
@@ -8457,10 +8471,11 @@ int main(int argc, char* argv[]) {
         QCoreApplication::processEvents();
         pageFocus->forceActiveFocus();
         QMetaObject::invokeMethod(rootWindow, "toggleGameMode");
+        // Parked, the desktop shows the page it had before Game Mode; Settings stays open.
         if (!settled([&gameMode] { return gameMode.parked() && !gameMode.busy(); }) ||
-            !rootWindow->property("homeOpen").toBool() ||
+            rootWindow->property("homeOpen") != rootWindow->property("homeBeforeGameMode") ||
             rootWindow->property("diagnosticsOpen").toBool() != settingsPage) {
-          fail(QStringLiteral("Park lost the retained Home or Settings page"));
+          fail(QStringLiteral("Park did not show the desktop's own page or lost Settings"));
           return;
         }
         QMetaObject::invokeMethod(rootWindow, "toggleGameMode");
@@ -8699,9 +8714,7 @@ int main(int argc, char* argv[]) {
       }
       // The fixture compositor records window modes without applying them, so the earlier
       // sessions leave Qt's window fullscreen. Start from the desktop window F11 sees.
-      // The earlier sessions also leave its window on the Game Mode workspace.
       rootWindow->showNormal();
-      gameModeTestCompositor.window.workspace = QStringLiteral("1");
       if (!settled([rootWindow] { return rootWindow->windowState() != Qt::WindowFullScreen; })) {
         fail(QStringLiteral("The desktop window did not leave fullscreen before F11"));
         return;

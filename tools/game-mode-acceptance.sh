@@ -87,6 +87,21 @@ leave() {
   box "$BIN" --game-mode-exit
   until_true 15 state_gone
 }
+main_address() { hc -j clients | jq -r '[.[] | select(.class | endswith("Omakade")) | select(.title == "Omakade")][0].address // empty'; }
+press() { omabox keys --window "$(main_address)" --wait "$@" >/dev/null 2>&1; }
+# `window` drops false values, so a flag that may be false is read here.
+idle_held() { hc -j clients | jq -r '[.[] | select(.class | endswith("Omakade")) | select(.title == "Omakade")][0].inhibitingIdle | tostring'; }
+session_field() { jq -r --arg f "$1" '.[$f] | tostring' "$STATE" 2>/dev/null; }
+remembered() { grep -s '^couch_mode_enabled' "$HOME_DIR/.config/omakade/config.toml" | sed 's/.*= *//'; }
+remember() { # true|false
+  local file=$HOME_DIR/.config/omakade/config.toml
+  mkdir -p "${file%/*}"
+  if grep -qs '^couch_mode_enabled' "$file"; then
+    sed -i "s/^couch_mode_enabled = .*/couch_mode_enabled = $1/" "$file"
+  else
+    echo "couch_mode_enabled = $1" >>"$file"
+  fi
+}
 reset() { # output-name sink [tv on|off]
   app_running && quit_app
   rm -f "$STATE"
@@ -99,6 +114,8 @@ reset() { # output-name sink [tv on|off]
   fi
   lua 'hl.dispatch(hl.dsp.focus({ workspace = "1" }))'
   configure "$1" "$2"
+  # A fullscreen start would begin Game Mode on its own.
+  remember false
 }
 expect_desktop_restored() {
   expect "Omakade is back on workspace 1" "$(window_workspace)" 1
@@ -132,7 +149,7 @@ reset "" ""
 start_app
 enter
 expect "Game Mode started" $? 0
-expect "Couch Mode is fullscreen" "$(window fullscreen)" 2
+expect "Game Mode is fullscreen" "$(window fullscreen)" 2
 expect "it is on its own workspace" "$(window_workspace)" omakade
 expect "it stayed on the same display" "$(window_output)" "$DESK"
 expect "notifications are silenced" "$(dnd)" on
@@ -147,7 +164,7 @@ before=$(output_workspace $TV)
 start_app
 enter
 expect "Game Mode started" $? 0
-expect "Couch Mode opened on the second display" "$(window_output)" $TV
+expect "Game Mode opened on the second display" "$(window_output)" $TV
 leave
 expect_desktop_restored
 expect "the second display is still on" "$(output_field $TV disabled)" false
@@ -161,7 +178,7 @@ expect "the display starts off" "$(output_field $TV disabled)" true
 enter
 expect "Game Mode started" $? 0
 expect "the display was turned on" "$(output_field $TV disabled)" false
-expect "Couch Mode opened on it" "$(window_output)" $TV
+expect "Game Mode opened on it" "$(window_output)" $TV
 leave
 expect_desktop_restored
 expect "the display is off again" "$(output_field $TV disabled)" true
@@ -266,6 +283,18 @@ expect "notifications are unsilenced" "$(dnd)" off
 state_present
 expect "no session record is left" $? 1
 
+section "6d. Closing Omakade's window during Game Mode"
+reset $TV $TV_SINK
+start_app
+enter
+lua "hl.dispatch(hl.dsp.window.close({ window = \"address:$(main_address)\" }))"
+until_true 15 app_gone
+expect "Omakade closed" "$(app_gone && echo yes)" yes
+expect "the display is off" "$(output_field $TV disabled)" true
+expect "sound is back" "$(default_sink)" "$DESK_SINK"
+expect "notifications are unsilenced" "$(dnd)" off
+expect "no session record is left" "$([[ -f $STATE ]] && echo left || echo none)" none
+
 section "7. The display is unplugged during Game Mode"
 reset $TV $TV_SINK
 start_app
@@ -314,6 +343,129 @@ expect "sound was never switched" "$(default_sink)" "$DESK_SINK"
 expect "notifications were never silenced" "$(dnd)" off
 expect "Omakade stayed windowed on workspace 1" "$(window_workspace)/$(window fullscreen)" 1/0
 quit_app
+
+section "9. F11 plays here and leaves a configured TV, sound and notifications alone"
+reset $TV $TV_SINK
+start_app
+press F11
+until_true 15 in_game_mode
+expect "F11 started Game Mode" $? 0
+expect "it is on its own workspace" "$(window_workspace)" omakade
+expect "it stayed on the desk display" "$(window_output)" "$DESK"
+expect "the session is recorded on the desk display" "$(session_field output)" "$DESK"
+expect "the TV stayed off" "$(output_field $TV disabled)" true
+expect "sound was left alone" "$(default_sink)" "$DESK_SINK"
+expect "notifications were left alone" "$(dnd)" off
+expect "the screen may sleep while no game runs" "$(idle_held)" false
+expect "fullscreen is remembered for the next start" "$(remembered)" true
+press F11
+until_true 15 state_gone
+expect "F11 with no game running ended Game Mode" $? 0
+expect_desktop_restored
+expect "the TV is still off" "$(output_field $TV disabled)" true
+expect "leaving fullscreen is remembered" "$(remembered)" false
+
+section "9b. Game Mode on the TV still keeps the screen awake"
+reset $TV $TV_SINK
+start_app
+enter
+expect "Game Mode started on the TV" "$(window_output)" $TV
+expect "the screen is kept awake" "$(idle_held)" true
+leave
+expect_desktop_restored
+
+section "10. Leaving with a game on the Game Mode workspace opens the controls"
+reset "" ""
+start_app
+press F11
+until_true 15 in_game_mode
+omabox run -d -- foot --app-id fake-game >/dev/null 2>&1
+until_true 10 '[[ -n $(class_address fake-game) ]]'
+expect "the game opened on the Game Mode workspace" "$(class_workspace fake-game)" omakade
+press F11
+until_true 4 state_gone
+expect "Game Mode stayed on" $? 1
+expect "Omakade is still fullscreen" "$(window fullscreen)" 2
+lua "hl.dispatch(hl.dsp.window.close({ window = \"address:$(class_address fake-game)\" }))"
+until_true 10 '[[ -z $(class_address fake-game) ]]'
+leave
+expect_desktop_restored
+
+section "11. --couch and a remembered fullscreen start play here"
+reset $TV $TV_SINK
+start_app --couch
+until_true 15 in_game_mode
+expect "--couch started Game Mode" $? 0
+expect "on the desk display" "$(window_output)" "$DESK"
+expect "the TV stayed off" "$(output_field $TV disabled)" true
+expect "sound was left alone" "$(default_sink)" "$DESK_SINK"
+expect "notifications were left alone" "$(dnd)" off
+quit_app
+expect "closing ended Game Mode" "$([[ -f $STATE ]] && echo still-on || echo ended)" ended
+reset $TV $TV_SINK
+remember true
+start_app
+until_true 15 in_game_mode
+expect "a remembered fullscreen start began Game Mode" $? 0
+expect "on the desk display" "$(window_output)" "$DESK"
+expect "the TV stayed off" "$(output_field $TV disabled)" true
+press F11
+until_true 15 state_gone
+expect "F11 ended it" $? 0
+until_true 5 '[[ $(window fullscreen) == 0 ]]'
+expect_desktop_restored
+expect "leaving fullscreen is remembered" "$(remembered)" false
+# Qt puts a fullscreen window on its first screen, the desk; the start must follow focus.
+reset $DESK $DESK_SINK on
+lua "hl.dispatch(hl.dsp.focus({ monitor = \"$TV\" }))"
+remember true
+start_app
+until_true 15 in_game_mode
+expect "a remembered start with the TV focused began Game Mode" $? 0
+expect "on the focused display" "$(window_output)" "$TV"
+expect "and the session is there too" "$(session_field output)" "$TV"
+press F11
+until_true 15 state_gone
+expect "F11 ended it" $? 0
+until_true 5 '[[ $(window fullscreen) == 0 ]]'
+expect "Omakade is windowed again" "$(window fullscreen)" 0
+
+section "12. A Sunshine stream plays here, and its --quit ends Game Mode"
+reset $TV $TV_SINK
+omabox run -d -- env SUNSHINE_APP_ID=1 "$BIN" --demo >/dev/null 2>&1
+until_true 15 app_running
+until_true 15 in_game_mode
+expect "the stream started Game Mode" $? 0
+expect "on the display it opened on" "$(window_output)" "$DESK"
+expect "the stream's sound was left alone" "$(default_sink)" "$DESK_SINK"
+expect "the TV stayed off" "$(output_field $TV disabled)" true
+quit_app
+expect "Omakade closed" "$(app_gone && echo yes)" yes
+expect "no session record is left" "$([[ -f $STATE ]] && echo left || echo none)" none
+expect "sound is still on the desk output" "$(default_sink)" "$DESK_SINK"
+
+section "13. A start that cannot begin falls back to plain fullscreen"
+reset "" ""
+# Another live Omakade owns a session, so this one cannot start its own.
+mkdir -p "$HOME_DIR/owner"
+cp /usr/bin/sleep "$HOME_DIR/owner/omakade"
+omabox run -d -- /home/sbx/owner/omakade 600 >/dev/null 2>&1
+until_true 5 '[[ -n $(box pgrep -f "^/home/sbx/owner/omakade 600") ]]'
+owner=$(box pgrep -f "^/home/sbx/owner/omakade 600")
+mkdir -p "${STATE%/*}"
+printf '{"version":2,"phase":"active","owner_pid":%s,"owner_start":-1,"games":[],"streams":[],"window_fullscreen":-1,"window_fullscreen_client":-1}\n' "$owner" >"$STATE"
+start_app
+press F11
+until_true 10 '[[ $(window fullscreen) == 2 ]]'
+expect "the library went fullscreen" "$(window fullscreen)" 2
+expect "without moving to a Game Mode workspace" "$(window_workspace)" 1
+expect "the other session was left alone" "$(session_field owner_pid)" "$owner"
+press F11
+until_true 5 '[[ $(window fullscreen) == 0 ]]'
+expect "F11 returned to the desktop window" "$(window fullscreen)" 0
+quit_app
+box kill "$owner"
+rm -f "$STATE" "$HOME_DIR/owner/omakade"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 ((failed == 0))
