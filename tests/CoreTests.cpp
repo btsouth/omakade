@@ -52,6 +52,8 @@
 #include "library/LibraryRepair.h"
 #include "library/LutrisGameModel.h"
 #include "library/ManualGameModel.h"
+#include "library/LauncherGameModel.h"
+#include "library/NativePortAdvisor.h"
 #include "library/MelondsGameModel.h"
 #include "library/MockGameModel.h"
 #include "library/Pcsx2GameModel.h"
@@ -89,6 +91,10 @@
 #include "sources/steam/SteamScanner.h"
 #include "sources/melonds/MelondsScanner.h"
 #include "sources/steam/ValveKeyValues.h"
+#include "sources/desktop/DesktopEntry.h"
+#include "sources/kyty/KytyScanner.h"
+#include "sources/ports/NativePortScanner.h"
+#include "sources/ports/PortCatalog.h"
 #include "saves/SaveLayouts.h"
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
@@ -1224,6 +1230,12 @@ private slots:
   void invalidMetadataResponseKeepsDataAndReportsFailure();
   void gogFoldersPersistAndHandleDisconnectedRoots();
   void manualGamesImportEditLaunchAndRemove();
+  void nativePortCatalogMatchesConsoleGames();
+  void desktopLaunchersRespectPrecedenceWithoutExecuting();
+  void kytyScansConfiguredGamesAndPrefersWrappers();
+  void nativePortsFindWrappersAndAppImages();
+  void launcherGamesPreserveCacheAndLaunchSafely();
+  void nativePortAdvisorSuggestsAndLinksOnce();
   void launchKeysRoundTripAndResolveInstallations();
   void singleInstanceForwardsPlayAndQuitCommands();
   void homeButtonSettingAndRetroArchMenuOverride();
@@ -5345,6 +5357,371 @@ void CoreTests::stressLibraryContainsOneThousandGames() {
   QCOMPARE(games.rowCount(), 1000);
   QCOMPARE(games.get(999).value(QStringLiteral("title")).toString(),
            QStringLiteral("Wild Orbit 40"));
+}
+
+void CoreTests::nativePortCatalogMatchesConsoleGames() {
+  // This also verifies the resource is linked into consumers of the static core library.
+  const PortCatalog& catalog = PortCatalog::bundled();
+  QVERIFY(!catalog.ports().isEmpty());
+  QVERIFY(catalog.find(QStringLiteral("goldeneye-pc-port")) != nullptr);
+  const auto serial = catalog.portsFor(QStringLiteral("ps4"), QStringLiteral("cusa-01623"), {});
+  QVERIFY(!serial.isEmpty());
+  QCOMPARE(serial.first()->id, QStringLiteral("spartanport"));
+  QVERIFY(catalog.portsFor(QStringLiteral("ps3"), QStringLiteral("CUSA01623"), {}).isEmpty());
+  QCOMPARE(PortCatalog::normalizedTitle(
+               QStringLiteral("Legend of Zelda, The - Ocarina of Time (USA) [!]")),
+           PortCatalog::normalizedTitle(QStringLiteral("The Legend of Zelda: Ocarina of Time")));
+  QCOMPARE(PortCatalog::normalizedTitle(QStringLiteral("Ratchet & Clank")),
+           PortCatalog::normalizedTitle(QStringLiteral("Ratchet and Clank")));
+  QVERIFY(PortCatalog::fileMatches(QStringLiteral("GE007-linux-x86_64.AppImage"),
+                                   QStringLiteral("ge007")));
+  QVERIFY(!PortCatalog::fileMatches(QStringLiteral("notge007backup"), QStringLiteral("ge007")));
+  QString error;
+  QVERIFY(PortCatalog::fromJson("{broken", &error).ports().isEmpty());
+  QVERIFY(!error.isEmpty());
+  QVERIFY(PortCatalog::fromJson(R"({"schema":999,"ports":[]})", &error).ports().isEmpty());
+  QVERIFY(!error.isEmpty());
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString settingsPath = directory.path() + QStringLiteral("/config.toml");
+  {
+    AppSettings settings(settingsPath);
+    QVERIFY(settings.kytyAutoEnabled());
+    QVERIFY(settings.nativePortsAutoEnabled());
+    settings.setKytyEnabled(true);
+    settings.setNativePortsEnabled(true);
+  }
+  {
+    AppSettings settings(settingsPath);
+    QVERIFY(settings.kytyEnabled());
+    QVERIFY(settings.nativePortsEnabled());
+    QVERIFY(!settings.kytyAutoEnabled());
+    QVERIFY(!settings.nativePortsAutoEnabled());
+    settings.setKytyEnabled(false);
+    settings.setNativePortsEnabled(false);
+  }
+  AppSettings disabled(settingsPath);
+  QVERIFY(!disabled.kytyEnabled());
+  QVERIFY(!disabled.nativePortsEnabled());
+  QVERIFY(!disabled.kytyAutoEnabled());
+  QVERIFY(!disabled.nativePortsAutoEnabled());
+}
+
+void CoreTests::desktopLaunchersRespectPrecedenceWithoutExecuting() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString user = directory.path() + QStringLiteral("/user");
+  const QString system = directory.path() + QStringLiteral("/system");
+  const QString marker = directory.path() + QStringLiteral("/should-not-exist");
+  const QString executable = directory.path() + QStringLiteral("/wrapper");
+  writeFile(executable,
+            QStringLiteral("#!/bin/sh\ntouch '%1'\nexec ./ge007\n").arg(marker).toUtf8());
+  QVERIFY(
+      QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto entry = [&executable](const QString& title, const QString& extras = {}) {
+    return QStringLiteral("[Desktop Entry]\nType=Application\nName=%1\nExec=\"%2\" \"two words\" "
+                          "%% %c %k %i %U\nIcon=game-icon\n%3")
+        .arg(title, executable, extras)
+        .toUtf8();
+  };
+  writeFile(user + QStringLiteral("/hidden.desktop"),
+            entry(QStringLiteral("Hidden"), QStringLiteral("Hidden=true\n")));
+  writeFile(system + QStringLiteral("/hidden.desktop"), entry(QStringLiteral("Must stay hidden")));
+  writeFile(user + QStringLiteral("/game.desktop"), entry(QStringLiteral("User game")));
+  writeFile(system + QStringLiteral("/game.desktop"), entry(QStringLiteral("System game")));
+  writeFile(user + QStringLiteral("/nodisplay.desktop"),
+            entry(QStringLiteral("Settings"), QStringLiteral("NoDisplay=true\n")));
+  writeFile(user + QStringLiteral("/terminal.desktop"),
+            entry(QStringLiteral("Terminal"), QStringLiteral("Terminal=true\n")));
+  const auto launchers = DesktopLaunchers::scan({user, system});
+  QCOMPARE(launchers.size(), 1);
+  const DesktopLauncher& launcher = launchers.first();
+  QCOMPARE(launcher.entry.title, QStringLiteral("User game"));
+  QCOMPARE(launcher.entry.arguments,
+           QStringList({QStringLiteral("two words"), QStringLiteral("%"),
+                        QStringLiteral("User game"), user + QStringLiteral("/game.desktop"),
+                        QStringLiteral("--icon"), QStringLiteral("game-icon")}));
+  QVERIFY(launcher.localPrograms.contains(QStringLiteral("ge007")));
+  QVERIFY(!QFileInfo::exists(marker));
+  const QString bad = user + QStringLiteral("/bad.desktop");
+  writeFile(bad, entry(QStringLiteral("Invalid")).replace("%U", "%Z"));
+  QVERIFY(!DesktopEntry::read(bad).has_value());
+  writeFile(bad, entry(QStringLiteral("Missing dependency"),
+                       QStringLiteral("TryExec=omakade-nonexistent-test-binary\n")));
+  QVERIFY(!DesktopEntry::read(bad).has_value());
+}
+
+void CoreTests::kytyScansConfiguredGamesAndPrefersWrappers() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/PS5 games");
+  const QString game = root + QStringLiteral("/a-original");
+  const QString duplicate = root + QStringLiteral("/b-copy");
+  const QString emulator = directory.path() + QStringLiteral("/kyty/kyty_emulator");
+  const QString wrapper = directory.path() + QStringLiteral("/run-kyty-test");
+  const QString applications = directory.path() + QStringLiteral("/applications");
+  const QString config = directory.path() + QStringLiteral("/Kyty.ini");
+  const QByteArray param =
+      R"({"titleId":"PPSA12345","localizedParameters":{"defaultLanguage":"fr-FR","fr-FR":{"titleName":"Jeu test"},"en-US":{"titleName":"Test game"}}})";
+  for (const QString& folder : {game, duplicate}) {
+    writeFile(folder + QStringLiteral("/eboot.bin"), "synthetic");
+    writeFile(folder + QStringLiteral("/sce_sys/param.json"), param);
+    writeFile(folder + QStringLiteral("/sce_sys/icon0.png"), "cover");
+  }
+  writeFile(emulator, "#!/bin/sh\nexit 99\n");
+  writeFile(wrapper,
+            QStringLiteral(
+                "#!/bin/sh\n# kyty game PPSA12345\nexec \"%1\" --game \"%2\" --custom-setting\n")
+                .arg(emulator, game)
+                .toUtf8());
+  for (const QString& executable : {emulator, wrapper})
+    QVERIFY(
+        QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  writeFile(config, QStringLiteral("[General]\ngame_dir=%1\n").arg(root).toUtf8());
+  const KytyScanner::Options options{
+      {applications}, {config}, {QFileInfo(emulator).absolutePath()}, {}};
+  const KytyScanner::Options conventional{
+      {applications}, {}, {QFileInfo(emulator).absolutePath()}, {root}};
+  QCOMPARE(KytyScanner::scan(conventional).games.size(), 1);
+  auto scan = KytyScanner::scan(options);
+  QCOMPARE(scan.games.size(), 1);
+  QCOMPARE(scan.games.first().gameId, QStringLiteral("PPSA12345"));
+  QCOMPARE(scan.games.first().title, QStringLiteral("Jeu test"));
+  QCOMPARE(scan.games.first().system, QStringLiteral("ps5"));
+  QCOMPARE(scan.games.first().executable, emulator);
+  QCOMPARE(scan.games.first().arguments,
+           QStringList({QStringLiteral("--game"), game, QStringLiteral("--fullscreen")}));
+  QCOMPARE(scan.games.first().coverPath, game + QStringLiteral("/sce_sys/icon0.png"));
+  const QString desktop = applications + QStringLiteral("/game.desktop");
+  writeFile(desktop, QStringLiteral("[Desktop Entry]\nType=Application\nName=Jeu test\nExec=\"%1\" "
+                                    "\"literal argument\"\nPath=%2\nCategories=Game;\n")
+                         .arg(wrapper, directory.path())
+                         .toUtf8());
+  scan = KytyScanner::scan(options);
+  QCOMPARE(scan.games.size(), 1);
+  QCOMPARE(scan.games.first().executable, wrapper);
+  QCOMPARE(scan.games.first().arguments, QStringList{QStringLiteral("literal argument")});
+  QCOMPARE(scan.games.first().directory, directory.path());
+  QCOMPARE(scan.games.first().desktopEntry, desktop);
+  QVERIFY(QDir().rename(root, root + QStringLiteral("-offline")));
+  scan = KytyScanner::scan(options);
+  QVERIFY(scan.incomplete);
+  QVERIFY(!scan.warnings.isEmpty());
+  QVERIFY(QDir().rename(root + QStringLiteral("-offline"), root));
+  for (const QString& folder : {game, duplicate})
+    writeFile(folder + QStringLiteral("/sce_sys/param.json"), "{malformed");
+  scan = KytyScanner::scan(options);
+  QVERIFY(scan.games.isEmpty());
+  QVERIFY(scan.incomplete);
+  QVERIFY(!scan.warnings.isEmpty());
+}
+
+void CoreTests::nativePortsFindWrappersAndAppImages() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString apps = directory.path() + QStringLiteral("/applications");
+  const QString images = directory.path() + QStringLiteral("/images");
+  const QString wrapper = directory.path() + QStringLiteral("/play-goldeneye");
+  writeFile(wrapper, "#!/bin/sh\nexec ./ge007 \"two words\"\n");
+  QVERIFY(QFile::setPermissions(wrapper, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const QString desktop = apps + QStringLiteral("/goldeneye.desktop");
+  writeFile(desktop, QStringLiteral("[Desktop Entry]\nType=Application\nName=GoldenEye "
+                                    "007\nExec=\"%1\"\nPath=%2\nCategories=Game;\n")
+                         .arg(wrapper, directory.path())
+                         .toUtf8());
+  const QString goldeneye = images + QStringLiteral("/GE007-linux.AppImage");
+  const QString zelda = images + QStringLiteral("/Zelda/Zelda64Recompiled-linux.AppImage");
+  const QString nonExecutable = images + QStringLiteral("/starship.AppImage");
+  for (const QString& image : {goldeneye, zelda, nonExecutable})
+    writeFile(image, "synthetic");
+  for (const QString& image : {goldeneye, zelda})
+    QVERIFY(QFile::setPermissions(image, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto scan = NativePortScanner::scan({{apps}, {images}}, PortCatalog::bundled());
+  QCOMPARE(scan.games.size(), 2);
+  const auto golden =
+      std::find_if(scan.games.cbegin(), scan.games.cend(), [](const LauncherGameRecord& game) {
+        return game.gameId == QLatin1String("goldeneye-pc-port");
+      });
+  QVERIFY(golden != scan.games.cend());
+  QCOMPARE(golden->executable, wrapper);
+  QCOMPARE(golden->desktopEntry, desktop);
+  const auto recomp =
+      std::find_if(scan.games.cbegin(), scan.games.cend(), [](const LauncherGameRecord& game) {
+        return game.gameId == QLatin1String("zelda64recomp");
+      });
+  QVERIFY(recomp != scan.games.cend());
+  QCOMPARE(recomp->executable, zelda);
+  QCOMPARE(recomp->directory, QFileInfo(zelda).absolutePath());
+}
+
+void CoreTests::launcherGamesPreserveCacheAndLaunchSafely() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString executable = directory.path() + QStringLiteral("/synthetic launcher");
+  writeFile(executable, "#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\" > launch-result.txt\nsleep 1\n");
+  QVERIFY(
+      QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  LauncherGameRecord game;
+  game.gameId = QStringLiteral("fixture-port");
+  game.title = QStringLiteral("Synthetic game");
+  game.system = QStringLiteral("n64");
+  game.path = executable;
+  game.executable = executable;
+  game.arguments = {QStringLiteral("two words"), QString{},
+                    QStringLiteral("$(touch should-not-exist)")};
+  game.directory = directory.path();
+  const QString database = directory.path() + QStringLiteral("/library.sqlite3");
+  const LauncherGameModel::Definition definition{
+      QStringLiteral("Ports"), QStringLiteral("ports"), QStringLiteral("Test"), {}};
+  {
+    LauncherGameModel model(definition, database);
+    model.applyScan({{game}, {executable}, {}, false});
+    QCOMPARE(model.rowCount(), 1);
+    model.toggleFavorite(0);
+    model.toggleHidden(0);
+    const qint64 lastScan = model.lastScan();
+    model.applyScan({{}, {executable}, {QStringLiteral("Drive unavailable")}, true});
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.lastScan(), lastScan);
+    QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+    QVERIFY(model.data(model.index(0), GameRoles::Hidden).toBool());
+    QVERIFY(model.errorText().contains(QStringLiteral("Drive unavailable")));
+  }
+  LauncherGameModel reloaded(definition, database);
+  QCOMPARE(reloaded.gameIds(), QStringList{game.gameId});
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Hidden).toBool());
+  GameLauncher launcher;
+  for (const QString& source : {QStringLiteral("Ports"), QStringLiteral("Kyty")}) {
+    QVERIFY(launcher.launch(source, game.gameId, false, {}, game.path,
+                            LauncherGameModel::launchTarget(game), game.system));
+    const auto output = [&directory] {
+      QFile file(directory.path() + QStringLiteral("/launch-result.txt"));
+      return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(
+        output(), directory.path().toUtf8() + "\ntwo words\n\n$(touch should-not-exist)\n", 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+    QVERIFY(!QFileInfo::exists(directory.path() + QStringLiteral("/should-not-exist")));
+    QVERIFY(QFile::remove(directory.path() + QStringLiteral("/launch-result.txt")));
+  }
+  QVERIFY(QFile::remove(executable));
+  for (const QString& source : {QStringLiteral("Ports"), QStringLiteral("Kyty")}) {
+    QVERIFY(!launcher.launch(source, game.gameId, false, {}, game.path,
+                             LauncherGameModel::launchTarget(game), game.system));
+    QVERIFY(!launcher.gameRunning());
+    QVERIFY(launcher.lastError().contains(QStringLiteral("Rescan")));
+  }
+  // Fresh discovery after an unmount can omit a standard root without a warning.
+  // Its last observed games must remain cached rather than being treated as deletions.
+  const QString drive = directory.path() + QStringLiteral("/portable-ps5");
+  const QString dumpPath = drive + QStringLiteral("/game/eboot.bin");
+  writeFile(dumpPath, "fixture");
+  LauncherGameRecord dump = game;
+  dump.path = dumpPath;
+  reloaded.applyScan({{dump}, {drive}, {}, false});
+  QVERIFY(QDir(drive).removeRecursively());
+  reloaded.applyScan({{}, {}, {}, false});
+  QCOMPARE(reloaded.rowCount(), 1);
+  QVERIFY(reloaded.errorText().contains(QStringLiteral("Game folder is unavailable")));
+  QVERIFY(QDir().mkpath(drive));
+  reloaded.applyScan({{}, {directory.path()}, {}, false});
+  QCOMPARE(reloaded.rowCount(), 0);
+  reloaded.applyScan({{game}, {directory.path()}, {}, false});
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Favorite).toBool());
+  QVERIFY(reloaded.data(reloaded.index(0), GameRoles::Hidden).toBool());
+}
+
+void CoreTests::nativePortAdvisorSuggestsAndLinksOnce() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  QJsonArray entries;
+  const QStringList systems{QStringLiteral("n64"), QStringLiteral("ps2"),
+                            QStringLiteral("ps3"), QStringLiteral("ps4"),
+                            QStringLiteral("ps5"), QStringLiteral("xbox360")};
+  for (const QString& system : systems)
+    entries.append(QJsonObject{{"id", system},
+                               {"name", system + " port"},
+                               {"game", "Fixture"},
+                               {"system", system},
+                               {"repo", "https://example.test/port"},
+                               {"linux", true}});
+  QString error;
+  const PortCatalog catalog = PortCatalog::fromJson(
+      QJsonDocument(QJsonObject{{"schema", 1}, {"ports", entries}}).toJson(), &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  const QString database = directory.path() + QStringLiteral("/library.sqlite3");
+  LauncherGameModel ports({QStringLiteral("Ports"), QStringLiteral("ports"), {}, {}}, database);
+  NativePortAdvisor advisor(catalog, &ports);
+  QSignalSpy suggestionsChanged(&advisor, &NativePortAdvisor::installedPortsChanged);
+  const QStringList sources{QStringLiteral("RetroArch"), QStringLiteral("PCSX2"),
+                            QStringLiteral("RPCS3"),     QStringLiteral("shadPS4"),
+                            QStringLiteral("Kyty"),      QStringLiteral("Xenia")};
+  for (int i = 0; i < systems.size(); ++i) {
+    const auto suggestions =
+        advisor.portsFor({{"source", sources[i]}, {"system", systems[i]}, {"title", "Fixture"}});
+    QCOMPARE(suggestions.size(), 1);
+    QCOMPARE(suggestions.first().toMap().value("id").toString(), systems[i]);
+  }
+  QVERIFY(
+      advisor.portsFor({{"source", "Steam"}, {"system", "ps4"}, {"title", "Fixture"}}).isEmpty());
+  LauncherGameRecord installed;
+  installed.gameId = QStringLiteral("ps4");
+  installed.executable = QStandardPaths::findExecutable(QStringLiteral("true"));
+  installed.path = installed.executable;
+  installed.directory = directory.path();
+  installed.title = QStringLiteral("Fixture");
+  installed.system = QStringLiteral("ps4");
+  ports.applyScan({{installed}, {directory.path()}, {}, false});
+  QCOMPARE(suggestionsChanged.count(), 1);
+  QCOMPARE(advisor.revision(), 1);
+  QVERIFY(
+      advisor.portsFor({{"source", "shadPS4"}, {"system", "ps4"}, {"title", "Fixture"}}).isEmpty());
+  LauncherGameModel dumps({QStringLiteral("shadPS4"), QStringLiteral("fixture_dumps"), {}, {}},
+                          database);
+  installed.gameId = QStringLiteral("CUSA12345");
+  dumps.applyScan({{installed}, {directory.path()}, {}, false});
+  {
+    UnifiedGameModel unified(database);
+    unified.addSourceModel(&ports);
+    unified.addSourceModel(&dumps);
+    advisor.linkInstalledPorts(&unified);
+    QCOMPARE(unified.rowCount(), 1);
+    QCOMPARE(unified.installations(0).size(), 2);
+    QCOMPARE(unified.preferredInstallation(0).value("source").toString(), QStringLiteral("Ports"));
+    QVERIFY(unified.unlinkGames(0));
+    QCOMPARE(unified.rowCount(), 2);
+    advisor.linkInstalledPorts(&unified);
+    QCOMPARE(unified.rowCount(), 2);
+  }
+  UnifiedGameModel restarted(database);
+  restarted.addSourceModel(&ports);
+  restarted.addSourceModel(&dumps);
+  advisor.linkInstalledPorts(&restarted);
+  QCOMPARE(restarted.rowCount(), 2);
+
+  // An existing manual group also counts as an observed pair. Preserve its chosen launch
+  // installation, and do not put it back together after the player separates it.
+  const QString manualDatabase = directory.path() + QStringLiteral("/manual-links.sqlite3");
+  {
+    UnifiedGameModel manual(manualDatabase);
+    manual.addSourceModel(&dumps);
+    manual.addSourceModel(&ports);
+    QVERIFY(manual.linkGames(0, QStringLiteral("Ports"), {}, QStringLiteral("ps4")));
+    QVERIFY(manual.setPreferredInstallation(0, QStringLiteral("shadPS4"), {},
+                                            QStringLiteral("CUSA12345")));
+    advisor.linkInstalledPorts(&manual);
+    QCOMPARE(manual.rowCount(), 1);
+    QCOMPARE(manual.preferredInstallation(0).value("source").toString(), QStringLiteral("shadPS4"));
+    QVERIFY(manual.unlinkGames(0));
+    advisor.linkInstalledPorts(&manual);
+    QCOMPARE(manual.rowCount(), 2);
+  }
+  UnifiedGameModel manualRestarted(manualDatabase);
+  manualRestarted.addSourceModel(&dumps);
+  manualRestarted.addSourceModel(&ports);
+  advisor.linkInstalledPorts(&manualRestarted);
+  QCOMPARE(manualRestarted.rowCount(), 2);
 }
 
 void CoreTests::manualGamesImportEditLaunchAndRemove() {

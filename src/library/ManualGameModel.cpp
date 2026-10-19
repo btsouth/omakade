@@ -2,6 +2,7 @@
 
 #include "library/PersonalDataRules.h"
 #include "library/GameRoles.h"
+#include "sources/desktop/DesktopEntry.h"
 
 #include <QColor>
 #include <QDir>
@@ -15,16 +16,7 @@
 #include <QStandardPaths>
 #include <QUuid>
 
-// GLib parses desktop-file escaping and argument quoting without executing shell text.
-#include <glib.h>
-
 namespace {
-QString stringValue(GKeyFile* file, const char* key) {
-  gchar* raw = g_key_file_get_string(file, "Desktop Entry", key, nullptr);
-  const QString value = QString::fromUtf8(raw ? raw : "");
-  g_free(raw);
-  return value;
-}
 QString encodedTarget(const QVariantMap& entry) {
   return QString::fromUtf8(
       QJsonDocument(QJsonObject::fromVariantMap(entry)).toJson(QJsonDocument::Compact));
@@ -174,99 +166,16 @@ QVariantMap ManualGameModel::draftFromFile(const QUrl& url) {
                     {"directory", QFileInfo(path).absolutePath()}};
   if (!path.endsWith(".desktop", Qt::CaseInsensitive))
     return draft;
-  if (QFileInfo(path).size() > 1024 * 1024) {
-    setError("That desktop entry is too large");
+  QString error;
+  const std::optional<DesktopEntry> entry = DesktopEntry::read(path, &error);
+  if (!entry.has_value()) {
+    setError(error);
     return {};
   }
-  GKeyFile* file = g_key_file_new();
-  const auto release = [&] { g_key_file_free(file); };
-  if (!g_key_file_load_from_file(file, QFile::encodeName(path).constData(), G_KEY_FILE_NONE,
-                                 nullptr)) {
-    release();
-    setError("Could not read that desktop entry");
-    return {};
-  }
-  if (stringValue(file, "Type") != "Application" || stringValue(file, "Hidden") == "true" ||
-      stringValue(file, "Terminal") == "true") {
-    release();
-    setError("Choose an application entry that does not require a terminal");
-    return {};
-  }
-  gchar* localized = g_key_file_get_locale_string(file, "Desktop Entry", "Name", nullptr, nullptr);
-  const QString title = QString::fromUtf8(localized ? localized : "");
-  g_free(localized);
-  const QString icon = stringValue(file, "Icon");
-  const QString command = stringValue(file, "Exec");
-  const QString workdir = stringValue(file, "Path");
-  const QString tryExec = stringValue(file, "TryExec");
-  release();
-  if (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()) {
-    setError("The application required by this desktop entry is not installed");
-    return {};
-  }
-  gint argc = 0;
-  gchar** argv = nullptr;
-  if (!g_shell_parse_argv(command.toUtf8().constData(), &argc, &argv, nullptr) || argc == 0) {
-    setError("The desktop entry has an invalid Exec command");
-    return {};
-  }
-  QStringList args;
-  bool valid = true;
-  int fileCodes = 0;
-  for (int n = 0; n < argc; ++n) {
-    const QString token = QString::fromUtf8(argv[n]);
-    if (n > 0 && token == "%i") {
-      if (!icon.isEmpty())
-        args.append({"--icon", icon});
-      continue;
-    }
-    QString expanded;
-    bool omitted = false;
-    for (int i = 0; i < token.size(); ++i) {
-      if (token[i] != '%') {
-        expanded += token[i];
-        continue;
-      }
-      if (++i == token.size()) {
-        valid = false;
-        break;
-      }
-      const QChar code = token[i];
-      if (code == '%')
-        expanded += '%';
-      else if (n == 0)
-        valid = false;
-      else if (code == 'c')
-        expanded += title;
-      else if (code == 'k')
-        expanded += path;
-      else if (QStringLiteral("fFuU").contains(code)) {
-        ++fileCodes;
-        if (token.size() != 2)
-          valid = false;
-        omitted = true;
-      } else if (QStringLiteral("dDnNvm").contains(code))
-        omitted = token.size() == 2;
-      else
-        valid = false;
-    }
-    if (!omitted)
-      args.append(expanded);
-  }
-  g_strfreev(argv);
-  if (!valid || fileCodes > 1 || args.isEmpty() || args.first().contains('=')) {
-    setError("The desktop entry uses unsupported Exec field codes");
-    return {};
-  }
-  const QString executable = QStandardPaths::findExecutable(args.takeFirst());
-  if (executable.isEmpty()) {
-    setError("The desktop entry's executable could not be found");
-    return {};
-  }
-  draft.insert("title", title);
-  draft.insert("executable", executable);
-  draft.insert("arguments", args);
-  draft.insert("directory", workdir.isEmpty() ? QFileInfo(executable).absolutePath() : workdir);
+  draft.insert("title", entry->title);
+  draft.insert("executable", entry->executable);
+  draft.insert("arguments", entry->arguments);
+  draft.insert("directory", entry->directory);
   draft.insert("desktopEntry", path);
   return draft;
 }

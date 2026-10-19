@@ -1,0 +1,82 @@
+name: Native port catalog
+
+on:
+  schedule:
+    - cron: '23 9 1 * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'resources/native-ports.json'
+      - 'scripts/update-native-ports.py'
+      - 'tests/NativePortsCatalogTests.py'
+      - '.github/workflows/native-ports.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-ports-${{ github.event.pull_request.number || 'refresh' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Test catalog maintenance
+        run: python3 tests/NativePortsCatalogTests.py
+      - name: Validate bundled catalog
+        run: python3 scripts/update-native-ports.py --check
+
+  refresh:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.CATALOG_PR_TOKEN || github.token }}
+      - name: Refresh existing projects
+        env:
+          GH_TOKEN: ${{ secrets.CATALOG_PR_TOKEN || github.token }}
+        run: python3 scripts/update-native-ports.py --report "$RUNNER_TEMP/native-ports-pr.md"
+      - name: Propose catalog changes
+        env:
+          GH_TOKEN: ${{ secrets.CATALOG_PR_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if git diff --quiet -- resources/native-ports.json; then
+            echo 'No native port metadata changes.'
+            exit 0
+          fi
+          branch=automation/native-port-catalog
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git ls-remote --exit-code --heads origin "$branch"; then
+            git fetch origin "$branch:refs/remotes/origin/$branch" --depth=1
+            git show "refs/remotes/origin/$branch:resources/native-ports.json" > "$RUNNER_TEMP/proposed-native-ports.json"
+            if cmp -s resources/native-ports.json "$RUNNER_TEMP/proposed-native-ports.json"; then
+              echo 'These native port metadata changes were already proposed.'
+              exit 0
+            fi
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+          fi
+          git switch -C "$branch"
+          git add resources/native-ports.json
+          git commit -m 'Refresh native port catalog metadata'
+          git push --force-with-lease origin "$branch"
+          number=$(gh pr list --head "$branch" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title 'Refresh native port catalog metadata' --body-file "$RUNNER_TEMP/native-ports-pr.md"
+          else
+            gh pr create --head "$branch" --base "$BASE_BRANCH" --title 'Refresh native port catalog metadata' --body-file "$RUNNER_TEMP/native-ports-pr.md"
+          fi

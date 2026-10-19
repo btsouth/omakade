@@ -80,6 +80,9 @@ bool GameLauncher::isEmulatorSource(const QString& source) const {
 bool GameLauncher::isEmulatorSourceName(const QString& source) {
   return emulatorSources.contains(source);
 }
+bool GameLauncher::isDirectSourceName(const QString& source) {
+  return source == "Manual" || source == "Kyty" || source == "Ports";
+}
 QString GameLauncher::routeForReview(const QVariantMap& installation) {
   return routeFor(installation);
 }
@@ -446,8 +449,8 @@ QVariantMap GameLauncher::inspect(const QVariantMap& i) const {
     result["mode"] = "Automatic";
   if (!supported) {
     result["available"] = !i.contains("installed") || i.value("installed").toBool();
-    result["delegated"] = i.value("source") != "Manual";
-    if (i.value("source") == "Manual") {
+    result["delegated"] = !isDirectSourceName(i.value("source").toString());
+    if (isDirectSourceName(i.value("source").toString())) {
       QString program, directory, error;
       QStringList arguments;
       result["available"] = ManualGameModel::validateLaunch(i.value("launchTarget").toString(),
@@ -458,6 +461,10 @@ QVariantMap GameLauncher::inspect(const QVariantMap& i) const {
     }
     result["summary"] = i.value("source") == "Manual"
                             ? "Native entry; edit its executable in Edit Game."
+                        : i.value("source") == "Kyty"
+                            ? "Kyty, or your own Kyty script for this game; rescan Kyty after changing it."
+                        : i.value("source") == "Ports"
+                            ? "Native port; rescan native ports after moving or updating it."
                             : "Launch requests are handled by " + i.value("source").toString() +
                                   ". Process start is not guaranteed by a request.";
     return result;

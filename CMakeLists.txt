@@ -215,6 +215,10 @@ add_library(omakade_core STATIC
   src/library/RyujinxGameModel.h
   src/library/Shadps4GameModel.cpp
   src/library/Shadps4GameModel.h
+  src/library/LauncherGameModel.cpp
+  src/library/LauncherGameModel.h
+  src/library/NativePortAdvisor.cpp
+  src/library/NativePortAdvisor.h
   src/library/RommGameModel.cpp
   src/library/RommGameModel.h
   src/library/CemuGameModel.cpp
@@ -278,6 +282,15 @@ add_library(omakade_core STATIC
   src/sources/ryujinx/RyujinxScanner.h
   src/sources/shadps4/Shadps4Scanner.cpp
   src/sources/shadps4/Shadps4Scanner.h
+  src/sources/LauncherGame.h
+  src/sources/desktop/DesktopEntry.cpp
+  src/sources/desktop/DesktopEntry.h
+  src/sources/kyty/KytyScanner.cpp
+  src/sources/kyty/KytyScanner.h
+  src/sources/ports/NativePortScanner.cpp
+  src/sources/ports/NativePortScanner.h
+  src/sources/ports/PortCatalog.cpp
+  src/sources/ports/PortCatalog.h
   src/sources/cemu/CemuScanner.cpp
   src/sources/cemu/CemuScanner.h
   src/sources/xenia/XeniaScanner.cpp
@@ -441,6 +454,14 @@ qt_add_qml_module(omakade
     qml/screens/GameDetails.qml
 )
 
+# The native port catalog lives in the core library so tests read the same file the app does.
+qt_add_resources(omakade_core "omakade_native_ports"
+  PREFIX "/ports"
+  BASE "resources"
+  FILES
+    resources/native-ports.json
+)
+
 qt_add_resources(omakade "omakade_icons"
   PREFIX "/icons"
   FILES
@@ -535,7 +556,7 @@ install(DIRECTORY skills/omakade-tv-gaming
   PATTERN "__pycache__" EXCLUDE
 )
 
-install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/RECORDING-COVERAGE.md
+install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md
   docs/CONTROLLER-NAVIGATION.md docs/BACKUP-FORMAT.md docs/SAVE-SETS.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
 )

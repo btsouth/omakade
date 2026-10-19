@@ -38,6 +38,9 @@ class AppSettings final : public QObject {
   Q_PROPERTY(
       bool melondsEnabled READ melondsEnabled WRITE setMelondsEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool xeniaEnabled READ xeniaEnabled WRITE setXeniaEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool kytyEnabled READ kytyEnabled WRITE setKytyEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool nativePortsEnabled READ nativePortsEnabled WRITE setNativePortsEnabled NOTIFY
+                 sourcesChanged)
   Q_PROPERTY(bool dolphinEnabled READ dolphinEnabled WRITE setDolphinEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(
       bool battleNetEnabled READ battleNetEnabled WRITE setBattleNetEnabled NOTIFY sourcesChanged)
@@ -137,6 +140,10 @@ public:
   [[nodiscard]] bool xeniaEnabled() const;
   void setMelondsEnabled(bool value);
   void setXeniaEnabled(bool value);
+  [[nodiscard]] bool kytyEnabled() const { return m_kytyEnabled; }
+  void setKytyEnabled(bool value);
+  [[nodiscard]] bool nativePortsEnabled() const { return m_nativePortsEnabled; }
+  void setNativePortsEnabled(bool value);
   void setCemuEnabled(bool value);
   // True while the user has not written an explicit pcsx2_enabled/ryujinx_enabled key,
   // letting the app enable the source automatically when its emulator is detected.
@@ -154,6 +161,10 @@ public:
   [[nodiscard]] bool xeniaAutoEnabled() const;
   void setMelondsAutoEnabled(bool value);
   void setXeniaAutoEnabled(bool value);
+  [[nodiscard]] bool kytyAutoEnabled() const { return m_kytyAuto; }
+  void setKytyAutoEnabled(bool value) { m_kytyAuto = value; }
+  [[nodiscard]] bool nativePortsAutoEnabled() const { return m_nativePortsAuto; }
+  void setNativePortsAutoEnabled(bool value) { m_nativePortsAuto = value; }
   void setPcsx2AutoEnabled(bool value);
   void setRpcs3AutoEnabled(bool value);
   void setPpssppAutoEnabled(bool value);
@@ -306,6 +317,10 @@ private:
   bool m_cemuAuto = true;
   bool m_melondsAuto = true;
   bool m_xeniaAuto = true;
+  bool m_kytyEnabled = false;
+  bool m_kytyAuto = true;
+  bool m_nativePortsEnabled = false;
+  bool m_nativePortsAuto = true;
   bool m_dolphinEnabled = false;
   bool m_dolphinAuto = true;
   bool m_consolePortalsEnabled = true;

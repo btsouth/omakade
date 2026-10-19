@@ -379,6 +379,16 @@ import QtQuick.Layouts
                           error: XeniaLibrary ? XeniaLibrary.errorText : "",
                           paths: XeniaLibrary ? XeniaLibrary.detectedPaths : [],
                           lastScan: XeniaLibrary ? XeniaLibrary.lastScan : 0 },
+                        { name: "KYTY", enabled: Preferences.kytyEnabled,
+                          status: KytyLibrary ? KytyLibrary.statusText : "Unavailable",
+                          error: KytyLibrary ? KytyLibrary.errorText : "",
+                          paths: KytyLibrary ? KytyLibrary.detectedPaths : [],
+                          lastScan: KytyLibrary ? KytyLibrary.lastScan : 0 },
+                        { name: "NATIVE PORTS", source: "Ports", enabled: Preferences.nativePortsEnabled,
+                          status: NativePortLibrary ? NativePortLibrary.statusText : "Unavailable",
+                          error: NativePortLibrary ? NativePortLibrary.errorText : "",
+                          paths: NativePortLibrary ? NativePortLibrary.detectedPaths : [],
+                          lastScan: NativePortLibrary ? NativePortLibrary.lastScan : 0 },
                         { name: "DOLPHIN", enabled: Preferences.dolphinEnabled,
                           status: DolphinLibrary ? DolphinLibrary.statusText : "Unavailable",
                           error: DolphinLibrary ? DolphinLibrary.errorText : "",
@@ -473,6 +483,14 @@ import QtQuick.Layouts
                                         Preferences.xeniaEnabled = !Preferences.xeniaEnabled
                                         nowEnabled = Preferences.xeniaEnabled
                                         if (Preferences.xeniaEnabled) XeniaLibrary.refresh()
+                                    } else if (modelData.name === "KYTY") {
+                                        Preferences.kytyEnabled = !Preferences.kytyEnabled
+                                        nowEnabled = Preferences.kytyEnabled
+                                        if (Preferences.kytyEnabled) KytyLibrary.refresh()
+                                    } else if (modelData.name === "NATIVE PORTS") {
+                                        Preferences.nativePortsEnabled = !Preferences.nativePortsEnabled
+                                        nowEnabled = Preferences.nativePortsEnabled
+                                        if (Preferences.nativePortsEnabled) NativePortLibrary.refresh()
                                     } else if (modelData.name === "DOLPHIN") {
                                         Preferences.dolphinEnabled = !Preferences.dolphinEnabled
                                         nowEnabled = Preferences.dolphinEnabled
@@ -482,8 +500,8 @@ import QtQuick.Layouts
                                         nowEnabled = Preferences.retroArchEnabled
                                         if (Preferences.retroArchEnabled) RetroArchLibrary.refresh()
                                     }
-                                    if (!nowEnabled && Library.sourceSelected(modelData.name)) {
-                                        Library.toggleSource(modelData.name)
+                                    if (!nowEnabled && Library.sourceSelected(modelData.source || modelData.name)) {
+                                        Library.toggleSource(modelData.source || modelData.name)
                                     }
                                 }
                             }
@@ -514,6 +532,8 @@ import QtQuick.Layouts
                                     else if (modelData.name === "CEMU") CemuLibrary.refresh()
                                     else if (modelData.name === "MELONDS") MelondsLibrary.refresh()
                                     else if (modelData.name === "XENIA") XeniaLibrary.refresh()
+                                    else if (modelData.name === "KYTY") KytyLibrary.refresh()
+                                    else if (modelData.name === "NATIVE PORTS") NativePortLibrary.refresh()
                                     else if (modelData.name === "DOLPHIN") DolphinLibrary.refresh()
                                     else if (modelData.name === "ROMM") RommLibrary.refresh()
                                     else RetroArchLibrary.refresh()

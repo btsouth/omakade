@@ -1050,6 +1050,24 @@ Item {
                                 "https://www.protondb.com/app/" + root.selectedInstallation.appId)
                         }
 
+                        // A dump of a game with a native PC port links to the port.
+                        Repeater {
+                            model: {
+                                if (typeof NativePorts === "undefined" || !NativePorts) return []
+                                const revision = NativePorts.revision
+                                return NativePorts.portsFor(root.selectedInstallation)
+                            }
+                            GlassButton {
+                                required property var modelData
+                                objectName: "nativePortButton"
+                                compact: true
+                                text: "NATIVE PORT: " + modelData.name.toUpperCase()
+                                      + (modelData.linux ? "" : " (WINDOWS)")
+                                Accessible.name: "Open " + modelData.name + ", a native PC port of this game"
+                                onClicked: Qt.openUrlExternally(modelData.repo)
+                            }
+                        }
+
                         GlassButton {
                             objectName: "pcGamingWikiButton"
                             compact: true

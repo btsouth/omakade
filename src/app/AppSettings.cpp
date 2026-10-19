@@ -96,7 +96,11 @@ const QStringList kSortModeNames = {QStringLiteral("title"), QStringLiteral("rec
 }  // namespace
 
 QJsonObject AppSettings::backupSettings() const {
-  return {{"shadps4_enabled", m_shadps4Enabled},
+  return {{"kyty_enabled", m_kytyEnabled},
+          {"kyty_auto", m_kytyAuto},
+          {"native_ports_enabled", m_nativePortsEnabled},
+          {"native_ports_auto", m_nativePortsAuto},
+          {"shadps4_enabled", m_shadps4Enabled},
           {"cemu_enabled", m_cemuEnabled},
           {"melonds_enabled", m_melondsEnabled},
           {"dolphin_enabled", m_dolphinEnabled},
@@ -141,6 +145,10 @@ QJsonObject AppSettings::backupSettings() const {
 }
 
 void AppSettings::assignBackupSettings(const QJsonObject& settings) {
+  m_kytyEnabled = settings.value("kyty_enabled").toBool();
+  m_kytyAuto = settings.value("kyty_auto").toBool();
+  m_nativePortsEnabled = settings.value("native_ports_enabled").toBool();
+  m_nativePortsAuto = settings.value("native_ports_auto").toBool();
   m_shadps4Enabled = settings.value("shadps4_enabled").toBool();
   m_cemuEnabled = settings.value("cemu_enabled").toBool();
   m_melondsEnabled = settings.value("melonds_enabled").toBool();
@@ -205,7 +213,8 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
   auto merged = replace ? defaults.backupSettings() : before;
   // Archives written before these settings existed have no opinion about them.
   for (const auto& key :
-       QStringList{"shadps4_enabled", "cemu_enabled", "melonds_enabled", "rpcs3_enabled",
+       QStringList{"kyty_enabled", "kyty_auto", "native_ports_enabled", "native_ports_auto",
+                   "shadps4_enabled", "cemu_enabled", "melonds_enabled", "rpcs3_enabled",
                    "ppsspp_enabled", "dolphin_enabled", "shadps4_auto", "cemu_auto",
                    "melonds_auto", "rpcs3_auto", "ppsspp_auto", "dolphin_auto",
                    "console_portals_enabled", "expand_consoles",
@@ -547,6 +556,28 @@ void AppSettings::setXeniaEnabled(bool value) {
     return;
   }
   m_xeniaEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
+void AppSettings::setKytyEnabled(bool value) {
+  const bool wasAuto = m_kytyAuto;
+  m_kytyAuto = false;
+  if (m_kytyEnabled == value && !wasAuto) {
+    return;
+  }
+  m_kytyEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
+void AppSettings::setNativePortsEnabled(bool value) {
+  const bool wasAuto = m_nativePortsAuto;
+  m_nativePortsAuto = false;
+  if (m_nativePortsEnabled == value && !wasAuto) {
+    return;
+  }
+  m_nativePortsEnabled = value;
   save();
   emit sourcesChanged();
 }
@@ -968,6 +999,13 @@ void AppSettings::load() {
       QStringLiteral("(?m)^xenia_enabled\\s*=\\s*(true|false)\\s*$"));
   m_xeniaAuto = !xeniaKey.match(contents).hasMatch();
   m_xeniaEnabled = readEnabled(QStringLiteral("xenia_enabled"), false);
+  const QRegularExpression kytyKey(QStringLiteral("(?m)^kyty_enabled\\s*=\\s*(true|false)\\s*$"));
+  m_kytyAuto = !kytyKey.match(contents).hasMatch();
+  m_kytyEnabled = readEnabled(QStringLiteral("kyty_enabled"), false);
+  const QRegularExpression nativePortsKey(
+      QStringLiteral("(?m)^native_ports_enabled\\s*=\\s*(true|false)\\s*$"));
+  m_nativePortsAuto = !nativePortsKey.match(contents).hasMatch();
+  m_nativePortsEnabled = readEnabled(QStringLiteral("native_ports_enabled"), false);
   const QRegularExpression dolphinKey(QStringLiteral("(?m)^dolphin_enabled\\s*=\\s*(true|false)\\s*$"));
   m_dolphinAuto = !dolphinKey.match(contents).hasMatch();
   m_dolphinEnabled = readEnabled(QStringLiteral("dolphin_enabled"), false);
@@ -1116,6 +1154,14 @@ bool AppSettings::save() {
   if (!m_xeniaAuto) {
     contents += QStringLiteral("xenia_enabled = %1\n")
                     .arg(m_xeniaEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  }
+  if (!m_kytyAuto) {
+    contents += QStringLiteral("kyty_enabled = %1\n")
+                    .arg(m_kytyEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  }
+  if (!m_nativePortsAuto) {
+    contents += QStringLiteral("native_ports_enabled = %1\n")
+                    .arg(m_nativePortsEnabled ? QStringLiteral("true") : QStringLiteral("false"));
   }
   if (!m_dolphinAuto) {
     contents += QStringLiteral("dolphin_enabled = %1\n")

@@ -36,6 +36,9 @@ public:
   static bool contentAvailable(const QString& path, bool allowArchiveEntry = true);
   Q_INVOKABLE bool isEmulatorSource(const QString& source) const;
   [[nodiscard]] static bool isEmulatorSourceName(const QString& source);
+  // Sources whose games Omakade starts with a stored command: manual games, Kyty games and
+  // installed native ports.
+  [[nodiscard]] static bool isDirectSourceName(const QString& source);
   [[nodiscard]] static QString routeForReview(const QVariantMap& installation);
   [[nodiscard]] static QString effectivePath(const QVariantMap& installation,
                                              const QVariantMap& setup);

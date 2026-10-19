@@ -308,7 +308,8 @@ QList<int> GameMetadata::platformIds(const QString& system) {
       {"nes", {18, 99}},   {"snes", {19, 58}}, {"gb", {33}},      {"gbc", {22}},
       {"gba", {24}},       {"n64", {4}},       {"genesis", {29}}, {"psx", {7}},
       {"dreamcast", {23}}, {"gamecube", {21}}, {"wii", {5}},      {"ps2", {8}},
-      {"switch", {130}},   {"wiiu", {41}},     {"ps4", {48}},     {"xbox360", {12}}};
+      {"switch", {130}},   {"wiiu", {41}},     {"ps4", {48}},     {"xbox360", {12}},
+      {"ps5", {167}},     {"xbox", {11}}};
   const QString id = ConsoleCatalog::idFor(system);
   if (ids.contains(id))
     return ids.value(id);

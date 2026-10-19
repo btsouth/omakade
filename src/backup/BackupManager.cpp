@@ -18,6 +18,8 @@ QString recordKey(const QString& table, const QJsonObject& row) {
     parts.append(row.value("id"));
   else if (table == "launch_preferences")
     parts.append(row.value("group_id"));
+  else if (table == "automatic_links")
+    parts.append(row.value("link_key"));
   else if (table == "game_metadata")
     parts.append(row.value("game_key"));
   else if (table == "play_sessions")
@@ -190,6 +192,7 @@ QVariantMap BackupManager::describe(const BackupPayload& incoming, const BackupP
                                      {"collections", "Collections"},
                                      {"collection_games", "Collection memberships"},
                                      {"game_link_members", "Linked installations"},
+                                     {"automatic_links", "Automatic link choices"},
                                      {"launch_preferences", "Preferred installations"},
                                      {"launch_activity", "Launch activity"},
                                      {"manual_games", "Manual games"},

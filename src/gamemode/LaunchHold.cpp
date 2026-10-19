@@ -154,7 +154,7 @@ LaunchHoldTarget LaunchHold::targetFor(const QVariantMap& game) {
   if (source.compare(QStringLiteral("Steam"), Qt::CaseInsensitive) == 0)
     target.steamAppId = game.value(QStringLiteral("appId")).toString();
   target.installPath = game.value(QStringLiteral("installPath")).toString();
-  target.directProcess = source.compare(QStringLiteral("Manual"), Qt::CaseInsensitive) == 0 ||
+  target.directProcess = GameLauncher::isDirectSourceName(source) ||
                          GameLauncher::isEmulatorSourceName(source);
   return target;
 }

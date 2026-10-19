@@ -10,6 +10,8 @@
 #include "library/HeroicGameModel.h"
 #include "library/LutrisGameModel.h"
 #include "library/ManualGameModel.h"
+#include "library/LauncherGameModel.h"
+#include "library/NativePortAdvisor.h"
 #include "library/Pcsx2GameModel.h"
 #include "library/RetroArchGameModel.h"
 #include "library/RyujinxGameModel.h"
@@ -122,6 +124,7 @@ class BackupRecoveryTests : public QObject {
   Q_OBJECT
 private slots:
   void consoleChoicesSurviveBackupAndRecovery();
+  void nativePortChoicesSurviveBackupAndMerge();
   void abruptRestore_data();
   void abruptRestore();
   void abruptUndo_data();
@@ -136,6 +139,136 @@ private slots:
   void releasedDatabaseMigration();
   void recordedTimeWatermarkSurvivesBackup();
 };
+
+void BackupRecoveryTests::nativePortChoicesSurviveBackupAndMerge() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  AppSettings sourceSettings(temp.path() + "/source.toml");
+  sourceSettings.setKytyEnabled(true);
+  sourceSettings.setNativePortsEnabled(false);
+  const auto savedSettings = sourceSettings.backupSettings();
+  AppSettings restoredSettings(temp.path() + "/restored.toml");
+  QVERIFY(restoredSettings.applyBackupSettings(savedSettings, true));
+  QVERIFY(restoredSettings.kytyEnabled());
+  QVERIFY(!restoredSettings.kytyAutoEnabled());
+  QVERIFY(!restoredSettings.nativePortsEnabled());
+  QVERIFY(!restoredSettings.nativePortsAutoEnabled());
+  auto oldSettings = savedSettings;
+  for (const QString& key : {QStringLiteral("kyty_enabled"), QStringLiteral("kyty_auto"),
+                            QStringLiteral("native_ports_enabled"), QStringLiteral("native_ports_auto")})
+    oldSettings.remove(key);
+  QVERIFY(restoredSettings.applyBackupSettings(oldSettings, true));
+  QCOMPARE(restoredSettings.backupSettings(), savedSettings);
+  const QString original = temp.path() + "/original.sqlite3";
+  const QString restored = temp.path() + "/restored.sqlite3";
+  const LauncherGameModel::Definition portDefinition{"Ports", "native_port", {}, {}};
+  const LauncherGameModel::Definition dumpDefinition{"Kyty", "kyty", {}, {}};
+  LauncherGameRecord port;
+  port.gameId = "fixture-ps5-port";
+  port.title = "Fixture PS5 game";
+  port.system = "ps5";
+  LauncherGameRecord dump = port;
+  dump.gameId = "PPSA12345";
+  const PortCatalog catalog = PortCatalog::fromJson(
+      R"({"schema":1,"ports":[{"id":"fixture-ps5-port","name":"Fixture port","game":"Fixture PS5 game","system":"ps5","repo":"https://example.test/port","linux":true}]})");
+  // Synthetic models exercise the persisted identities without launching game programs.
+  {
+    LauncherGameModel ports(portDefinition, original);
+    LauncherGameModel dumps(dumpDefinition, original);
+    ports.applyScan({{port}, {temp.path()}, {}, false});
+    dumps.applyScan({{dump}, {temp.path()}, {}, false});
+    ports.toggleFavorite(0);
+    dumps.toggleHidden(0);
+    UnifiedGameModel unified(original);
+    unified.addSourceModel(&ports);
+    unified.addSourceModel(&dumps);
+    NativePortAdvisor advisor(catalog, &ports);
+    advisor.linkInstalledPorts(&unified);
+    QCOMPARE(unified.rowCount(), 1);
+    QVERIFY(unified.unlinkGames(0));
+    QCOMPARE(unified.rowCount(), 2);
+  }
+  QString error;
+  BackupPayload snapshot;
+  QVERIFY2(BackupSnapshot::capture(original, {}, &snapshot, &error), qPrintable(error));
+  QCOMPARE(snapshot.library.value("automatic_links").toArray().size(), 1);
+  const auto flags = snapshot.library.value("user_game_flags").toArray();
+  QCOMPARE(flags.size(), 2);
+  bool portFavorite = false, dumpHidden = false;
+  for (const auto& value : flags) {
+    const auto row = value.toObject();
+    QCOMPARE(row.value("runner").toString(), QString{});
+    if (row.value("source") == "Ports")
+      portFavorite = row.value("favorite").toBool();
+    if (row.value("source") == "Kyty")
+      dumpHidden = row.value("hidden").toBool();
+  }
+  QVERIFY(portFavorite);
+  QVERIFY(dumpHidden);
+  const QString archive = temp.path() + "/native-choices.omakade";
+  QVERIFY2(BackupArchive::write(archive, snapshot, &error), qPrintable(error));
+  BackupPayload decoded;
+  QVERIFY2(BackupArchive::read(archive, &decoded, &error), qPrintable(error));
+  QVERIFY2(BackupDatabase::restore(restored, decoded, BackupDatabase::Mode::Replace, &error),
+           qPrintable(error));
+  {
+    LauncherGameModel ports(portDefinition, restored);
+    LauncherGameModel dumps(dumpDefinition, restored);
+    ports.applyScan({{port}, {temp.path()}, {}, false});
+    dumps.applyScan({{dump}, {temp.path()}, {}, false});
+    UnifiedGameModel unified(restored);
+    unified.addSourceModel(&ports);
+    unified.addSourceModel(&dumps);
+    NativePortAdvisor advisor(catalog, &ports);
+    advisor.linkInstalledPorts(&unified);
+    QCOMPARE(unified.rowCount(), 2);
+    QVERIFY(unified.index(0).data(GameRoles::Favorite).toBool());
+    QVERIFY(unified.index(1).data(GameRoles::Hidden).toBool());
+  }
+  // Merge keeps decisions on both machines; replaying an older archive cannot age a
+  // decision backwards or duplicate its identity.
+  BackupPayload incoming;
+  incoming.createdAt = snapshot.createdAt;
+  auto existing = snapshot.library.value("automatic_links").toArray().first().toObject();
+  existing["linked_at"] = 100;
+  const QString secondKey =
+      QStringList{"Ports", "", "another-port", "RetroArch", "", "another-dump"}.join(QChar::Null);
+  incoming.library["automatic_links"] =
+      QJsonArray{existing, QJsonObject{{"link_key", secondKey}, {"linked_at", 200}}};
+  QVERIFY2(BackupDatabase::restore(restored, incoming, BackupDatabase::Mode::Merge, &error),
+           qPrintable(error));
+  BackupPayload merged;
+  QVERIFY2(BackupSnapshot::capture(restored, {}, &merged, &error), qPrintable(error));
+  const auto decisions = merged.library.value("automatic_links").toArray();
+  QCOMPARE(decisions.size(), 2);
+  for (const auto& value : decisions) {
+    const auto row = value.toObject();
+    if (row.value("link_key") == existing.value("link_key"))
+      QCOMPARE(row.value("linked_at"), snapshot.library.value("automatic_links")
+                                           .toArray()
+                                           .first()
+                                           .toObject()
+                                           .value("linked_at"));
+  }
+  auto invalid = incoming;
+  auto badDecision = existing;
+  for (const QString& key :
+       {QStringLiteral("bad"), QStringList{"Ports", "", "port", "Kyty", "", ""}.join(QChar::Null),
+        QStringList{"Ports", "", "port", "Kyty", "", "bad\nidentity"}.join(QChar::Null)}) {
+    badDecision["link_key"] = key;
+    invalid.library["automatic_links"] = QJsonArray{badDecision};
+    QVERIFY(!BackupArchive::validate(invalid, &error));
+  }
+  badDecision = existing;
+  badDecision["linked_at"] = -1;
+  invalid.library["automatic_links"] = QJsonArray{badDecision};
+  QVERIFY(!BackupArchive::validate(invalid, &error));
+  invalid.library["automatic_links"] = QJsonArray{existing, existing};
+  QVERIFY(!BackupArchive::validate(invalid, &error));
+  // An old backup has no decision table and remains readable.
+  decoded.library.remove("automatic_links");
+  QVERIFY2(BackupArchive::validate(decoded, &error), qPrintable(error));
+}
 
 void BackupRecoveryTests::recordedTimeWatermarkSurvivesBackup() {
   // The displayed total for a game whose emulator counter is ahead of what Omakade
