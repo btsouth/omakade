@@ -220,7 +220,7 @@ set for that output is kept; Game Mode only switches it on and off.
 
 While a tiled Omakade window is away, a placeholder window holds its place in the
 layout, so the windows beside it keep their size and position. Omakade already
-already fullscreen covers its workspace and returns fullscreen. Game Mode started here
+fullscreen covers its workspace and returns fullscreen. Game Mode started here
 always returns to the desktop window, even when Omakade opened fullscreen.
 
 Game Mode only undoes its own changes. A display that was already on stays on. If you

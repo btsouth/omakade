@@ -4,8 +4,8 @@ Press the controller Home button or Super + Ctrl + G over a known running game.
 A panel opens at the right edge of the screen, with your theme's colors, type
 and spacing. Resume starts the game again. B or Escape backs out of a
 confirmation first, then resumes. With no game, Home does what Start does in
-Omakade, fullscreen Game Mode where Omakade is and back, and the shortcut keeps the
-existing Game Mode behavior.
+Omakade: it starts or leaves fullscreen Game Mode on the current display.
+Super + Ctrl + G keeps the existing Game Mode behavior.
 
 The panel shows the game's art, session and total time, the clock and any
 controller battery UPower reports. Below that: Resume, Screenshot and Record
