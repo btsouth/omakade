@@ -344,7 +344,7 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   }
   auto launchEnvironment = environment.isEmpty() ? QProcessEnvironment::systemEnvironment() : environment;
   const auto source = m_launchIdentity.value("source").toString();
-  if (track && (source == "Manual" || isEmulatorSourceName(source)) && !QStandardPaths::findExecutable("mangohud").isEmpty()) {
+  if (track && (isDirectSourceName(source) || isEmulatorSourceName(source)) && !QStandardPaths::findExecutable("mangohud").isEmpty()) {
     const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-mangohud";
     const auto socket = "omakade-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
     const auto config = directory + '/' + socket + ".conf";
@@ -768,7 +768,7 @@ LaunchCommand GameLauncher::gogCommand(const QString& id, const QString& install
 bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak,
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
-  m_launchIdentity = {{"source", source}, {"appId", id}, {"path", source == "Manual" ? id : installPath}};
+  m_launchIdentity = {{"source", source}, {"appId", id}, {"path", (source == "Manual" || source == "Ports") ? id : installPath}};
   m_lastLaunchedPid = 0;
   const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
@@ -783,6 +783,24 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
     }
     if (!startTracked({program, arguments}, directory)) {
       setError(QStringLiteral("Could not start this native game. Check its executable and permissions."));
+      return false;
+    }
+    setError({});
+    return true;
+  }
+  // Kyty games and native ports carry the command their scan found.
+  if (source == QLatin1String("Kyty") || source == QLatin1String("Ports")) {
+    QString program, directory, error;
+    QStringList arguments;
+    const bool kyty = source == QLatin1String("Kyty");
+    if (!ManualGameModel::validateLaunch(launchTarget, id, &program, &arguments, &directory, &error)) {
+      setError(kyty ? QStringLiteral("Kyty, or the script that runs this game, is missing. Rescan Kyty in Settings.")
+                    : QStringLiteral("This port is missing or cannot run. Rescan native ports in Settings."));
+      return false;
+    }
+    if (!startTracked({program, arguments}, directory)) {
+      setError(kyty ? QStringLiteral("Could not start Kyty. Check its installation and permissions.")
+                    : QStringLiteral("Could not start this port. Check its executable and permissions."));
       return false;
     }
     setError({});

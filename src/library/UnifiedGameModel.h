@@ -53,6 +53,8 @@ public:
   Q_INVOKABLE bool resetCustomCover(int row);
   Q_INVOKABLE bool setCustomArtwork(int row, const QString& kind, const QUrl& sourceUrl);
   Q_INVOKABLE bool resetCustomArtwork(int row, const QString& kind);
+  // Group members for catalog matching, without filesystem checks or launch inspection.
+  [[nodiscard]] QVariantList installationIdentities(int row) const;
   Q_INVOKABLE QVariantList installations(int row) const;
   Q_INVOKABLE QVariantMap preferredInstallation(int row) const;
   Q_INVOKABLE bool setPreferredInstallation(int row, const QString& source, const QString& runner,
@@ -63,6 +65,10 @@ public:
   Q_INVOKABLE bool linkGames(int row, const QString& source, const QString& runner,
                              const QString& appId);
   Q_INVOKABLE bool unlinkGames(int row);
+  // Links two games the first time both are present, with the first one as the one that
+  // plays. A pair is linked only once, so one the player unlinked stays apart.
+  bool linkOnce(const QString& source, const QString& runner, const QString& appId,
+                const QString& otherSource, const QString& otherRunner, const QString& otherAppId);
   Q_INVOKABLE bool setCompletionStatus(int row, const QString& status);
   // Keeps one game in the main library even when its system sits behind a console card.
   Q_INVOKABLE bool setPinned(int row, bool pinned);

@@ -5,6 +5,7 @@ How each source is discovered and how the main features work. The
 
 - [Sources](#sources)
 - [Consoles and emulators](#consoles-and-emulators)
+- [Kyty and native ports](#kyty-and-native-ports)
 - [Include uninstalled Heroic games](#include-uninstalled-heroic-games)
 - [Include uninstalled Steam games](#include-uninstalled-steam-games)
 - [Non-Steam games, Proton, and Steam Input](#non-steam-games-proton-and-steam-input)
@@ -78,6 +79,30 @@ RetroArch games come from its configured playlists. Omakade uses local
 RetroArch thumbnails and runtime logs, then launches each game with its assigned
 core. Entries without a core association remain visible and explain how to fix
 launching after you press Play.
+
+## Kyty and native ports
+
+Kyty and Native Ports appear in Settings → Sources when detected. You can turn
+either source off or rescan it there. Kyty reads `Kyty.ini` game folders, the usual PS5 folders
+(`~/Emulation/roms/ps5`, `~/Emulation/Games/PS5`, `/data/Emulation/Games/PS5`),
+and dumps named by your desktop launchers. It reads titles and artwork from
+`sce_sys/param.json` and `sce_sys`, and prefers your matching per-game launcher
+so tuned settings stay in use. Without a wrapper, it starts `kyty_emulator`
+with the dump and fullscreen arguments. Omakade does not install Kyty or change
+its configuration.
+
+Native Ports reads application entries and AppImages in the usual folders,
+matching them against a bundled catalog. Games such as SpartanPort, bbport,
+OpenCE, GoldenEye and Lost Odyssey appear under their original console. When a
+matching dump is already in the library, the port joins it as another
+installation on one card and is preferred for a new pair. You can choose a
+different installation or unlink the card; an unlinked pair stays separate.
+
+For a dump with a known port you have not installed, game details offers a link
+to the project's repository. Windows-only projects are labelled. Omakade does
+not download ports or game files, and a link does not promise compatibility.
+The catalog is curated and does not cover every project. See
+[Native ports](NATIVE-PORTS.md) for discovery paths and catalog maintenance.
 
 ## Include uninstalled Heroic games
 

@@ -19,7 +19,8 @@ GOG, and supported emulators with a keyboard, mouse, or controller.
 
 - One library for installed games, with optional Steam and Heroic owned-library views
 - Console libraries for RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Cemu, melonDS,
-  shadPS4, Dolphin, and Xenia
+  shadPS4, Dolphin, Xenia, and Kyty (PS5)
+- Automatic discovery of known native ports, with links to available ports for your console dumps
 - Controller-first fullscreen [Game Mode](docs/GAME-MODE.md), on the display you are
   using or on a chosen display and sound output, with desktop restoration when you leave
 - Favorites, collections, tags, saved filters, custom artwork, and a random pick

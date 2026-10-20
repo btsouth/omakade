@@ -1,4 +1,7 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME omakade_native_ports_catalog
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/NativePortsCatalogTests.py
+)
 add_test(NAME omakade_tv_game_launcher
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/TvGameLauncherTests.py
 )
@@ -710,7 +713,7 @@ foreach(settings_page IN ITEMS sources library connections controls storage appe
 endforeach()
 
 # Populated and empty provider details, including keyboard expand/collapse.
-foreach(info_case IN ITEMS game-info game-info-expanded game-info-empty game-info-rom-only)
+foreach(info_case IN ITEMS game-info game-info-expanded game-info-empty game-info-rom-only game-info-native-port)
   foreach(info_mode IN ITEMS desktop couch)
     set(info_args --render-overlay=${info_case})
     if(info_mode STREQUAL "couch")
@@ -1301,3 +1304,10 @@ endforeach()
 # The guide's clip and a screen recording started from Omarchy never take each other's place.
 add_test(NAME omakade_guide_recorder COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/GuideRecorderTests.py ${PROJECT_SOURCE_DIR}/omarchy-plugin/guide-files.py)
+
+add_test(NAME omakade_source_rescan_enablement COMMAND omakade
+  --render-overlay=source-rescan --render-size=900x720
+  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/source-rescan.png)
+set_tests_properties(omakade_source_rescan_enablement PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  TIMEOUT 20)

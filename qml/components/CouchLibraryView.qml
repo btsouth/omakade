@@ -31,6 +31,8 @@ FocusScope {
         { label: "SHADPS4", value: "shadPS4", enabled: Preferences.shadps4Enabled },
         { label: "CEMU", value: "Cemu", enabled: Preferences.cemuEnabled },
         { label: "XENIA", value: "Xenia", enabled: Preferences.xeniaEnabled },
+        { label: "KYTY", value: "Kyty", enabled: Preferences.kytyEnabled },
+        { label: "PORTS", value: "Ports", enabled: Preferences.nativePortsEnabled },
         { label: "DOLPHIN", value: "Dolphin", enabled: Preferences.dolphinEnabled },
         { label: "MANUAL", value: "Manual", enabled: true }
     ].filter(function(option) { return option.enabled === undefined || option.enabled })

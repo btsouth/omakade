@@ -17,6 +17,7 @@
 
 namespace {
 const QMap<QString, QString> schemas{
+    {"automatic_links", "link_key TEXT PRIMARY KEY, linked_at INTEGER NOT NULL"},
     {"play_sessions",
      "id INTEGER PRIMARY KEY, session_key TEXT UNIQUE, game_path TEXT NOT NULL, "
      "source TEXT NOT NULL DEFAULT '', started_at INTEGER NOT NULL, ended_at INTEGER NOT NULL "
@@ -54,6 +55,8 @@ const QMap<QString, QString> schemas{
                           "cover_path TEXT NOT NULL, hero_path TEXT NOT NULL DEFAULT '', logo_path "
                           "TEXT NOT NULL DEFAULT '', PRIMARY KEY(source,runner,app_id)"}};
 QStringList primaryKey(const QString& table) {
+  if (table == "automatic_links")
+    return {"link_key"};
   if (table == "game_metadata")
     return {"game_key"};
   if (table == "play_sessions")
@@ -153,7 +156,8 @@ bool restoreDatabase(QSqlDatabase& database, const QString& artworkDirectory,
                                  QStringLiteral("retroarch_games"), QStringLiteral("pcsx2_games"),
                                  QStringLiteral("ryujinx_games"), QStringLiteral("battlenet_games"),
                                  QStringLiteral("dolphin_games"), QStringLiteral("cemu_games"),
-                                 QStringLiteral("xenia_games"), QStringLiteral("shadps4_games")})
+                                 QStringLiteral("xenia_games"), QStringLiteral("shadps4_games"),
+                                 QStringLiteral("kyty_games"), QStringLiteral("native_port_games")})
       if (tables.contains(table) && !query.exec("UPDATE " + table + " SET favorite=0, hidden=0"))
         return fail("Could not reset legacy personal flags.");
     // Replacing play history replaces the database's durable-recovery identity too, so a
@@ -267,11 +271,11 @@ bool restoreDatabase(QSqlDatabase& database, const QString& artworkDirectory,
     query.finish();
   }
   const auto columns = BackupArchive::tableColumns();
-  const QStringList order{"collections",        "user_game_flags",   "game_organization",
-                          "manual_games",       "artwork_overrides", "launch_activity",
-                          "saved_filters",      "collection_games",  "game_link_members",
-                          "launch_preferences", "game_metadata",     "play_sessions",
-                          "play_baselines",     "play_queue"};
+  const QStringList order{"automatic_links",   "collections",        "user_game_flags",
+                          "game_organization", "manual_games",       "artwork_overrides",
+                          "launch_activity",   "saved_filters",      "collection_games",
+                          "game_link_members", "launch_preferences", "game_metadata",
+                          "play_sessions",     "play_baselines",     "play_queue"};
   for (const auto& table : order) {
     const auto key = primaryKey(table);
     const auto fields = columns.value(table);
@@ -282,6 +286,8 @@ bool restoreDatabase(QSqlDatabase& database, const QString& artworkDirectory,
         assignments.append(column + "=" +
                            (table == "user_game_flags"
                                 ? "COALESCE(excluded." + column + ",user_game_flags." + column + ")"
+                            : table == "automatic_links"
+                                ? "MAX(automatic_links." + column + ",excluded." + column + ")"
                                 : "excluded." + column));
     }
     const QString suffix = table == "collections" || table == "collection_games"

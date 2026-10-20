@@ -322,7 +322,7 @@ QVector<ReviewAvailability::Entry> UnifiedGameModel::reviewAvailabilitySnapshot(
       entry.path = GameLauncher::effectivePath(installation, setup);
       entry.sourceError = m_sourceErrors.value(entry.source);
       entry.emulator = GameLauncher::isEmulatorSourceName(entry.source);
-      entry.manual = entry.source == QStringLiteral("Manual");
+      entry.manual = GameLauncher::isDirectSourceName(entry.source);
       const QVariant installed = index.data(GameRoles::Installed);
       entry.installedKnown = installed.isValid();
       entry.installed = installed.toBool();
@@ -805,6 +805,19 @@ bool UnifiedGameModel::resetCustomArtwork(int row, const QString& kind) {
   return true;
 }
 
+QVariantList UnifiedGameModel::installationIdentities(int row) const {
+  QVariantList result;
+  for (const SourceRow& member : groupRows(mapRow(row))) {
+    const QModelIndex game = member.model->index(member.row, 0);
+    result.append(QVariantMap{{QStringLiteral("source"), game.data(GameRoles::Source)},
+                              {QStringLiteral("runner"), runnerFor(game)},
+                              {QStringLiteral("appId"), game.data(GameRoles::AppId)},
+                              {QStringLiteral("system"), game.data(GameRoles::System)},
+                              {QStringLiteral("title"), game.data(GameRoles::Title)}});
+  }
+  return result;
+}
+
 QVariantList UnifiedGameModel::installations(int row) const {
   QVariantList result;
   const SourceRow source = mapRow(row);
@@ -818,7 +831,7 @@ QVariantList UnifiedGameModel::installations(int row) const {
     bool available = (!installation.contains(QStringLiteral("installed")) ||
                             installation.value(QStringLiteral("installed")).toBool()) &&
                            (installPath.isEmpty() || GameLauncher::contentAvailable(installPath));
-    if (available && installation.value(QStringLiteral("source")).toString() == QStringLiteral("Manual")) {
+    if (available && GameLauncher::isDirectSourceName(installation.value(QStringLiteral("source")).toString())) {
       QString executable, directory, error;
       QStringList arguments;
       available = ManualGameModel::validateLaunch(installation.value(QStringLiteral("launchTarget")).toString(),
@@ -922,6 +935,65 @@ QVariantList UnifiedGameModel::linkCandidates(int row, const QString& search) co
     }
   }
   return result;
+}
+
+bool UnifiedGameModel::linkOnce(const QString& source, const QString& runner,
+                                const QString& appId, const QString& otherSource,
+                                const QString& otherRunner, const QString& otherAppId) {
+  if (!m_database.isOpen()) {
+    return false;
+  }
+  const QString linkKey = QStringList{source, runner, appId, otherSource, otherRunner, otherAppId}
+                              .join(QChar(u'\0'));
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral("SELECT 1 FROM automatic_links WHERE link_key = ?"));
+  query.addBindValue(linkKey);
+  if (!query.exec() || query.next()) {
+    return false;
+  }
+  const auto memberFor = [this](const QString& wantedSource, const QString& wantedRunner,
+                                 const QString& wantedAppId) -> SourceRow {
+    for (QAbstractItemModel* model : m_models) {
+      for (int row = 0; row < model->rowCount(); ++row) {
+        const SourceRow member{.model = model, .row = row};
+        const QModelIndex game = model->index(row, 0);
+        if (sourceEnabled(member) && game.data(GameRoles::Source).toString() == wantedSource &&
+            runnerFor(game) == wantedRunner && game.data(GameRoles::AppId).toString() == wantedAppId) {
+          return member;
+        }
+      }
+    }
+    return {};
+  };
+  const SourceRow selected = memberFor(source, runner, appId);
+  const SourceRow other = memberFor(otherSource, otherRunner, otherAppId);
+  if (selected.model == nullptr || other.model == nullptr) {
+    return false;
+  }
+  const QString selectedKey = gameKey(selected);
+  const QString otherKey = gameKey(other);
+  if (selectedKey == otherKey) {
+    return false;
+  }
+  const QString selectedGroup = m_groupForGame.value(selectedKey);
+  const QString otherGroup = m_groupForGame.value(otherKey);
+  // Remember a pair already linked by the player, without changing its preference.
+  if (selectedGroup.isEmpty() || selectedGroup != otherGroup) {
+    const int row = m_unifiedIndexForKey.value(selectedKey, -1);
+    if (row < 0 || !linkGames(row, otherSource, otherRunner, otherAppId)) {
+      return false;
+    }
+    if (selectedGroup.isEmpty() && otherGroup.isEmpty()) {
+      const int linked = m_unifiedIndexForKey.value(selectedKey, -1);
+      if (linked < 0 || !setPreferredInstallation(linked, source, runner, appId)) {
+        return false;
+      }
+    }
+  }
+  query.prepare(QStringLiteral(
+      "INSERT OR REPLACE INTO automatic_links(link_key, linked_at) VALUES(?, strftime('%s', 'now'))"));
+  query.addBindValue(linkKey);
+  return query.exec();
 }
 
 bool UnifiedGameModel::linkGames(int row, const QString& sourceName, const QString& runner,
@@ -1680,6 +1752,11 @@ bool UnifiedGameModel::openArtworkDatabase(const QString& path) {
   if (!query.exec(QStringLiteral(
           "CREATE TABLE IF NOT EXISTS launch_preferences (group_id TEXT PRIMARY KEY, "
           "source TEXT NOT NULL, runner TEXT NOT NULL, app_id TEXT NOT NULL)"))) {
+    return false;
+  }
+  if (!query.exec(QStringLiteral(
+          "CREATE TABLE IF NOT EXISTS automatic_links (link_key TEXT PRIMARY KEY, "
+          "linked_at INTEGER NOT NULL)"))) {
     return false;
   }
   QSet<QString> artworkColumns;

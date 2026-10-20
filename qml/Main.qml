@@ -105,6 +105,8 @@ ApplicationWindow {
                                             || (MelondsLibrary ? MelondsLibrary.scanning : false)
                                             || (DolphinLibrary ? DolphinLibrary.scanning : false)
                                             || (XeniaLibrary ? XeniaLibrary.scanning : false)
+                                            || (KytyLibrary ? KytyLibrary.scanning : false)
+                                            || (NativePortLibrary ? NativePortLibrary.scanning : false)
                                             || (BattleNetLibrary ? BattleNetLibrary.scanning : false)
     readonly property int ownedGameCount: SteamAccount
                                           ? SteamAccount.ownedGameCount
@@ -658,6 +660,8 @@ ApplicationWindow {
         if (Shadps4Library && Preferences.shadps4Enabled) Shadps4Library.refresh()
         if (CemuLibrary && Preferences.cemuEnabled) CemuLibrary.refresh()
         if (MelondsLibrary && Preferences.melondsEnabled) MelondsLibrary.refresh()
+        if (KytyLibrary && Preferences.kytyEnabled) KytyLibrary.refresh()
+        if (NativePortLibrary && Preferences.nativePortsEnabled) NativePortLibrary.refresh()
         if (DolphinLibrary && Preferences.dolphinEnabled) DolphinLibrary.refresh()
         if (BattleNetLibrary && Preferences.battleNetEnabled) BattleNetLibrary.refresh()
     }
@@ -2498,6 +2502,10 @@ ApplicationWindow {
                             ? "melonDS was not found"
                             : root.emptySourceFilter === "Xenia" && XeniaLibrary && !XeniaLibrary.xeniaDetected
                             ? "Xenia was not found"
+                            : root.emptySourceFilter === "Kyty" && KytyLibrary && !KytyLibrary.detected
+                            ? "Kyty was not found"
+                            : root.emptySourceFilter === "Ports" && NativePortLibrary && !NativePortLibrary.detected
+                            ? "No native ports were found"
                             : root.emptySourceFilter === "Dolphin" && DolphinLibrary && !DolphinLibrary.dolphinDetected
                             ? "Dolphin was not found"
                             : root.emptySourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
@@ -2536,6 +2544,10 @@ ApplicationWindow {
                               ? MelondsLibrary.errorText
                               : root.emptySourceFilter === "Xenia" && XeniaLibrary && XeniaLibrary.errorText.length > 0
                               ? XeniaLibrary.errorText
+                              : root.emptySourceFilter === "Kyty" && KytyLibrary && KytyLibrary.errorText.length > 0
+                              ? KytyLibrary.errorText
+                              : root.emptySourceFilter === "Ports" && NativePortLibrary && NativePortLibrary.errorText.length > 0
+                              ? NativePortLibrary.errorText
                               : root.emptySourceFilter === "Dolphin" && DolphinLibrary && DolphinLibrary.errorText.length > 0
                               ? DolphinLibrary.errorText
                               : root.emptySourceFilter === "GOG" && HeroicLibrary && HeroicLibrary.errorText.length > 0
@@ -3505,6 +3517,40 @@ ApplicationWindow {
                 }
                 onSecondaryClicked: {
                     Library.toggleSource("Xenia")
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+            }
+            GlassButton {
+                id: kytySourceButton
+                objectName: "kytySourceButton"
+                text: "KYTY"
+                compact: true
+                visible: Preferences.kytyEnabled
+                property string sourceName: "Kyty"
+                selected: Library.sourceFilters.indexOf("Kyty") >= 0
+                onClicked: {
+                    Library.sourceFilters = ["Kyty"]
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+                onSecondaryClicked: {
+                    Library.toggleSource("Kyty")
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+            }
+            GlassButton {
+                id: portsSourceButton
+                objectName: "portsSourceButton"
+                text: "PORTS"
+                compact: true
+                visible: Preferences.nativePortsEnabled
+                property string sourceName: "Ports"
+                selected: Library.sourceFilters.indexOf("Ports") >= 0
+                onClicked: {
+                    Library.sourceFilters = ["Ports"]
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+                onSecondaryClicked: {
+                    Library.toggleSource("Ports")
                     libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                 }
             }

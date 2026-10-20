@@ -79,6 +79,8 @@ QString identity(const QString& table, const QJsonObject& row) {
     key.append(row.value("id"));
   else if (table == "launch_preferences")
     key.append(row.value("group_id"));
+  else if (table == "automatic_links")
+    key.append(row.value("link_key"));
   else if (table == "game_metadata")
     key.append(row.value("game_key"));
   else if (table == "play_sessions")
@@ -97,7 +99,8 @@ QString identity(const QString& table, const QJsonObject& row) {
 } // namespace
 
 QMap<QString, QStringList> BackupArchive::tableColumns() {
-  return {{"play_queue", {"source", "runner", "app_id", "title", "position"}},
+  return {{"automatic_links", {"link_key", "linked_at"}},
+          {"play_queue", {"source", "runner", "app_id", "title", "position"}},
           {"play_sessions",
            {"session_key", "game_path", "source", "started_at", "ended_at", "seconds"}},
           {"play_baselines",
@@ -119,7 +122,11 @@ QMap<QString, QStringList> BackupArchive::tableColumns() {
 }
 
 QStringList BackupArchive::settingNames() {
-  return {"shadps4_enabled",
+  return {"kyty_enabled",
+          "kyty_auto",
+          "native_ports_enabled",
+          "native_ports_auto",
+          "shadps4_enabled",
           "cemu_enabled",
           "melonds_enabled",
           "dolphin_enabled",
@@ -255,6 +262,14 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
               return fail(error, "Combined play history exceeds the supported duration limit.");
             remainingDuration -= duration;
           }
+        } else if (table.key() == "automatic_links" && column == "link_key") {
+          const QStringList parts = field.toString().split(QChar::Null);
+          if (!field.isString() || parts.size() != 6 || parts[0].isEmpty() || parts[2].isEmpty() ||
+              parts[3].isEmpty() || parts[5].isEmpty() || parts.mid(0, 3) == parts.mid(3, 3))
+            return fail(error, "An automatic link identity is invalid.");
+          for (const QString& part : parts)
+            if (part.size() > 4096 || hasControls(part))
+              return fail(error, "An automatic link identity is invalid.");
         } else if (table.key() == "game_metadata" && column == "game_key") {
           const auto parts = field.toString().split(QChar::Null);
           if (!field.isString() || parts.size() != 3 || parts.first().isEmpty() ||
@@ -287,7 +302,7 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
           if (!flag(field))
             return fail(error, "A personal flag is invalid.");
         } else if (column == "created_at" || column == "last_launched" ||
-                   column == "launch_count" || column == "position") {
+                   column == "launch_count" || column == "linked_at" || column == "position") {
           if (!integer(field, 0, 9007199254740991.0))
             return fail(error, "A personal timestamp or count is invalid.");
         } else if (column == "entry" || column == "tags_json" || column == "state_json") {

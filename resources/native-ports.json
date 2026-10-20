@@ -1,0 +1,414 @@
+{
+  "schema": 1,
+  "ports": [
+    {
+      "id": "spartanport",
+      "name": "SpartanPort",
+      "game": "God of War III Remastered",
+      "system": "ps4",
+      "repo": "https://github.com/FelipePrado0/SpartanPort",
+      "linux": true,
+      "serials": [
+        "CUSA01623",
+        "CUSA01715"
+      ],
+      "titles": [
+        "God of War III Remastered",
+        "God of War III"
+      ],
+      "files": [
+        "spartanport",
+        "gow3"
+      ]
+    },
+    {
+      "id": "bbport",
+      "name": "bbport",
+      "game": "Bloodborne",
+      "system": "ps4",
+      "repo": "https://github.com/deadinside28/bloodborne_pc",
+      "linux": true,
+      "serials": [
+        "CUSA00900",
+        "CUSA03023",
+        "CUSA03173"
+      ],
+      "titles": [
+        "Bloodborne",
+        "Bloodborne Game of the Year Edition"
+      ],
+      "files": [
+        "bbport",
+        "bloodborne_pc"
+      ]
+    },
+    {
+      "id": "bbhost",
+      "name": "bbhost",
+      "game": "Bloodborne",
+      "system": "ps4",
+      "repo": "https://github.com/droogie/bbhost",
+      "linux": true,
+      "serials": [
+        "CUSA00900"
+      ],
+      "titles": [
+        "Bloodborne"
+      ],
+      "files": [
+        "bbhost"
+      ]
+    },
+    {
+      "id": "iss-pc",
+      "name": "iss_pc",
+      "game": "inFAMOUS Second Son",
+      "system": "ps4",
+      "repo": "https://github.com/HayatoG/iss_pc",
+      "linux": true,
+      "serials": [
+        "CUSA00004",
+        "CUSA00223"
+      ],
+      "titles": [
+        "inFAMOUS Second Son"
+      ],
+      "files": [
+        "iss_pc",
+        "infamous"
+      ]
+    },
+    {
+      "id": "tlg-pc",
+      "name": "tlg_pc",
+      "game": "The Last Guardian",
+      "system": "ps4",
+      "repo": "https://github.com/HayatoG/tlg_pc",
+      "linux": true,
+      "serials": [
+        "CUSA03627",
+        "CUSA03745"
+      ],
+      "titles": [
+        "The Last Guardian"
+      ],
+      "files": [
+        "tlg_pc",
+        "tlg"
+      ]
+    },
+    {
+      "id": "gr2-pc",
+      "name": "gr2_pc",
+      "game": "Gravity Rush 2",
+      "system": "ps4",
+      "repo": "https://github.com/HayatoG/gr2_pc",
+      "linux": true,
+      "serials": [
+        "CUSA03694"
+      ],
+      "titles": [
+        "Gravity Rush 2"
+      ],
+      "files": [
+        "gr2_pc",
+        "gr2"
+      ]
+    },
+    {
+      "id": "pt-pc",
+      "name": "P.T. PC Port",
+      "game": "P.T.",
+      "system": "ps4",
+      "repo": "https://github.com/LoreanXavier/pt-pc",
+      "linux": true,
+      "serials": [
+        "CUSA01127"
+      ],
+      "titles": [
+        "P.T."
+      ],
+      "files": [
+        "pt-pc",
+        "p.t.pc.port"
+      ]
+    },
+    {
+      "id": "uncharted-pc",
+      "name": "uncharted_pc",
+      "game": "Uncharted: The Nathan Drake Collection",
+      "system": "ps4",
+      "repo": "https://github.com/Supermedo/uncharted_pc",
+      "linux": false,
+      "serials": [
+        "CUSA02320",
+        "CUSA02343"
+      ],
+      "titles": [
+        "Uncharted: The Nathan Drake Collection"
+      ],
+      "files": [
+        "uncharted_pc"
+      ]
+    },
+    {
+      "id": "sotc-pc",
+      "name": "ShadowOfTheColossus-PC",
+      "game": "Shadow of the Colossus",
+      "system": "ps4",
+      "repo": "https://github.com/AjncSystem/ShadowOfTheColossus-PC",
+      "linux": false,
+      "serials": [
+        "CUSA08809"
+      ],
+      "titles": [
+        "Shadow of the Colossus"
+      ],
+      "files": [
+        "sotc-pc"
+      ]
+    },
+    {
+      "id": "medievil-pc",
+      "name": "medievil_2019_pc_port",
+      "game": "MediEvil",
+      "system": "ps4",
+      "repo": "https://github.com/bc160201983/medievil_2019_pc_port",
+      "linux": false,
+      "serials": [
+        "CUSA11227",
+        "CUSA12982"
+      ],
+      "titles": [
+        "MediEvil"
+      ],
+      "files": [
+        "medievil"
+      ]
+    },
+    {
+      "id": "lost-odyssey-recomp",
+      "name": "LostOdysseyRecomp",
+      "game": "Lost Odyssey",
+      "system": "xbox360",
+      "repo": "https://github.com/freefrank/LostOdysseyRecomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Lost Odyssey"
+      ],
+      "files": [
+        "lostodysseyrecomp"
+      ]
+    },
+    {
+      "id": "hells-gate-recomp",
+      "name": "Hell's Gate Recomp",
+      "game": "Dante's Inferno",
+      "system": "xbox360",
+      "repo": "https://github.com/florinp93/hells-gate-recomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Dante's Inferno"
+      ],
+      "files": [
+        "hells-gate-recomp",
+        "dantesinferno",
+        "dantes_inferno"
+      ]
+    },
+    {
+      "id": "opence",
+      "name": "OpenCE",
+      "game": "Halo: Combat Evolved",
+      "system": "xbox",
+      "repo": "https://github.com/OpenCommunityEdition/OpenCE",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Halo: Combat Evolved",
+        "Halo Combat Evolved"
+      ],
+      "files": [
+        "opence",
+        "halo-opence"
+      ]
+    },
+    {
+      "id": "black-2006-recomp",
+      "name": "Black (2006) Recomp",
+      "game": "Black",
+      "system": "xbox",
+      "repo": "https://github.com/portingpete/Black-2006-Recomp",
+      "linux": false,
+      "serials": [],
+      "titles": [
+        "Black"
+      ],
+      "files": [
+        "black-2006-recomp"
+      ]
+    },
+    {
+      "id": "goldeneye-pc-port",
+      "name": "GoldenEye PC Port",
+      "game": "GoldenEye 007",
+      "system": "n64",
+      "repo": "https://github.com/jkdansereau/goldeneye-pc-port",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "GoldenEye 007"
+      ],
+      "files": [
+        "ge007",
+        "goldeneye-pc-port"
+      ]
+    },
+    {
+      "id": "shipwright",
+      "name": "Ship of Harkinian",
+      "game": "The Legend of Zelda: Ocarina of Time",
+      "system": "n64",
+      "repo": "https://github.com/HarbourMasters/Shipwright",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "The Legend of Zelda: Ocarina of Time"
+      ],
+      "files": [
+        "soh",
+        "shipwright"
+      ]
+    },
+    {
+      "id": "zelda64recomp",
+      "name": "Zelda 64: Recompiled",
+      "game": "The Legend of Zelda: Majora's Mask",
+      "system": "n64",
+      "repo": "https://github.com/Zelda64Recomp/Zelda64Recomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "The Legend of Zelda: Majora's Mask"
+      ],
+      "files": [
+        "zelda64recompiled",
+        "zelda64recomp"
+      ]
+    },
+    {
+      "id": "spaghettikart",
+      "name": "SpaghettiKart",
+      "game": "Mario Kart 64",
+      "system": "n64",
+      "repo": "https://github.com/HarbourMasters/SpaghettiKart",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Mario Kart 64"
+      ],
+      "files": [
+        "spaghettikart",
+        "spaghetti",
+        "spaghettify"
+      ]
+    },
+    {
+      "id": "starship",
+      "name": "Starship",
+      "game": "Star Fox 64",
+      "system": "n64",
+      "repo": "https://github.com/HarbourMasters/Starship",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Star Fox 64",
+        "Lylat Wars"
+      ],
+      "files": [
+        "starship"
+      ]
+    },
+    {
+      "id": "sm64coopdx",
+      "name": "sm64coopdx",
+      "game": "Super Mario 64",
+      "system": "n64",
+      "repo": "https://github.com/coop-deluxe/sm64coopdx",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Super Mario 64"
+      ],
+      "files": [
+        "sm64coopdx"
+      ]
+    },
+    {
+      "id": "banjorecomp",
+      "name": "Banjo: Recompiled",
+      "game": "Banjo-Kazooie",
+      "system": "n64",
+      "repo": "https://github.com/BanjoRecomp/BanjoRecomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Banjo-Kazooie"
+      ],
+      "files": [
+        "banjorecompiled",
+        "banjorecomp"
+      ]
+    },
+    {
+      "id": "dusklight",
+      "name": "Dusklight",
+      "game": "The Legend of Zelda: Twilight Princess",
+      "system": "gamecube",
+      "repo": "https://github.com/TwilitRealm/dusklight",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "The Legend of Zelda: Twilight Princess"
+      ],
+      "files": [
+        "dusklight"
+      ]
+    },
+    {
+      "id": "gow-psp-recomp-chains",
+      "name": "God of War PSP Recomp",
+      "game": "God of War: Chains of Olympus",
+      "system": "psp",
+      "repo": "https://github.com/DrummingBird1/gow-psp-recomp",
+      "linux": false,
+      "serials": [
+        "UCUS98653"
+      ],
+      "titles": [
+        "God of War: Chains of Olympus"
+      ],
+      "files": [
+        "gow-psp-recomp",
+        "gowlauncher"
+      ]
+    },
+    {
+      "id": "gow-psp-recomp-sparta",
+      "name": "God of War PSP Recomp",
+      "game": "God of War: Ghost of Sparta",
+      "system": "psp",
+      "repo": "https://github.com/DrummingBird1/gow-psp-recomp",
+      "linux": false,
+      "serials": [
+        "UCUS98737"
+      ],
+      "titles": [
+        "God of War: Ghost of Sparta"
+      ],
+      "files": []
+    }
+  ]
+}

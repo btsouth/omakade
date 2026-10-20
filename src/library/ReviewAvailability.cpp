@@ -64,7 +64,7 @@ QVector<ReviewAvailability::Result> ReviewAvailability::evaluate(
           missingEntries.append({static_cast<int>(results.size()), entry.path, ancestor});
         } else {
           appendReason(result, QStringLiteral("runtime"),
-                       QStringLiteral("Manual launch setup unavailable"), launchError);
+                       entry.source + QStringLiteral(" launch setup unavailable"), launchError);
         }
       }
     } else if (entry.emulator) {

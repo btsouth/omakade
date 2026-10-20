@@ -28,6 +28,12 @@ One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 - Return to Desktop shows the page the desktop had before Game Mode, and resuming goes
   back to the Game Mode page you left.
 
+- Discover PlayStation 5 dumps through Kyty and preserve per-game launcher settings.
+- Find installed native ports such as SpartanPort and bbport, grouped with matching
+  console dumps as alternate installations. Unlinked pairs stay separate.
+- Link game details to known ports you have not installed, including their Linux availability.
+- Propose monthly catalog updates through a reviewable pull request.
+
 ## 1.17.0
 
 Game Mode keeps launchers out of the way while a game starts.
