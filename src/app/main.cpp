@@ -4164,7 +4164,8 @@ int main(int argc, char* argv[]) {
       }
       if (renderOverlay.startsWith(QStringLiteral("game-info"))) {
         QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
-        QTimer::singleShot(120, quickWindow, [quickWindow, renderOverlay, screenshotPath, &application] {
+        QTimer::singleShot(120, quickWindow, [quickWindow, renderOverlay, screenshotPath,
+                                             metadata = gameMetadata.get(), &application] {
           auto* section = quickWindow->findChild<QQuickItem*>("gameInfoSection");
           auto* details = quickWindow->findChild<QQuickItem*>("gameDetails");
           if (!section || !details) {
@@ -4220,6 +4221,9 @@ int main(int argc, char* argv[]) {
             game["description"] = QString();
             quickWindow->setProperty("selectedGame", game);
             quickWindow->setProperty("selectedInstallation", game);
+            // No selected metadata or setup prompt: only the port suggestion can
+            // make this empty details section visible.
+            if (metadata) metadata->inspect({});
           }
           if (renderOverlay == "game-info-rating-only") {
             entry["year"] = 0;
@@ -4278,7 +4282,11 @@ int main(int argc, char* argv[]) {
                       details->property("displayTitle").toString() != "Super Mario 64" ||
                       details->property("nativePortSuggestions").toList().size() != 1 ||
                       !portButton || !portButton->isVisible()) {
-                    qCritical() << "Native port suggestion hidden without catalog metadata";
+                    qCritical() << "Native port suggestion hidden without catalog metadata"
+                                << details->property("metadataStatusShown")
+                                << section->property("entry")
+                                << details->property("nativePortSuggestions")
+                                << (portButton && portButton->isVisible());
                     application.exit(EXIT_FAILURE);
                     return;
                   }
