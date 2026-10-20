@@ -26,7 +26,11 @@ const NativePort* portFor(const DesktopLauncher& launcher, const PortCatalog& ca
   for (const QString& path : launcher.paths) {
     for (const QString& part : path.split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
       if (const NativePort* port = catalog.matchFile(part)) {
-        return port;
+        if (launcher.entry.categories.contains(QStringLiteral("Game")) ||
+            PortCatalog::normalizedTitle(launcher.entry.title) ==
+                PortCatalog::normalizedTitle(port->game)) {
+          return port;
+        }
       }
     }
   }

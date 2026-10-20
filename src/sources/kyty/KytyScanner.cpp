@@ -110,12 +110,16 @@ void collect(const QString& path, int depth, int* budget, QSet<QString>* visited
   visited->insert(canonical);
   --*budget;
   const QDir directory(path);
+  if (!QFileInfo(path).isReadable()) {
+    result->incomplete = true;
+    result->warnings.append(QStringLiteral("Game folder is unavailable: %1").arg(path));
+    return;
+  }
   Ps5Game game;
   if (QFileInfo::exists(directory.filePath(QStringLiteral("sce_sys/param.json")))) {
     if (readGame(directory, &game)) {
       games->append(game);
     } else {
-      result->incomplete = true;
       result->warnings.append(QStringLiteral("Could not read PS5 game metadata in %1").arg(path));
     }
     return;

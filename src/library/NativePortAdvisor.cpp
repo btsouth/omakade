@@ -7,6 +7,7 @@
 #include "library/UnifiedGameModel.h"
 
 #include <algorithm>
+#include <QSet>
 
 NativePortAdvisor::NativePortAdvisor(const PortCatalog& catalog, LauncherGameModel* installed,
                                      QObject* parent)
@@ -27,7 +28,21 @@ bool isDumpSource(const QString& source) {
 } // namespace
 
 void NativePortAdvisor::linkInstalledPorts(UnifiedGameModel* games) const {
-  if (games == nullptr) {
+  if (games == nullptr || m_installed == nullptr) {
+    return;
+  }
+  const QStringList installedIds = m_installed->gameIds();
+  if (installedIds.isEmpty()) {
+    return;
+  }
+  const QSet<QString> installed(installedIds.cbegin(), installedIds.cend());
+  QSet<QString> systems;
+  for (const NativePort& port : m_catalog.ports()) {
+    if (installed.contains(port.id)) {
+      systems.insert(port.system);
+    }
+  }
+  if (systems.isEmpty()) {
     return;
   }
   struct Pair {
@@ -45,17 +60,18 @@ void NativePortAdvisor::linkInstalledPorts(UnifiedGameModel* games) const {
       continue;
     }
     // Include dumps inside an existing group, even when its card represents a port.
-    for (const QVariant& value : games->installations(row)) {
+    for (const QVariant& value : games->installationIdentities(row)) {
       const QVariantMap dump = value.toMap();
       const QString source = dump.value(QStringLiteral("source")).toString();
-      if (!isDumpSource(source)) {
+      if (!isDumpSource(source) ||
+          !systems.contains(ConsoleCatalog::idFor(dump.value(QStringLiteral("system")).toString()))) {
         continue;
       }
       for (const NativePort* port : m_catalog.portsFor(
                ConsoleCatalog::idFor(dump.value(QStringLiteral("system")).toString()),
                dump.value(QStringLiteral("appId")).toString(),
                dump.value(QStringLiteral("title")).toString())) {
-        if (m_installed != nullptr && m_installed->gameIds().contains(port->id)) {
+        if (installed.contains(port->id)) {
           pairs.append({port->id, source, dump.value(QStringLiteral("runner")).toString(),
                         dump.value(QStringLiteral("appId")).toString()});
         }

@@ -805,6 +805,19 @@ bool UnifiedGameModel::resetCustomArtwork(int row, const QString& kind) {
   return true;
 }
 
+QVariantList UnifiedGameModel::installationIdentities(int row) const {
+  QVariantList result;
+  for (const SourceRow& member : groupRows(mapRow(row))) {
+    const QModelIndex game = member.model->index(member.row, 0);
+    result.append(QVariantMap{{QStringLiteral("source"), game.data(GameRoles::Source)},
+                              {QStringLiteral("runner"), runnerFor(game)},
+                              {QStringLiteral("appId"), game.data(GameRoles::AppId)},
+                              {QStringLiteral("system"), game.data(GameRoles::System)},
+                              {QStringLiteral("title"), game.data(GameRoles::Title)}});
+  }
+  return result;
+}
+
 QVariantList UnifiedGameModel::installations(int row) const {
   QVariantList result;
   const SourceRow source = mapRow(row);

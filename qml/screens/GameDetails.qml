@@ -15,6 +15,11 @@ Item {
     required property var game
     required property var installations
     required property var selectedInstallation
+    readonly property var nativePortSuggestions: {
+        if (DemoMode || typeof NativePorts === "undefined" || !NativePorts) return []
+        const revision = NativePorts.revision
+        return NativePorts.portsFor(root.selectedInstallation)
+    }
     readonly property var detailsEntry: gameInfoSection.entry || ({})
     readonly property int releaseYear: gameInfoSection.entry && gameInfoSection.entry.year > 0
                                        ? gameInfoSection.entry.year : (game.year || 0)
@@ -50,7 +55,8 @@ Item {
         if (source && sessionSource && source !== sessionSource) return false
         const sessionPath = String(session.path || "")
         if (!sessionPath) return false
-        const selectedPaths = [installation.installPath, installation.launchTarget]
+        const selectedPaths = source === "ports" ? [installation.appId]
+                              : [installation.installPath, installation.launchTarget]
         const paths = selectedPaths.some(path => String(path || "").length > 0)
                       ? selectedPaths : [root.game.installPath, root.game.launchTarget]
         return paths.some(path => String(path || "") === sessionPath)
@@ -178,7 +184,8 @@ Item {
         const paths = []
         const candidates = [root.selectedInstallation].concat(root.installations || [])
         for (const installation of candidates) {
-            const path = installation ? (installation.installPath || "") : ""
+            const path = installation ? (installation.source === "Ports" ? installation.appId
+                                                                  : installation.installPath || "") : ""
             if (path && paths.indexOf(path) < 0) paths.push(path)
         }
         return paths
@@ -881,6 +888,7 @@ Item {
                     visible: !game.isPortal
                              && (gameInfoSection.facts.length > 0 || gameInfoSection.credits !== ""
                                  || gameInfoSection.background !== ""
+                                 || root.nativePortSuggestions.length > 0
                                  || root.metadataStatusShown
                                  || root.displayTitle !== (root.game.title || ""))
 
@@ -1052,11 +1060,7 @@ Item {
 
                         // A dump of a game with a native PC port links to the port.
                         Repeater {
-                            model: {
-                                if (typeof NativePorts === "undefined" || !NativePorts) return []
-                                const revision = NativePorts.revision
-                                return NativePorts.portsFor(root.selectedInstallation)
-                            }
+                            model: root.nativePortSuggestions
                             GlassButton {
                                 required property var modelData
                                 objectName: "nativePortButton"

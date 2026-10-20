@@ -59,10 +59,11 @@ jobs:
           branch=automation/native-port-catalog
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          number=$(gh pr list --head "$branch" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number // empty')
           if git ls-remote --exit-code --heads origin "$branch"; then
             git fetch origin "$branch:refs/remotes/origin/$branch" --depth=1
             git show "refs/remotes/origin/$branch:resources/native-ports.json" > "$RUNNER_TEMP/proposed-native-ports.json"
-            if cmp -s resources/native-ports.json "$RUNNER_TEMP/proposed-native-ports.json"; then
+            if [ -n "$number" ] && cmp -s resources/native-ports.json "$RUNNER_TEMP/proposed-native-ports.json"; then
               echo 'These native port metadata changes were already proposed.'
               exit 0
             fi
@@ -74,7 +75,6 @@ jobs:
           git add resources/native-ports.json
           git commit -m 'Refresh native port catalog metadata'
           git push --force-with-lease origin "$branch"
-          number=$(gh pr list --head "$branch" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$number" ]; then
             gh pr edit "$number" --title 'Refresh native port catalog metadata' --body-file "$RUNNER_TEMP/native-ports-pr.md"
           else

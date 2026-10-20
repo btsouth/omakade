@@ -660,6 +660,8 @@ ApplicationWindow {
         if (Shadps4Library && Preferences.shadps4Enabled) Shadps4Library.refresh()
         if (CemuLibrary && Preferences.cemuEnabled) CemuLibrary.refresh()
         if (MelondsLibrary && Preferences.melondsEnabled) MelondsLibrary.refresh()
+        if (KytyLibrary && Preferences.kytyEnabled) KytyLibrary.refresh()
+        if (NativePortLibrary && Preferences.nativePortsEnabled) NativePortLibrary.refresh()
         if (DolphinLibrary && Preferences.dolphinEnabled) DolphinLibrary.refresh()
         if (BattleNetLibrary && Preferences.battleNetEnabled) BattleNetLibrary.refresh()
     }

@@ -1033,6 +1033,25 @@ int main(int argc, char* argv[]) {
   LauncherGameModel* nativePortLibrary = nullptr;
   DolphinGameModel* dolphinLibrary = nullptr;
   BattleNetGameModel* battleNetLibrary = nullptr;
+  const bool sourceRescanFixture = renderMode && renderOverlay == "source-rescan";
+  auto kytyRefreshes = std::make_shared<std::atomic<int>>(0);
+  auto portRefreshes = std::make_shared<std::atomic<int>>(0);
+  if (sourceRescanFixture) {
+    preferences.setKytyEnabled(false);
+    preferences.setNativePortsEnabled(false);
+    kytyGames = std::make_unique<LauncherGameModel>(
+        LauncherGameModel::Definition{"Kyty", "kyty", {}, [kytyRefreshes] {
+          ++*kytyRefreshes;
+          return LauncherScanResult{};
+        }}, ":memory:");
+    nativePortGames = std::make_unique<LauncherGameModel>(
+        LauncherGameModel::Definition{"Ports", "native_port", {}, [portRefreshes] {
+          ++*portRefreshes;
+          return LauncherScanResult{};
+        }}, ":memory:");
+    kytyLibrary = kytyGames.get();
+    nativePortLibrary = nativePortGames.get();
+  }
   QString libraryDatabasePath;
   std::unique_ptr<QTemporaryDir> consoleFixture;
   std::unique_ptr<QTemporaryDir> relocationFixtureDirectory;
@@ -2223,7 +2242,8 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeGuideButton"),
                                            &gameModeGuideButton);
   engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"),
-                                           (demoMode || stressMode) && !ownedLayoutTest && !heroicOwnedFixture);
+                                           (demoMode || stressMode) && !ownedLayoutTest && !heroicOwnedFixture
+                                               && renderOverlay != "game-info-native-port");
   engine.rootContext()->setContextProperty(
       QStringLiteral("StatsFixtureView"),
       renderOverlay == QStringLiteral("stats-patterns") ? 1
@@ -2329,6 +2349,45 @@ int main(int argc, char* argv[]) {
       quickWindow->setProperty("testRenderSize", requestedRenderSize);
     }
     if (renderMode) {
+      if (sourceRescanFixture) {
+        // Exercise the real QML action with synthetic scanners, including disabled sources.
+        auto* check = new QTimer(quickWindow);
+        check->setInterval(20);
+        auto phase = std::make_shared<int>(0);
+        auto ticks = std::make_shared<int>(0);
+        QObject::connect(check, &QTimer::timeout, quickWindow,
+                         [&, quickWindow, check, phase, ticks, kytyRefreshes, portRefreshes] {
+          if (++*ticks > 150) {
+            qCritical() << "Source rescan fixture timed out";
+            application.exit(EXIT_FAILURE);
+            check->stop();
+            return;
+          }
+          if (kytyLibrary->scanning() || nativePortLibrary->scanning()) return;
+          const int expectedKyty = *phase >= 1 ? 1 : 0;
+          const int expectedPorts = *phase >= 2 ? 1 : 0;
+          if (kytyRefreshes->load() != expectedKyty || portRefreshes->load() != expectedPorts) {
+            qCritical() << "Global rescan ignored source enablement" << *phase
+                        << kytyRefreshes->load() << portRefreshes->load();
+            application.exit(EXIT_FAILURE);
+            check->stop();
+            return;
+          }
+          if (*phase == 3) {
+            quickWindow->setProperty("sourceRescanComplete", true);
+            check->stop();
+            return;
+          }
+          preferences.setKytyEnabled(*phase == 0);
+          preferences.setNativePortsEnabled(*phase == 1);
+          ++*phase;
+          if (!QMetaObject::invokeMethod(quickWindow, "rescanLibraries")) {
+            application.exit(EXIT_FAILURE);
+            check->stop();
+          }
+        });
+        check->start();
+      }
       if (renderOverlay.startsWith(QStringLiteral("stop-"))) {
         // A fixture, so the confirmation renders the same list every run and the
         // confirm action signals nothing: the sink here answers Done and touches
@@ -4099,7 +4158,8 @@ int main(int argc, char* argv[]) {
             quickWindow->setProperty("selectedGame", game);
           }
           QVariantMap entry;
-          if (renderOverlay != "game-info-empty" && renderOverlay != "game-info-rom-only") {
+          if (renderOverlay != "game-info-empty" && renderOverlay != "game-info-rom-only"
+              && renderOverlay != "game-info-native-port") {
             entry = {
                 {"year", 1997},
                 {"rating", 92},
@@ -4126,6 +4186,15 @@ int main(int argc, char* argv[]) {
             game["source"] = "RetroArch";
             game["description"] = QString();
             quickWindow->setProperty("selectedGame", game);
+          }
+          if (renderOverlay == "game-info-native-port") {
+            auto game = quickWindow->property("selectedGame").toMap();
+            game["title"] = "Super Mario 64";
+            game["source"] = "RetroArch";
+            game["system"] = "n64";
+            game["description"] = QString();
+            quickWindow->setProperty("selectedGame", game);
+            quickWindow->setProperty("selectedInstallation", game);
           }
           if (renderOverlay == "game-info-rating-only") {
             entry["year"] = 0;
@@ -4176,6 +4245,42 @@ int main(int argc, char* argv[]) {
               100, quickWindow, [quickWindow, section, details, renderOverlay, &application] {
                 auto* toggle = quickWindow->findChild<QQuickItem*>("descriptionToggle");
                 auto* description = quickWindow->findChild<QQuickItem*>("gameDescription");
+                if (renderOverlay == "game-info-native-port") {
+                  auto* portButton = findVisualItem(quickWindow->contentItem(), "nativePortButton");
+                  if (details->property("metadataStatusShown").toBool() ||
+                      !section->property("entry").toMap().isEmpty() ||
+                      !section->property("background").toString().isEmpty() ||
+                      details->property("displayTitle").toString() != "Super Mario 64" ||
+                      details->property("nativePortSuggestions").toList().size() != 1 ||
+                      !portButton || !portButton->isVisible()) {
+                    qCritical() << "Native port suggestion hidden without catalog metadata";
+                    application.exit(EXIT_FAILURE);
+                    return;
+                  }
+                  // Different ports can share an interpreter, but never their session identity.
+                  const QVariant original = details->property("selectedInstallation");
+                  const QVariant originalInstallations = details->property("installations");
+                  const QVariantMap first{{"source", "Ports"}, {"appId", "shipwright"},
+                                          {"installPath", "/usr/bin/env"}};
+                  const QVariantMap second{{"source", "Ports"}, {"appId", "starship"},
+                                           {"installPath", "/usr/bin/env"}};
+                  details->setProperty("selectedInstallation", first);
+                  details->setProperty("installations", QVariantList{first, second});
+                  const auto paths = details->property("sessionHistoryPaths").toList();
+                  QVariant matches;
+                  const QVariant session = QVariantMap{{"source", "Ports"}, {"path", "shipwright"}};
+                  const bool invoked = QMetaObject::invokeMethod(
+                      details, "isSessionForGame", Q_RETURN_ARG(QVariant, matches),
+                      Q_ARG(QVariant, session));
+                  if (paths != QVariantList{QString("shipwright"), QString("starship")} ||
+                      !invoked || !matches.toBool()) {
+                    qCritical() << "Ports session identity used its shared interpreter";
+                    application.exit(EXIT_FAILURE);
+                  }
+                  details->setProperty("selectedInstallation", original);
+                  details->setProperty("installations", originalInstallations);
+                  return;
+                }
                 if (renderOverlay == "game-info-rom-only") {
                   auto* romToggle = quickWindow->findChild<QQuickItem*>("romDetailsToggle");
                   if (details->property("displayTitle").toString() != "Game" ||
@@ -4708,6 +4813,11 @@ int main(int argc, char* argv[]) {
                               : renderOverlay == "library-repair-manual" ? 1200 : 900;
       const auto render = [quickWindow, screenshotPath, renderOverlay, &application, &controller,
                            heroicOwnedFixture, &heroicOwnedDispatchComplete] {
+        if (renderOverlay == "source-rescan" &&
+            !quickWindow->property("sourceRescanComplete").toBool()) {
+          qCritical() << "Source rescan enablement checks did not complete";
+          application.exit(EXIT_FAILURE); return;
+        }
         if (heroicOwnedFixture && !heroicOwnedDispatchComplete) {
           qCritical() << "Owned Heroic dispatch verification did not complete";
           application.exit(EXIT_FAILURE); return;

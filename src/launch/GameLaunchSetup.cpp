@@ -456,6 +456,10 @@ QVariantMap GameLauncher::inspect(const QVariantMap& i) const {
       result["available"] = ManualGameModel::validateLaunch(i.value("launchTarget").toString(),
                                                             i.value("appId").toString(), &program,
                                                             &arguments, &directory, &error);
+      if (!error.isEmpty() && i.value("source") == "Kyty")
+        error = "Kyty, or the script that runs this game, is missing or cannot run. Rescan Kyty in Settings.";
+      else if (!error.isEmpty() && i.value("source") == "Ports")
+        error = "This port is missing or cannot run. Rescan native ports in Settings.";
       result["program"] = program;
       result["error"] = error;
     }

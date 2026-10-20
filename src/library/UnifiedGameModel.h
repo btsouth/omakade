@@ -53,6 +53,8 @@ public:
   Q_INVOKABLE bool resetCustomCover(int row);
   Q_INVOKABLE bool setCustomArtwork(int row, const QString& kind, const QUrl& sourceUrl);
   Q_INVOKABLE bool resetCustomArtwork(int row, const QString& kind);
+  // Group members for catalog matching, without filesystem checks or launch inspection.
+  [[nodiscard]] QVariantList installationIdentities(int row) const;
   Q_INVOKABLE QVariantList installations(int row) const;
   Q_INVOKABLE QVariantMap preferredInstallation(int row) const;
   Q_INVOKABLE bool setPreferredInstallation(int row, const QString& source, const QString& runner,

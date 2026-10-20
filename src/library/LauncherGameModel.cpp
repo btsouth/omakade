@@ -313,6 +313,7 @@ void LauncherGameModel::applyScan(const LauncherScanResult& result) {
 
 QVariant LauncherGameModel::valueForRole(const Game& game, int role) const {
   const LauncherGameRecord& record = game.record;
+  const QString historyKey = m_definition.source == QLatin1String("Ports") ? record.gameId : record.path;
   switch (role) {
   case GameRoles::Title:
     return record.title;
@@ -321,11 +322,11 @@ QVariant LauncherGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::Description:
     return m_definition.description;
   case GameRoles::PlaytimeProvenance:
-    return PlaySessionStore::provenance(m_playSessions, record.path, -1);
+    return PlaySessionStore::provenance(m_playSessions, historyKey, -1);
   case GameRoles::PlaytimeSeconds:
-    return PlaySessionStore::displayedSeconds(m_playSessions, record.path, 0);
+    return PlaySessionStore::displayedSeconds(m_playSessions, historyKey, 0);
   case GameRoles::Hours:
-    return static_cast<int>(PlaySessionStore::displayedSeconds(m_playSessions, record.path, 0) /
+    return static_cast<int>(PlaySessionStore::displayedSeconds(m_playSessions, historyKey, 0) /
                             3600);
   case GameRoles::Progress:
   case GameRoles::AchievementsUnlocked:
@@ -335,9 +336,9 @@ QVariant LauncherGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::Favorite:
     return game.favorite;
   case GameRoles::Recent:
-    return PlaySessionStore::displayedLastPlayed(m_playSessions, record.path, 0) > 0;
+    return PlaySessionStore::displayedLastPlayed(m_playSessions, historyKey, 0) > 0;
   case GameRoles::LastPlayed:
-    return PlaySessionStore::displayedLastPlayed(m_playSessions, record.path, 0);
+    return PlaySessionStore::displayedLastPlayed(m_playSessions, historyKey, 0);
   case GameRoles::AccentStart:
     return game.accentStart;
   case GameRoles::AccentEnd:
