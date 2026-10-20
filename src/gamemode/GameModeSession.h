@@ -226,6 +226,7 @@ private:
   bool m_notificationsManaged = false;
   bool m_active = false;
   bool m_busy = false;
+  bool m_shuttingDown = false;
   bool m_parked = false;
   bool m_inPlace = false;
   bool m_parkUiLeft = false;

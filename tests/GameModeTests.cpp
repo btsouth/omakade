@@ -3858,6 +3858,77 @@ private slots:
     QVERIFY(!QFile::exists(statePath()));
   }
 
+  void shutdownRejectsQueuedSessionWork_data() {
+    QTest::addColumn<bool>("pendingEntry");
+    QTest::newRow("active") << false;
+    QTest::newRow("entry-completion-queued") << true;
+  }
+
+  void shutdownRejectsQueuedSessionWork() {
+    QFETCH(bool, pendingEntry);
+    deskAndTv(true);
+    m_compositor.window.floating = true; // No placeholder is needed for this window.
+    const QString settingsPath = m_directory.filePath("shutdown-queued/game-mode.json");
+    auto settings = tvSettings();
+    settings.warmSteam = true;
+    QVERIFY(GameModeSession::saveSettings(settingsPath, settings));
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    int steamStarts = 0;
+    session.setSteamStarter([&] { ++steamStarts; return GameModeSession::SteamStart::Started; });
+    QSignalSpy devices(&session, &GameModeSession::devicesChanged);
+    QSignalSpy changes(&session, &GameModeSession::stateChanged);
+    QSemaphore placed, releasePlace, handled;
+    std::atomic_bool timedOut{false};
+    if (pendingEntry) {
+      m_compositor.beforePlace = [&] {
+        placed.release();
+        if (!releasePlace.tryAcquire(1, 2000)) timedOut = true;
+      };
+    }
+    session.enter();
+    if (pendingEntry) {
+      QVERIFY(placed.tryAcquire(1, 2000));
+      releasePlace.release();
+      // shutdown waits for the worker without delivering its finished callback first.
+    } else {
+      QTRY_COMPARE(devices.size(), 2);
+    }
+    bool delivered = false;
+    std::atomic_bool deliverOnce{true};
+    m_compositor.beforeOutputs = [&] {
+      if (!deliverOnce.exchange(false)) return;
+      QMetaObject::invokeMethod(&session, [&] {
+        delivered = true;
+        // These are the operations socket commands and queued UI callbacks can request
+        // while shutdown pumps events to hide the placeholder and restore the desktop.
+        session.enter();
+        session.enterInPlace();
+        session.exit();
+        session.park();
+        session.refresh();
+        session.focusGame();
+        session.focusWindow();
+        session.checkWorkspace();
+        session.shutdown();
+        handled.release();
+      }, Qt::QueuedConnection);
+      if (!handled.tryAcquire(1, 2000)) timedOut = true;
+    };
+    const auto changesBefore = changes.size();
+    const auto devicesBefore = devices.size();
+    const int startsBefore = steamStarts;
+    session.shutdown();
+    QCoreApplication::processEvents(); // Also drain callbacks queued just as exit finished.
+    QVERIFY(delivered);
+    QVERIFY(!timedOut);
+    QCOMPARE(changes.size(), changesBefore);
+    QCOMPARE(devices.size(), devicesBefore);
+    QCOMPARE(steamStarts, startsBefore);
+    QVERIFY(!session.hasSession() && !session.busy());
+    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
+    QVERIFY(!QFile::exists(statePath()));
+  }
+
   void choicesSurviveARestart() {
     const QString path = m_directory.filePath("nested/game-mode.json");
     const GameModeSettings defaults = GameModeSession::loadSettings(path);

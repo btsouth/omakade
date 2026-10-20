@@ -311,6 +311,7 @@ void GameModeSession::setStatus(const QString& text) {
 }
 
 void GameModeSession::refresh() {
+  if (m_shuttingDown) return;
   if (m_refreshWatcher.isRunning() || m_changeWatcher.isRunning()) {
     m_refreshPending = true;
     return;
@@ -339,6 +340,7 @@ void GameModeSession::refresh() {
 }
 
 void GameModeSession::finishRefresh() {
+  if (m_shuttingDown) return;
   const Devices devices = m_refreshWatcher.result();
   m_displayManaged = devices.displayManaged;
   m_soundManaged = devices.soundManaged;
@@ -401,6 +403,7 @@ void GameModeSession::enter() { start(false); }
 void GameModeSession::enterInPlace() { start(true); }
 
 void GameModeSession::start(bool inPlace) {
+  if (m_shuttingDown) return;
   if (m_busy) {
     if (m_change == Change::RefreshParked) m_resumeAfterRefresh = true;
     return;
@@ -418,6 +421,7 @@ void GameModeSession::start(bool inPlace) {
 }
 
 void GameModeSession::exit() {
+  if (m_shuttingDown) return;
   if (m_busy) {
     // Explicit End must survive entry, park and resume's asynchronous handoff.
     // Do not retry a failed Exit recursively; its recovery remains visible.
@@ -433,6 +437,7 @@ void GameModeSession::exit() {
 }
 
 void GameModeSession::park() {
+  if (m_shuttingDown) return;
   if (m_busy || !m_active) return;
   m_change = Change::Park;
   m_parkUiLeft = false;
@@ -443,6 +448,7 @@ void GameModeSession::park() {
 }
 
 void GameModeSession::refreshParked() {
+  if (m_shuttingDown) return;
   if (m_busy || !m_parked) return;
   m_change = Change::RefreshParked;
   m_busy = true;
@@ -481,6 +487,7 @@ void GameModeSession::toggle() {
 }
 
 void GameModeSession::focusGame() {
+  if (m_shuttingDown) return;
   if (m_busy || !m_active || m_focusFuture.isRunning())
     return;
   const bool hasGame = !m_controller.state().games.isEmpty();
@@ -508,6 +515,7 @@ void GameModeSession::focusGame() {
 }
 
 void GameModeSession::focusWindow() {
+  if (m_shuttingDown) return;
   if (m_busy || m_compositor == nullptr || m_focusFuture.isRunning()) {
     return;
   }
@@ -524,6 +532,7 @@ void GameModeSession::focusWindow() {
 }
 
 void GameModeSession::checkWorkspace() {
+  if (m_shuttingDown) return;
   if (m_workspaceWatcher.isRunning()) {
     return;
   }
@@ -537,6 +546,7 @@ void GameModeSession::checkWorkspace() {
 }
 
 void GameModeSession::finishChange() {
+  if (m_shuttingDown) return;
   const GameModeController::Result result = m_changeWatcher.result();
   const QString notes = result.notes.join(QLatin1Char(' '));
   const QString failure = notes.isEmpty() ? result.error : result.error + QLatin1Char(' ') + notes;
@@ -612,6 +622,11 @@ void GameModeSession::screenRemoved(QScreen* screen) {
 }
 
 void GameModeSession::shutdown() {
+  // Window cleanup needs event delivery below. Keep socket commands and queued watcher
+  // completions from starting another controller operation while that cleanup runs.
+  if (m_shuttingDown) return;
+  m_shuttingDown = true;
+  m_busy = true;
   m_parkTimer.stop();
   m_steamHoldTimer.stop();
   m_refreshWatcher.waitForFinished();
@@ -636,4 +651,5 @@ void GameModeSession::shutdown() {
   m_active = false;
   m_parked = false;
   m_inPlace = false;
+  m_busy = false;
 }
