@@ -132,6 +132,7 @@ ActionMenu {
         enabled: !GameMode.busy && !panel.scanning
         onClicked: {
             panel.close()
+            if (GameMode.inPlace) Preferences.couchModeEnabled = false
             GameMode.exit()
         }
     }

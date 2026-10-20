@@ -26,7 +26,7 @@ should implement:
 
 | Event | Expected behavior |
 | --- | --- |
-| Start | Enable the TV output, bind the reserved workspace, install session rules, verify audio, open Couch Mode. Repeated starts reuse the session. |
+| Start | Enable the TV output, bind the reserved workspace, install session rules, verify audio, open Omakade in fullscreen Game Mode. Repeated starts reuse the session. |
 | Game launch | Put the game on the TV and route only its audio there. Keep desktop audio on its previous sink. |
 | Normal stop | Refuse to discard an active game; close the owned library and disable the TV once the game exits. Remove temporary rules and stop polling. |
 | Confirmed standby or unplug | Disable the output and preserve game state. Mute or isolate any retained game's audio before removing its sink so it cannot migrate to the headset. Report that retained games still consume resources. |
@@ -40,7 +40,7 @@ and PID before moving or closing it. A broad permanent `gamescope` rule can
 also capture an unrelated agent's test window.
 
 `omakade --quit` addresses the existing Omakade instance; it is appropriate
-only when that instance belongs to the gaming session. Owning the Couch Mode
+only when that instance belongs to the gaming session. Owning the Omakade
 process in a user service makes cleanup explicit. Keep Omakade open after
 launch if it should remain available when the game closes.
 
@@ -75,7 +75,7 @@ python3 /usr/share/omakade/skills/omakade-tv-gaming/scripts/omakade-tv-game.py -
 The wrapper refuses to launch if the TV is disabled, displays a different
 workspace, or lacks the requested sink. It does not enable outputs, install
 window rules, or change the default audio device. Set up the session's window
-placement first and focus Couch Mode on the TV before launching. The check is
+placement first and focus Omakade on the TV before launching. The check is
 a launch precondition, not ongoing hotplug or audio supervision; the local
 session controller must handle the lifecycle above.
 
@@ -95,7 +95,7 @@ the wrapper does not overwrite them or install drivers.
 
 1. Compare work monitor modes, positions and active workspaces before and after
    a start/stop cycle. Confirm the reservation is excluded from agent allocation.
-2. Test real controller buttons in Couch Mode and in a game. If the device uses
+2. Test real controller buttons in Game Mode and in a game. If the device uses
    the wrong protocol, consult its exact model's manual before changing drivers.
 3. Play game audio to the TV alongside desktop audio on the user's usual sink.
    Test the unavailable-sink path before relying on automatic shutdown.

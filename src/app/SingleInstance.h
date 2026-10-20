@@ -7,7 +7,7 @@
 // forwards a short command instead of opening another window: "activate" raises the
 // window, "play <key>" launches a library game, "rescan <source>" asks a source model
 // to re-import, "game-mode enter", "game-mode exit" and "game-mode toggle" switch Game
-// Mode, and "quit" closes Omakade.
+// Mode, "fullscreen toggle" does what Start does, and "quit" closes Omakade.
 class SingleInstance final : public QObject {
   Q_OBJECT
 
@@ -24,6 +24,8 @@ signals:
   void rescanRequested(const QString& source);
   void gameModeRequested(bool enter);
   void gameModeToggleRequested(const QString& node);
+  // A controller's Home with no game running: fullscreen in place and back, as Start does.
+  void fullscreenToggleRequested();
   void guideToggleRequested(const QString& node);
   void gameModeDesktopRequested();
   // Home after the guide's Desktop: resume; the guide service reopens itself over the game.

@@ -93,6 +93,7 @@ ActionMenu {
             stopPanel.pending = false
             if (GameStop.runningGames.length === 0) {
                 stopPanel.close()
+                if (GameMode.inPlace) Preferences.couchModeEnabled = false
                 GameMode.exit()
             } else {
                 stopPanel.resultMessage = "Games are still running. Game Mode remains active."

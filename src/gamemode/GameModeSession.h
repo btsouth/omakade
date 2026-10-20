@@ -12,17 +12,25 @@
 
 class QScreen;
 
-// Game Mode as the interface sees it: one switch that puts Couch Mode on a chosen display
-// with its sound output, and puts the desktop back when it is switched off.
+// Game Mode as the interface sees it: one switch that puts the fullscreen controller
+// layout on a chosen display with its sound output, and puts the desktop back when it is
+// switched off.
+//
+// A session starts one of two ways. `enter` uses the configured display, sound output and
+// notification choice. `enterInPlace` (F11, Start, the header button, a stream or a
+// remembered fullscreen start) stays on the current display and leaves sound and
+// notifications alone; it only keeps the screen awake while a game runs.
 //
 // Desktop changes run on a worker thread through GameModeController. This object keeps
-// the choices, reports progress, and tells the window when to enter and leave Couch Mode.
+// the choices, reports progress, and tells the window when to enter and leave the layout.
 class GameModeSession final : public QObject {
   Q_OBJECT
   Q_PROPERTY(bool active READ active NOTIFY stateChanged)
   Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
   Q_PROPERTY(bool parked READ parked NOTIFY stateChanged)
   Q_PROPERTY(bool hasSession READ hasSession NOTIFY stateChanged)
+  // The session, or the start in progress, came from enterInPlace.
+  Q_PROPERTY(bool inPlace READ inPlace NOTIFY stateChanged)
   Q_PROPERTY(QString statusText READ statusText NOTIFY stateChanged)
   // False when the compositor cannot be managed, which leaves only the current display.
   Q_PROPERTY(bool displayManaged READ displayManaged NOTIFY devicesChanged)
@@ -61,6 +69,13 @@ public:
   [[nodiscard]] bool busy() const { return m_busy && m_change != Change::RefreshParked; }
   [[nodiscard]] bool parked() const { return m_parked; }
   [[nodiscard]] bool hasSession() const { return m_active || m_parked; }
+  [[nodiscard]] bool inPlace() const { return m_inPlace; }
+  // An in-place session keeps the screen awake only while a game runs, so a handheld
+  // browsing its library can still sleep. A configured session holds it throughout.
+  [[nodiscard]] bool keepsScreenAwake(bool gameRunning) const;
+  // What the in-game guide is told about Game Mode. Its scale follows the fullscreen
+  // layout, which every session uses, in place or configured.
+  [[nodiscard]] QJsonObject guideState(bool fullscreenLayout) const;
   void setTemporaryWindow(bool temporary);
   // The window exists only for Game Mode and is hidden, not returned, when it parks.
   Q_INVOKABLE bool temporaryWindow() const { return m_controller.temporaryWindow(); }
@@ -105,6 +120,9 @@ public:
   Q_INVOKABLE void selectDisplay(int index);
   Q_INVOKABLE void selectSound(int index);
   Q_INVOKABLE void enter();
+  // Starts a session on the display Omakade is on, with sound and notifications
+  // untouched. Resuming a parked session keeps the kind it started as.
+  Q_INVOKABLE void enterInPlace();
   Q_INVOKABLE void exit();
   Q_INVOKABLE void park();
   Q_INVOKABLE void focusGame();
@@ -116,22 +134,25 @@ public:
   // workspaceChecked, so the Game Mode key can tell whether leaving strands a game.
   Q_INVOKABLE void checkWorkspace();
   // Leaves Game Mode before the process ends. Blocks until the desktop is put back.
-  void shutdown();
+  Q_INVOKABLE void shutdown();
 
   [[nodiscard]] static QString outputLabel(const GameModeOutput& output);
+  // The configured choices with the display, sound and notification overrides of an
+  // in-place start applied. Launcher hold and Steam warm-up still apply.
+  [[nodiscard]] static GameModeSettings inPlaceSettings(GameModeSettings settings);
   [[nodiscard]] static GameModeSettings loadSettings(const QString& path);
   [[nodiscard]] static bool saveSettings(const QString& path, const GameModeSettings& settings);
 
 signals:
   void stateChanged();
   void devicesChanged();
-  // The desktop is ready: the window should enter Couch Mode now.
+  // The desktop is ready: the window should enter the fullscreen layout now.
   void entering();
   // GUI-only layout preparation; visibility, native mode and focus stay unchanged.
   void preparing(bool retainNavigation);
   void preparationCancelled();
   void entered();
-  // The window should leave Couch Mode; the desktop is put back right after.
+  // The window should leave the fullscreen layout; the desktop is put back right after.
   void leaving(bool retainNavigation);
   void exited();
   // Capture navigation on the GUI thread before any park effects or window unmap.
@@ -146,6 +167,9 @@ signals:
   void placeholderRequested(bool visible);
   void workspaceChecked(int otherWindows);
   void failed(const QString& message);
+  // An in-place start failed: the window shows the plain fullscreen layout instead.
+  // Sent after preparationCancelled and before failed.
+  void fullscreenFallback();
   // Something worth a toast that is not a failure to start.
   void notice(const QString& message);
 
@@ -169,6 +193,9 @@ private:
   void startChange();
   void refreshParked();
   enum class Change { Enter, Exit, Park, Resume, RefreshParked };
+  void start(bool inPlace);
+  // Rejects choices a session is using. An in-place session does not use them.
+  [[nodiscard]] bool choicesLocked() const;
   void screenRemoved(QScreen* screen);
   [[nodiscard]] int currentDisplayIndex() const;
   [[nodiscard]] int currentSoundIndex() const;
@@ -199,7 +226,9 @@ private:
   bool m_notificationsManaged = false;
   bool m_active = false;
   bool m_busy = false;
+  bool m_shuttingDown = false;
   bool m_parked = false;
+  bool m_inPlace = false;
   bool m_parkUiLeft = false;
   QString m_lastParkError;
   Change m_change = Change::Enter;

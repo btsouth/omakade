@@ -1,8 +1,22 @@
 # Game Mode
 
-Game Mode turns the computer into a console for a while. It opens Couch Mode on the
-display you choose, sends sound there, silences notifications, and puts everything back
-when you leave. It works with every source Omakade supports, not only Steam.
+Game Mode turns the computer into a console for a while. Fullscreen is always Game Mode:
+the controller layout, opened on Home, with the same header on Home and the library. It
+works with every source Omakade supports, not only Steam. It starts one of two ways.
+
+- **Here.** F11, the controller Start button, the controller Home button with no game
+  running, the **GAME MODE** button in the header, `omakade --couch`, a Moonlight stream
+  and a fullscreen start Omakade remembers all open Game Mode on the display you are using. Sound and notifications are left alone, and the
+  screen is kept awake only while a game runs, so a handheld can still sleep while you
+  browse. If Game Mode cannot start, Omakade shows the library fullscreen without it and
+  says why.
+- **On your Game Mode display.** Super + Ctrl + G, holding the controller Home button,
+  **Start Game Mode** in Settings, the desktop entry's **Game Mode** action and
+  `omakade --game-mode` open it on the display you chose, send sound there, silence
+  notifications and keep the screen awake.
+
+Either way, leaving puts back everything it changed. The desktop window keeps opening on
+the library.
 
 [Watch the local Game Mode demo](assets/game-mode-demo.mp4) (isolated desktop).
 
@@ -10,7 +24,10 @@ when you leave. It works with every source Omakade supports, not only Steam.
 
 Open **Settings → Controls** and look under **Game Mode**.
 
-- **Display** is where Couch Mode opens. **Current display** uses the display Omakade is
+These choices are for Game Mode on your Game Mode display. Game Mode started here does
+not use them, so they stay open to change while it runs.
+
+- **Display** is where Game Mode opens. **Current display** uses the display Omakade is
   already on. A display listed as **off until Game Mode** is turned on when Game Mode
   starts and turned off again when you return to the desktop or end the session.
 - **Sound** is the output used while Game Mode is on. **Keep current sound output** leaves
@@ -36,7 +53,8 @@ Open **Settings → Controls** and look under **Game Mode**.
   press. If the key is already used for something else,
   Omakade says what and adds nothing.
 - **Controller Home button** lets the Xbox, PlayStation or Home button on any controller
-  do what the keyboard shortcut does. It is off until you turn it on. See
+  open the in-game guide over a game, and do what Start does when no game is running.
+  Holding it does what the keyboard shortcut does. It is off until you turn it on. See
   [Use a controller's Home button](#use-a-controllers-home-button).
 
 Choose **Start Game Mode**, or run:
@@ -59,8 +77,9 @@ stay in memory. Returning never opens the controls or stops a game.
 
 If Game Mode launched Omakade, returning hides its window while keeping the same
 session and IPC owner. If Omakade was already open, it returns to its previous window,
-layout and mode. Resuming uses that same window and library. Reopening Omakade while
-parked resumes the session too. Each completed return/resume cycle captures the current
+layout, mode and page, and resuming goes back to the Game Mode page you left. Resuming
+uses that same window and library. Reopening Omakade while parked resumes the session
+too. Each completed return/resume cycle captures the current
 desktop and the warm window's current home and compositor mode.
 
 The desktop entry also carries a **Game Mode** action for launchers that show actions.
@@ -69,8 +88,10 @@ With the shell guide plugin enabled on Omarchy, these controls use the
 [in-game guide](GAME-GUIDE.md). While a known game runs, the Guide button and
 Super + Ctrl + G open or close it.
 
-Press Start on the controller or F11 on the keyboard while Omakade is in front to open
-the compact Game Mode controls. **Back to Library** keeps the session active, and
+**LEAVE** in the header, Start on the controller and F11 on the keyboard leave Game Mode.
+With no game running they end it at once and return to the desktop library, with your
+selection kept. With a game running they open the compact Game Mode controls instead, so
+one press cannot strand the game. **Back to Library** keeps the session active, and
 **Back to Game** dismisses the overlay when it is over a game. Escape or the controller's
 back button dismisses the controls too. While a game has focus, Start belongs to the
 game. Bring Omakade to the foreground to use F11 or Start for its controls; the shortcut
@@ -86,8 +107,8 @@ To end the session explicitly, choose **Stop Games and Leave…** and confirm th
 running games. A failed stop keeps the session available. When no safe stop targets are
 available, choose **End Game Mode**; this restores desktop effects and releases the
 session without stopping untracked games. Settings offers **Resume Game Mode** and
-**Game Mode Controls** while parked, and display, sound and notification choices stay
-locked until the session ends. `omakade --game-mode-exit` ends it too, as does closing
+**Game Mode Controls** while parked. Display, sound and notification choices stay locked
+until a session on your Game Mode display ends; a session started here leaves them open. `omakade --game-mode-exit` ends it too, as does closing
 Omakade. Ending closes an Omakade instance launched just for Game Mode; a previously
 open instance remains open. Retention lasts only in the running process, so crash
 recovery restores effects and clears the interrupted session rather than reopening its UI.
@@ -99,11 +120,19 @@ the game visible and explains why Return to Desktop could not complete.
 ## Use a controller's Home button
 
 Turn on **Controller Home button** in **Settings → Controls**. A short press of the
-Xbox, PlayStation or Home button on any connected controller then does what
-Super + Ctrl + G does: with no game it starts Game Mode, returns to the desktop and
-resumes; over a running game it opens the [in-game guide](GAME-GUIDE.md). Holding
-the button for half a second always switches between Game Mode and the desktop,
-without the guide. It works while a game has focus and when Omakade is closed.
+Xbox, PlayStation or Home button on any connected controller then works like this:
+
+- **Over a running game** it opens the [in-game guide](GAME-GUIDE.md), and pressing it
+  again goes back to the game. That includes a game started from the desktop while Game
+  Mode is parked.
+- **With no game running** it does what Start does in Omakade: Game Mode starts on the
+  display Omakade is on, and the next press ends it. Your Game Mode display, sound output
+  and notification choices are not used. With Omakade closed, it opens Omakade fullscreen
+  on the display you are using. A parked session comes back instead.
+
+Holding the button for half a second always switches between Game Mode on your Game
+Mode display and the desktop, as Super + Ctrl + G does, without the guide. It works
+while a game has focus and when Omakade is closed.
 
 To have a short press switch Game Mode and the desktop as before the guide, set
 **Home button in games** to **Game Mode**.
@@ -184,14 +213,15 @@ set for that output is kept; Game Mode only switches it on and off.
 | --- | --- |
 | A display that was off is turned on | It is turned off again |
 | A display that was already on shows a Game Mode workspace | It shows the workspace it had before |
-| Omakade moves to that workspace in Couch Mode | It returns to the same spot in its workspace and its previous mode |
+| Omakade moves to that workspace, fullscreen | It returns to the same spot in its workspace and its previous mode |
 | The chosen sound output becomes the default | The previous default returns |
 | Notifications are silenced | They are unsilenced |
-| The screen is kept awake | Idle behaviour returns to normal |
+| The screen is kept awake (started here: only while a game runs) | Idle behaviour returns to normal |
 
 While a tiled Omakade window is away, a placeholder window holds its place in the
 layout, so the windows beside it keep their size and position. Omakade already
-fullscreen in Couch Mode covers its workspace and returns fullscreen.
+already fullscreen covers its workspace and returns fullscreen. Game Mode started here
+always returns to the desktop window, even when Omakade opened fullscreen.
 
 Game Mode only undoes its own changes. A display that was already on stays on. If you
 switch to another sound output during the session, that choice is kept. Notifications
@@ -242,8 +272,8 @@ start, **End Game Mode** or `omakade --game-mode-exit` brings them back.
 ## Limits
 
 - Choosing a display and the dedicated workspace need Hyprland with a Lua configuration,
-  which is what Omarchy 4 ships. On other setups Game Mode uses the current display and
-  still handles sound, but Return to Desktop is refused when safe game discovery and
+  which is what Omarchy 4 ships. On other setups Game Mode started here still goes
+  fullscreen on the current display, and Game Mode on your display still handles sound, but Return to Desktop is refused when safe game discovery and
   desktop restoration are unavailable. Use End Game Mode or `--game-mode-exit` instead.
   Library-only parking does not require game audio controls; parking a running game does.
 - Sound switching requires `pactl` (`libpulse` on Arch) and a running
@@ -302,7 +332,7 @@ observations separately:
    toggle to desktop and back three times. The same page, selection, focus and scroll
    return; the previous desktop workspace and window layout return on each park.
    End Game Mode explicitly and verify the journal and temporary owner are cleared.
-2. A second display that is normally on: Couch Mode opens there, and leaving restores the
+2. A second display that is normally on: Game Mode opens there, and leaving restores the
    workspace it was showing and returns focus to the first display.
 3. A display that is disabled in `monitors.lua`: it turns on, and turns off when leaving.
 4. A chosen sound output: game audio plays there, and the previous output returns.
@@ -313,10 +343,17 @@ observations separately:
 6. Kill Omakade during Game Mode, then start it again. The display, sound and
    notifications are put back.
 7. Unplug or disable the display during Game Mode. Game Mode ends and sound returns.
-8. Controller Home button, with Steam open and Steam Input on: a short press starts,
-   returns and resumes, including from inside a game. A long hold and a Home button
-   chord do nothing, and the game and Steam still receive ordinary input.
+8. Controller Home button, with Steam open and Steam Input on: with no game a short
+   press starts and ends Game Mode in place, and over a game it opens and closes the
+   guide. A long hold starts, returns and resumes Game Mode on the Game Mode display.
+   A Home button chord does nothing, and the game and Steam still receive ordinary input.
 9. With the display powered off, start Game Mode. If Hyprland cannot enable its
    output, it reports the failure and rolls back. If the display still advertises
    an active connection, Game Mode may start; verify this separately from the
    automated timeout test.
+10. With a TV and its sound output chosen, press F11 on the desk display. Game Mode opens
+    on the desk display, the TV stays off, sound and notifications do not change, and
+    LEAVE with no game running returns to the desktop library. Start a game there and
+    let it idle: the screen stays awake. Browse without a game: the screen may sleep.
+11. Start a Moonlight stream of Omakade. Game Mode opens on the streamed display and the
+    stream's sound keeps working. Ending the stream closes Omakade and clears the session.

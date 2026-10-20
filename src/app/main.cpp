@@ -146,7 +146,10 @@ public:
     if (remapped.exchange(false)) window.workspace = QStringLiteral("1");
     return window;
   }
-  int otherWindowsOn(const QString&, qint64) override { return 0; }
+  // Windows of other processes on the Game Mode workspace, such as a game the fixture
+  // pretends is running there.
+  std::atomic<int> otherWindows{0};
+  int otherWindowsOn(const QString&, qint64) override { return otherWindows.load(); }
   QStringList otherWindowAddressesOn(const QString&, qint64) override { return {}; }
   bool gameWindows(const QString&, qint64, QVector<GameModeGameWindow>* games, QString*) override {
     games->clear();
@@ -744,14 +747,20 @@ int main(int argc, char* argv[]) {
   for (int index = 0; index < argc; ++index) rawArguments.append(QString::fromLocal8Bit(argv[index]));
   const bool guideShortcut = rawArguments.contains("--game-mode-toggle") || rawArguments.contains("--guide-toggle");
   bool guideFallback = rawArguments.contains("--game-mode-fallback");
-  if (guideShortcut && !guideFallback) {
+  // A controller's Home with no game running does what Start does in Omakade.
+  bool fullscreenToggleRequest = rawArguments.contains("--fullscreen-toggle");
+  if (guideShortcut && !guideFallback && !fullscreenToggleRequest) {
     // This path exits before loading a Qt platform, theme, library, models or QML.
     QCoreApplication commandApplication(argc, argv);
     const auto result = GuideClient::routeShortcut(optionValue(rawArguments, "--guide-device"));
     if (result == "handled" || result == "locked") return EXIT_SUCCESS;
-    // Missing/old/masked services retain the 1.15 Game Mode path.
-    if (result != "fallback" && result != "unavailable" && result != "preparing") return EXIT_FAILURE;
-    guideFallback = true;
+    if (result == "fullscreen") {
+      fullscreenToggleRequest = true;
+    } else {
+      // Missing/old/masked services retain the 1.15 Game Mode path.
+      if (result != "fallback" && result != "unavailable" && result != "preparing") return EXIT_FAILURE;
+      guideFallback = true;
+    }
   }
   QElapsedTimer startupTimer;
   startupTimer.start();
@@ -908,7 +917,7 @@ int main(int argc, char* argv[]) {
   const bool reducedMotionRequest =
       application.arguments().contains(QStringLiteral("--reduced-motion"));
   const bool couchRequest = application.arguments().contains(QStringLiteral("--couch")) ||
-                            SunshineIntegration::streaming();
+                            SunshineIntegration::streaming() || fullscreenToggleRequest;
   if (benchmarkMode) {
     qInfo() << "Theme ready in" << startupTimer.elapsed() << "ms";
   }
@@ -927,6 +936,10 @@ int main(int argc, char* argv[]) {
     if (SingleInstance::sendCommand({}, "game-mode desktop")) return EXIT_SUCCESS;
     qCritical() << "No running Game Mode session to return from.";
     return EXIT_FAILURE;
+  }
+  // With no window running, this falls through to a fullscreen start, as --couch does.
+  if (fullscreenToggleRequest && SingleInstance::sendCommand({}, "fullscreen toggle")) {
+    return EXIT_SUCCESS;
   }
   if (gameModeToggleRequest) {
     if (SingleInstance::sendCommand({}, "game-mode toggle game-mode-fallback")) {
@@ -958,6 +971,7 @@ int main(int argc, char* argv[]) {
   const QByteArray instanceCommand =
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
       : gameModeRequest                  ? QByteArray("game-mode enter")
+      : fullscreenToggleRequest          ? QByteArray("fullscreen toggle")
       : couchRequest                     ? QByteArray("activate stream")
                                          : QByteArray("activate");
   if (!isolatedTest && !singleInstance.claimOrNotify(instanceCommand)) {
@@ -1927,8 +1941,7 @@ int main(int argc, char* argv[]) {
     bool couch = preferences.couchModeEnabled();
     for (auto* window : QGuiApplication::topLevelWindows())
       if (window->property("couchMode").isValid()) { couch = window->property("couchMode").toBool(); break; }
-    inGameGuide.publish(sessions, {{"gameModeActive", gameMode.active()}, {"gameModeParked", gameMode.parked()},
-                                  {"scale", couch ? 1.7 : 1.0}});
+    inGameGuide.publish(sessions, gameMode.guideState(couch));
   };
   QObject::connect(&gameMode, &GameModeSession::stateChanged, &inGameGuide, publishGuideGames);
   QObject::connect(&guideSnapshotTimer, &QTimer::timeout, &inGameGuide, publishGuideGames);
@@ -2165,6 +2178,10 @@ int main(int argc, char* argv[]) {
                                            startInCouchMode);
   engine.rootContext()->setContextProperty(QStringLiteral("ColdGameModeRequested"),
                                            gameModeRequest);
+  // Fullscreen starts an in-place Game Mode session. Test runs other than the Game Mode
+  // fixture have no desktop to manage and keep the plain fullscreen layout.
+  engine.rootContext()->setContextProperty(QStringLiteral("FullscreenStartsGameMode"),
+                                           !isolatedTest || gameModeTest);
   engine.rootContext()->setContextProperty(
       QStringLiteral("CouchLibraryViewOverride"),
       renderOverlay.startsWith(QStringLiteral("couch-grid")) ? QStringLiteral("grid") : QString{});
@@ -2203,10 +2220,11 @@ int main(int argc, char* argv[]) {
     // Hold the compositor's idle timer while a launched game runs, since controller input alone
     // never resets it and most emulators do not inhibit for themselves.
     auto* idleInhibitor = new IdleInhibitor(rootWindow, rootWindow);
-    // Game Mode holds it for the whole session: browsing with a controller must not let
-    // the television blank either.
+    // A configured Game Mode session holds it throughout: browsing with a controller must
+    // not let the television blank either. An in-place one holds it only while a game
+    // runs, so a handheld browsing its library can still sleep.
     const auto syncIdleInhibitor = [&launcher, &gameMode, idleInhibitor] {
-      idleInhibitor->setInhibited(gameMode.active() || (launcher.gameRunning() && !gameMode.parked()));
+      idleInhibitor->setInhibited(gameMode.keepsScreenAwake(launcher.gameRunning()));
     };
     QObject::connect(&launcher, &GameLauncher::gameRunningChanged, idleInhibitor,
                      syncIdleInhibitor);
@@ -2237,6 +2255,13 @@ int main(int argc, char* argv[]) {
           SunshineIntegration::configuredOutputName(), screenNames);
       if (screenIndex >= 0) {
         rootWindow->setScreen(screens.at(screenIndex));
+      }
+    } else if (!isolatedTest) {
+      // Fullscreen goes to the window's screen, which Qt sets to the primary one. Game
+      // Mode starts in place, so open on the display that has focus instead.
+      for (const auto& output : gameModeCompositor.outputs()) {
+        const int screenIndex = output.focused ? screenNames.indexOf(output.name) : -1;
+        if (screenIndex >= 0) rootWindow->setScreen(screens.at(screenIndex));
       }
     }
     rootWindow->showFullScreen();
@@ -3258,7 +3283,7 @@ int main(int argc, char* argv[]) {
             }
             // The controller must be able to move down into the panel and back up
             // out of it, which is what makes the stop reachable on a pad.
-            auto* library = findVisualItem(quickWindow->contentItem(), "homeLibraryButton");
+            auto* library = findVisualItem(quickWindow->contentItem(), "homeCouchHomeButton");
             if (library == nullptr) {
               qCritical() << "Couch Now Playing could not find the Home toolbar";
               application.exit(EXIT_FAILURE);
@@ -3769,7 +3794,7 @@ int main(int argc, char* argv[]) {
           auto* firstControl = quickWindow->activeFocusItem();
           if (quickWindow->property("couchMode").toBool()) {
             auto* sharedHeader = quickWindow->findChild<QQuickItem*>("homeAppHeader");
-            auto* couchHomeButton = quickWindow->findChild<QQuickItem*>("homeLibraryButton");
+            auto* couchHomeButton = quickWindow->findChild<QQuickItem*>("homeCouchHomeButton");
             if (!sharedHeader || sharedHeader->isVisible() || !couchHomeButton ||
                 firstControl != couchHomeButton) {
               qCritical() << "Couch Home did not retain its couch header";
@@ -5138,7 +5163,7 @@ int main(int argc, char* argv[]) {
         }
         auto* homeScreen = quickWindow->findChild<QQuickItem*>(QStringLiteral("homeScreen"));
         auto* homeAppHeader = quickWindow->findChild<QQuickItem*>(QStringLiteral("homeAppHeader"));
-        auto* couchHomeLibrary = quickWindow->findChild<QQuickItem*>(QStringLiteral("homeLibraryButton"));
+        auto* couchHomeLibrary = quickWindow->findChild<QQuickItem*>(QStringLiteral("homeCouchHomeButton"));
         if (!homeScreen || !homeAppHeader || !couchHomeLibrary) {
           fail(QStringLiteral("Couch Home header fixtures were not available"));
           return;
@@ -5555,12 +5580,15 @@ int main(int argc, char* argv[]) {
           // Header navigation follows the visible rows, rather than wrapping Right
           // into a different row. Reach Settings vertically, then along the header.
           sendKey(Qt::Key_Up);
-          auto* home = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchHomeButton"));
-          if (home && home->hasActiveFocus()) sendKey(Qt::Key_Right);
-          auto* stats = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchStatsButton"));
-          auto* desktop = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchDesktopButton"));
-          if (stats && stats->hasActiveFocus()) sendKey(Qt::Key_Left);
-          if (desktop && desktop->hasActiveFocus()) sendKey(Qt::Key_Left);
+          const QStringList header{QStringLiteral("couchHomeButton"), QStringLiteral("couchLibraryButton"),
+                                   QStringLiteral("couchStatsButton"), QStringLiteral("couchSettingsButton"),
+                                   QStringLiteral("couchDesktopButton")};
+          for (int step = 0; step < header.size() && !settings->hasActiveFocus(); ++step) {
+            auto* focused = quickWindow->activeFocusItem();
+            const int at = focused ? header.indexOf(focused->objectName()) : -1;
+            if (at < 0) break;
+            sendKey(at < header.indexOf(QStringLiteral("couchSettingsButton")) ? Qt::Key_Right : Qt::Key_Left);
+          }
           if (!settings->hasActiveFocus()) {
             fail(QStringLiteral("Controller could not reach couch Settings"));
             return;
@@ -7119,6 +7147,34 @@ int main(int argc, char* argv[]) {
                        gameMode.toggle();
                      }
                    });
+  // Home on a controller with no game running: what Start does in this window. A parked
+  // session comes back first, as any other activation brings it back. A press while
+  // Game Mode starts, parks or resumes waits for that to finish, so it is not read as a
+  // leave halfway through.
+  const auto homeWaiting = std::make_shared<bool>(false);
+  const auto homePress = [&gameMode, rootWindow, homeWaiting] {
+    if (gameMode.busy()) {
+      *homeWaiting = true;
+      return;
+    }
+    if (gameMode.parked()) {
+      gameMode.enter();
+      return;
+    }
+    rootWindow->requestActivate();
+    QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+  };
+  QObject::connect(&singleInstance, &SingleInstance::fullscreenToggleRequested, &gameMode,
+                   [rootWindow, homePress] {
+                     if (rootWindow != nullptr) homePress();
+                   });
+  QObject::connect(&gameMode, &GameModeSession::stateChanged, &gameMode,
+                   [&gameMode, homeWaiting, homePress] {
+                     if (!*homeWaiting || gameMode.busy()) return;
+                     *homeWaiting = false;
+                     // After the finished change's own handlers have run.
+                     QTimer::singleShot(0, &gameMode, homePress);
+                   });
   // The shell was unreachable when the guide was requested: do what the shortcut did before the guide.
   QObject::connect(&inGameGuide, &GuideClient::summonFailed, &gameMode, [&gameMode, rootWindow] {
     if (rootWindow == nullptr || !QMetaObject::invokeMethod(rootWindow, "toggleGameMode")) gameMode.toggle();
@@ -7243,6 +7299,10 @@ int main(int argc, char* argv[]) {
     QTimer::singleShot(0, &gameMode, &GameModeSession::refresh);
     if (gameModeRequest) {
       QTimer::singleShot(0, &gameMode, &GameModeSession::enter);
+    } else if (startInCouchMode && rootWindow != nullptr) {
+      // --couch, a Sunshine stream and a remembered fullscreen start are Game Mode on
+      // the display the window opened on, never the configured one.
+      QTimer::singleShot(0, &gameMode, &GameModeSession::enterInPlace);
     }
   }
   if (playSessionStore != nullptr) {
@@ -7307,8 +7367,13 @@ int main(int argc, char* argv[]) {
                        melondsLibrary->refresh();
                      }
                    });
+  // Quitting closes every window before aboutToQuit, and a session cannot put back a window
+  // that is gone. End it first, as a Moonlight stream's `omakade --quit` expects.
   QObject::connect(&singleInstance, &SingleInstance::quitRequested, &application,
-                   &QCoreApplication::quit);
+                   [&application, &gameMode] {
+                     gameMode.shutdown();
+                     application.quit();
+                   });
 
   // Keep the empty library's loading state continuous across staggered source
   // starts. A gap between scans must not briefly claim that no games exist.
@@ -8078,10 +8143,12 @@ int main(int argc, char* argv[]) {
         return;
       }
       gameMode.setTemporaryWindow(false);
-      QObject::disconnect(mappingStateCheck);
       rootWindow->setWindowState(originalState);
-      gameModeTestCompositor.mapped.store(true);
+      // Shown again, the root maps as a new client on the desktop workspace, as it does
+      // in Hyprland. The mapping check models that until it is shown.
       rootWindow->show();
+      QObject::disconnect(mappingStateCheck);
+      gameModeTestCompositor.mapped.store(true);
       // Smoke fixtures skip the normal --couch startup fullscreen step. Match the
       // real startup state before exercising a transient overlay and its focus.
       if (couchBefore) {
@@ -8102,9 +8169,47 @@ int main(int argc, char* argv[]) {
       }
       if (!rootWindow->property("couchMode").toBool() ||
           !rootWindow->property("gameModeActive").toBool()) {
-        fail(QStringLiteral("Game Mode did not open Couch Mode"));
+        fail(QStringLiteral("Game Mode did not open its fullscreen layout"));
         return;
       }
+      // Game Mode lands on Home, and the desktop goes back to the page it showed.
+      const bool homeBefore = false;
+      if (!rootWindow->property("homeOpen").toBool()) {
+        fail(QStringLiteral("Game Mode did not land on Home"));
+        return;
+      }
+      // With no game running, leaving ends Game Mode at once, with no controls menu.
+      // Both Leave buttons and the Start and F11 toggle do the same.
+      for (const char* leaveRoute : {"toggle", "couchDesktopButton", "homeCouchDesktopButton"}) {
+        if (QByteArray(leaveRoute) == "toggle") {
+          QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+        } else {
+          rootWindow->setProperty("homeOpen", QByteArray(leaveRoute) == "homeCouchDesktopButton");
+          auto* button = findVisualItem(qobject_cast<QQuickWindow*>(rootWindow)->contentItem(), leaveRoute);
+          if (!button || !settled([button] { return button->isVisible() && button->isEnabled(); }) ||
+              button->property("text").toString() != "LEAVE") {
+            fail(QStringLiteral("Game Mode's shared header has no LEAVE on %1").arg(leaveRoute));
+            return;
+          }
+          QMetaObject::invokeMethod(button, "clicked");
+        }
+        if (!settled([&gameMode] { return !gameMode.hasSession() && !gameMode.busy(); }) ||
+            rootWindow->property("couchMode").toBool() != couchBefore ||
+            rootWindow->property("homeOpen").toBool() != homeBefore) {
+          fail(QStringLiteral("Leaving with no game running (%1) did not end Game Mode directly")
+                   .arg(leaveRoute));
+          return;
+        }
+        gameMode.enter();
+        if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); }) ||
+            !rootWindow->property("homeOpen").toBool()) {
+          fail(QStringLiteral("Game Mode did not start again on Home"));
+          return;
+        }
+      }
+      // A game on the Game Mode workspace: every way of leaving opens the controls instead.
+      gameModeTestCompositor.otherWindows = 1;
+      rootWindow->setProperty("homeOpen", false);
       QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
       auto* leave = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeLeaveButton"));
       auto* safeBack = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeBackButton"));
@@ -8113,9 +8218,9 @@ int main(int argc, char* argv[]) {
         return;
       }
       QMetaObject::invokeMethod(rootWindow, "setCouchMode", Q_ARG(QVariant, QVariant(false)));
-      QCoreApplication::processEvents();
-      if (!rootWindow->property("couchMode").toBool() || !gameMode.active()) {
-        fail(QStringLiteral("Switching to desktop left Couch Mode while Game Mode was on"));
+      if (!settled([rootWindow] { return !rootWindow->property("gameModeLeaveChecking").toBool(); }) ||
+          !rootWindow->property("couchMode").toBool() || !gameMode.active()) {
+        fail(QStringLiteral("Switching to desktop with a game running left Game Mode"));
         return;
       }
       auto* back = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeBackButton"));
@@ -8148,23 +8253,25 @@ int main(int argc, char* argv[]) {
         fail(QStringLiteral("Main Game Mode controls did not finish closing"));
         return;
       }
-      // Home's DESKTOP goes to the desktop as holding Home does, without the controls menu.
+      // Home's LEAVE is the library's: with a game running it opens the controls.
       {
         rootWindow->setProperty("homeOpen", true);
         auto* homeDesktop = rootWindow->findChild<QQuickItem*>(QStringLiteral("homeCouchDesktopButton"));
         if (!homeDesktop || !settled([homeDesktop] { return homeDesktop->isVisible() && homeDesktop->isEnabled(); })) {
-          fail(QStringLiteral("Home DESKTOP is not available in Game Mode"));
+          fail(QStringLiteral("Home LEAVE is not available in Game Mode"));
           return;
         }
         QMetaObject::invokeMethod(homeDesktop, "clicked");
-        if (!settled([&gameMode] { return gameMode.parked() && !gameMode.busy(); }) ||
-            (mainPanel && mainPanel->property("visible").toBool())) {
-          fail(QStringLiteral("Home DESKTOP did not go straight to the desktop"));
+        if (!settled([mainPanel, safeBack] {
+              return mainPanel->property("visible").toBool() && safeBack->hasActiveFocus();
+            }) || !gameMode.active()) {
+          fail(QStringLiteral("Home LEAVE with a game running did not open the Game Mode controls"));
           return;
         }
-        gameMode.enter();
-        if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
-          fail(QStringLiteral("Game Mode did not resume after Home DESKTOP"));
+        QMetaObject::invokeMethod(safeBack, "clicked");
+        if (!settled([mainPanel] { return !mainPanel->property("visible").toBool(); }) ||
+            !gameMode.active() || !rootWindow->property("homeOpen").toBool()) {
+          fail(QStringLiteral("Back to Library from Home's controls ended Game Mode or left Home"));
           return;
         }
         // B in Settings opened from Home closes only Settings, in Game Mode as on the desktop.
@@ -8403,10 +8510,11 @@ int main(int argc, char* argv[]) {
         QCoreApplication::processEvents();
         pageFocus->forceActiveFocus();
         QMetaObject::invokeMethod(rootWindow, "toggleGameMode");
+        // Parked, the desktop shows the page it had before Game Mode; Settings stays open.
         if (!settled([&gameMode] { return gameMode.parked() && !gameMode.busy(); }) ||
-            !rootWindow->property("homeOpen").toBool() ||
+            rootWindow->property("homeOpen") != rootWindow->property("homeBeforeGameMode") ||
             rootWindow->property("diagnosticsOpen").toBool() != settingsPage) {
-          fail(QStringLiteral("Park lost the retained Home or Settings page"));
+          fail(QStringLiteral("Park did not show the desktop's own page or lost Settings"));
           return;
         }
         QMetaObject::invokeMethod(rootWindow, "toggleGameMode");
@@ -8459,10 +8567,13 @@ int main(int argc, char* argv[]) {
       for (int surface = 0; surface < 4; ++surface) {
         for (bool endParked : {false, true}) {
           gameMode.enter();
-          if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
-            fail(QStringLiteral("Couch surface Game Mode session did not start"));
+          if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); }) ||
+              !rootWindow->property("homeOpen").toBool()) {
+            fail(QStringLiteral("Couch surface Game Mode session did not start on Home"));
             return;
           }
+          rootWindow->setProperty("homeOpen", false);
+          QCoreApplication::processEvents();
           if (surface == 0) {
             QMetaObject::invokeMethod(sourcesMenu, "open");
             if (!settled([sourcesMenu] { return sourcesMenu->property("opened").toBool(); })) {
@@ -8620,6 +8731,100 @@ int main(int argc, char* argv[]) {
       gameStop.finished(true, "Parked fixture stopped", {});
       if (!settled([&gameMode] { return !gameMode.hasSession() && !gameMode.busy(); })) {
         fail(QStringLiteral("Successful parked stop did not end the retained session"));
+        return;
+      }
+      // Fullscreen is Game Mode: F11 and Start start it in place, on Home, and leaving
+      // with nothing running goes straight back to the desktop library.
+      auto* preferences = qmlContext(rootWindow)->contextProperty("Preferences").value<QObject*>();
+      auto* toast = rootWindow->findChild<QObject*>(QStringLiteral("toast"));
+      if (!preferences || !toast) {
+        fail(QStringLiteral("In-place Game Mode fixtures are missing"));
+        return;
+      }
+      gameModeTestCompositor.otherWindows = 0;
+      if (rootWindow->property("couchMode").toBool()) {
+        // The --couch fixture starts in the plain fullscreen layout without a session.
+        QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+        if (!settled([rootWindow] { return !rootWindow->property("couchMode").toBool(); }) ||
+            gameMode.hasSession()) {
+          fail(QStringLiteral("Leaving plain fullscreen started Game Mode"));
+          return;
+        }
+      }
+      // The fixture compositor records window modes without applying them, so the earlier
+      // sessions leave Qt's window fullscreen. Start from the desktop window F11 sees.
+      rootWindow->showNormal();
+      if (!settled([rootWindow] { return rootWindow->windowState() != Qt::WindowFullScreen; })) {
+        fail(QStringLiteral("The desktop window did not leave fullscreen before F11"));
+        return;
+      }
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); }) ||
+          !gameMode.inPlace() || !rootWindow->property("couchMode").toBool() ||
+          !rootWindow->property("homeOpen").toBool() ||
+          rootWindow->windowState() != Qt::WindowFullScreen) {
+        fail(QStringLiteral("F11 did not start Game Mode in place on Home"));
+        return;
+      }
+      if (gameModeTestCompositor.window.workspace != GameModeController::workspace() ||
+          gameMode.sessionOutputName() != QStringLiteral("fixture")) {
+        fail(QStringLiteral("In-place Game Mode did not take its workspace on the current display"));
+        return;
+      }
+      if (!preferences->property("couchModeEnabled").toBool()) {
+        fail(QStringLiteral("F11 Game Mode was not remembered for the next start"));
+        return;
+      }
+      // The guide sees an in-place session as Game Mode, at the fullscreen scale.
+      const QJsonObject guide = gameMode.guideState(rootWindow->property("couchMode").toBool());
+      if (!guide.value("gameModeActive").toBool() || guide.value("gameModeParked").toBool() ||
+          guide.value("scale").toDouble() != 1.7) {
+        fail(QStringLiteral("The guide was not told about the in-place Game Mode session"));
+        return;
+      }
+      auto* homeLeave = findVisualItem(qobject_cast<QQuickWindow*>(rootWindow)->contentItem(),
+                                       "homeCouchDesktopButton");
+      if (!homeLeave || !settled([homeLeave] { return homeLeave->isVisible() && homeLeave->isEnabled(); })) {
+        fail(QStringLiteral("In-place Game Mode Home has no LEAVE"));
+        return;
+      }
+      QMetaObject::invokeMethod(homeLeave, "clicked");
+      if (!settled([&gameMode] { return !gameMode.hasSession() && !gameMode.busy(); }) ||
+          rootWindow->property("couchMode").toBool() || rootWindow->property("homeOpen").toBool() ||
+          !settled([rootWindow] { return rootWindow->windowState() != Qt::WindowFullScreen; })) {
+        fail(QStringLiteral("Leaving in-place Game Mode did not return to the desktop library "
+                            "(session=%1, fullscreen layout=%2, home=%3, window state=%4)")
+                 .arg(gameMode.hasSession()).arg(rootWindow->property("couchMode").toBool())
+                 .arg(rootWindow->property("homeOpen").toBool()).arg(int(rootWindow->windowState())));
+        return;
+      }
+      if (preferences->property("couchModeEnabled").toBool()) {
+        fail(QStringLiteral("Leaving in-place Game Mode was not remembered"));
+        return;
+      }
+      if (gameModeTestCompositor.window.workspace != QStringLiteral("1")) {
+        fail(QStringLiteral("Leaving in-place Game Mode did not put the window back on the desktop"));
+        return;
+      }
+      // A start that fails falls back to the plain fullscreen layout and says so.
+      gameModeTestCompositor.placeFails = true;
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      if (!settled([&gameMode, rootWindow] {
+            return !gameMode.busy() && rootWindow->property("couchMode").toBool();
+          }) || gameMode.hasSession() || rootWindow->windowState() != Qt::WindowFullScreen ||
+          !toast->property("message").toString().contains(QStringLiteral("without Game Mode"))) {
+        fail(QStringLiteral("A failed in-place start did not fall back to plain fullscreen with a toast "
+                            "(session=%1, busy=%2, fullscreen layout=%3, window state=%4, toast=%5, workspace=%6)")
+                 .arg(gameMode.hasSession()).arg(gameMode.busy())
+                 .arg(rootWindow->property("couchMode").toBool()).arg(int(rootWindow->windowState()))
+                 .arg(toast->property("message").toString(), gameModeTestCompositor.window.workspace));
+        return;
+      }
+      gameModeTestCompositor.placeFails = false;
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      if (!settled([rootWindow] { return !rootWindow->property("couchMode").toBool(); }) ||
+          gameMode.hasSession()) {
+        fail(QStringLiteral("Leaving the plain fullscreen fallback did not return to the desktop"));
         return;
       }
       application.quit();

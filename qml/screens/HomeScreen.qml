@@ -8,6 +8,8 @@ FocusScope {
     id: root
     property bool couchMode: false
     readonly property real scaleFactor: couchMode ? 1.25 : 1
+    // The library's own scale, so Game Mode's shared header sits in the same place on both.
+    readonly property real headerScale: Math.max(0.68, Math.min(2.0, Math.min(width / 1920, height / 1080)))
     // The Now Playing panel is where a couch player acts on a running game, so it
     // gets a real couch scale rather than the desktop scale the rest of Home uses:
     // its text has to be readable from a sofa and its stop control has to be a
@@ -121,7 +123,7 @@ FocusScope {
     function focusHome() {
         scroll.stopWheelScroll("focus-home")
         scroll.contentY = scroll.originY
-        if (root.couchMode) libraryButton.forceActiveFocus()
+        if (root.couchMode) gameModeHeader.homeButton.forceActiveFocus()
         else homeAppHeader.homeButton.forceActiveFocus()
     }
     function focusKey(game) { return game.queueKey ? "queue:" + game.queueKey : game.identity || "" }
@@ -209,7 +211,7 @@ FocusScope {
             focusHome()
             return true
         }
-        // The Now Playing panel sits above everything else on Home, so in Couch Mode it
+        // The Now Playing panel sits above everything else on Home, so in Game Mode it
         // is the first stop below the toolbar and the way back up out of the content.
         // Desktop keeps the arrow order it had, where Down goes straight to the games,
         // and its stop control stays reachable by Tab.
@@ -234,8 +236,9 @@ FocusScope {
             }
             return root.focusContent()
         }
+        const inGameModeHeader = root.couchMode && current && root.Window.window.isWithin(current, gameModeHeader)
         if (key === Qt.Key_Down &&
-            (current === libraryButton || (!root.couchMode && current === homeAppHeader.homeButton))) {
+            (inGameModeHeader || (!root.couchMode && current === homeAppHeader.homeButton))) {
             if (root.couchMode && root.focusNowPlayingStop(0)) return true
             return root.focusContent()
         }
@@ -588,30 +591,32 @@ FocusScope {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.top: root.couchMode ? parent.top : homeAppHeader.bottom
-        anchors.leftMargin: root.couchMode ? 32 : Math.max(22, root.width * 0.032)
-        anchors.rightMargin: root.couchMode ? 32 : Math.max(22, root.width * 0.032)
-        anchors.topMargin: root.couchMode ? 32 : 18
+        anchors.leftMargin: root.couchMode ? Math.round(54 * root.headerScale) : Math.max(22, root.width * 0.032)
+        anchors.rightMargin: root.couchMode ? Math.round(54 * root.headerScale) : Math.max(22, root.width * 0.032)
+        anchors.topMargin: root.couchMode ? Math.round(32 * root.headerScale) : 18
         anchors.bottomMargin: root.couchMode ? 32 : 16
         spacing: 18
-        RowLayout {
-            Layout.fillWidth: true
+        // Game Mode's header, the same one the library shows.
+        GameModeHeader {
+            id: gameModeHeader
+            objectName: "homeGameModeHeader"
+            current: "home"
+            uiScale: root.headerScale
             Layout.preferredHeight: root.couchMode ? implicitHeight : 0
             visible: root.couchMode
-            Text { text: "HOME"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 25 * root.scaleFactor }
-            Item { Layout.fillWidth: true }
-            // One row, so Left and Right reach every button.
-            Row {
-                spacing: 6
-                GlassButton { id: libraryButton; objectName: "homeLibraryButton"; text: "LIBRARY"; compact: true; onActiveFocusChanged: if (activeFocus) root.focusedIdentity = ""; onClicked: root.libraryRequested() }
-                GlassButton { objectName: "homeCouchSearchButton"; text: "SEARCH"; compact: true; onClicked: root.Window.window.openLibrarySearch() }
-                GlassButton { objectName: "homeCouchSettingsButton"; text: "SETTINGS"; compact: true; onClicked: root.Window.window.diagnosticsOpen = true }
-                // In Game Mode this goes to the desktop as holding Home does, keeping the session.
-                GlassButton {
-                    objectName: "homeCouchDesktopButton"; text: "DESKTOP"; compact: true
-                    enabled: !GameMode.busy
-                    onClicked: GameMode.active ? GameMode.park() : root.Window.window.setCouchMode(false)
-                }
-            }
+            buttonChanged: function(button) { if (button.activeFocus) root.focusedIdentity = "" }
+            homeName: "homeCouchHomeButton"
+            libraryName: "homeLibraryButton"
+            statsName: "homeCouchStatsButton"
+            settingsName: "homeCouchSettingsButton"
+            leaveName: "homeCouchDesktopButton"
+            onHomeRequested: root.focusHome()
+            onLibraryRequested: root.libraryRequested()
+            onStatsRequested: root.statsRequested()
+            onSettingsRequested: root.settingsRequested()
+            // Goes the way the library's Leave does: straight out with no game running,
+            // or to the Game Mode controls with one.
+            onLeaveRequested: root.Window.window.setCouchMode(false)
         }
         Flickable {
             id: scroll
@@ -936,7 +941,7 @@ FocusScope {
         id: queueMenu
         objectName: "homeQueueMenu"
         host: root.Window.window
-        anchorItem: libraryButton
+        anchorItem: gameModeHeader.libraryButton
         title: root.menuGame.title || "UP NEXT"
         MenuAction { Layout.fillWidth: true; text: "MOVE EARLIER"; enabled: Home.queue.findIndex(game => game.queueKey === root.menuGame.queueKey) > 0; onClicked: queueMenu.invoke(function() { root.queueAction(root.menuGame, "up") }) }
         MenuAction { Layout.fillWidth: true; text: "MOVE LATER"; enabled: Home.queue.findIndex(game => game.queueKey === root.menuGame.queueKey) < Home.queue.length - 1; onClicked: queueMenu.invoke(function() { root.queueAction(root.menuGame, "down") }) }

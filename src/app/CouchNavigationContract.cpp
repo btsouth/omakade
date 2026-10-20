@@ -180,9 +180,10 @@ bool runStartupNavigationContract(QQuickWindow* window, ControllerInput& control
       require(window->property("detailOpen").toBool(),
               QStringLiteral("Cold launch could not open the selected game without a mouse"));
     } else if (couch) {
+      // Settings sits after Stats in Game Mode's shared header.
       send(Qt::Key_Left);
-      require(name(window->activeFocusItem()) == "couchHomeButton",
-              QStringLiteral("First empty-library arrow did not reach Home"));
+      require(name(window->activeFocusItem()) == "couchStatsButton",
+              QStringLiteral("First empty-library arrow did not move along the header to Stats"));
     } else {
       send(Qt::Key_Return);
       require(until([&] { return games->property("count").toInt() > 0 && games->hasActiveFocus(); }),
@@ -192,7 +193,7 @@ bool runStartupNavigationContract(QQuickWindow* window, ControllerInput& control
       QObject* library = qmlContext(window)->contextProperty("Library").value<QObject*>();
       library->setProperty("searchText", QString());
       settle();
-      require(name(window->activeFocusItem()) == "couchHomeButton",
+      require(name(window->activeFocusItem()) == "couchStatsButton",
               QStringLiteral("Delayed results stole the first-input destination"));
       auto* home = window->activeFocusItem();
       send(Qt::Key_Down);
@@ -233,8 +234,9 @@ bool runCouchNavigationContract(QQuickWindow* window, ControllerInput& controlle
     require(until([&] { return window->isActive() && controller.inputEnabled(); }),
             QStringLiteral("Test window never acquired input ownership"));
     VirtualPad pad(controller);
-    const QList<QQuickItem*> headers = {item("couchHomeButton"), item("couchSettingsButton"),
-                                       item("couchDesktopButton"), item("couchStatsButton")};
+    const QList<QQuickItem*> headers = {item("couchHomeButton"), item("couchLibraryButton"),
+                                       item("couchStatsButton"), item("couchSettingsButton"),
+                                       item("couchDesktopButton")};
     const QList<QQuickItem*> filters = {item("couchConsoleButton"), item("couchShowButton"),
         item("couchSourceButton"), item("couchSortButton"), item("couchConsoleViewButton"),
         item("couchLayoutButton"), item("couchSearchButton"), item("couchFiltersButton")};

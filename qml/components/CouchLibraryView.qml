@@ -91,7 +91,7 @@ FocusScope {
         if (view.count > 0) {
             view.forceActiveFocus(Qt.TabFocusReason)
         } else {
-            settingsButton.forceActiveFocus(Qt.TabFocusReason)
+            header.settingsButton.forceActiveFocus(Qt.TabFocusReason)
         }
     }
 
@@ -101,8 +101,8 @@ FocusScope {
     property var lastNavigationControl: null
 
     function navigationButtons(usableOnly) {
-        const buttons = [homeButton, settingsButton, desktopButton, statsButton,
-                         consoleButton, showButton, sourceButton, sortButton,
+        const buttons = [header.homeButton, header.libraryButton, header.statsButton,
+                         header.settingsButton, header.leaveButton, consoleButton, showButton, sourceButton, sortButton,
                          consoleViewButton, layoutButton, searchButton, filtersButton,
                          viewButton, favoriteButton]
         return usableOnly ? buttons.filter(function(button) {
@@ -431,78 +431,26 @@ FocusScope {
         anchors.rightMargin: 54 * root.uiScale
         spacing: 12 * root.uiScale
 
-        RowLayout {
-            Layout.fillWidth: true
-            Row {
-                spacing: 12 * root.uiScale
-                Layout.alignment: Qt.AlignVCenter
-
-                Image {
-                    width: 42 * root.uiScale
-                    height: width
-                    source: "qrc:/icons/resources/icons/io.github.tsouth89.Omakade.svg"
-                    sourceSize: Qt.size(96, 96)
-                    Accessible.ignored: true
-                }
-
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 0
-
-                    Text {
-                        text: "OMAKADE"
-                        color: Theme.brightForeground
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 18 * root.uiScale
-                        font.weight: Font.Bold
-                        font.letterSpacing: 2
-                    }
-                    Text {
-                        text: GameMode.active ? "GAME MODE" : "COUCH MODE"
-                        color: Theme.accent
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 9 * root.uiScale
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 1.4
-                    }
-                }
+        GameModeHeader {
+            id: header
+            current: "library"
+            uiScale: root.uiScale
+            navigate: root.navigateControls
+            tabTarget: root.tabTarget
+            buttonChanged: function(button) {
+                if (button.activeFocus) root.lastNavigationControl = button
+                Qt.callLater(root.repairNavigationFocus)
             }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            NavigationButton {
-                id: homeButton
-                objectName: "couchHomeButton"
-                text: "HOME"
-                compact: true
-                onClicked: root.homeRequested()
-            }
-            NavigationButton {
-                id: settingsButton
-                objectName: "couchSettingsButton"
-                text: "SETTINGS"
-                compact: true
-                displayScale: Math.max(1, root.uiScale * 1.18)
-                onClicked: root.settingsRequested()
-            }
-            NavigationButton {
-                id: desktopButton
-                objectName: "couchDesktopButton"
-                text: GameMode.active ? "LEAVE" : "DESKTOP"
-                compact: true
-                displayScale: Math.max(1, root.uiScale * 1.18)
-                onClicked: root.desktopRequested()
-            }
-            NavigationButton {
-                id: statsButton
-                objectName: "couchStatsButton"
-                text: "STATS"
-                compact: true
-                displayScale: Math.max(1, root.uiScale * 1.18)
-                onClicked: root.statsRequested()
-            }
+            homeName: "couchHomeButton"
+            libraryName: "couchLibraryButton"
+            statsName: "couchStatsButton"
+            settingsName: "couchSettingsButton"
+            leaveName: "couchDesktopButton"
+            onHomeRequested: root.homeRequested()
+            onLibraryRequested: root.focusGrid()
+            onStatsRequested: root.statsRequested()
+            onSettingsRequested: root.settingsRequested()
+            onLeaveRequested: root.desktopRequested()
         }
         Flow {
             Layout.fillWidth: true
@@ -1331,7 +1279,7 @@ FocusScope {
                 { glyph: Controller.primaryGlyph, label: "OPEN" },
                 { glyph: Controller.favoriteGlyph, label: "FAVORITE" },
                 { glyph: Controller.toolbarGlyph, label: "CONTROLS" },
-                { glyph: "START", label: GameMode.active ? "LEAVE" : "DESKTOP" }
+                { glyph: "START", label: GameMode.hasSession ? "LEAVE" : "DESKTOP" }
             ]
 
             Row {

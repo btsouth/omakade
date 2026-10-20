@@ -1035,27 +1035,96 @@ ApplicationWindow {
         if (!retainNavigation && !deferFocus) Qt.callLater(root.focusCurrentSurface)
     }
 
+    // Fullscreen is Game Mode. F11, Start, the header button, a stream and a remembered
+    // fullscreen start all begin a session here, with every way of leaving going through
+    // leaveGameModeOrOpenControls while it runs.
     function setCouchMode(enabled) {
-        // Game Mode owns Couch Mode for its session. Every way of switching modes opens
-        // its controls instead, so one stray press cannot switch the display off.
+        // A start or an end is already on its way.
+        if (GameMode.busy && !GameMode.hasSession) return
         if (GameMode.hasSession) {
-            root.openGameModeControls()
+            root.leaveGameModeOrOpenControls()
             return
         }
-        root.updateCouchMode(enabled, true)
+        if (enabled) root.startGameModeHere(true)
+        else root.updateCouchMode(false, true)
     }
 
     // A Sunshine activation is session-scoped. It must not change the preferred startup
     // mode just because an already-running desktop window receives the request.
     function activateCouchMode() {
-        root.updateCouchMode(true, false)
+        if (!GameMode.hasSession) root.startGameModeHere(false)
     }
 
     function toggleCouchMode() {
         setCouchMode(!root.couchMode)
     }
 
+    // Starts Game Mode on this display with sound and notifications left alone. Test runs
+    // other than the Game Mode fixture have no session to start and keep the plain
+    // fullscreen layout, which is also where a start that fails ends up.
+    function startGameModeHere(remember) {
+        if (GameMode.hasSession || GameMode.busy) return
+        root.gameModeRemember = remember
+        if (typeof FullscreenStartsGameMode === "undefined" || !FullscreenStartsGameMode) {
+            root.updateCouchMode(true, remember)
+            return
+        }
+        GameMode.enterInPlace()
+    }
+
+    function fallBackToFullscreen() {
+        const desktopMode = root.desktopBeforeGameModeVisibility
+        root.updateCouchModeInternal(true, root.gameModeRemember, true)
+        root.desktopVisibility = desktopMode
+    }
+
+    // With no game running, leaving just ends Game Mode. With one, the controls open, so a
+    // stray press cannot strand the game. A game Omakade did not launch is found by
+    // asking the compositor what else is on the Game Mode workspace.
+    property bool gameModeLeaveChecking: false
+    function gameModeGameRunning() {
+        return Launcher.gameRunning
+            || (typeof GameStop !== "undefined" && GameStop !== null && GameStop.runningGames.length > 0)
+    }
+    // Choosing to leave an in-place session is remembered for the next launch, as leaving
+    // fullscreen with F11 always was. A display unplugged or a crash is not a choice.
+    function endGameModeByChoice() {
+        if (GameMode.inPlace) Preferences.couchModeEnabled = false
+        GameMode.exit()
+    }
+    function leaveGameModeOrOpenControls() {
+        if (!GameMode.active || GameMode.busy || root.gameModeGameRunning()) {
+            root.openGameModeControls()
+            return
+        }
+        root.gameModeLeaveChecking = true
+        GameMode.checkWorkspace()
+    }
+    Connections {
+        target: GameMode
+        function onWorkspaceChecked(otherWindows) {
+            if (!root.gameModeLeaveChecking) return
+            root.gameModeLeaveChecking = false
+            if (!GameMode.active || GameMode.busy) return
+            if (otherWindows > 0 || root.gameModeGameRunning()) root.openGameModeControls()
+            else root.endGameModeByChoice()
+        }
+        function onFullscreenFallback() { root.fallBackToFullscreen() }
+    }
+
     readonly property bool gameModeActive: GameMode.active
+    // Whether the session began in place, and whether its start should be remembered for
+    // the next launch. Both hold for the whole session, through Return to Desktop.
+    property bool gameModeInPlace: false
+    property bool gameModeRemember: false
+    // Game Mode lands on Home. The desktop goes back to the page it showed before.
+    property bool homeBeforeGameMode: false
+    property bool statsBeforeGameMode: false
+    // While the session is parked the desktop shows its own page, and Game Mode's page
+    // waits here for the resume.
+    property bool gameModeParkedPage: false
+    property bool gameModeHomeOpen: false
+    property bool gameModeStatsOpen: false
     property bool couchBeforeGameMode: false
     property int desktopBeforeGameModeVisibility: Window.Windowed
     property var gameModeNavigation: null
@@ -1121,19 +1190,69 @@ ApplicationWindow {
         })
     }
 
+    function restoreGameModeDesktopPage() {
+        root.homeOpen = root.homeBeforeGameMode
+        root.statsOpen = root.statsBeforeGameMode
+    }
+    function parkGameModePage() {
+        if (root.gameModeParkedPage) return
+        root.gameModeHomeOpen = root.homeOpen
+        root.gameModeStatsOpen = root.statsOpen
+        root.gameModeParkedPage = true
+        root.restoreGameModeDesktopPage()
+    }
+    function resumeGameModePage() {
+        if (!root.gameModeParkedPage) return
+        root.gameModeParkedPage = false
+        root.homeOpen = root.gameModeHomeOpen
+        root.statsOpen = root.gameModeStatsOpen
+    }
+
     function endGameMode() {
         root.gameModeNavigation = null
         root.gameModeLastFocus = null
         root.gameModeNavigationRestoring = false
+        root.gameModeLeaveChecking = false
         // End also runs from a parked session whose desktop mode is already set.
         // Cleanup must not depend on updateCouchModeInternal changing that mode.
         root.clearCouchNavigation()
+        // Ended while parked, the desktop already shows its own page, perhaps one chosen since.
+        if (!root.gameModeParkedPage) root.restoreGameModeDesktopPage()
+        root.gameModeParkedPage = false
         root.updateCouchModeInternal(root.couchBeforeGameMode, false, !GameMode.displayManaged)
+        if (root.gameModeInPlace) {
+            // A window that was already fullscreen when the session began, as at a
+            // remembered fullscreen start, gets that mode back from the compositor. An
+            // in-place session always ends on the desktop window.
+            if (root.desktopVisibility !== Window.FullScreen) {
+                gameModeDesktopWindowGuard.restart()
+                root.keepDesktopWindow()
+            }
+        }
+        root.gameModeInPlace = false
+        Qt.callLater(root.focusCurrentSurface)
     }
 
+    function keepDesktopWindow() {
+        if (!gameModeDesktopWindowGuard.running || root.couchMode || GameMode.hasSession
+                || root.visibility !== Window.FullScreen)
+            return
+        // Once is enough: a later fullscreen is the user's own.
+        gameModeDesktopWindowGuard.stop()
+        root.visibility = root.desktopVisibility
+    }
+    // The compositor's mode change reaches the window a moment after the session ends.
+    Timer { id: gameModeDesktopWindowGuard; interval: 3000 }
+    onVisibilityChanged: root.keepDesktopWindow()
+
     function captureGameModeDesktopMode() {
-        root.couchBeforeGameMode = root.couchMode
+        root.gameModeInPlace = GameMode.inPlace
+        // An in-place session always returns to the desktop window, even when the window
+        // started fullscreen.
+        root.couchBeforeGameMode = root.couchMode && !root.gameModeInPlace
         root.desktopBeforeGameModeVisibility = root.couchMode ? root.desktopVisibility : root.visibility
+        root.homeBeforeGameMode = root.homeOpen
+        root.statsBeforeGameMode = root.statsOpen
     }
 
     function prepareGameModeLayout(retainNavigation) {
@@ -1141,14 +1260,25 @@ ApplicationWindow {
         // its native mode or focus: the worker still has to snapshot the desktop.
         const desktopMode = root.desktopVisibility
         root.gameModeDesktopVisibilityBeforePreparation = desktopMode
+        gameModeDesktopWindowGuard.stop()
         root.gameModeNavigationRestoring = true
         root.updateCouchModeInternal(true, false, false, retainNavigation, true)
         root.desktopVisibility = retainNavigation ? desktopMode : root.desktopBeforeGameModeVisibility
+        if (!retainNavigation) {
+            root.gameModeParkedPage = false
+            root.statsOpen = false
+            root.homeOpen = true
+        } else {
+            root.resumeGameModePage()
+        }
     }
 
     function cancelGameModeLayout() {
         root.updateCouchModeInternal(root.couchBeforeGameMode, false, false, true, true)
         root.desktopVisibility = root.gameModeDesktopVisibilityBeforePreparation
+        // A resume that failed stays parked, on the desktop's page.
+        if (!GameMode.hasSession) root.restoreGameModeDesktopPage()
+        else if (GameMode.parked && !GameMode.temporaryWindow()) root.parkGameModePage()
         root.gameModeNavigationRestoring = false
     }
 
@@ -1157,9 +1287,14 @@ ApplicationWindow {
         root.gameModeNavigationRestoring = false
         root.updateCouchMode(true, false)
         root.desktopVisibility = root.desktopBeforeGameModeVisibility
-        // Placement clears fullscreen to trade a tiled Couch Mode window.
+        // Placement clears fullscreen to trade a tiled window.
         root.visibility = Window.FullScreen
-        Qt.callLater(root.focusCurrentSurface)
+        if (root.gameModeInPlace && root.gameModeRemember) Preferences.couchModeEnabled = true
+        Qt.callLater(function() {
+            if (root.homeOpen && !root.detailOpen && root.navigationContainer() === homeScreen)
+                homeScreen.focusHome()
+            else root.focusCurrentSurface()
+        })
     }
 
     function resumeGameMode() {
@@ -1167,6 +1302,7 @@ ApplicationWindow {
         // compositor mode while the library is being moved and remapped.
         const desktopMode = root.desktopVisibility
         root.gameModeNavigationRestoring = true
+        root.resumeGameModePage()
         root.updateCouchModeInternal(true, false, true, true)
         root.desktopVisibility = desktopMode
         root.visibility = Window.FullScreen
@@ -1181,12 +1317,18 @@ ApplicationWindow {
         // A Game Mode-only window parks hidden. Switching it to the desktop layout would
         // only flash that layout on its way out, and redo the library on resume.
         if (retainNavigation === true && GameMode.temporaryWindow()) return
-        if (!retainNavigation) root.clearCouchNavigation()
+        if (!retainNavigation) {
+            root.clearCouchNavigation()
+            root.restoreGameModeDesktopPage()
+        } else {
+            root.parkGameModePage()
+        }
         root.updateCouchModeInternal(root.couchBeforeGameMode, false,
                                      !GameMode.displayManaged, retainNavigation === true)
     }
 
     function openGameModeControls() {
+        root.gameModeLeaveChecking = false
         root.diagnosticsOpen = false
         if (root.showGameModeOverlay())
             return
@@ -1955,6 +2097,9 @@ ApplicationWindow {
     }
     onClosing: function(close) {
         close.accepted = true
+        // Quitting closes this window, and a session cannot put back a window that is gone,
+        // so Game Mode ends first.
+        if (GameMode.hasSession || GameMode.busy) GameMode.shutdown()
         Qt.quit()
     }
 
@@ -3010,6 +3155,7 @@ ApplicationWindow {
 
     Rectangle {
         id: toast
+        objectName: "toast"
         property string message: ""
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom

@@ -1,6 +1,6 @@
 ---
 name: omakade-tv-gaming
-description: Set up or operate Omakade Couch Mode on a dedicated TV while preserving desktop work, and adapt agent activity when the user starts or finishes gaming.
+description: Set up or operate Omakade's fullscreen Game Mode on a dedicated TV while preserving desktop work, and adapt agent activity when the user starts or finishes gaming.
 ---
 
 # Omakade on a shared workstation
@@ -11,10 +11,10 @@ The skill provides instructions, not a background service or an input sandbox.
 
 Omakade's built-in Game Mode (Settings → Controls, or `omakade --game-mode` and
 `omakade --game-mode-exit`) turns on a chosen display, switches the sound output, opens
-Couch Mode there, and puts the desktop back on exit. Prefer it for starting and ending
-a session; see `docs/GAME-MODE.md`. This skill covers what Game Mode leaves out: keeping
-agent work off the TV, routing only the game's audio, a Gamescope wrapper, and
-vendor-specific TV power or input control.
+Game Mode's fullscreen layout there, and puts the desktop back on exit. Prefer it for
+starting and ending a session; see `docs/GAME-MODE.md`. This skill covers what Game
+Mode leaves out: keeping agent work off the TV, routing only the game's audio, a
+Gamescope wrapper, and vendor-specific TV power or input control.
 
 ## Set up the local session
 
@@ -37,9 +37,10 @@ user's local agent instructions. Do not assume that another machine has a
 2. Verify the TV's audio sink before launching audio. Keep the desktop default
    sink unchanged and route the game to the TV. An unavailable TV sink is a
    reason to stop the launch, not to fall back to the user's headset.
-3. Open `omakade --couch` on the reserved workspace. Check the resulting window
-   and controller navigation; enumerating a controller alone is not an input
-   test. Omakade normally relinquishes controller input after launching a game.
+3. With the TV focused, run `omakade --couch`. It starts Game Mode in place on that
+   display and leaves sound alone. Check the resulting window and controller
+   navigation; enumerating a controller alone is not an input test. Omakade
+   normally relinquishes controller input after launching a game.
 4. Verify the launched game's output, audio and focus. Treat a measured result
    and a prepared graphics configuration as different outcomes.
 

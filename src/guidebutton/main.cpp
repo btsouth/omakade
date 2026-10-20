@@ -164,7 +164,10 @@ int main(int argc, char* argv[]) {
     qInfo("Guide timing: Home release mono_ns=%lld node=%s", now, qPrintable(node));
     GuideClient::requestShortcut(node, &application,
                         [&application, toggleCommand, node](const QString& result, const QJsonObject&) {
-      if (result == "fallback" || result == "unavailable" || result == "preparing")
+      // No game: fullscreen in place and back, as Start does in Omakade.
+      if (result == "fullscreen")
+        toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--fullscreen-toggle").replace("--guide-toggle", "--fullscreen-toggle"), &application);
+      else if (result == "fallback" || result == "unavailable" || result == "preparing")
         toggleGameMode(QString(toggleCommand).replace("--game-mode-toggle", "--game-mode-fallback").replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node, &application);
       else if (result != "handled" && result != "locked") qWarning("Resident guide could not handle Home");
     });
