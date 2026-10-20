@@ -118,7 +118,7 @@ maintainer tested the exact installed candidate, including the controller-focus
 fix, and approved publication. All 41 release tests pass locally and on x86_64
 and aarch64 CI. The preceding candidate also passed all 41 Debug tests.
 
-Automated coverage includes Couch Mode detail and grid layouts, focus paths,
+Automated coverage includes Game Mode detail and grid layouts, focus paths,
 held navigation, controller reconnects, keyboard and mouse handoff, cursor
 visibility, and a cached 1,000-game library. Regressions cover layout selection,
 empty states, background controller input, GOG ownership after inventory errors,

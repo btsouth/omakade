@@ -14,6 +14,11 @@
       Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, Kyty, native ports, and Battle.net games, uses local artwork,
       follows the active Omarchy theme, and delegates launching back to the owning platform.
     </p>
+    <p>
+      Fullscreen is Game Mode, a controller layout that opens on Home. Start it on the display
+      you are using, or on a chosen TV with its own sound output, and leaving puts the desktop
+      back the way it was.
+    </p>
   </description>
   <launchable type="desktop-id">io.github.tsouth89.Omakade.desktop</launchable>
   <content_rating type="oars-1.1" />

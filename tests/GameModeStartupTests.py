@@ -356,7 +356,10 @@ class GameModeStartupTests(unittest.TestCase):
         if not cold:
             socket = Path(self.env["TMPDIR"]) / f"omakade-{os.getuid()}"
             self.wait_for(socket.exists, "Primary did not claim IPC")
-            self.command("--game-mode-toggle")
+            # --couch is fullscreen, and fullscreen is Game Mode: it starts the session
+            # itself, in place. The desktop window waits for the shortcut.
+            if not couch:
+                self.command("--game-mode-toggle")
         self.phase("active")
         self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 2,
                       "Initial library session handoff did not settle")
@@ -393,6 +396,122 @@ class GameModeStartupTests(unittest.TestCase):
             self.command("--quit")
         self.assertEqual(self.primary.wait(timeout=8), 0)
         self.assertFalse(self.state.exists(), "Closing left retained recovery state")
+
+    def configure_television(self):
+        # A television and its sound output are chosen for Game Mode, with notifications
+        # silenced. An in-place start must use none of them.
+        config = Path(self.env["XDG_CONFIG_HOME"]) / "omakade"
+        (config / "game-mode.json").write_text(json.dumps({
+            "output_name": "HDMI-A-1", "output_description": "Living Room TV",
+            "sink": "fixture-tv-sink", "silence_notifications": True}))
+        self.fixture_update(tv=True)
+
+    def assert_in_place_session(self):
+        self.fixture_update(owner=self.primary.pid)
+        self.phase("active")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 2,
+                      "In-place entry handoff did not settle")
+        journal = json.loads(self.state.read_text())
+        self.assertEqual(journal["output"], "HEADLESS-1", "Started on another display")
+        self.assertFalse(journal["enabled_output"], "Turned on a display")
+        self.assertEqual(journal["previous_sink"], "", "Moved the sound output")
+        self.assertEqual(journal["session_sink"], "")
+        self.assertFalse(journal["silenced_notifications"])
+        value = json.loads(self.fixture.read_text())
+        self.assertFalse(value.get("monitor_changes"), "Changed a display")
+        self.assertFalse(value.get("sink_changes"), "Changed the sound output")
+
+    def assert_quit_ends_session(self):
+        self.command("--quit")
+        self.assertEqual(self.primary.wait(timeout=8), 0)
+        self.assertFalse(self.state.exists(), "Quitting left Game Mode recovery state")
+        value = json.loads(self.fixture.read_text())
+        self.assertFalse(value.get("monitor_changes"), "Leaving changed a display")
+        self.assertFalse(value.get("sink_changes"), "Leaving changed the sound output")
+
+    def test_couch_start_plays_in_place_despite_a_configured_television(self):
+        self.retained_fixture(with_game=False)
+        self.configure_television()
+        self.launch("--couch")
+        self.assert_in_place_session()
+        self.assert_quit_ends_session()
+
+    def test_remembered_fullscreen_start_plays_in_place(self):
+        self.retained_fixture(with_game=False)
+        self.configure_television()
+        config = Path(self.env["XDG_CONFIG_HOME"]) / "omakade"
+        (config / "config.toml").write_text("couch_mode_enabled = true\n")
+        self.launch()
+        self.assert_in_place_session()
+        self.assert_quit_ends_session()
+
+    def test_desktop_start_without_the_setting_has_no_session(self):
+        self.retained_fixture(with_game=False)
+        self.configure_television()
+        self.launch()
+        self.fixture_update(owner=self.primary.pid)
+        socket = Path(self.env["TMPDIR"]) / f"omakade-{os.getuid()}"
+        self.wait_for(socket.exists, "Primary did not claim IPC")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 1,
+                      "Desktop start did not refresh Game Mode devices")
+        time.sleep(0.5)
+        self.assertFalse(self.state.exists(), "A desktop start began Game Mode")
+        self.command("--quit")
+        self.assertEqual(self.primary.wait(timeout=8), 0)
+
+    def test_moonlight_stream_plays_in_place_and_quit_ends_it(self):
+        # Sunshine starts the detached `omakade` with its app id and ends the stream
+        # with `omakade --quit`. Sunshine owns the stream's sound output.
+        self.retained_fixture(with_game=False)
+        self.configure_television()
+        self.env["SUNSHINE_APP_ID"] = "1"
+        self.launch()
+        self.assert_in_place_session()
+        self.assert_quit_ends_session()
+
+    def test_controller_home_without_a_game_toggles_fullscreen_in_place(self):
+        # With no game running, the Home button service runs --fullscreen-toggle, which
+        # does what Start does: fullscreen where Omakade is, never on the configured
+        # television, and back. A parked session comes back instead.
+        self.retained_fixture(with_game=False)
+        self.configure_television()
+        self.launch("--fullscreen-toggle")
+        self.assert_in_place_session()
+        # Offscreen has no native unmap events: model the end's window-server side.
+        self.fixture_update(ending=True)
+        self.command("--fullscreen-toggle")
+        self.wait_for(lambda: not self.state.exists(), "A second Home press did not end Game Mode")
+        self.assertIsNone(self.primary.poll(), "Ending Game Mode with Home closed Omakade")
+        self.fixture_update(ending=False)
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.command("--fullscreen-toggle")
+        self.assert_in_place_session()
+        # The count above is cumulative: wait for this entry's own handoff to settle.
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) > refreshes
+                      and json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Home in the open window did not settle into Game Mode")
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.command("--game-mode-desktop")
+        self.phase("parked")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) > refreshes
+                      and json.loads(self.fixture.read_text())["focus"] == "0xdd",
+                      "Return to Desktop did not settle")
+        self.command("--fullscreen-toggle")
+        self.phase("active")
+        resume_refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.wait_for(lambda: json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Home did not resume the parked session")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0)
+                      > resume_refreshes, "Home's resume did not settle")
+        # A press while Game Mode is still parking waits for the park, then resumes.
+        refreshes = json.loads(self.fixture.read_text()).get("refreshes", 0)
+        self.command("--game-mode-desktop")
+        self.command("--fullscreen-toggle")
+        self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= refreshes + 2
+                      and json.loads(self.state.read_text())["phase"] == "active"
+                      and json.loads(self.fixture.read_text())["focus"] == "0xaa",
+                      "Home during Return to Desktop did not resume once parked")
+        self.assert_quit_ends_session()
 
     def test_library_only_cold_session_retains_owner_until_explicit_end(self):
         self.assert_library_session_retained(cold=True)

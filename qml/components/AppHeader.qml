@@ -108,7 +108,8 @@ RowLayout {
         objectName: root.objectNamePrefix === "" ? "couchModeButton" : root.objectNamePrefix + "CouchModeButton"
         property Item controllerLeftTarget: settingsTab
         property Item controllerDownTarget: root.contentFocusTarget
-        text: "COUCH"
+        // Fullscreen Game Mode on this display. Super + Ctrl + G uses the configured one.
+        text: "GAME MODE"
         compact: true
         KeyNavigation.left: settingsTab
         onClicked: root.couchRequested()

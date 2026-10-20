@@ -1184,14 +1184,28 @@ GameModeController::Result GameModeController::recover() {
 // Focuses the workspaces that were focused before Game Mode.
 bool GameModeController::focusDesktop(const GameModeState& state, QStringList* notes) {
   bool ok = true;
+  // A display that was unplugged or switched off during the session has no workspace to
+  // show again, and focus cannot go back to it. Waiting on it would keep the session
+  // from ever ending, so only displays that are still on are put back.
+  QString outputsError;
+  const QVector<GameModeOutput> outputs = m_compositor->outputs(&outputsError);
+  const auto gone = [&](const QString& name) {
+    if (!outputsError.isEmpty() || outputs.isEmpty())
+      return false;
+    for (const auto& output : outputs)
+      if (output.name == name)
+        return !output.enabled;
+    return true;
+  };
   if (!state.output.isEmpty() && !state.outputWorkspace.isEmpty() &&
-      state.outputWorkspace != workspace() &&
+      state.outputWorkspace != workspace() && !gone(state.output) &&
       (!m_compositor->focusOutput(state.output) ||
        !m_compositor->focusWorkspace(state.outputWorkspace))) {
     ok = false;
     if (notes) notes->append(QStringLiteral("The previous display workspace could not be restored."));
   }
-  if (!state.focusedOutput.isEmpty() && !m_compositor->focusOutput(state.focusedOutput))
+  if (!state.focusedOutput.isEmpty() && !gone(state.focusedOutput) &&
+      !m_compositor->focusOutput(state.focusedOutput))
     ok = false;
   if (!state.focusedWorkspace.isEmpty() && !m_compositor->focusWorkspace(state.focusedWorkspace))
     ok = false;

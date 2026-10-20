@@ -230,7 +230,7 @@ close/reopen flow. The startup gate applies the queued job exclusively.
 
 ## Library editor
 
-Settings opens BackupEditor in both desktop and Couch Mode. Native file dialogs
+Settings opens BackupEditor on the desktop and in Game Mode. Native file dialogs
 and an editable local path support export and preview. Path-based export confirms
 replacement of an existing destination. Couch path entry uses the existing
 on-screen keyboard. The scrollable read-only preview names the reviewed file,

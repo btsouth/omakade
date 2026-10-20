@@ -30,7 +30,7 @@ QJsonArray sessionIdentities(const QJsonArray& sessions) {
   for (const auto& value : sessions) { auto session = value.toObject(); session.remove("elapsedSeconds"); result.append(session); }
   return result;
 }
-struct Snapshot { QVariantMap session, metadata; QString output; GameModeWindow window; bool locked = false; };
+struct Snapshot { QVariantMap session, metadata; QString output; GameModeWindow window; bool locked = false, focused = false; };
 // Read only the focused process, never the whole environment or a whole-process Steam scan.
 QVariantMap focusedSteam(qint64 pid) {
   static QHash<QString, QVariantMap> cache;
@@ -137,6 +137,7 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
   }
   const auto publishedMetadata = result.session.value("metadata").toMap();
   for (auto it = publishedMetadata.cbegin(); it != publishedMetadata.cend(); ++it) result.metadata.insert(it.key(), it.value());
+  result.focused = !result.session.isEmpty() && result.session.value("pid").toLongLong() == active.value("pid").toInteger();
   if (!result.session.isEmpty() && !result.session.contains("path"))
     result.session.insert("path", result.session.value("source") == "Steam" ? result.session.value("appId") : result.session.value("installPath"));
   for (const auto& value : clients) {
@@ -326,10 +327,16 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
       return reply;
     }
     if (!m_ready) return {{"result", "preparing"}};
-    // No game, a disabled plugin, a parked Game Mode session or the 1.15 setting: Home
-    // does what it did in 1.15.
-    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable() || m_guide.gameModeParked() ||
-                               !AppSettings::homeButtonOpensGuideAt(AppSettings::defaultPath())))
+    // A controller's Home with no game does what Start does in Omakade: fullscreen in
+    // place and back. Over a game in view it opens the guide, even while Game Mode is
+    // parked, as when the game was started from the desktop.
+    const bool controller = action == "shortcut" && !data.value("node").toString().isEmpty();
+    const bool guideHome = AppSettings::homeButtonOpensGuideAt(AppSettings::defaultPath());
+    if (controller && guideHome && !m_guide.showing() && !m_guide.hasGame()) return {{"result", "fullscreen"}};
+    // No game, a disabled plugin, a parked Game Mode session with its game out of view or
+    // the 1.15 setting: the shortcut does what it did in 1.15.
+    if (!m_guide.showing() && (!m_guide.hasGame() || !m_guide.usable() ||
+                               (m_guide.gameModeParked() && !(controller && m_gameFocused)) || !guideHome))
       return {{"result", "fallback"}};
     if (action == "toggle" && !m_guide.usable()) return {{"result", "unavailable"}};
     m_guide.toggle(data.value("node").toString(), action == "shortcut");
@@ -366,7 +373,7 @@ void ResidentGuide::refresh() {
       }
       auto* watcher = new QFutureWatcher<Snapshot>(this);
       connect(watcher, &QFutureWatcher<Snapshot>::finished, this, [this, watcher] {
-        const auto result = watcher->result(); watcher->deleteLater(); m_refreshing = false; m_ready = true; m_locked = result.locked;
+        const auto result = watcher->result(); watcher->deleteLater(); m_refreshing = false; m_ready = true; m_locked = result.locked; m_gameFocused = result.focused;
         m_guide.setSnapshot(result.session, result.metadata, result.output, result.window);
         if (m_guide.hasGame()) m_refresh.start(); else m_refresh.stop();
         emit snapshotReady();

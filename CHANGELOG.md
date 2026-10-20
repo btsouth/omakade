@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
+
+- **F11, Start and the GAME MODE button** start Game Mode on the display you are using.
+  Sound and notifications are left alone, and the screen is kept awake only while a game
+  runs, so a handheld can still sleep while you browse. `omakade --couch`, a Moonlight
+  stream and a fullscreen start Omakade remembers do the same. If Game Mode cannot start,
+  the library opens fullscreen without it and a message says why.
+- **The controller Home button** does what Start does when no game is running, so it no
+  longer moves Omakade to the Game Mode display. Over a game it opens the in-game guide,
+  now also for a game started while Game Mode is parked. Holding it works as before.
+- **Super + Ctrl + G and Start Game Mode** still use the display and sound output chosen
+  in Settings. Those choices stay open to change while
+  Game Mode started with F11 is running.
+- Game Mode opens on Home, and Home and the library share one header. The desktop window
+  keeps opening on the library.
+- **LEAVE**, Start and F11 end Game Mode at once when no game is running. With a game
+  running they open the Game Mode controls, as before.
+- `omakade --couch` and the `couch_mode_enabled` setting keep working.
+- `omakade --quit` during Game Mode, as a Moonlight stream sends when it ends, and closing
+  Omakade's window now put the display, sound and notifications back before Omakade closes.
+  Before, the window closed first and the session was only undone at the next start.
+- Unplugging or switching off the Game Mode display now ends the session cleanly. Before,
+  the desktop came back but the session stayed recorded and was undone at the next start.
+- Return to Desktop shows the page the desktop had before Game Mode, and resuming goes
+  back to the Game Mode page you left.
+
 - Discover PlayStation 5 dumps through Kyty and preserve per-game launcher settings.
 - Find installed native ports such as SpartanPort and bbport, grouped with matching
   console dumps as alternate installations. Unlinked pairs stay separate.

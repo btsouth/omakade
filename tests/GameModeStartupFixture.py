@@ -73,12 +73,20 @@ with open(str(path) + ".lock", "w") as lock:
                 ] if state["game_open"] else []))
         elif args[:1] == ["set-sink-input-mute"]:
             state["mute"] = args[2] == "1"
+        elif args[:1] == ["set-default-sink"]:
+            state.setdefault("sink_changes", []).append(args[1])
         else:
             sys.exit(1)
     elif args[:2] == ["-j", "monitors"]:
-        print(json.dumps([{"id": 0, "name": "HEADLESS-1", "description": "Fixture",
+        monitors = [{"id": 0, "name": "HEADLESS-1", "description": "Fixture",
             "focused": True, "width": 1920, "height": 1080,
-            "activeWorkspace": workspace(state["workspace"])}]))
+            "activeWorkspace": workspace(state["workspace"])}]
+        if state.get("tv"):
+            # A television that is off until a configured Game Mode turns it on.
+            monitors.append({"id": 1, "name": "HDMI-A-1", "description": "Living Room TV",
+                "focused": False, "disabled": True, "width": 3840, "height": 2160,
+                "activeWorkspace": {"id": -1, "name": ""}})
+        print(json.dumps(monitors))
     elif args == ["-j", "clients"]:
         print(json.dumps(clients()))
     elif args == ["-j", "activewindow"]:
@@ -88,6 +96,8 @@ with open(str(path) + ".lock", "w") as lock:
     elif args[:1] == ["eval"]:
         script = args[1]
         for line in script.splitlines():
+            if "hl.monitor" in line:
+                state.setdefault("monitor_changes", []).append(line)
             if "window.swap" in line:
                 state["owner_workspace"] = "1" if state["owner_workspace"] == "name:omakade" else "special:omakade"
             elif "window.move" in line and 'address:0xaa' in line:

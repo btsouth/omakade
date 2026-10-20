@@ -7,7 +7,7 @@ from Steam, Lutris, Heroic, Faugus, Battle.net, and GOG in one cover-focused
 window that follows the active Omarchy theme and font, including live theme
 changes. It also picks up emulated games from RetroArch, PCSX2, RPCS3, PPSSPP,
 Ryujinx, Cemu, melonDS, shadPS4, Dolphin, and Xenia, and has a controller-first
-Couch Mode for playing on a TV.
+fullscreen Game Mode for playing on a TV.
 
 Omakade does not install games, manage accounts, or replace the launchers. Play
 hands each game to the launcher that owns it, and launcher data is never

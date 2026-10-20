@@ -288,8 +288,15 @@ public:
     currentFocus.address.clear();
     return true;
   }
+  // Like Hyprland, focusing a display that is gone or off fails when this is set.
+  bool focusNeedsLiveOutput = false;
   bool focusOutput(const QString& name, QString*) override {
     log.append(QStringLiteral("focus-output %1").arg(name));
+    if (focusNeedsLiveOutput &&
+        std::none_of(list.cbegin(), list.cend(), [&](const GameModeOutput& output) {
+          return output.name == name && output.enabled;
+        }))
+      return false;
     currentFocus.output = name;
     return true;
   }
@@ -3558,6 +3565,282 @@ private slots:
     QCOMPARE(entered.size(), 0);
   }
 
+  // F11, Start, the header button and --couch play on the display Omakade is on. With a
+  // television configured, that start never turns it on, never moves sound and leaves
+  // notifications alone, while the configured start still uses all three.
+  void inPlaceStartLeavesTheConfiguredDisplayAndSoundAlone() {
+    deskAndTv(false);
+    m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
+    const QString settingsPath = m_directory.filePath("in-place/game-mode.json");
+    QVERIFY(GameModeSession::saveSettings(settingsPath, tvSettings(kTvSink)));
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    session.refresh();
+    QTRY_VERIFY(session.displayManaged() && session.soundManaged());
+    session.enterInPlace();
+    QVERIFY(session.inPlace());
+    QTRY_VERIFY(session.active() && !session.busy());
+    QVERIFY(session.inPlace());
+    QCOMPARE(session.sessionOutputName(), kDesk);
+    QCOMPARE(m_compositor.window.workspace, GameModeController::workspace());
+    QVERIFY(!m_compositor.list.at(1).enabled);
+    QVERIFY(!m_compositor.log.join(' ').contains(QStringLiteral("enable ")));
+    QCOMPARE(m_audio.current, QStringLiteral("headset"));
+    QVERIFY(m_audio.log.isEmpty());
+    QVERIFY(m_notifications.log.isEmpty());
+    // The configured choices stay for the next configured start.
+    QCOMPARE(session.settings().outputName, kTv);
+    QCOMPARE(session.settings().sinkName, kTvSink);
+    QVERIFY(session.settings().silenceNotifications);
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+    QVERIFY(!session.inPlace());
+    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
+    QVERIFY(!QFile::exists(statePath()));
+
+    // Super + Ctrl + G, the Home button and Start Game Mode still use the television.
+    m_compositor.list[1].enabled = true;
+    m_compositor.list[1].workspace = QStringLiteral("5");
+    session.enter();
+    QVERIFY(!session.inPlace());
+    QTRY_VERIFY(session.active() && !session.busy());
+    QCOMPARE(session.sessionOutputName(), kTv);
+    QCOMPARE(m_audio.current, kTvSink);
+    QCOMPARE(m_notifications.log, QStringList{"silence"});
+    session.shutdown();
+    QCOMPARE(m_audio.current, QStringLiteral("headset"));
+    QVERIFY(!QFile::exists(statePath()));
+  }
+
+  // A Moonlight stream starts in place. Sunshine owns the sound output, so the session
+  // never touches it, and the stream's `omakade --quit` leaves nothing behind.
+  void streamedInPlaceSessionKeepsStreamSoundAndQuitsCleanly() {
+    deskAndTv(true);
+    const QString stream = QStringLiteral("sink-sunshine-stereo");
+    m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
+    m_audio.list.append({stream, QStringLiteral("Sunshine")});
+    m_audio.current = stream;
+    const QString settingsPath = m_directory.filePath("stream/game-mode.json");
+    QVERIFY(GameModeSession::saveSettings(settingsPath, tvSettings(kTvSink)));
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    QSignalSpy failed(&session, &GameModeSession::failed);
+    session.enterInPlace();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QCOMPARE(session.sessionOutputName(), kDesk);
+    QCOMPARE(m_audio.current, stream);
+    session.shutdown();
+    QVERIFY(!session.hasSession() && !session.inPlace());
+    QCOMPARE(m_audio.current, stream);
+    QVERIFY(m_audio.log.isEmpty());
+    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
+    QVERIFY(m_notifications.log.isEmpty());
+    QVERIFY(!QFile::exists(statePath()));
+    QCOMPARE(failed.size(), 0);
+  }
+
+  // A handheld browsing its library in place may still sleep. Only a running game keeps
+  // the screen awake there; a configured session holds it for the whole session.
+  void inPlaceSessionKeepsTheScreenAwakeOnlyWhileAGameRuns() {
+    deskAndTv(true);
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, {}, statePath());
+    QVERIFY(!session.keepsScreenAwake(false));
+    QVERIFY(session.keepsScreenAwake(true));
+    session.enterInPlace();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QVERIFY(!session.keepsScreenAwake(false));
+    QVERIFY(session.keepsScreenAwake(true));
+    session.park();
+    QTRY_VERIFY(session.parked() && !session.busy());
+    QVERIFY(session.inPlace());
+    QVERIFY(!session.keepsScreenAwake(false));
+    QVERIFY(!session.keepsScreenAwake(true));
+    // Resuming keeps the kind of session that parked.
+    session.enter();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QVERIFY(session.inPlace());
+    QVERIFY(!session.keepsScreenAwake(false));
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+    session.enter();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QVERIFY(!session.inPlace());
+    QVERIFY(session.keepsScreenAwake(false));
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+  }
+
+  // Without a Hyprland Lua configuration the configured television cannot be used, but
+  // playing in place still works: the session leaves the desktop alone and the window
+  // simply goes fullscreen.
+  void inPlaceStartWithoutACompositorStillPlaysFullscreen() {
+    m_compositor.usable = false;
+    m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
+    const QString settingsPath = m_directory.filePath("no-lua/game-mode.json");
+    QVERIFY(GameModeSession::saveSettings(settingsPath, tvSettings(kTvSink)));
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    QSignalSpy failed(&session, &GameModeSession::failed);
+    QSignalSpy fallback(&session, &GameModeSession::fullscreenFallback);
+    QSignalSpy entered(&session, &GameModeSession::entered);
+    session.refresh();
+    QTRY_VERIFY(session.soundManaged());
+    QVERIFY(!session.displayManaged());
+    session.enter();
+    QTRY_COMPARE(failed.size(), 1);
+    QVERIFY(failed.first().first().toString().contains(QStringLiteral("Hyprland")));
+    QVERIFY(!failed.first().first().toString().contains(QStringLiteral("without Game Mode")));
+    QCOMPARE(fallback.size(), 0);
+    QVERIFY(!session.hasSession());
+    session.enterInPlace();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QCOMPARE(entered.size(), 1);
+    QCOMPARE(failed.size(), 1);
+    QCOMPARE(fallback.size(), 0);
+    QVERIFY(session.sessionOutputName().isEmpty());
+    QVERIFY(m_compositor.log.isEmpty());
+    QVERIFY(m_audio.log.isEmpty());
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+    QVERIFY(!QFile::exists(statePath()));
+  }
+
+  // An in-place start that cannot begin falls back to the plain fullscreen layout with a
+  // toast that says so, instead of leaving the window on a failure.
+  void failedInPlaceStartFallsBackToPlainFullscreen() {
+    deskAndTv(true);
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, {}, statePath());
+    QStringList order;
+    connect(&session, &GameModeSession::preparationCancelled, this, [&] { order.append("cancelled"); });
+    connect(&session, &GameModeSession::fullscreenFallback, this, [&] { order.append("fallback"); });
+    connect(&session, &GameModeSession::failed, this, [&](const QString& message) {
+      order.append(QStringLiteral("failed: ") + message);
+    });
+    m_compositor.placeFails = true;
+    session.enterInPlace();
+    QTRY_VERIFY(!session.busy());
+    QVERIFY(!session.hasSession() && !session.inPlace());
+    QCOMPARE(order.size(), 3);
+    QCOMPARE(order.at(0), QStringLiteral("cancelled"));
+    QCOMPARE(order.at(1), QStringLiteral("fallback"));
+    QVERIFY(order.at(2).endsWith(QStringLiteral("Playing fullscreen without Game Mode instead.")));
+    QVERIFY(!QFile::exists(statePath()));
+    // A configured start that fails reports only its failure.
+    order.clear();
+    session.enter();
+    QTRY_VERIFY(!session.busy());
+    QCOMPARE(order.size(), 2);
+    QCOMPARE(order.at(0), QStringLiteral("cancelled"));
+    QVERIFY(order.at(1).startsWith(QStringLiteral("failed: ")));
+    QVERIFY(!order.at(1).contains(QStringLiteral("without Game Mode")));
+    // An End pressed while that start was under way wanted the desktop, not fullscreen.
+    order.clear();
+    session.enterInPlace();
+    session.exit();
+    QTRY_VERIFY(!session.busy());
+    QVERIFY(!session.hasSession() && !session.inPlace());
+    QVERIFY(!order.contains(QStringLiteral("fallback")));
+    QVERIFY(!order.last().contains(QStringLiteral("without Game Mode")));
+    m_compositor.placeFails = false;
+    // A resume that fails keeps its parked session rather than falling back.
+    session.enterInPlace();
+    QTRY_VERIFY(session.active() && !session.busy());
+    session.park();
+    QTRY_VERIFY(session.parked() && !session.busy());
+    order.clear();
+    m_compositor.placeFails = true;
+    session.enter();
+    QTRY_VERIFY(!session.busy());
+    QVERIFY(session.parked() && session.inPlace());
+    QVERIFY(!order.contains(QStringLiteral("fallback")));
+    m_compositor.placeFails = false;
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+  }
+
+  // The display, sound and notification choices are locked while a configured session
+  // uses them. An in-place session does not use them, so they stay open, and changing
+  // them never reaches the running session.
+  void inPlaceSessionLeavesTheChoicesOpen() {
+    deskAndTv(true);
+    m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
+    const QString settingsPath = m_directory.filePath("open/game-mode.json");
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    session.refresh();
+    QTRY_VERIFY(session.displayManaged() && session.soundManaged());
+    session.enterInPlace();
+    QTRY_VERIFY(session.active() && !session.busy());
+    session.selectDisplay(2);
+    session.selectSound(2);
+    session.setSilenceNotifications(false);
+    QCOMPARE(session.settings().outputName, kTv);
+    QCOMPARE(session.settings().sinkName, kTvSink);
+    QVERIFY(!session.silenceNotifications());
+    QCOMPARE(GameModeSession::loadSettings(settingsPath).outputName, kTv);
+    // Parking and resuming the in-place session still ignores them.
+    session.park();
+    QTRY_VERIFY(session.parked() && !session.busy());
+    session.enter();
+    QTRY_VERIFY(session.active() && !session.busy());
+    QCOMPARE(session.sessionOutputName(), kDesk);
+    QCOMPARE(m_audio.current, QStringLiteral("headset"));
+    QVERIFY(m_audio.log.isEmpty());
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+    // A configured session still locks them.
+    session.setSilenceNotifications(true);
+    session.selectDisplay(0);
+    session.selectSound(0);
+    session.enter();
+    QTRY_VERIFY(session.active() && !session.busy());
+    session.selectDisplay(2);
+    session.selectSound(2);
+    session.setSilenceNotifications(false);
+    QVERIFY(session.settings().outputName.isEmpty());
+    QVERIFY(session.settings().sinkName.isEmpty());
+    QVERIFY(session.silenceNotifications());
+    session.exit();
+    QTRY_VERIFY(!session.hasSession() && !session.busy());
+  }
+
+  void inPlaceSettingsOnlyDropTheDesktopChoices() {
+    GameModeSettings chosen = tvSettings(kTvSink);
+    chosen.warmSteam = true;
+    chosen.holdLaunchers = true;
+    const GameModeSettings here = GameModeSession::inPlaceSettings(chosen);
+    QVERIFY(here.outputName.isEmpty() && here.outputDescription.isEmpty());
+    QVERIFY(here.sinkName.isEmpty());
+    QVERIFY(!here.silenceNotifications);
+    // Launcher hold and Steam warm-up still apply when turned on.
+    QVERIFY(here.warmSteam);
+    QVERIFY(here.holdLaunchers);
+  }
+
+  // A television unplugged or switched off during Game Mode ends the session, and the
+  // desktop comes back on the displays that are left, instead of the session waiting on
+  // a display that is gone.
+  void sessionOnARemovedDisplayStillEnds_data() {
+    QTest::addColumn<bool>("unplugged");
+    QTest::newRow("unplugged") << true;
+    QTest::newRow("switched off") << false;
+  }
+  void sessionOnARemovedDisplayStillEnds() {
+    QFETCH(bool, unplugged);
+    deskAndTv(true);
+    m_compositor.focusNeedsLiveOutput = true;
+    m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
+    GameModeController game = controller();
+    const auto entered = game.enter(tvSettings(kTvSink), 100);
+    QVERIFY2(entered.ok, qPrintable(entered.error));
+    QCOMPARE(m_compositor.window.output, kTv);
+    if (unplugged) m_compositor.list.removeLast();
+    else m_compositor.list[1].enabled = false;
+    const auto left = game.exit(100);
+    QVERIFY2(left.ok, qPrintable(left.error + left.notes.join(' ')));
+    QVERIFY(!game.active());
+    QCOMPARE(m_audio.current, QStringLiteral("headset"));
+    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
+    QCOMPARE(m_compositor.currentFocus.output, kDesk);
+    QVERIFY(!QFile::exists(statePath()));
+  }
+
   void closingOmakadeLeavesGameMode() {
     deskAndTv(true);
     m_audio.list.append({kTvSink, QStringLiteral("QBQ90 HDMI")});
@@ -3572,6 +3855,77 @@ private slots:
     QCOMPARE(m_audio.current, QStringLiteral("headset"));
     QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
     QVERIFY(!m_notifications.quiet);
+    QVERIFY(!QFile::exists(statePath()));
+  }
+
+  void shutdownRejectsQueuedSessionWork_data() {
+    QTest::addColumn<bool>("pendingEntry");
+    QTest::newRow("active") << false;
+    QTest::newRow("entry-completion-queued") << true;
+  }
+
+  void shutdownRejectsQueuedSessionWork() {
+    QFETCH(bool, pendingEntry);
+    deskAndTv(true);
+    m_compositor.window.floating = true; // No placeholder is needed for this window.
+    const QString settingsPath = m_directory.filePath("shutdown-queued/game-mode.json");
+    auto settings = tvSettings();
+    settings.warmSteam = true;
+    QVERIFY(GameModeSession::saveSettings(settingsPath, settings));
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, settingsPath, statePath());
+    int steamStarts = 0;
+    session.setSteamStarter([&] { ++steamStarts; return GameModeSession::SteamStart::Started; });
+    QSignalSpy devices(&session, &GameModeSession::devicesChanged);
+    QSignalSpy changes(&session, &GameModeSession::stateChanged);
+    QSemaphore placed, releasePlace, handled;
+    std::atomic_bool timedOut{false};
+    if (pendingEntry) {
+      m_compositor.beforePlace = [&] {
+        placed.release();
+        if (!releasePlace.tryAcquire(1, 2000)) timedOut = true;
+      };
+    }
+    session.enter();
+    if (pendingEntry) {
+      QVERIFY(placed.tryAcquire(1, 2000));
+      releasePlace.release();
+      // shutdown waits for the worker without delivering its finished callback first.
+    } else {
+      QTRY_COMPARE(devices.size(), 2);
+    }
+    bool delivered = false;
+    std::atomic_bool deliverOnce{true};
+    m_compositor.beforeOutputs = [&] {
+      if (!deliverOnce.exchange(false)) return;
+      QMetaObject::invokeMethod(&session, [&] {
+        delivered = true;
+        // These are the operations socket commands and queued UI callbacks can request
+        // while shutdown pumps events to hide the placeholder and restore the desktop.
+        session.enter();
+        session.enterInPlace();
+        session.exit();
+        session.park();
+        session.refresh();
+        session.focusGame();
+        session.focusWindow();
+        session.checkWorkspace();
+        session.shutdown();
+        handled.release();
+      }, Qt::QueuedConnection);
+      if (!handled.tryAcquire(1, 2000)) timedOut = true;
+    };
+    const auto changesBefore = changes.size();
+    const auto devicesBefore = devices.size();
+    const int startsBefore = steamStarts;
+    session.shutdown();
+    QCoreApplication::processEvents(); // Also drain callbacks queued just as exit finished.
+    QVERIFY(delivered);
+    QVERIFY(!timedOut);
+    QCOMPARE(changes.size(), changesBefore);
+    QCOMPARE(devices.size(), devicesBefore);
+    QCOMPARE(steamStarts, startsBefore);
+    QVERIFY(!session.hasSession() && !session.busy());
+    QCOMPARE(m_compositor.window.workspace, QStringLiteral("3"));
     QVERIFY(!QFile::exists(statePath()));
   }
 
@@ -3610,7 +3964,7 @@ int main(int argc, char** argv) {
   const QByteArray shardArgument(argv[1]);
   bool valid = false;
   const int shard = shardArgument.mid(sizeof("--test-shard=") - 1).toInt(&valid);
-  constexpr int kShards = 3;  // Matches the shard range in tests/CMakeLists.txt.
+  constexpr int kShards = 5;  // Matches the shard range in tests/CMakeLists.txt.
   if (!valid || shard < 0 || shard >= kShards) return 2;
   QStringList arguments{QString::fromLocal8Bit(argv[0])};
   const QMetaObject* meta = tests.metaObject();

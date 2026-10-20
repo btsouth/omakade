@@ -31,6 +31,7 @@ private slots:
   void staleResidentIsRestarted();
   void ambiguousEnvironmentIsUnavailable();
   void gameLaunchCancelsRescan();
+  void parkedGameOutOfViewKeepsResume();
 };
 
 void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
@@ -166,6 +167,14 @@ echo ok
   QFile queries(queryLog); QVERIFY(queries.open(QIODevice::ReadOnly)); const auto idleCalls = queries.readAll().count('\n'); queries.close();
   QTest::qWait(1100);
   QVERIFY(queries.open(QIODevice::ReadOnly)); QCOMPARE(queries.readAll().count('\n'), idleCalls);
+  // With no game, a controller's Home does what Start does in Omakade, while the keyboard
+  // shortcut and the 1.15 setting keep the configured Game Mode toggle.
+  QCOMPARE(control("shortcut", {{"node", "event29"}}).value("result").toString(), "fullscreen");
+  QCOMPARE(control("shortcut").value("result").toString(), "fallback");
+  QVERIFY(QDir().mkpath(config + "/omakade"));
+  QVERIFY(write(config + "/omakade/config.toml", "home_button_opens_guide = false\n"));
+  QCOMPARE(control("shortcut", {{"node", "event29"}}).value("result").toString(), "fallback");
+  QVERIFY(QFile::remove(config + "/omakade/config.toml"));
   QVERIFY(SessionDatabase::beginSession(database, "/games/new.rom", "Dolphin", QDateTime::currentSecsSinceEpoch(), game.processId(), start) > 0);
   database.close(); database = {}; QSqlDatabase::removeDatabase("resident-test-miss");
   shortcut.start(QStringLiteral(OMAKADE_APP), {"--game-mode-toggle"});
@@ -248,6 +257,13 @@ echo ok
   QLocalSocket thirdPlugin; thirdPlugin.connectToServer(thirdBackend.value("socket").toString()); QVERIFY(thirdPlugin.waitForConnected());
   thirdPlugin.write(QJsonDocument(QJsonObject{{"version", 1}, {"token", thirdBackend.value("token")}, {"action", "opened"}}).toJson(QJsonDocument::Compact) + '\n');
   QVERIFY(thirdPlugin.waitForBytesWritten()); QTest::qWait(30);
+  QCOMPARE(control("close").value("result").toString(), "handled");
+  // A controller's Home opens the guide over the game even while Game Mode is parked,
+  // where the keyboard shortcut resumes the session.
+  QCOMPARE(control("publish", {{"sessions", QJsonArray{published}}, {"context", parkedContext}}).value("result").toString(), "handled");
+  QCOMPARE(control("shortcut").value("result").toString(), "fallback");
+  QCOMPARE(control("shortcut", {{"node", "event29"}}).value("result").toString(), "handled");
+  QTRY_COMPARE(summons(), 6);
   QCOMPARE(control("close").value("result").toString(), "handled");
   QByteArray messages;
   QTRY_VERIFY2(([&] {
@@ -540,5 +556,62 @@ void ResidentGuideTests::gameLaunchCancelsRescan() {
   QFile calls(log); QVERIFY(calls.open(QIODevice::ReadOnly)); QVERIFY(!calls.readAll().contains("rescanPlugins"));
 }
 
-QTEST_GUILESS_MAIN(ResidentGuideTests)
+void ResidentGuideTests::parkedGameOutOfViewKeepsResume() {
+  // A parked session keeps its game out of view. A controller's Home resumes it, as the
+  // keyboard shortcut does, rather than opening the guide over a game nobody can see.
+  Fixture fixture;
+  QProcess game; game.start("sleep", {"30"}); QVERIFY(game.waitForStarted());
+  const auto cleanupGame = qScopeGuard([&] { game.kill(); game.waitForFinished(); });
+  QFile stat(QStringLiteral("/proc/%1/stat").arg(game.processId())); QVERIFY(stat.open(QIODevice::ReadOnly));
+  const auto raw = stat.readAll(); const auto start = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
+  const auto clients = QJsonDocument(QJsonArray{QJsonObject{{"pid", game.processId()}, {"address", "0x123"}, {"monitor", 0}}}).toJson(QJsonDocument::Compact);
+  QVERIFY(writeTestFile(fixture.bin + "/hyprctl", "#!/bin/sh\ncase \"$2\" in\nclients) echo '" + clients + "';;\nactivewindow) echo '{}';;\n*) echo '[]';;\nesac\n", true));
+  const auto shellLog = fixture.root.filePath("shell.log");
+  QVERIFY(writeTestFile(fixture.bin + "/omarchy-shell", "#!/bin/sh\necho \"$@\" >> '" + shellLog.toUtf8() + "'\necho ok\n", true));
+  QProcess daemon; daemon.setProcessEnvironment(fixture.environment); daemon.start(QStringLiteral(OMAKADE_SESSIOND), {"--guide-only"});
+  QVERIFY(daemon.waitForStarted()); const auto cleanup = qScopeGuard([&] { daemon.kill(); daemon.waitForFinished(); });
+  QTRY_VERIFY(QFileInfo::exists(fixture.endpoint()));
+  const auto control = [&](const QJsonObject& request) {
+    QLocalSocket socket; socket.connectToServer(fixture.endpoint());
+    if (!socket.waitForConnected(1000)) return QJsonObject{};
+    socket.write(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n'); socket.flush();
+    if (!socket.waitForReadyRead(2500)) return QJsonObject{};
+    return QJsonDocument::fromJson(socket.readAll()).object();
+  };
+  const QJsonObject session{{"pid", game.processId()}, {"procStart", start}, {"source", "Fixture"}, {"path", "test"}};
+  QCOMPARE(control({{"action", "publish"}, {"sessions", QJsonArray{session}},
+                    {"context", QJsonObject{{"gameModeActive", false}, {"gameModeParked", true}}}}).value("result").toString(), "handled");
+  QTRY_VERIFY(control({{"action", "status"}}).value("hasGame").toBool());
+  QCOMPARE(control({{"action", "shortcut"}, {"node", "event29"}}).value("result").toString(), "fallback");
+  QCOMPARE(control({{"action", "shortcut"}}).value("result").toString(), "fallback");
+  QTest::qWait(200);
+  QFile log(shellLog); if (log.open(QIODevice::ReadOnly)) QVERIFY(!log.readAll().contains("summon"));
+}
+
+int main(int argc, char** argv) {
+  QCoreApplication application(argc, argv);
+  ResidentGuideTests tests;
+  // Several cases start the resident service and wait out its real deadlines. CTest runs
+  // them in shards so each stays well inside its timeout without dropping a case.
+  // Ordinary direct invocations still support QTest's individual-test arguments.
+  if (argc != 2 || !QByteArray(argv[1]).startsWith("--test-shard="))
+    return QTest::qExec(&tests, argc, argv);
+  const QByteArray shardArgument(argv[1]);
+  bool valid = false;
+  const int shard = shardArgument.mid(sizeof("--test-shard=") - 1).toInt(&valid);
+  constexpr int kShards = 3;  // Matches the shard range in tests/CMakeLists.txt.
+  if (!valid || shard < 0 || shard >= kShards) return 2;
+  QStringList arguments{QString::fromLocal8Bit(argv[0])};
+  const QMetaObject* meta = tests.metaObject();
+  int testIndex = 0;
+  for (int index = meta->methodOffset(); index < meta->methodCount(); ++index) {
+    const QMetaMethod method = meta->method(index);
+    const QByteArray name = method.name();
+    if (method.methodType() != QMetaMethod::Slot || method.parameterCount() != 0 ||
+        name.endsWith("_data") || name == "init" || name == "cleanup" ||
+        name == "initTestCase" || name == "cleanupTestCase") continue;
+    if (testIndex++ % kShards == shard) arguments.append(QString::fromLatin1(name));
+  }
+  return QTest::qExec(&tests, arguments);
+}
 #include "ResidentGuideTests.moc"

@@ -137,6 +137,9 @@ void InGameGuideTests::desktopResumesBeforeParking() {
   QVERIFY(!guide.payload().value("data").toObject().value("desktop").toBool());
   guide.message({{"action", "desktop"}});
   QCOMPARE(desktop.count(), 0); QVERIFY(guide.opened());
+  // Nor while Game Mode is parked, where the game is on the desktop too.
+  guide.setContext({{"gameModeActive", true}, {"gameModeParked", true}});
+  QVERIFY(!guide.payload().value("data").toObject().value("desktop").toBool());
   guide.setContext({{"gameModeActive", true}});
   QVERIFY(guide.payload().value("data").toObject().value("desktop").toBool());
   QVERIFY(guide.setPaused(true)); QTRY_COMPARE(processState(game.processId()), 'T');
