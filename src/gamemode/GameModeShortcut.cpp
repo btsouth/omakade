@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMutex>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -245,6 +246,9 @@ void GameModeShortcut::start(Action action) {
 
 GameModeShortcut::Outcome GameModeShortcut::run(const QString& path, bool omarchy,
                                                 Action action, const Binding& binding) {
+  // The Game Mode and clip keys share one bindings file: one reads and rewrites it at a time.
+  static QMutex fileLock;
+  const QMutexLocker locker(&fileLock);
   Outcome outcome;
   QString contents;
   QByteArray binds;

@@ -68,6 +68,7 @@ import QtQuick.Layouts
         function refreshGameMode() {
             GameMode.refresh()
             GameModeShortcut.refresh()
+            ClipShortcut.refresh()
             GameModeGuideButton.refresh()
             if (GameMode.hasSession && typeof GameStop !== "undefined" && GameStop)
                 GameStop.refreshLiveGames()

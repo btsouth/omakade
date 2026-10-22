@@ -95,9 +95,11 @@ results can include local paths and process IDs. These checks do not upload proc
 ## Highlights
 
 Highlights are off by default. When they are on, `omakade-sessiond` runs
-gpu-screen-recorder while a game is in view. It keeps the last couple of minutes of that
-game's display and the computer's sound in memory, and writes nothing until a clip is saved.
-A clip records whatever was on that display, including anything shown over the game.
+gpu-screen-recorder while a game runs. It keeps the last couple of minutes of that game's
+display and the computer's sound in memory, and writes nothing until a clip is saved. A clip
+records whatever was on that display, including anything shown over the game or anything you
+switched to on it while the game kept running. Achievement clips are only saved while the game
+is in view.
 
 Saved clips are video files in your Videos folder under `Omakade/`. The library database
 keeps which game each clip belongs to, when it was saved, its length, and the achievement

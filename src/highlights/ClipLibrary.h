@@ -62,6 +62,8 @@ bool forget(QSqlDatabase& database, qint64 id);
 // Cuts `seconds` off the end of a video in place, without re-encoding. done(true) once the
 // file is shorter; false leaves it as it was (no ffmpeg, nothing left to keep, or a failure).
 void trimEnd(const QString& path, double seconds, QObject* context, std::function<void(bool)> done);
+// A video's length in seconds, or 0 when ffprobe is missing or cannot read it.
+void duration(const QString& path, QObject* context, std::function<void(double)> done);
 
 // Where the clip's still image is cached, keyed by its path and modification time. An empty
 // cacheRoot is the user's cache folder.

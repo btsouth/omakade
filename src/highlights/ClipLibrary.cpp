@@ -208,6 +208,21 @@ void run(const QString& program, const QStringList& arguments, QObject* context,
 }
 } // namespace
 
+void duration(const QString& path, QObject* context, std::function<void(double)> done) {
+  const QString ffprobe = QStandardPaths::findExecutable(QStringLiteral("ffprobe"));
+  if (ffprobe.isEmpty() || !QFileInfo(path).isFile()) {
+    if (done) done(0);
+    return;
+  }
+  run(ffprobe, {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-show_entries"),
+                QStringLiteral("format=duration"), QStringLiteral("-of"), QStringLiteral("csv=p=0"), path},
+      context, [done](bool ok, const QByteArray& output) {
+        bool parsed = false;
+        const double seconds = output.trimmed().toDouble(&parsed);
+        if (done) done(ok && parsed && seconds > 0 ? seconds : 0);
+      });
+}
+
 void trimEnd(const QString& path, double seconds, QObject* context, std::function<void(bool)> done) {
   const QString ffprobe = QStandardPaths::findExecutable(QStringLiteral("ffprobe"));
   const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));

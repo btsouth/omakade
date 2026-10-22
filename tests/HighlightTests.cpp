@@ -93,9 +93,12 @@ private slots:
   void serviceRefusesWithReason();
   void serviceRetriesThenReportsOnce();
   void serviceTrimsGuideTime();
+  void serviceRefusesGuideOpenTooLong();
+  void serviceRecoversLeftoverRecordings();
   void steamUnlocksAreRead();
   void steamWatcherReportsOnlyFreshUnlocks();
   void serviceClipsSteamAchievement();
+  void serviceSkipsAchievementOutOfSight();
 
 private:
   HighlightService::Environment environment();
@@ -563,6 +566,8 @@ void HighlightTests::serviceTrimsGuideTime() {
   game.monitor = QStringLiteral("DP-1");
   service.follow(game);
   QTRY_VERIFY(service.running());
+  // The buffer has to have recorded the moments before the guide opened.
+  QTest::qWait(4200);
   ClipLibrary::Clip result;
   bool answered = false;
   service.clip(QStringLiteral("button"), {}, [&](const ClipLibrary::Clip& clip, const QString&) {
@@ -580,6 +585,47 @@ void HighlightTests::serviceTrimsGuideTime() {
   QVERIFY(probe.waitForFinished(10000));
   const double duration = probe.readAllStandardOutput().trimmed().toDouble();
   QVERIFY2(duration > 4.5 && duration < 5.5, qPrintable(QString::number(duration)));
+  // The library records the length the clip really has.
+  QCOMPARE(result.seconds, 5);
+}
+
+void HighlightTests::serviceRefusesGuideOpenTooLong() {
+  HighlightService service(environment());
+  HighlightService::Game game;
+  game.pid = 100;
+  game.monitor = QStringLiteral("DP-1");
+  service.follow(game);
+  QTRY_VERIFY(service.running());
+  // The guide has been open longer than the buffer reaches back: none of the game is left.
+  QString failure;
+  bool answered = false;
+  service.clip(QStringLiteral("button"), {}, [&](const ClipLibrary::Clip&, const QString& error) {
+    failure = error;
+    answered = true;
+  }, 200000);
+  QVERIFY(answered);
+  QVERIFY(failure.contains(QStringLiteral("before the guide opened")));
+  QVERIFY(lastRequest(m_log).isEmpty());
+}
+
+void HighlightTests::serviceRecoversLeftoverRecordings() {
+  const QString root = environment().root;
+  QVERIFY(QDir().mkpath(root + QStringLiteral("/.recording")));
+  const QString whole = root + QStringLiteral("/.recording/Replay_2026-10-01_12-00-00.mp4");
+  const QString partial = root + QStringLiteral("/.recording/.clip-1.trim.mp4");
+  const QString recent = root + QStringLiteral("/.recording/clip-2.mp4");
+  QVERIFY(writeFile(whole, "video"));
+  QVERIFY(writeFile(partial, "half"));
+  QVERIFY(writeFile(recent, "video"));
+  touch(whole, -7200);
+  touch(partial, -7200);
+  HighlightService service(environment());
+  // A whole recording a previous run left is kept where it can be found; half a trim is not.
+  QVERIFY(QFileInfo(root + QStringLiteral("/Recovered/Replay_2026-10-01_12-00-00.mp4")).isFile());
+  QVERIFY(!QFileInfo::exists(whole));
+  QVERIFY(!QFileInfo::exists(partial));
+  // One that may still be in use is left alone.
+  QVERIFY(QFileInfo::exists(recent));
 }
 
 void HighlightTests::steamUnlocksAreRead() {
@@ -677,6 +723,34 @@ void HighlightTests::serviceClipsSteamAchievement() {
   writeConfig(QStringLiteral("highlights = true\nhighlight_achievements = false\n"));
   service.reconcile();
   QVERIFY(service.achievements().appId().isEmpty());
+}
+
+void HighlightTests::serviceSkipsAchievementOutOfSight() {
+  const QString stats = QFileInfo(m_config).absolutePath() + QStringLiteral("/stats");
+  QVERIFY(QDir().mkpath(stats));
+  const QString file = stats + QStringLiteral("/UserGameStats_42_367520.bin");
+  QVERIFY(writeFile(file, userStats({})));
+  auto env = environment();
+  env.steamStatsDirectories = {stats};
+  HighlightService service(env);
+  QSignalSpy saved(&service, &HighlightService::clipSaved);
+  HighlightService::Game game;
+  game.pid = 100;
+  game.source = QStringLiteral("Steam");
+  game.key = QStringLiteral("367520");
+  game.monitor = QStringLiteral("DP-1");
+  service.follow(game);
+  QTRY_VERIFY(service.running());
+  // The game runs behind another app, as for an achievement for time played.
+  service.follow({});
+  QVERIFY(service.running());
+  const qint64 now = QDateTime::currentSecsSinceEpoch();
+  QVERIFY(writeFile(file, userStats({{1, now - 6}})));
+  touch(file, 1);
+  service.achievements().check();
+  QTest::qWait(1500);
+  QCOMPARE(saved.count(), 0);
+  QVERIFY(lastRequest(m_log).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(HighlightTests)

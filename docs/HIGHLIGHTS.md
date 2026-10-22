@@ -1,6 +1,6 @@
 # Highlights
 
-Highlights keep the last moments of a game ready to save. While a game is in view, Omakade
+Highlights keep the last moments of a game ready to save. While a game runs, Omakade
 keeps a short recording of the display it is on, in memory, and writes a clip only when you
 ask for one or unlock a Steam achievement. Nothing is kept until then.
 
@@ -24,7 +24,8 @@ installs for its own screen recording, and Omakade's background service
   button is a game button, so on those controllers use the guide.
 - **Steam achievements.** With **Steam achievement clips** on, an achievement unlocked
   while you play saves a clip that ends a few seconds after the unlock, named after the
-  achievement. Unlocks a few seconds apart share one clip. Omakade reads the unlock from the
+  achievement. Unlocks a few seconds apart share one clip. An unlock while the game is out
+  of sight, such as one for time played while you use another app, saves nothing. Omakade reads the unlock from the
   Steam client's own stats files; an unlock Steam only writes later, such as after a sync,
   is never clipped, because the clip would show the wrong moment.
 
@@ -36,6 +37,8 @@ Clips are MP4 (H.264 and AAC) files in your Videos folder, in `Omakade/<game tit
 named after the game and the time. Each game's page lists its clips with a still, newest
 first: **Play** opens the clip in your video player, and **Trash** moves it to the trash
 after a second press. Clips you move or delete outside Omakade simply stop being listed.
+A recording the service could not finish filing, such as when it stopped mid-save, is kept
+in `Omakade/Recovered/` the next time it starts.
 
 The clip length is 15, 30, 60, 90 or 120 seconds. The recording in memory is a little
 longer than a clip, at least two minutes.
@@ -48,5 +51,6 @@ so is anything you switch to on it while the game keeps running. Recording is do
 graphics card's video encoder, so a game loses very little to it.
 
 The recording starts when Omakade sees the game on screen, follows it to another display,
-and stops when the game ends or highlights are turned off. If the recorder fails, Omakade
+and keeps running while the game does, even when you switch to something else on that
+display. It stops when the game ends or highlights are turned off. If the recorder fails, Omakade
 tries twice more and then says why in a notification, and the guide does not offer Clip.

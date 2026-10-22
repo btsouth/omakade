@@ -151,6 +151,7 @@ void ReplayBuffer::start(const Options& options) {
     m_startPoll.stop();
     m_process = nullptr;
     process->deleteLater();
+    finishSaves(QStringLiteral("gpu-screen-recorder could not be started"));
     setState(State::Failed, QStringLiteral("gpu-screen-recorder could not be started"));
   });
   setState(State::Starting);

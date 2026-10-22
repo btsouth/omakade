@@ -94,13 +94,21 @@ signals:
   void clipSaved(const ClipLibrary::Clip& clip);
 
 private:
+  void measure(const QString& path, ClipLibrary::Clip clip,
+               const std::function<void(const ClipLibrary::Clip&, const QString&)>& done);
   void store(const QString& path, const ClipLibrary::Clip& clip,
              const std::function<void(const ClipLibrary::Clip&, const QString&)>& done);
   void startBuffer();
   void stopBuffer();
   void bufferStateChanged(ReplayBuffer::State state);
   void achievementUnlocked(const QString& name, qint64 time);
+  struct PendingAchievement;
+  void scheduleAchievementClip(PendingAchievement& pending);
   [[nodiscard]] QString recordingDirectory() const;
+  // Files a previous run left behind: kept in Recovered when whole, removed when not.
+  void recoverLeftovers();
+  // displayTitle, reading the library's title the first time a clip needs it.
+  QString clipTitle();
   bool openDatabase();
   // The library's own title for a content path, which beats a disc id or a file name.
   QString libraryTitle(const QString& gamePath);
@@ -124,13 +132,21 @@ private:
   SessionTitleIndex m_titles;
   qint64 m_titlesToken = -1;
   QString m_libraryTitle;
+  bool m_libraryTitleRead = false;
+  // Whether the latest snapshot named the game, rather than the buffer outliving it.
+  bool m_inView = false;
+  qint64 m_runningSinceMs = 0;
   std::unique_ptr<SteamAchievements> m_achievements;
   // Unlocks waiting for their tail to be recorded. Unlocks a few seconds apart share a clip.
   struct PendingAchievement {
-    qint64 time = 0;
+    int id = 0;
+    qint64 first = 0;
+    qint64 last = 0;
     QStringList names;
     Game game;
+    qint64 endMs = 0;
   };
+  int m_nextAchievementId = 1;
   QList<PendingAchievement> m_pendingAchievements;
   QString m_connectionName;
 };
