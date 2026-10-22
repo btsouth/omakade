@@ -139,7 +139,7 @@ void InGameGuide::setInjectedInputEnabled(bool enabled) {
   m_injectedInput = enabled;
   if (enabled && qEnvironmentVariableIsSet("OMAKADE_GUIDE_TEST_UNGRABBABLE")) {
     GuideInput::Access access;
-    access.scan = [] { return QList<GuideListener::Controller>{{"event-test", "test-pad", "Microsoft X-Box 360 pad", false}}; };
+    access.scan = [] { return QList<GuideListener::Controller>{{.node = "event-test", .id = "test-pad", .name = "Microsoft X-Box 360 pad"}}; };
     access.open = [this](const QString&) {
           int pipe[2];
           if (::pipe2(pipe, O_NONBLOCK | O_CLOEXEC) != 0) return -1;

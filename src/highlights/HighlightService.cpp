@@ -200,6 +200,21 @@ void HighlightService::clip(const QString& trigger, const QString& label,
     if (done) done({}, reason);
     return;
   }
+  // The guide card shows the save in progress and its outcome, since Game Mode silences
+  // notifications.
+  ++m_saving;
+  emit statusChanged();
+  done = [this, done](const ClipLibrary::Clip& saved, const QString& error) {
+    --m_saving;
+    if (saved.path.isEmpty()) {
+      ++m_failedCount;
+      m_lastError = error;
+    } else {
+      ++m_savedCount;
+    }
+    emit statusChanged();
+    if (done) done(saved, error);
+  };
 
   ClipLibrary::Clip clip;
   clip.source = m_game.source;
@@ -260,7 +275,12 @@ QString HighlightService::unavailableReason() const {
 
 QJsonObject HighlightService::guideStatus() const {
   if (!m_settings.enabled || m_game.pid <= 0 || m_buffer.state() != ReplayBuffer::State::Running) return {};
-  return QJsonObject{{QStringLiteral("seconds"), m_settings.clipSeconds}};
+  QJsonObject status{{QStringLiteral("seconds"), m_settings.clipSeconds},
+                     {QStringLiteral("saving"), m_saving > 0},
+                     {QStringLiteral("saved"), m_savedCount},
+                     {QStringLiteral("failed"), m_failedCount}};
+  if (!m_lastError.isEmpty()) status.insert(QStringLiteral("error"), m_lastError);
+  return status;
 }
 
 QString HighlightService::recordingDirectory() const { return m_environment.root + QStringLiteral("/.recording"); }

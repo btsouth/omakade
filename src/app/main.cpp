@@ -80,6 +80,8 @@
 #include <QSet>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QProcess>
+#include <cstdio>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QFile>
@@ -766,6 +768,27 @@ int main(int argc, char* argv[]) {
       if (result != "fallback" && result != "unavailable" && result != "preparing") return EXIT_FAILURE;
       guideFallback = true;
     }
+  }
+  if (rawArguments.contains("--clip")) {
+    // Saves a highlight from the running game through omakade-sessiond, with no window.
+    QCoreApplication commandApplication(argc, argv);
+    QEventLoop loop;
+    QString result, reason;
+    GuideClient::request({{"action", "clip"}}, &loop, [&](const QString& reply, const QJsonObject& data) {
+      result = reply;
+      reason = data.value("reason").toString();
+      loop.quit();
+    });
+    loop.exec();
+    if (result == "handled") return EXIT_SUCCESS;
+    if (reason.isEmpty()) {
+      // The service answers for itself when it runs; when it does not, say so here.
+      reason = QStringLiteral("Omakade's background service is not running.");
+      const QString sender = QStandardPaths::findExecutable(QStringLiteral("omarchy-notification-send"));
+      if (!sender.isEmpty()) QProcess::startDetached(sender, {QStringLiteral("Clip not saved"), reason});
+    }
+    fprintf(stderr, "omakade: %s\n", qPrintable(reason));
+    return EXIT_FAILURE;
   }
   QElapsedTimer startupTimer;
   startupTimer.start();
@@ -1975,6 +1998,9 @@ int main(int argc, char* argv[]) {
       QFileInfo(QDir::homePath() + QStringLiteral("/.local/share/omarchy")).isDir();
   GameModeShortcut gameModeShortcut(
       isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy);
+  GameModeShortcut clipShortcut(
+      isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy, nullptr,
+      GameModeShortcut::clip());
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
   GuideClient inGameGuide(!isolatedTest && onOmarchy);
@@ -2252,6 +2278,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeShortcut"), &gameModeShortcut);
+  engine.rootContext()->setContextProperty(QStringLiteral("ClipShortcut"), &clipShortcut);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeGuideButton"),
                                            &gameModeGuideButton);
   engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"),

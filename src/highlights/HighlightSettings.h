@@ -16,7 +16,7 @@ struct Values {
   bool achievementClips = true;
 };
 
-inline constexpr int kClipLengths[] = {15, 30, 60, 120};
+inline constexpr int kClipLengths[] = {15, 30, 60, 90, 120};
 
 [[nodiscard]] Values parse(const QString& contents);
 // Defaults when the file is missing or unreadable.

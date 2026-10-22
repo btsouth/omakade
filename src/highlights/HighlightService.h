@@ -68,7 +68,8 @@ public:
 
   // Why a clip cannot be saved right now, or empty when it can.
   [[nodiscard]] QString unavailableReason() const;
-  // What the guide card shows: {seconds} while a buffer runs for the game in view.
+  // What the guide card shows while a buffer runs for the game in view: {seconds, saving,
+  // saved, failed, error}. saved and failed count up, so the card can tell a new outcome.
   [[nodiscard]] QJsonObject guideStatus() const;
   [[nodiscard]] bool running() const { return m_buffer.state() == ReplayBuffer::State::Running; }
   [[nodiscard]] const Game& game() const { return m_game; }
@@ -105,6 +106,10 @@ private:
   QTimer m_tick;
   QTimer m_retry;
   int m_failures = 0;
+  int m_saving = 0;
+  int m_savedCount = 0;
+  int m_failedCount = 0;
+  QString m_lastError;
   bool m_failureReported = false;
   int m_bufferSeconds = 0;
   QSqlDatabase m_database;

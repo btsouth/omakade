@@ -180,6 +180,33 @@ class GuideRecorderTests(unittest.TestCase):
         clips = [path for path in self.videos.iterdir() if path.name.startswith('screenrecording-')]
         self.assertEqual(len(clips), 1)
 
+    def replay_buffer(self, *extra):
+        replays = self.videos / 'replays'
+        replays.mkdir(exist_ok=True)
+        process = subprocess.Popen([str(self.bin / 'gpu-screen-recorder'), '-w', 'TEST-1', '-r', '60', *extra,
+                                    '-o', str(replays / 'buffer')], env=dict(self.env, FAKE_NO_OUTPUT='1'))
+        self.processes.append(process)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if any(entry.get('pid') == process.pid for entry in [self.status().get('replay', {})]):
+                break
+            if extra and time.monotonic() > deadline - 4:
+                break
+            time.sleep(0.1)
+        return process
+
+    def test_outside_replay_buffer_gets_the_save_tile(self):
+        buffer = self.replay_buffer()
+        self.assertEqual(self.status()['replay'], {'pid': buffer.pid, 'seconds': 60})
+
+    def test_omakade_highlight_buffer_is_not_an_outside_buffer(self):
+        # Omakade's own buffer reaches the card through Omakade as its Clip tile, so the
+        # helper must not offer a second, whole-buffer save for it.
+        runtime = Path(self.root.name) / 'runtime'
+        self.replay_buffer('-ipc', str(runtime / 'omakade' / 'highlights-1-1.sock'))
+        time.sleep(0.3)
+        self.assertNotIn('replay', self.status())
+
 
 if __name__ == '__main__':
     unittest.main()

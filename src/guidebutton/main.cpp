@@ -180,6 +180,15 @@ int main(int argc, char* argv[]) {
                        .replace("--guide-toggle", "--game-mode-fallback") + " --guide-device " + node,
                    &application);
   });
+  // The controller's own capture button saves a highlight clip through omakade-sessiond.
+  QObject::connect(&listener, &GuideListener::capture, &application,
+                   [&application](const QString& node, const QString& name) {
+    qInfo().noquote() << QStringLiteral("Capture pressed on %1 (%2)").arg(node, name);
+    GuideClient::request({{"action", "clip"}, {"node", node}}, &application,
+                         [](const QString& result, const QJsonObject& data) {
+      if (result != "handled") qInfo().noquote() << "Clip not saved:" << data.value("reason").toString(result);
+    });
+  });
   listener.start();
   return application.exec();
 }

@@ -62,7 +62,7 @@ QStringList ReplayBuffer::arguments(const Options& options) {
           QStringLiteral("-c"), QStringLiteral("mp4"),
           QStringLiteral("-f"), QStringLiteral("60"),
           QStringLiteral("-fm"), QStringLiteral("cfr"),
-          QStringLiteral("-k"), QStringLiteral("auto"),
+          QStringLiteral("-k"), QStringLiteral("h264"),
           QStringLiteral("-q"), QStringLiteral("very_high"),
           QStringLiteral("-a"), QStringLiteral("default_output"),
           QStringLiteral("-ac"), QStringLiteral("aac"),
