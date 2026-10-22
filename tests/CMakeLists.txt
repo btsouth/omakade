@@ -1301,6 +1301,13 @@ foreach(shard RANGE 0 2)
     COMMAND omakade_resident_guide_tests --test-shard=${shard})
   set_tests_properties(omakade_resident_guide_tests_${shard} PROPERTIES TIMEOUT 30)
 endforeach()
+qt_add_executable(omakade_highlight_tests HighlightTests.cpp)
+target_link_libraries(omakade_highlight_tests PRIVATE omakade_tracking Qt6::Test)
+target_compile_definitions(omakade_highlight_tests PRIVATE
+  OMAKADE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+add_test(NAME omakade_highlight_tests COMMAND omakade_highlight_tests)
+set_tests_properties(omakade_highlight_tests PROPERTIES TIMEOUT 90)
+
 # The guide's clip and a screen recording started from Omarchy never take each other's place.
 add_test(NAME omakade_guide_recorder COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/GuideRecorderTests.py ${PROJECT_SOURCE_DIR}/omarchy-plugin/guide-files.py)

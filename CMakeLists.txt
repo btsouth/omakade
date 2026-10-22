@@ -59,6 +59,14 @@ qt_standard_project_setup(REQUIRES 6.8)
 # Play session tracking, shared by the Omakade window and the omakade-sessiond
 # recorder. Kept separate so the daemon links only Qt Core, Sql, and Network.
 add_library(omakade_tracking STATIC
+  src/highlights/ClipLibrary.cpp
+  src/highlights/ClipLibrary.h
+  src/highlights/HighlightService.cpp
+  src/highlights/HighlightService.h
+  src/highlights/HighlightSettings.cpp
+  src/highlights/HighlightSettings.h
+  src/highlights/ReplayBuffer.cpp
+  src/highlights/ReplayBuffer.h
   src/tracking/AppNotify.cpp
   src/tracking/AppNotify.h
   src/tracking/AttributionAdapter.cpp
