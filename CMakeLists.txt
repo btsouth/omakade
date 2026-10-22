@@ -569,7 +569,7 @@ install(DIRECTORY skills/omakade-tv-gaming
   PATTERN "__pycache__" EXCLUDE
 )
 
-install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md
+install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/HIGHLIGHTS.md docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md
   docs/CONTROLLER-NAVIGATION.md docs/BACKUP-FORMAT.md docs/SAVE-SETS.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
 )

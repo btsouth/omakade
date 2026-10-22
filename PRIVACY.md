@@ -92,6 +92,20 @@ Stop Games reads process identities and the Wine-prefix and Flatpak identifiers 
 to explain a stop scope. Other environment values are not retained or logged. Stop
 results can include local paths and process IDs. These checks do not upload process data.
 
+## Highlights
+
+Highlights are off by default. When they are on, `omakade-sessiond` runs
+gpu-screen-recorder while a game is in view. It keeps the last couple of minutes of that
+game's display and the computer's sound in memory, and writes nothing until a clip is saved.
+A clip records whatever was on that display, including anything shown over the game.
+
+Saved clips are video files in your Videos folder under `Omakade/`. The library database
+keeps which game each clip belongs to, when it was saved, its length, and the achievement
+it was saved for, in the `highlight_clips` table. Stills for the game page are cached in
+`$XDG_CACHE_HOME/omakade/clip-thumbnails/`. With Steam achievement clips on, Omakade reads
+the running game's Steam stats files in Steam's `appcache/stats` folder. Clips and their
+records are not uploaded and are not part of Omakade backups.
+
 ## Optional RomM library
 
 RomM is disabled by default. Connecting stores a Client API Token in Secret Service

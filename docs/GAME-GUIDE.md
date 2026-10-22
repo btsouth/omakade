@@ -10,8 +10,9 @@ Super + Ctrl + G keeps the existing Game Mode behavior.
 The panel shows the game's art, session and total time, the clock and any
 controller battery UPower reports. Below that: Resume, Screenshot and Record
 clip, sound volume and output, the performance readings that are available, and
-Quit, which asks before it acts. Save last N seconds appears while a replay
-buffer runs. Unknown readings stay absent.
+Quit, which asks before it acts. Clip N s appears while [highlights](HIGHLIGHTS.md) are
+recording the game, and Save last N seconds while an outside replay buffer runs. Unknown
+readings stay absent.
 
 In Game Mode the panel adds **Desktop**, which parks the session as Home did
 before the guide: the game is hidden and muted and keeps running. Home on the

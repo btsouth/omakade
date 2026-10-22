@@ -91,6 +91,7 @@ Item {
   property real focusAnchor: Focus.homeAnchor
   // The panel's width in Omarchy units at scale 1.
   readonly property int cardWidth: 480
+  readonly property bool threeTiles: !!root.replay || !!root.highlights
   readonly property int replaySeconds: (root.highlights && root.highlights.seconds) || (root.replay && root.replay.seconds) || 30
 
   // ------------------------------------------------------------ colours and type
@@ -483,12 +484,13 @@ Item {
     case "desktop": return {icon: root.icons.desktop, label: "Desktop"}
     case "retroarch": return {icon: root.icons.retroarch, label: "RetroArch menu"}
     // The urgent colour and the clip's time while a clip runs.
-    case "record": return root.recording ? {icon: root.icons.stop, urgent: true, label: "Stop clip \u00b7 " + root.recordingTime}
-                                         : {icon: root.icons.record, label: "Record clip"}
+    // Three tiles share the row with a replay buffer, so their labels are shorter.
+    case "record": return root.recording ? {icon: root.icons.stop, urgent: true, label: (root.threeTiles ? "Stop" : "Stop clip") + " \u00b7 " + root.recordingTime}
+                                         : {icon: root.icons.record, label: root.threeTiles ? "Record" : "Record clip"}
     case "replay":
       if (!root.highlights) return {icon: root.icons.replay, label: "Save " + root.replaySeconds + " s"}
-      if (root.highlights.saving) return {icon: root.icons.replay, label: "Saving clip\u2026"}
-      if (root.clipOutcome === "saved") return {icon: root.icons.replay, label: "Clip saved"}
+      if (root.highlights.saving) return {icon: root.icons.replay, label: "Saving\u2026"}
+      if (root.clipOutcome === "saved") return {icon: root.icons.replay, label: "Saved"}
       if (root.clipOutcome === "failed") return {icon: root.icons.replay, urgent: true, label: "Not saved"}
       return {icon: root.icons.replay, label: "Clip " + root.replaySeconds + " s"}
     case "volume": return {icon: root.muted ? root.icons.volumeOff : root.icons.volume, label: "Volume",
