@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMetaType>
 #include <QSqlDatabase>
 #include <QString>
 #include <QVector>
@@ -66,3 +67,4 @@ void trimEnd(const QString& path, double seconds, QObject* context, std::functio
 void makeThumbnail(const QString& clipPath, QObject* context, std::function<void(const QString&)> done);
 
 } // namespace ClipLibrary
+Q_DECLARE_METATYPE(ClipLibrary::Clip)

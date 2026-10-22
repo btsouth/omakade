@@ -1,5 +1,7 @@
 #include "sources/steam/ValveKeyValues.h"
 
+#include <cstring>
+
 #include <QFile>
 #include <QtEndian>
 
@@ -245,6 +247,19 @@ bool parseBinaryObject(const QByteArray& input, qsizetype* position, ValveKeyVal
       }
       const auto value =
           qFromLittleEndian<quint32>(input.constData() + *position);
+      *position += 4;
+      result->values.insert(key, QString::number(value));
+      continue;
+    }
+    if (type == 0x03) {
+      // A float, as Steam's stats files may store a stat.
+      if (*position + 4 > input.size()) {
+        *error = QStringLiteral("Truncated float value");
+        return false;
+      }
+      const quint32 bits = qFromLittleEndian<quint32>(input.constData() + *position);
+      float value = 0;
+      std::memcpy(&value, &bits, sizeof(value));
       *position += 4;
       result->values.insert(key, QString::number(value));
       continue;

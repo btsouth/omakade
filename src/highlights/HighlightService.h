@@ -3,6 +3,7 @@
 #include "highlights/ClipLibrary.h"
 #include "highlights/HighlightSettings.h"
 #include "highlights/ReplayBuffer.h"
+#include "highlights/SteamAchievements.h"
 #include "tracking/SessionTitleIndex.h"
 
 #include <QDateTime>
@@ -12,6 +13,7 @@
 #include <QVariantMap>
 
 #include <functional>
+#include <memory>
 
 // Keeps a replay buffer running on the game's monitor while highlights are on, and turns
 // clip requests into filed clips. It lives on omakade-sessiond's guide thread and follows
@@ -34,6 +36,8 @@ public:
     // Opens the library database connection clips are recorded through.
     std::function<bool(QSqlDatabase&)> openDatabase;
     std::function<qint64()> now = [] { return QDateTime::currentSecsSinceEpoch(); };
+    // Where the Steam client keeps achievement stats, watched for unlocks during play.
+    QStringList steamStatsDirectories;
   };
 
   struct Game {
@@ -77,6 +81,9 @@ public:
   [[nodiscard]] QString displayTitle() const;
   [[nodiscard]] HighlightSettings::Values settings() const { return m_settings; }
   [[nodiscard]] ReplayBuffer& buffer() { return m_buffer; }
+  [[nodiscard]] SteamAchievements& achievements() { return *m_achievements; }
+  // Seconds after an unlock that its clip keeps, so the moment and its banner are in it.
+  static constexpr int kAchievementTailSeconds = 5;
 
   // Re-reads the settings and reconciles. Called on every snapshot and by its own timer, so
   // turning highlights off stops the buffer even with no game events.
@@ -92,6 +99,7 @@ private:
   void startBuffer();
   void stopBuffer();
   void bufferStateChanged(ReplayBuffer::State state);
+  void achievementUnlocked(const QString& name, qint64 time);
   [[nodiscard]] QString recordingDirectory() const;
   bool openDatabase();
   // The library's own title for a content path, which beats a disc id or a file name.
@@ -116,5 +124,13 @@ private:
   SessionTitleIndex m_titles;
   qint64 m_titlesToken = -1;
   QString m_libraryTitle;
+  std::unique_ptr<SteamAchievements> m_achievements;
+  // Unlocks waiting for their tail to be recorded. Unlocks a few seconds apart share a clip.
+  struct PendingAchievement {
+    qint64 time = 0;
+    QStringList names;
+    Game game;
+  };
+  QList<PendingAchievement> m_pendingAchievements;
   QString m_connectionName;
 };

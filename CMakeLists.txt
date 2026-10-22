@@ -67,6 +67,11 @@ add_library(omakade_tracking STATIC
   src/highlights/HighlightSettings.h
   src/highlights/ReplayBuffer.cpp
   src/highlights/ReplayBuffer.h
+  src/highlights/SteamAchievements.cpp
+  src/highlights/SteamAchievements.h
+  # Shared with the library's Steam scanner; the recorder reads Steam's stats files with it.
+  src/sources/steam/ValveKeyValues.cpp
+  src/sources/steam/ValveKeyValues.h
   src/tracking/AppNotify.cpp
   src/tracking/AppNotify.h
   src/tracking/AttributionAdapter.cpp
@@ -276,8 +281,6 @@ add_library(omakade_core STATIC
   src/sources/FlatpakInstall.h
   src/sources/steam/SteamScanner.cpp
   src/sources/steam/SteamScanner.h
-  src/sources/steam/ValveKeyValues.cpp
-  src/sources/steam/ValveKeyValues.h
   src/sources/lutris/LutrisScanner.cpp
   src/sources/lutris/LutrisScanner.h
   src/sources/retroarch/RetroArchScanner.cpp

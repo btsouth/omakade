@@ -2,6 +2,7 @@
 #include "highlights/HighlightService.h"
 #include "highlights/HighlightSettings.h"
 #include "highlights/ReplayBuffer.h"
+#include "highlights/SteamAchievements.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionTitleIndex.h"
 
@@ -26,6 +27,36 @@ QJsonObject lastRequest(const QString& log) {
     if (entry.contains(QStringLiteral("request"))) last = entry.value(QStringLiteral("request")).toObject();
   }
   return last;
+}
+
+// Binary KeyValues as Steam writes its stats files.
+QByteArray kvString(const QByteArray& key, const QByteArray& value) { return '\x01' + key + '\0' + value + '\0'; }
+QByteArray kvInt(const QByteArray& key, qint32 value) {
+  QByteArray out = '\x02' + key + '\0';
+  for (int byte = 0; byte < 4; ++byte) out.append(char((quint32(value) >> (8 * byte)) & 0xff));
+  return out;
+}
+QByteArray kvObject(const QByteArray& key, const QByteArray& children) { return '\0' + key + '\0' + children + '\x08'; }
+
+// One stat block's unlocks: bit -> unix time.
+QByteArray userStats(const QList<QPair<int, qint64>>& unlocked) {
+  QByteArray times;
+  for (const auto& [bit, time] : unlocked) times += kvInt(QByteArray::number(bit), qint32(time));
+  return kvObject("cache", kvInt("crc", 1) + kvInt("PendingChanges", 0) +
+                               kvObject("3", kvInt("data", 1) + kvObject("AchievementTimes", times))) + '\x08';
+}
+
+// Moves a file's modification time ahead, as a new write by Steam would.
+void touch(const QString& path, int seconds) {
+  QFile file(path);
+  if (file.open(QIODevice::ReadWrite))
+    file.setFileTime(QDateTime::currentDateTime().addSecs(seconds), QFileDevice::FileModificationTime);
+}
+
+bool writeFile(const QString& path, const QByteArray& data) {
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+  return file.write(data) == data.size();
 }
 
 int starts(const QString& log) {
@@ -62,6 +93,9 @@ private slots:
   void serviceRefusesWithReason();
   void serviceRetriesThenReportsOnce();
   void serviceTrimsGuideTime();
+  void steamUnlocksAreRead();
+  void steamWatcherReportsOnlyFreshUnlocks();
+  void serviceClipsSteamAchievement();
 
 private:
   HighlightService::Environment environment();
@@ -546,6 +580,103 @@ void HighlightTests::serviceTrimsGuideTime() {
   QVERIFY(probe.waitForFinished(10000));
   const double duration = probe.readAllStandardOutput().trimmed().toDouble();
   QVERIFY2(duration > 4.5 && duration < 5.5, qPrintable(QString::number(duration)));
+}
+
+void HighlightTests::steamUnlocksAreRead() {
+  ValveKeyValues stats;
+  QVERIFY(ValveKeyValuesParser::parseBinary(userStats({{1, 1757117347}, {10, 1757122995}}), &stats));
+  const auto unlocks = SteamAchievements::unlocks(stats);
+  QCOMPARE(unlocks.size(), 2);
+  QCOMPARE(unlocks.value(QStringLiteral("3/1")), qint64(1757117347));
+  ValveKeyValues schema;
+  const QByteArray names = kvObject("name", kvString("english", "Charmed") + kvString("german", "Entz\xc3\xbc""ckt"));
+  QVERIFY(ValveKeyValuesParser::parseBinary(
+      kvObject("367520", kvObject("stats", kvObject("3", kvObject("bits", kvObject("1", kvString("name", "CHARMED") +
+          kvObject("display", names)))))) + '\x08', &schema));
+  QCOMPARE(SteamAchievements::displayName(schema, QStringLiteral("367520"), QStringLiteral("3/1"), QStringLiteral("english")),
+           QStringLiteral("Charmed"));
+  QCOMPARE(SteamAchievements::displayName(schema, QStringLiteral("367520"), QStringLiteral("3/1"), QStringLiteral("german")),
+           QStringLiteral("Entz\u00fcckt"));
+  // A language the game was not translated into falls back to English.
+  QCOMPARE(SteamAchievements::displayName(schema, QStringLiteral("367520"), QStringLiteral("3/1"), QStringLiteral("koreana")),
+           QStringLiteral("Charmed"));
+  QVERIFY(SteamAchievements::displayName(schema, QStringLiteral("367520"), QStringLiteral("3/9"), QStringLiteral("english")).isEmpty());
+}
+
+void HighlightTests::steamWatcherReportsOnlyFreshUnlocks() {
+  const QString stats = QFileInfo(m_config).absolutePath() + QStringLiteral("/stats");
+  QVERIFY(QDir().mkpath(stats));
+  const QString file = stats + QStringLiteral("/UserGameStats_42_367520.bin");
+  const qint64 now = QDateTime::currentSecsSinceEpoch();
+  QVERIFY(writeFile(file, userStats({{1, now - 86400}})));
+  SteamAchievements watcher({stats});
+  QSignalSpy unlocked(&watcher, &SteamAchievements::unlocked);
+  watcher.watch(QStringLiteral("367520"));
+  // What was already unlocked is not news.
+  watcher.check();
+  QCOMPARE(unlocked.count(), 0);
+  // An unlock stamped just now is.
+  QVERIFY(writeFile(file, userStats({{1, now - 86400}, {2, now - 1}})));
+  touch(file, 1);
+  watcher.check();
+  QCOMPARE(unlocked.count(), 1);
+  QCOMPARE(unlocked.first().at(1).toLongLong(), now - 1);
+  // An old unlock Steam only now wrote, as after a sync, is noted but never clipped.
+  QVERIFY(writeFile(file, userStats({{1, now - 86400}, {2, now - 1}, {8, now - 3600}})));
+  touch(file, 2);
+  watcher.check();
+  QCOMPARE(unlocked.count(), 1);
+  // A half-written file is skipped and read again later.
+  QVERIFY(writeFile(file, QByteArray("\0cache\0\x02crc")));
+  touch(file, 3);
+  watcher.check();
+  QVERIFY(writeFile(file, userStats({{1, now - 86400}, {2, now - 1}, {8, now - 3600}, {9, now}})));
+  touch(file, 4);
+  watcher.check();
+  QCOMPARE(unlocked.count(), 2);
+  // Another game's files are not read, and an id that is not a number watches nothing.
+  watcher.watch(QStringLiteral("../367520"));
+  QVERIFY(watcher.appId().isEmpty());
+}
+
+void HighlightTests::serviceClipsSteamAchievement() {
+  const QString stats = QFileInfo(m_config).absolutePath() + QStringLiteral("/stats");
+  QVERIFY(QDir().mkpath(stats));
+  const QString file = stats + QStringLiteral("/UserGameStats_42_367520.bin");
+  QVERIFY(writeFile(file, userStats({})));
+  const auto bit = [](const QByteArray& id, const QByteArray& name) {
+    return kvObject(id, kvString("name", name.toUpper()) + kvObject("display", kvObject("name", kvString("english", name))));
+  };
+  QVERIFY(writeFile(stats + QStringLiteral("/UserGameStatsSchema_367520.bin"),
+                    kvObject("367520", kvObject("stats", kvObject("3", kvObject("bits", bit("1", "Charmed") + bit("2", "Enchanted"))))) + '\x08'));
+  auto env = environment();
+  env.steamStatsDirectories = {stats};
+  HighlightService service(env);
+  QSignalSpy saved(&service, &HighlightService::clipSaved);
+  HighlightService::Game game;
+  game.pid = 100;
+  game.source = QStringLiteral("Steam");
+  game.key = QStringLiteral("367520");
+  game.title = QStringLiteral("Hollow Knight");
+  game.monitor = QStringLiteral("DP-1");
+  service.follow(game);
+  QTRY_VERIFY(service.running());
+  QCOMPARE(service.achievements().appId(), QStringLiteral("367520"));
+  // Two unlocks in the same moment share one clip.
+  const qint64 now = QDateTime::currentSecsSinceEpoch();
+  QVERIFY(writeFile(file, userStats({{1, now - 4}, {2, now - 3}})));
+  touch(file, 1);
+  service.achievements().check();
+  QTRY_COMPARE_WITH_TIMEOUT(saved.count(), 1, 10000);
+  const auto clip = saved.first().first().value<ClipLibrary::Clip>();
+  QCOMPARE(clip.trigger, QStringLiteral("achievement"));
+  QCOMPARE(clip.label, QStringLiteral("Charmed, Enchanted"));
+  QTest::qWait(500);
+  QCOMPARE(saved.count(), 1);
+  // Turning achievement clips off stops reading the files.
+  writeConfig(QStringLiteral("highlights = true\nhighlight_achievements = false\n"));
+  service.reconcile();
+  QVERIFY(service.achievements().appId().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(HighlightTests)

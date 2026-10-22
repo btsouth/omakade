@@ -24,6 +24,8 @@ constexpr qint64 kStaleRecordingSecs = 3600;
 HighlightService::HighlightService(Environment environment, QObject* parent)
     : QObject(parent), m_environment(std::move(environment)) {
   m_settings = HighlightSettings::load(m_environment.configPath);
+  m_achievements = std::make_unique<SteamAchievements>(m_environment.steamStatsDirectories);
+  connect(m_achievements.get(), &SteamAchievements::unlocked, this, &HighlightService::achievementUnlocked);
   connect(&m_buffer, &ReplayBuffer::stateChanged, this, &HighlightService::bufferStateChanged);
   m_tick.setInterval(kTickMs);
   connect(&m_tick, &QTimer::timeout, this, &HighlightService::reconcile);
@@ -70,6 +72,7 @@ HighlightService::Environment HighlightService::defaultEnvironment() {
     if (!image.isEmpty()) arguments << QStringLiteral("--icon=") + image;
     QProcess::startDetached(notifySend, arguments << title << body);
   };
+  environment.steamStatsDirectories = SteamAchievements::defaultDirectories();
   environment.openDatabase = [](QSqlDatabase& database) {
     return SessionDatabase::open(database, SessionDatabase::defaultDatabasePath(),
                                  QStringLiteral("omakade-highlights-") + QUuid::createUuid().toString(QUuid::WithoutBraces));
@@ -144,7 +147,11 @@ void HighlightService::reconcile() {
     m_failureReported = false;
     m_retry.stop();
   }
+  const bool steamClips = m_settings.enabled && m_settings.achievementClips && m_game.pid > 0 &&
+                          m_game.source == QStringLiteral("Steam");
+  m_achievements->watch(steamClips ? m_game.key : QString());
   if (!m_settings.enabled || m_game.pid <= 0 || m_game.monitor.isEmpty()) {
+    m_pendingAchievements.clear();
     stopBuffer();
     return;
   }
@@ -259,6 +266,38 @@ void HighlightService::store(const QString& path, const ClipLibrary::Clip& clip,
     if (m_environment.notify) m_environment.notify(QStringLiteral("Clip saved"), body, image);
     if (filed.id != 0) emit clipSaved(filed);
     if (done) done(filed, filed.id == 0 ? fileError : QString());
+  });
+}
+
+void HighlightService::achievementUnlocked(const QString& name, qint64 time) {
+  // Two unlocks a few seconds apart are one moment, and one clip names both.
+  for (PendingAchievement& pending : m_pendingAchievements) {
+    if (qAbs(pending.time - time) <= kAchievementTailSeconds * 2 && pending.game.sameProcess(m_game)) {
+      pending.names.append(name);
+      return;
+    }
+  }
+  m_pendingAchievements.append({time, {name}, m_game});
+  // Wait for the moment after the unlock, then keep a clip ending there.
+  const qint64 endMs = (time + kAchievementTailSeconds) * 1000;
+  const qint64 delay = qMax<qint64>(0, endMs - QDateTime::currentMSecsSinceEpoch());
+  QTimer::singleShot(delay, this, [this, time, endMs] {
+    for (qsizetype index = 0; index < m_pendingAchievements.size(); ++index) {
+      if (m_pendingAchievements.at(index).time != time) continue;
+      const PendingAchievement pending = m_pendingAchievements.takeAt(index);
+      // The game ended or another took its place: there is nothing of it left to clip.
+      if (!pending.game.sameProcess(m_game) || !running()) return;
+      QStringList names;
+      for (const QString& name : pending.names)
+        if (!names.contains(name)) names.append(name);
+      // Without Steam's schema every unlock has the same generic name, so count them instead.
+      const QString label = names.size() == 1 && pending.names.size() > 1
+                                ? QStringLiteral("%1 achievements unlocked").arg(pending.names.size())
+                                : names.join(QStringLiteral(", "));
+      clip(QStringLiteral("achievement"), label, {},
+           qMax<qint64>(0, QDateTime::currentMSecsSinceEpoch() - endMs));
+      return;
+    }
   });
 }
 
