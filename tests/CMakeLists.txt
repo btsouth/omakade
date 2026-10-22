@@ -53,6 +53,18 @@ foreach(preference_overlay IN ITEMS gog-folders linked-preference linked-prefere
     TIMEOUT 20)
 endforeach()
 
+# A game's saved highlight clips: listed on its page, and trashed only on a second press.
+add_test(NAME omakade_game_clips_desktop_render COMMAND omakade --render-overlay=game-clips
+  --render-size=1400x1000 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-clips-desktop.png)
+add_test(NAME omakade_game_clips_couch_render COMMAND omakade --couch --render-overlay=game-clips
+  --render-size=1920x1080 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-clips-couch.png)
+add_test(NAME omakade_highlight_settings_render COMMAND omakade --render-overlay=settings-highlights
+  --render-size=1200x900 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/settings-highlights.png)
+set_tests_properties(omakade_game_clips_desktop_render omakade_game_clips_couch_render
+  omakade_highlight_settings_render PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+  TIMEOUT 30)
+
 add_test(NAME omakade_details_directions COMMAND omakade --details-direction-test
   --render-size=1400x1100)
 add_test(NAME omakade_details_directions_couch COMMAND omakade --couch --details-direction-test

@@ -31,6 +31,7 @@ signals:
   // Home after the guide's Desktop: resume; the guide service reopens itself over the game.
   void gameModeReturnRequested();
   void quitRequested();
+  void clipsChanged();
   void trackingStorageFailed();
   // The recorder's durable recovery journal is full or was found damaged, so refused writes
   // are not currently guaranteed to survive a crash. Surfaced alongside the persistent

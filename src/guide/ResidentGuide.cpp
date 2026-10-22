@@ -1,4 +1,5 @@
 #include "guide/ResidentGuide.h"
+#include "tracking/AppNotify.h"
 #include "app/AppSettings.h"
 #include "guide/GuideClient.h"
 #include "guide/GuideEnvironment.h"
@@ -230,6 +231,8 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
     }
   });
   m_highlights = std::make_unique<HighlightService>(HighlightService::defaultEnvironment());
+  // An open Omakade window lists the new clip on the game's page.
+  connect(m_highlights.get(), &HighlightService::clipSaved, this, [] { AppNotify::send("clips-changed"); });
   connect(m_highlights.get(), &HighlightService::statusChanged, this, [this] {
     m_guide.setHighlights(m_highlights->guideStatus());
   });

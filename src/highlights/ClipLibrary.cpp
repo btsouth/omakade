@@ -13,6 +13,9 @@
 #include <QTimer>
 #include <QVariant>
 
+#include <QSet>
+
+#include <algorithm>
 #include <cstdio>
 
 namespace ClipLibrary {
@@ -131,6 +134,30 @@ QVector<Clip> forGame(QSqlDatabase& database, const QString& source, const QStri
   return existing(query);
 }
 
+QVector<Clip> forGames(QSqlDatabase& database, const QList<QPair<QString, QString>>& sourceKeys) {
+  QVector<Clip> clips;
+  QSet<qint64> seen;
+  for (const auto& [source, key] : sourceKeys) {
+    if (key.isEmpty()) continue;
+    QSqlQuery query(database);
+    if (key.startsWith(QLatin1Char('/'))) {
+      query.prepare(QStringLiteral("SELECT %1 FROM highlight_clips WHERE game_key = ?").arg(kColumns));
+      query.addBindValue(key);
+    } else {
+      query.prepare(QStringLiteral("SELECT %1 FROM highlight_clips WHERE game_key = ? AND source = ?").arg(kColumns));
+      query.addBindValue(key);
+      query.addBindValue(source);
+    }
+    if (!query.exec()) continue;
+    for (const Clip& clip : existing(query))
+      if (!seen.contains(clip.id)) { seen.insert(clip.id); clips.append(clip); }
+  }
+  std::sort(clips.begin(), clips.end(), [](const Clip& left, const Clip& right) {
+    return left.createdAt != right.createdAt ? left.createdAt > right.createdAt : left.id > right.id;
+  });
+  return clips;
+}
+
 QVector<Clip> recent(QSqlDatabase& database, int limit) {
   QSqlQuery query(database);
   // Read past missing files so a few deleted clips do not shorten the list.
@@ -215,18 +242,22 @@ void trimEnd(const QString& path, double seconds, QObject* context, std::functio
       });
 }
 
-QString thumbnailPath(const QString& clipPath) {
+QString thumbnailPath(const QString& clipPath, const QString& cacheRoot) {
   const QFileInfo info(clipPath);
   const QByteArray key = (info.absoluteFilePath() + QLatin1Char(':') +
                           QString::number(info.lastModified().toMSecsSinceEpoch())).toUtf8();
-  return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) +
-         QStringLiteral("/omakade/clip-thumbnails/") +
+  const QString root = cacheRoot.isEmpty()
+                           ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) +
+                                 QStringLiteral("/omakade/clip-thumbnails")
+                           : cacheRoot;
+  return root + QLatin1Char('/') +
          QString::fromLatin1(QCryptographicHash::hash(key, QCryptographicHash::Sha1).toHex()) +
          QStringLiteral(".jpg");
 }
 
-void makeThumbnail(const QString& clipPath, QObject* context, std::function<void(const QString&)> done) {
-  const QString image = thumbnailPath(clipPath);
+void makeThumbnail(const QString& clipPath, QObject* context, std::function<void(const QString&)> done,
+                   const QString& cacheRoot) {
+  const QString image = thumbnailPath(clipPath, cacheRoot);
   if (QFileInfo(image).size() > 0) { if (done) done(image); return; }
   const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
   if (ffmpeg.isEmpty() || !QFileInfo(clipPath).isFile() || !QDir().mkpath(QFileInfo(image).absolutePath())) {

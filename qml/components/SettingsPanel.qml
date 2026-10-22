@@ -83,6 +83,7 @@ import QtQuick.Layouts
         readonly property var sections: [
             {label: "Sources", section: 0}, {label: "Library & launching", section: 1},
             {label: "Appearance", section: 5}, {label: "Controls", section: 3},
+            {label: "Highlights", section: 8},
             {label: "Connections", section: 2}, {label: "Streaming", section: 6},
             {label: "Backup & storage", section: 4}, {label: "About & help", section: 7}
         ]
@@ -1884,6 +1885,141 @@ import QtQuick.Layouts
                     }
                 }
 
+                }
+                ColumnLayout {
+                    objectName: "highlightSettings"
+                    Layout.fillWidth: true
+                    spacing: 14
+                    visible: settingsOverlay.section === 8
+                Text {
+                    text: "HIGHLIGHTS"
+                    color: Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Keep the last moments of a game ready to save. While a game is in view, Omakade keeps a short recording of its display in memory and writes a clip only when you ask for one or unlock an achievement."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    GlassButton {
+                        objectName: "highlightsToggle"
+                        compact: true
+                        enabled: Preferences.highlightRecorderInstalled || Preferences.highlights
+                        text: "HIGHLIGHTS: " + (Preferences.highlights ? "ON" : "OFF")
+                        selected: Preferences.highlights
+                        onClicked: Preferences.highlights = !Preferences.highlights
+                    }
+                    GlassButton {
+                        objectName: "highlightAchievementsToggle"
+                        compact: true
+                        visible: Preferences.highlights
+                        text: "STEAM ACHIEVEMENT CLIPS: " + (Preferences.highlightAchievements ? "ON" : "OFF")
+                        selected: Preferences.highlightAchievements
+                        onClicked: Preferences.highlightAchievements = !Preferences.highlightAchievements
+                    }
+                    GlassButton {
+                        objectName: "openClipsFolder"
+                        compact: true
+                        text: "OPEN CLIPS FOLDER"
+                        onClicked: HighlightClips.openFolder()
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: Preferences.highlights
+                    Text {
+                        Layout.fillWidth: true
+                        text: "CLIP LENGTH"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10 * settingsPanel.uiScale
+                    }
+                    Repeater {
+                        model: Preferences.highlightLengths
+                        GlassButton {
+                            required property int modelData
+                            objectName: "highlightLength" + modelData
+                            compact: true
+                            text: modelData + " S"
+                            selected: Preferences.highlightSeconds === modelData
+                            onClicked: Preferences.highlightSeconds = modelData
+                        }
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: ClipShortcut.available
+                    Text {
+                        Layout.fillWidth: true
+                        text: "KEYBOARD SHORTCUT"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 10 * settingsPanel.uiScale
+                    }
+                    GlassButton {
+                        objectName: "clipShortcutButton"
+                        compact: true
+                        visible: ClipShortcut.bound || ClipShortcut.takenBy === ""
+                        enabled: !ClipShortcut.busy
+                        text: (ClipShortcut.bound ? "REMOVE " : "ADD ") + ClipShortcut.keyLabel.toUpperCase()
+                        onClicked: ClipShortcut.bound ? ClipShortcut.remove() : ClipShortcut.add()
+                    }
+                }
+                Text {
+                    objectName: "clipShortcutStatus"
+                    Layout.fillWidth: true
+                    visible: ClipShortcut.available
+                    text: ClipShortcut.statusText !== "" ? ClipShortcut.statusText
+                          : ClipShortcut.bound
+                            ? ClipShortcut.keyLabel + " saves a clip of the game in view."
+                          : ClipShortcut.takenBy !== ""
+                            ? ClipShortcut.keyLabel + " is already used for " + ClipShortcut.takenBy
+                              + ". Bind another key to omakade --clip in ~/.config/hypr/bindings.lua."
+                            : "Omarchy leaves " + ClipShortcut.keyLabel
+                              + " free. Adding it writes one line to ~/.config/hypr/bindings.lua."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    objectName: "highlightRequirement"
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: !Preferences.highlightRecorderInstalled
+                          ? "Highlights record with gpu-screen-recorder, which is not installed. Install it with: sudo pacman -S gpu-screen-recorder"
+                          : Preferences.highlights && !!SessionRecorderStatus && !SessionRecorderStatus.recorderRunning
+                            ? "Highlights run in Omakade's background service, which is not running. Start it in a terminal: systemctl --user enable --now omakade-sessiond"
+                            : ""
+                    color: Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Save a clip from the Clip tile in the in-game guide, with the keyboard shortcut, or with the Share button on an Xbox controller or the Capture button on a Nintendo controller while the controller Home button is on in Controls. A clip ends where the game was when you asked, even from the guide. Steam achievement clips end a few seconds after the unlock and are named after it. Clips are saved in " + Preferences.highlightFolder + ", one folder per game, and listed on each game's page."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "The recording is of the display the game is on, including anything shown over it, with the sound your computer plays. It stays in memory and on this computer, and nothing is kept until a clip is saved."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true

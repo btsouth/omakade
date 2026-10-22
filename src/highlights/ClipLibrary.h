@@ -51,6 +51,9 @@ Clip file(QSqlDatabase& database, const QString& recordedPath, const QString& ro
 // One game's clips, newest first, leaving out any whose file is gone.
 [[nodiscard]] QVector<Clip> forGame(QSqlDatabase& database, const QString& source,
                                     const QString& gameKey);
+// The clips of any of a game's installations, newest first. A content path names its game on
+// its own; an id such as a Steam app id only counts with the same source.
+[[nodiscard]] QVector<Clip> forGames(QSqlDatabase& database, const QList<QPair<QString, QString>>& sourceKeys);
 [[nodiscard]] QVector<Clip> recent(QSqlDatabase& database, int limit);
 [[nodiscard]] Clip byId(QSqlDatabase& database, qint64 id);
 // Forgets the record. The caller decides what happens to the file.
@@ -60,11 +63,13 @@ bool forget(QSqlDatabase& database, qint64 id);
 // file is shorter; false leaves it as it was (no ffmpeg, nothing left to keep, or a failure).
 void trimEnd(const QString& path, double seconds, QObject* context, std::function<void(bool)> done);
 
-// Where the clip's still image is cached, keyed by its path and modification time.
-[[nodiscard]] QString thumbnailPath(const QString& clipPath);
-// Writes the still with ffmpeg, a third of the way in, unless it already exists. done gets
-// the image path, or an empty string when there is no ffmpeg or it failed.
-void makeThumbnail(const QString& clipPath, QObject* context, std::function<void(const QString&)> done);
+// Where the clip's still image is cached, keyed by its path and modification time. An empty
+// cacheRoot is the user's cache folder.
+[[nodiscard]] QString thumbnailPath(const QString& clipPath, const QString& cacheRoot = {});
+// Writes the still with ffmpeg, near the end, unless it already exists. done gets the image
+// path, or an empty string when there is no ffmpeg or it failed.
+void makeThumbnail(const QString& clipPath, QObject* context, std::function<void(const QString&)> done,
+                   const QString& cacheRoot = {});
 
 } // namespace ClipLibrary
 Q_DECLARE_METATYPE(ClipLibrary::Clip)
