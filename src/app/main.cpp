@@ -61,6 +61,7 @@
 #include "guide/GuideClient.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/LaunchHold.h"
+#include "gamemode/LaunchWatch.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
 #include "streaming/SunshineIntegration.h"
@@ -1979,6 +1980,7 @@ int main(int argc, char* argv[]) {
                         : isolatedTest ? nullptr
                                        : &gameModeCompositor,
                         GameModeController::workspace());
+  LaunchWatch launchWatch(gameModeTest || isolatedTest ? nullptr : &gameModeCompositor);
   // Omarchy keeps personal key bindings in this file and provides the `o.bind` helper the
   // Game Mode binding is written with.
   const QString omarchyPath = qEnvironmentVariable("OMARCHY_PATH");
@@ -2235,6 +2237,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
+  engine.rootContext()->setContextProperty(QStringLiteral("LaunchWatch"), &launchWatch);
   // The game a launching render shows, and the windows it holds, from
   // --render-game-info-file when one is given.
   QVariantMap launchingPreview;

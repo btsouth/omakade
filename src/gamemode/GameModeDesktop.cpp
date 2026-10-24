@@ -476,15 +476,18 @@ QString HyprlandGameModeCompositor::steamHoldScript(const QString& workspace) {
            luaString(launchHoldWorkspace() + QStringLiteral(" silent")));
 }
 
-QVector<GameModeHeldWindow> HyprlandGameModeCompositor::parseHeldWindows(
-    const QByteArray& clientsJson) {
+namespace {
+// Mapped windows from `hyprctl -j clients`, on `workspace` only when one is given.
+QVector<GameModeHeldWindow> parseClients(const QByteArray& clientsJson, const QString& workspace) {
+  using Compositor = HyprlandGameModeCompositor;
   QVector<GameModeHeldWindow> windows;
   for (const QJsonValue& value : QJsonDocument::fromJson(clientsJson).array()) {
     const QJsonObject client = value.toObject();
     const QString address = client.value(QLatin1String("address")).toString();
-    if (!client.value(QLatin1String("mapped")).toBool() || !validAddress(address) ||
-        workspaceSelector(client.value(QLatin1String("workspace")).toObject()) !=
-            launchHoldWorkspace()) {
+    if (!client.value(QLatin1String("mapped")).toBool() || !Compositor::validAddress(address) ||
+        (!workspace.isEmpty() &&
+         Compositor::workspaceSelector(client.value(QLatin1String("workspace")).toObject()) !=
+             workspace)) {
       continue;
     }
     windows.append({address, client.value(QLatin1String("pid")).toVariant().toLongLong(),
@@ -492,6 +495,17 @@ QVector<GameModeHeldWindow> HyprlandGameModeCompositor::parseHeldWindows(
                     client.value(QLatin1String("title")).toString()});
   }
   return windows;
+}
+} // namespace
+
+QVector<GameModeHeldWindow> HyprlandGameModeCompositor::parseHeldWindows(
+    const QByteArray& clientsJson) {
+  return parseClients(clientsJson, launchHoldWorkspace());
+}
+
+QVector<GameModeHeldWindow> HyprlandGameModeCompositor::parseOpenWindows(
+    const QByteArray& clientsJson) {
+  return parseClients(clientsJson, {});
 }
 
 QString HyprlandGameModeCompositor::presentScript(const QString& address, const QString& workspace,
@@ -525,6 +539,17 @@ bool HyprlandGameModeCompositor::heldWindows(QVector<GameModeHeldWindow>* window
     return false;
   }
   *windows = parseHeldWindows(json);
+  return true;
+}
+
+bool HyprlandGameModeCompositor::openWindows(QVector<GameModeHeldWindow>* windows,
+                                             QString* error) {
+  QByteArray json;
+  if (!windows || !run(QStringLiteral("hyprctl"), {"-j", "clients"}, &json)) {
+    setError(error, QStringLiteral("hyprctl did not answer"));
+    return false;
+  }
+  *windows = parseOpenWindows(json);
   return true;
 }
 

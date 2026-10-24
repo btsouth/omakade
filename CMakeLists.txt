@@ -349,6 +349,8 @@ add_library(omakade_core STATIC
   src/gamemode/GameModeSession.h
   src/gamemode/LaunchHold.cpp
   src/gamemode/LaunchHold.h
+  src/gamemode/LaunchWatch.cpp
+  src/gamemode/LaunchWatch.h
   src/gamemode/GameModeShortcut.cpp
   src/gamemode/GameModeShortcut.h
   src/streaming/SunshineIntegration.cpp

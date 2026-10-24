@@ -156,6 +156,10 @@ LaunchHoldTarget LaunchHold::targetFor(const QVariantMap& game) {
   target.installPath = game.value(QStringLiteral("installPath")).toString();
   target.directProcess = GameLauncher::isDirectSourceName(source) ||
                          GameLauncher::isEmulatorSourceName(source);
+  // Xodus Nexus starts a game from a copy of its folder, so only the prefix places it.
+  const QString prefix = game.value(QStringLiteral("launchTarget")).toString();
+  if (source == QStringLiteral("Xodus Nexus") && !prefix.isEmpty())
+    target.winePrefix = canonical(prefix);
   return target;
 }
 
@@ -216,6 +220,9 @@ bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHold
     // A window of Wine's own, such as the untitled one explorer.exe opens under Proton
     // while Rockstar's launcher starts, carries the game's Steam name but is not the game.
     if (depth == 0 && wineSystemProgram(*process)) return false;
+    if (!target.winePrefix.isEmpty() && !process->winePrefix.isEmpty() &&
+        canonical(process->winePrefix) == target.winePrefix)
+      return true;
     // The nearest program that can be placed decides. A publisher's launcher, such as
     // Rockstar's or EA's, is a program of its own outside the game's folder even when
     // the game started it, so it stays held while it asks for a sign-in.

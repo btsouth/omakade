@@ -7495,6 +7495,25 @@ void CoreTests::launchFeedbackGuardsRepeatedRequests() {
   QTRY_VERIFY_WITH_TIMEOUT(!state.property("pending").toBool(), 2500);
   QVERIFY(state.property("message").toString().isEmpty());
   QCOMPARE(dispatch.count(), 2);
+  QCOMPARE(state.property("busyText").toString(), QStringLiteral("OPENING..."));
+
+  // A launch that went out can stay busy until its game opens, past the cooldown.
+  QVERIFY(begin.callWithInstance(state, {request}).toBool());
+  QTRY_COMPARE(dispatch.count(), 3);
+  finish.callWithInstance(state, {true, QStringLiteral("Opening First game")});
+  state.property("wait").callWithInstance(state, {QStringLiteral("Starting First game.")});
+  QVERIFY(state.property("waiting").toBool());
+  QCOMPARE(state.property("message").toString(), QStringLiteral("Starting First game."));
+  QVERIFY(state.property("busyText").toString().startsWith(QStringLiteral("STARTING")));
+  QTest::qWait(2300);
+  QVERIFY(state.property("pending").toBool());
+  QVERIFY(!begin.callWithInstance(state, {request}).toBool());
+  feedback->setProperty("reducedMotion", true);
+  QCOMPARE(state.property("busyText").toString(), QStringLiteral("STARTING..."));
+  state.property("done").callWithInstance(state);
+  QVERIFY(!state.property("pending").toBool());
+  QVERIFY(!state.property("waiting").toBool());
+  QVERIFY(state.property("message").toString().isEmpty());
 }
 
 void CoreTests::xeniaScannerImportsRecentTitlesAndDumps() {

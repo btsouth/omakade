@@ -1632,11 +1632,30 @@ ApplicationWindow {
     LaunchFeedback {
         id: launchFeedback
         objectName: "launchFeedback"
+        reducedMotion: Preferences.reducedMotion
         onDispatchRequested: request => root.dispatchLaunch(request)
     }
 
+    Connections {
+        target: LaunchWatch
+        function onChanged() { if (!LaunchWatch.active) launchFeedback.done() }
+        function onTimedOut() {
+            root.showToast(LaunchWatch.title + " has not opened a window yet. It may still be starting.")
+        }
+    }
+
+    // A launch still going out blocks another. One already out and waiting for its game
+    // to open only blocks the same game: playing another stops waiting for the first.
+    function launchBlocked(gameKey) {
+        if (!launchFeedback.pending) return false
+        if (!launchFeedback.waiting || launchFeedback.request.gameKey === gameKey) return true
+        LaunchWatch.cancel()
+        launchFeedback.done()
+        return false
+    }
+
     function playSelected() {
-        if (launchFeedback.pending) { showToast(launchFeedback.message); return }
+        if (launchBlocked(launchIdentity(selectedGame))) { showToast(launchFeedback.message); return }
         launchFeedback.begin({gameKey: launchIdentity(selectedGame),
             title: selectedGame.title, installation: selectedInstallation, art: launchArt(selectedGame)})
     }
@@ -1664,7 +1683,8 @@ ApplicationWindow {
         // In Game Mode a launcher's own windows can wait out of sight until the game opens.
         const holding = !DemoMode && !installing && !openingHeroic && GameMode.active && !GameMode.parked
             && !GameMode.busy && GameMode.holdLaunchers && LaunchHold.begin({title: request.title, source: choice.source,
-                                                           appId: choice.appId, installPath: choice.installPath || ""})
+                                                           appId: choice.appId, installPath: choice.installPath || "",
+                                                           launchTarget: choice.launchTarget || ""})
         // A launch hold lists what Steam opened as it started; anything else shows it now,
         // and Steam's next window, such as an install dialog, opens as usual.
         if (holding) launchingGame = Object.assign({title: request.title}, request.art || {})
@@ -1682,6 +1702,12 @@ ApplicationWindow {
                 + (installing ? "" : " in " + choice.source)
             : (DemoMode ? "Demo games cannot be launched" : Launcher.lastError || "Could not open this game. Try again.")
         launchFeedback.finish(okay, pendingSaveWarning ? message + ". " + pendingSaveWarning : message)
+        // Xodus Nexus shows nothing while its game starts, which can take a minute: say the
+        // game is starting until its window opens. A launch hold says so already.
+        if (okay && !holding && !installing && !openingHeroic && choice.source === "Xodus Nexus"
+                && LaunchWatch.begin({title: request.title, source: choice.source, appId: choice.appId,
+                                      installPath: choice.installPath || "", launchTarget: choice.launchTarget || ""}))
+            launchFeedback.wait("Starting " + request.title + ". Xodus Nexus games can take a minute to open.")
         showToast(pendingSaveWarning || message)
         if (okay && !installing && !openingHeroic) {
             // Filters or selection may have changed during the feedback frame.
@@ -2656,6 +2682,7 @@ ApplicationWindow {
         id: homeScreen
         objectName: "homeScreen"
         launchBusy: launchFeedback.pending && launchFeedback.request.gameKey === root.launchIdentity(homeScreen.featured)
+        launchBusyText: launchFeedback.busyText
         anchors.fill: parent
         visible: root.homeOpen && !root.detailOpen
         couchMode: root.couchMode
@@ -2705,7 +2732,7 @@ ApplicationWindow {
         }
         onGameRequested: (game, action) => selectHomeGame(game, action)
         onPlayRequested: game => {
-            if (launchFeedback.pending) root.showToast(launchFeedback.message)
+            if (root.launchBlocked(root.launchIdentity(game))) root.showToast(launchFeedback.message)
             else if (selectHomeGame(game, "play")) root.playSelected()
         }
     }
@@ -2771,6 +2798,7 @@ ApplicationWindow {
         sourceComponent: GameDetails {
             game: root.selectedGame
             launchBusy: launchFeedback.pending && root.launchMatchesSelection
+            launchBusyText: launchFeedback.busyText
             launchMessage: root.launchMatchesSelection ? launchFeedback.message : ""
             launchFailed: launchFeedback.failed
             installations: root.selectedInstallations
