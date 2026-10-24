@@ -118,6 +118,7 @@ QList<GuideListener::Controller> GuideListener::scan(const QString& devDir,
         .vendor = readLine(device + QStringLiteral("/id/vendor")).toUShort(nullptr, 16),
         .product = readLine(device + QStringLiteral("/id/product")).toUShort(nullptr, 16),
         .compactHidButtons = GuidePress::hasBit(keys, BTN_C) && !GuidePress::hasBit(keys, BTN_SELECT),
+        .captureButtons = GuidePress::captureButtons(keys, driver),
     });
   }
   return controllers;
@@ -234,6 +235,7 @@ int GuideListener::open(const Controller& controller) {
     }
   }
   m_press.opened(controller.node, monotonicMs(), keysDown);
+  m_press.setCaptureButtons(controller.node, controller.captureButtons);
   for (const int axis : kTriggerAxes) {
     input_absinfo info{};
     if (::ioctl(fd, EVIOCGABS(axis), &info) == 0 && info.maximum > info.minimum) {
@@ -293,6 +295,7 @@ void GuideListener::read(const QString& node) {
   // Reported once the device's queue is drained, so nothing a receiver does can change the
   // device table while this loop walks it.
   bool fired = false;
+  bool captured = false;
   const QString name = device->name;
   std::array<input_event, 64> events{};
   for (;;) {
@@ -326,6 +329,7 @@ void GuideListener::read(const QString& node) {
       const qint64 at = device->eventTimes ? qint64(event.input_event_sec) * 1000 +
                                                  qint64(event.input_event_usec) / 1000
                                            : readAt;
+      captured = m_press.capture(node, event.type, event.code, event.value, at) || captured;
       const bool wasHolding = m_press.holding(node);
       fired = m_press.event(node, event.type, event.code, event.value, at) || fired;
       if (!wasHolding && m_press.holding(node)) {
@@ -340,5 +344,8 @@ void GuideListener::read(const QString& node) {
   }
   if (fired) {
     emit pressed(node, name);
+  }
+  if (captured) {
+    emit capture(node, name);
   }
 }

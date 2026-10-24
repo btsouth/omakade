@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Stands in for gpu-screen-recorder in replay mode, speaking its IPC protocol.
+
+FAKE_GSR_MODE picks a behaviour: "ok" (default), "crash" (fail at startup), "nosocket"
+(never open the socket), "slow" (hold every save reply), "fail-save" (refuse saves).
+FAKE_GSR_VIDEO, when set, is copied as each saved replay; otherwise a small file is written.
+FAKE_GSR_LOG, when set, gets one JSON line per start and per request.
+"""
+import json
+import os
+import shutil
+import signal
+import socket
+import sys
+import time
+
+args = sys.argv[1:]
+
+
+def option(name):
+    return args[args.index(name) + 1] if name in args[:-1] else None
+
+
+mode = os.environ.get('FAKE_GSR_MODE', 'ok')
+log = os.environ.get('FAKE_GSR_LOG')
+
+
+def record(entry):
+    if log:
+        with open(log, 'a') as handle:
+            handle.write(json.dumps(entry) + '\n')
+
+
+record({'start': args})
+path = option('-ipc')
+output = option('-o')
+if mode == 'crash':
+    print('gsr error: failed to capture monitor', file=sys.stderr, flush=True)
+    sys.exit(1)
+if mode == 'nosocket':
+    time.sleep(60)
+    sys.exit(0)
+
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind(path)
+server.listen(4)
+
+
+def finish(*_):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, finish)
+signal.signal(signal.SIGINT, finish)
+saved = 0
+while True:
+    connection, _ = server.accept()
+    data = b''
+    while not data.endswith(b'\n'):
+        chunk = connection.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    try:
+        request = json.loads(data)
+    except ValueError:
+        connection.close()
+        continue
+    record({'request': request})
+    reply = {'id': request.get('id', 0), 'result': 'error', 'data': 'unknown request'}
+    if request.get('name') == 'save-replay':
+        if mode == 'slow':
+            time.sleep(30)
+        if mode == 'fail-save':
+            reply['data'] = 'replay buffer is empty'
+        else:
+            saved += 1
+            target = os.path.join(output, 'Replay_%d.mp4' % saved)
+            video = os.environ.get('FAKE_GSR_VIDEO')
+            if video:
+                shutil.copyfile(video, target)
+            else:
+                with open(target, 'wb') as handle:
+                    handle.write(b'fake replay %d seconds' % request.get('data', {}).get('seconds', 0))
+            reply = {'id': request.get('id', 0), 'result': 'ok', 'data': target}
+    connection.sendall((json.dumps(reply) + '\n').encode())
+    connection.close()

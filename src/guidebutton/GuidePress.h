@@ -34,10 +34,21 @@ public:
   static constexpr int kBtnMode = 0x13c;
   static constexpr int kAbsHat0X = 0x10;
   static constexpr int kAbsHat3Y = 0x17;
+  // A controller's own capture button: Share on Xbox Series controllers, Capture on
+  // Nintendo's (which their driver reports as BTN_Z).
+  static constexpr int kKeyRecord = 167;
+  static constexpr int kBtnZ = 0x135;
 
   // `keysDown` are the buttons already held when the device was opened.
   void opened(const QString& device, qint64 nowMs, const QList<int>& keysDown = {});
   void closed(const QString& device);
+  // The buttons on this device that save a highlight clip.
+  void setCaptureButtons(const QString& device, const QList<int>& codes);
+  // True when this event is a capture button going down. A mirror of the same press on another
+  // device, such as Steam Input's virtual pad, is not reported again.
+  [[nodiscard]] bool capture(const QString& device, int type, int code, int value, qint64 nowMs);
+  // The capture buttons a controller has, from its sysfs key bitmap and its driver.
+  [[nodiscard]] static QList<int> captureButtons(const QString& keyCapabilities, const QString& driver);
   // An analog trigger axis and the value past which it counts as pulled.
   void setTrigger(const QString& device, int code, int pulledAt);
   // The events after a dropped report are incomplete until the next one, so whatever the device
@@ -69,10 +80,13 @@ private:
     bool held = false;
     QSet<int> keysDown;
     QHash<int, int> triggers;
+    QList<int> captureButtons;
   };
   QHash<QString, State> m_devices;
   qint64 m_lastRelease = -1;
   QString m_lastReleaseDevice;
+  qint64 m_lastCapture = -1;
+  QString m_lastCaptureDevice;
   qint64 m_lastHold = -1;
   QString m_lastHoldDevice;
 };

@@ -59,6 +59,19 @@ qt_standard_project_setup(REQUIRES 6.8)
 # Play session tracking, shared by the Omakade window and the omakade-sessiond
 # recorder. Kept separate so the daemon links only Qt Core, Sql, and Network.
 add_library(omakade_tracking STATIC
+  src/highlights/ClipLibrary.cpp
+  src/highlights/ClipLibrary.h
+  src/highlights/HighlightService.cpp
+  src/highlights/HighlightService.h
+  src/highlights/HighlightSettings.cpp
+  src/highlights/HighlightSettings.h
+  src/highlights/ReplayBuffer.cpp
+  src/highlights/ReplayBuffer.h
+  src/highlights/SteamAchievements.cpp
+  src/highlights/SteamAchievements.h
+  # Shared with the library's Steam scanner; the recorder reads Steam's stats files with it.
+  src/sources/steam/ValveKeyValues.cpp
+  src/sources/steam/ValveKeyValues.h
   src/tracking/AppNotify.cpp
   src/tracking/AppNotify.h
   src/tracking/AttributionAdapter.cpp
@@ -268,8 +281,6 @@ add_library(omakade_core STATIC
   src/sources/FlatpakInstall.h
   src/sources/steam/SteamScanner.cpp
   src/sources/steam/SteamScanner.h
-  src/sources/steam/ValveKeyValues.cpp
-  src/sources/steam/ValveKeyValues.h
   src/sources/lutris/LutrisScanner.cpp
   src/sources/lutris/LutrisScanner.h
   src/sources/retroarch/RetroArchScanner.cpp
@@ -337,6 +348,7 @@ add_library(omakade_core STATIC
   src/guide/InGameGuide.h
   src/guide/GuideClient.cpp src/guide/GuideClient.h
   src/guide/ResidentGuide.cpp src/guide/ResidentGuide.h
+  src/highlights/HighlightClips.cpp src/highlights/HighlightClips.h
   src/guide/GuideEnvironment.cpp src/guide/GuideEnvironment.h
   src/gamemode/GameModeOverlay.cpp
   src/gamemode/GameModeOverlay.h
@@ -557,7 +569,7 @@ install(DIRECTORY skills/omakade-tv-gaming
   PATTERN "__pycache__" EXCLUDE
 )
 
-install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md
+install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/HIGHLIGHTS.md docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md
   docs/CONTROLLER-NAVIGATION.md docs/BACKUP-FORMAT.md docs/SAVE-SETS.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
 )

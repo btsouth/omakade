@@ -58,12 +58,19 @@ public:
   // the way closing the guide does, then open the guide over it.
   void reopen(const QString& node);
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
+  // {seconds} while Omakade's replay buffer runs for the game, which adds the Clip tile.
+  void setHighlights(const QJsonObject& status);
+  // A short message on the open card, such as a clip's result. Nothing when it is closed.
+  void notice(const QString& title, const QString& detail = {}) { if (m_opened) toast(title, detail); }
 signals:
   void changed();
   // The shell could not show the guide. The game is already resumed and the pads released.
   void summonFailed();
   // Desktop was chosen in a Game Mode session: park it exactly as Home did in 1.15.
   void desktopRequested();
+  // Clip was chosen. openMs is how long ago the guide was summoned, so the clip can end
+  // where the game did rather than on the card.
+  void highlightRequested(qint64 openMs);
 private:
   friend class InGameGuideTests;
   void refreshGame();
@@ -106,6 +113,7 @@ private:
   bool m_refreshing = false;
   GameModeWindow m_window;
   QJsonArray m_achievements;
+  QJsonObject m_highlights;
   QString m_achievementKey;
   void cacheAchievements();
   GuideActions::Tree m_resumeTree, m_quitTree;

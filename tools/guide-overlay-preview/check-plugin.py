@@ -161,6 +161,11 @@ def main(scales):
     expect(s['rows'][:4], ['resume', 'screenshot', 'record', 'replay'], 'replay is a third tile')
     expect(press('a')['geometry']['lastAct'], 'save-replay', 'A on Save 30 s')
 
+    # Omakade's own buffer takes the tile over from an outside one, and saves through Omakade.
+    s = summon('highlights')
+    expect(s['rows'][:4], ['resume', 'screenshot', 'record', 'replay'], 'Clip is the third tile')
+    expect(press('a')['geometry']['lastAct'], 'save-highlight', 'A on Clip 90 s')
+
     s = summon('sound-outputs')
     expect(s['cursor'], 'output', 'fixture cursor')
     s = press('right')

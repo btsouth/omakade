@@ -60,6 +60,13 @@ Item {
   readonly property var stats: root.fixtureMode ? (root.model.stats || {}) : capture.status
   readonly property var recording: root.fixtureMode ? ((root.model.capture || {}).recording || null) : capture.recording
   readonly property var replay: root.fixtureMode ? ((root.model.capture || {}).replay || null) : capture.replay
+  // Omakade's own replay buffer for this game: {seconds, saving, saved, failed, error}. It
+  // takes the place of any outside buffer's tile.
+  readonly property var highlights: root.model.highlights || null
+  // "saved" or "failed" for a moment after a clip from this card finishes.
+  property string clipOutcome: ""
+  property int clipsSeen: -1
+  property int clipFailuresSeen: -1
   readonly property bool volumeAvailable: root.fixtureMode ? (root.model.audio || {}).volume !== undefined : audio.available
   readonly property real volume: root.fixtureMode ? Number((root.model.audio || {}).volume || 0) : audio.volume
   readonly property bool muted: root.fixtureMode ? !!(root.model.audio || {}).muted : audio.muted
@@ -76,7 +83,7 @@ Item {
   readonly property bool showRetroarch: false
   readonly property string retroarchCombo: root.game && typeof root.game.retroarchMenu === "string"
                                            ? root.game.retroarchMenu : ""
-  readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay,
+  readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay || !!root.highlights,
                                           desktop: root.showDesktop, retroarch: root.showRetroarch,
                                           volume: root.volumeAvailable, outputs: root.outputs.length})
   readonly property var rows: [].concat.apply([], root.grid)
@@ -84,7 +91,8 @@ Item {
   property real focusAnchor: Focus.homeAnchor
   // The panel's width in Omarchy units at scale 1.
   readonly property int cardWidth: 480
-  readonly property int replaySeconds: (root.replay && root.replay.seconds) || 30
+  readonly property bool threeTiles: !!root.replay || !!root.highlights
+  readonly property int replaySeconds: (root.highlights && root.highlights.seconds) || (root.replay && root.replay.seconds) || 30
 
   // ------------------------------------------------------------ colours and type
 
@@ -476,9 +484,15 @@ Item {
     case "desktop": return {icon: root.icons.desktop, label: "Desktop"}
     case "retroarch": return {icon: root.icons.retroarch, label: "RetroArch menu"}
     // The urgent colour and the clip's time while a clip runs.
-    case "record": return root.recording ? {icon: root.icons.stop, urgent: true, label: "Stop clip \u00b7 " + root.recordingTime}
-                                         : {icon: root.icons.record, label: "Record clip"}
-    case "replay": return {icon: root.icons.replay, label: "Save " + root.replaySeconds + " s"}
+    // Three tiles share the row with a replay buffer, so their labels are shorter.
+    case "record": return root.recording ? {icon: root.icons.stop, urgent: true, label: (root.threeTiles ? "Stop" : "Stop clip") + " \u00b7 " + root.recordingTime}
+                                         : {icon: root.icons.record, label: root.threeTiles ? "Record" : "Record clip"}
+    case "replay":
+      if (!root.highlights) return {icon: root.icons.replay, label: "Save " + root.replaySeconds + " s"}
+      if (root.highlights.saving) return {icon: root.icons.replay, label: "Saving\u2026"}
+      if (root.clipOutcome === "saved") return {icon: root.icons.replay, label: "Saved"}
+      if (root.clipOutcome === "failed") return {icon: root.icons.replay, urgent: true, label: "Not saved"}
+      return {icon: root.icons.replay, label: "Clip " + root.replaySeconds + " s"}
     case "volume": return {icon: root.muted ? root.icons.volumeOff : root.icons.volume, label: "Volume",
                            value: root.muted ? "Muted" : Math.round(root.volume * 100) + "%"}
     case "output":
@@ -521,7 +535,7 @@ Item {
     case "output": root.act("output", 1); break
     case "screenshot": root.act("screenshot"); break
     case "record": root.act("record"); break
-    case "replay": root.act("save-replay"); break
+    case "replay": root.act(root.highlights ? "save-highlight" : "save-replay"); break
     case "volume": root.act("mute"); break
     case "quit":
       if (root.quitting && !root.forceReady) break
@@ -556,6 +570,8 @@ Item {
       else capture.toggleRecording()
       break
     case "save-replay": capture.saveReplay(); break
+    // Omakade saves it, trimmed to end where the game was when the card was summoned.
+    case "save-highlight": if (root.highlights && !root.highlights.saving) root.notify(name, null); break
     // Omakade closes the guide itself: Desktop once Game Mode has parked the game,
     // the RetroArch menu once the game is running again to receive its key.
     case "desktop":
@@ -656,6 +672,18 @@ Item {
                                        deck: "Steam Deck", keyboard: "Keyboard"})[root.family] || "Gamepad"
   readonly property string padText: root.padName + (root.family !== "keyboard" && root.padLevels.length
     ? " " + root.padLevels.map(function(p) { return p + "%" }).join(" ") : "")
+
+  // A clip's outcome shows on its tile for a moment; counts from before this card opened do not.
+  onHighlightsChanged: {
+    var h = root.highlights
+    if (!h) { root.clipsSeen = -1; root.clipFailuresSeen = -1; return }
+    if (root.clipsSeen >= 0 && h.saved > root.clipsSeen) { root.clipOutcome = "saved"; clipOutcomeTimer.restart() }
+    else if (root.clipFailuresSeen >= 0 && h.failed > root.clipFailuresSeen) { root.clipOutcome = "failed"; clipOutcomeTimer.restart() }
+    root.clipsSeen = h.saved || 0
+    root.clipFailuresSeen = h.failed || 0
+  }
+  onOpenedChanged: if (!root.opened) { root.clipOutcome = ""; clipOutcomeTimer.stop() }
+  Timer { id: clipOutcomeTimer; interval: 2500; onTriggered: root.clipOutcome = "" }
 
   readonly property string recordingTime: {
     var r = root.recording

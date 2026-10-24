@@ -1,5 +1,6 @@
 #include "tracking/AppNotify.h"
 #include "guide/ResidentGuide.h"
+#include "highlights/ReplayBuffer.h"
 #include <QThread>
 #include "tracking/AttributionAdapter.h"
 #include "tracking/DiscordPresence.h"
@@ -106,6 +107,10 @@ int main(int argc, char* argv[]) {
   QLockFile instance(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/omakade-sessiond.lock");
   instance.setStaleLockTime(0);
   if (!instance.tryLock(0)) { qWarning("omakade-sessiond: recorder already running or guide instance lock is unavailable"); return 1; }
+
+  // A highlight recorder outlives its daemon only if the daemon was killed before it could
+  // ask; end any such leftover before a new one starts on the same display.
+  ReplayBuffer::reapOrphans();
 
   // The recorder uses synchronous procfs/database polls. Keep guide input and IPC on
   // an independent event loop, with no GUI application or library models.
