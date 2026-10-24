@@ -138,9 +138,10 @@ QString SessionRecorder::keyFor(const SessionMatch& match) const {
 }
 
 void SessionRecorder::recover(const QVector<ProcessSnapshot>& processes,
-                              const ProcessProfileSet& profiles, qint64 nowWall) {
+                              const ProcessProfileSet& profiles, qint64 nowWall,
+                              const QVector<SessionMatch>& launched) {
   Q_UNUSED(nowWall);
-  const QVector<SessionMatch> matches = ProcessMatcher::match(processes, profiles);
+  const QVector<SessionMatch> matches = ProcessMatcher::match(processes, profiles) + launched;
   // Replay anything a previous recorder could not write before adopting the sessions that
   // are still open, so recovered history and live sessions are reconciled against the
   // completed journal rather than the other way round.

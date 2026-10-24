@@ -3,6 +3,9 @@
 #include "library/GameRoles.h"
 #include "library/XodusGameModel.h"
 #include "sources/xodus/XodusScanner.h"
+#include "tracking/PlaySessionStore.h"
+#include "tracking/ProcessMatcher.h"
+#include "tracking/SessionDatabase.h"
 
 #include <QBuffer>
 #include <QDir>
@@ -11,9 +14,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSqlDatabase>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUuid>
 
 namespace {
 constexpr auto kValor = "43802bcbb9d5e7ea";
@@ -293,6 +298,73 @@ private slots:
     saved.remove("xodus_enabled");
     QVERIFY(restored.applyBackupSettings(saved, true));
     QVERIFY(!restored.xodusEnabled());
+  }
+
+  void sessionsFollowTheGamePrefix() {
+    QTemporaryDir directory;
+    const QString prefix = directory.path() + "/compatdata/" + kValor + "/pfx";
+    QVERIFY(QDir().mkpath(prefix));
+    // A game can reach its prefix through a linked data folder.
+    QVERIFY(QFile::link(directory.path() + "/compatdata", directory.path() + "/linked"));
+    const QString linked = directory.path() + "/linked/" + kValor + "/pfx";
+    const QString install = directory.path() + "/games/Valor";
+    const QHash<QString, QString> games{{QFileInfo(prefix).canonicalFilePath(), install}};
+    const auto process = [](qint64 pid, qint64 start, const QString& program,
+                            const QString& winePrefix) {
+      return ProcessSnapshot{.pid = pid, .procStart = start, .comm = {}, .arguments = {program},
+                             .exePath = {}, .winePrefix = winePrefix, .flatpakAppId = {},
+                             .steamAppId = {}};
+    };
+    const QVector<ProcessSnapshot> processes{
+        process(10, 90, "/opt/runtime/bin/wineserver", prefix),
+        process(11, 91, "C:\\windows\\system32\\services.exe", prefix),
+        process(13, 101, "Z:\\games\\.xodus-chain-1\\Valor\\Valor-Win64-Shipping.exe", linked),
+        process(12, 100, "Z:\\games\\.xodus-chain-1\\ValorMSG.exe", linked),
+        process(14, 120, "Z:\\games\\.xodus-chain-1\\crashpad_handler.exe", prefix),
+        process(20, 80, "Z:\\other\\Other.exe", directory.path() + "/compatdata/other/pfx"),
+        process(21, 70, "Z:\\games\\Native.exe", {})};
+    // The oldest Windows program in the prefix, here the bootstrap, stands for the game,
+    // so the session keeps one identity while the game runs.
+    const auto matches = ProcessMatcher::matchWinePrefixes(processes, games, "Xodus Nexus");
+    QCOMPARE(matches.size(), 1);
+    QCOMPARE(matches.first().pid, qint64(12));
+    QCOMPARE(matches.first().procStart, qint64(100));
+    QCOMPARE(matches.first().gamePath, install);
+    QCOMPARE(matches.first().emulator, QStringLiteral("Xodus Nexus"));
+    QVERIFY(ProcFs::isWindowsProgram("Z:\\games\\Game.exe"));
+    QVERIFY(!ProcFs::isWindowsProgram("/usr/bin/wine"));
+    QVERIFY(!ProcFs::isWindowsProgram("C:"));
+  }
+
+  void recordedSessionsGiveXodusGamesPlayTime() {
+    QTemporaryDir directory;
+    const QString profile = directory.path() + "/xodus-nexus";
+    const QString data = directory.path() + "/data";
+    QVERIFY(QDir().mkpath(data + "/compatdata/" + kValor + "/pfx"));
+    writeProfile(profile, data);
+    const QString database = directory.path() + "/omakade.sqlite3";
+    {
+      const QString name = QUuid::createUuid().toString();
+      QSqlDatabase db;
+      QVERIFY(SessionDatabase::open(db, database, name));
+      const qint64 id =
+          SessionDatabase::beginSession(db, data + "/games/Valor", "Xodus Nexus", 1000, 5, 5);
+      QVERIFY(id > 0);
+      QVERIFY(SessionDatabase::endSession(db, id, 1000 + 5400, 5400));
+      db.close();
+      db = {};
+      QSqlDatabase::removeDatabase(name);
+    }
+    PlaySessionStore store(database);
+    XodusGameModel model(database, nullptr, &store);
+    model.setArtworkDownloadsEnabled(false);
+    model.refreshFromRoots({profile}, directory.path() + "/cache");
+    QCOMPARE(model.rowCount(), 1);
+    const QModelIndex row = model.index(0);
+    QCOMPARE(model.data(row, GameRoles::PlaytimeSeconds).toLongLong(), qint64(5400));
+    QCOMPARE(model.data(row, GameRoles::Hours).toInt(), 1);
+    QVERIFY(model.data(row, GameRoles::LastPlayed).toLongLong() > 0);
+    QVERIFY(model.data(row, GameRoles::Recent).toBool());
   }
 
   void malformedStateKeepsCachedGames() {

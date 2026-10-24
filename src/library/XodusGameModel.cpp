@@ -4,6 +4,7 @@
 #include "library/CoverCachePolicy.h"
 #include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
+#include "tracking/PlaySessionStore.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -51,9 +52,18 @@ QString XodusGameModel::artworkCacheRoot() {
 }
 
 XodusGameModel::XodusGameModel(const QString& omakadeDatabasePath, AppSettings* settings,
-                               QObject* parent)
-    : QAbstractListModel(parent), m_settings(settings),
+                               PlaySessionStore* playSessions, QObject* parent)
+    : QAbstractListModel(parent), m_settings(settings), m_playSessions(playSessions),
       m_connectionName(QStringLiteral("omakade-xodus-%1").arg(reinterpret_cast<quintptr>(this))) {
+  if (m_playSessions != nullptr) {
+    connect(m_playSessions, &PlaySessionStore::totalsChanged, this, [this] {
+      if (!m_games.isEmpty()) {
+        emit dataChanged(index(0), index(static_cast<int>(m_games.size()) - 1),
+                         {GameRoles::Hours, GameRoles::PlaytimeSeconds, GameRoles::PlaytimeText,
+                          GameRoles::Recent, GameRoles::LastPlayed});
+      }
+    });
+  }
   connect(&m_scanWatcher, &QFutureWatcher<XodusScanResult>::finished, this, [this] {
     m_scanning = false;
     applyScan(m_scanWatcher.result());
@@ -484,17 +494,21 @@ QVariant XodusGameModel::valueForRole(const Game& game, int role) const {
                                 "anti-cheat, so online play depends on its Linux support.")
                : QStringLiteral("Installed and managed by Xodus Nexus.");
   case GameRoles::PlaytimeSeconds:
+    return PlaySessionStore::displayedSeconds(m_playSessions, game.xodus.installPath, 0);
   case GameRoles::Hours:
+    return static_cast<int>(
+        PlaySessionStore::displayedSeconds(m_playSessions, game.xodus.installPath, 0) / 3600);
+  case GameRoles::LastPlayed:
+    return PlaySessionStore::displayedLastPlayed(m_playSessions, game.xodus.installPath, 0);
+  case GameRoles::Recent:
+    return PlaySessionStore::displayedLastPlayed(m_playSessions, game.xodus.installPath, 0) > 0;
   case GameRoles::Progress:
   case GameRoles::AchievementsUnlocked:
   case GameRoles::AchievementsTotal:
   case GameRoles::Year:
-  case GameRoles::LastPlayed:
     return 0;
   case GameRoles::Favorite:
     return game.favorite;
-  case GameRoles::Recent:
-    return false;
   case GameRoles::AccentStart:
     return game.accentStart;
   case GameRoles::AccentEnd:

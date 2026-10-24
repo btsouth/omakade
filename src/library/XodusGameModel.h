@@ -12,6 +12,7 @@
 #include <QSqlDatabase>
 
 class AppSettings;
+class PlaySessionStore;
 class QNetworkReply;
 
 class XodusGameModel final : public QAbstractListModel {
@@ -24,8 +25,9 @@ class XodusGameModel final : public QAbstractListModel {
   Q_PROPERTY(bool scanning READ scanning NOTIFY statusChanged)
 
 public:
+  // Play time comes from the sessions Omakade records, under each game's install folder.
   explicit XodusGameModel(const QString& omakadeDatabasePath, AppSettings* settings = nullptr,
-                          QObject* parent = nullptr);
+                          PlaySessionStore* playSessions = nullptr, QObject* parent = nullptr);
   ~XodusGameModel() override;
 
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -83,6 +85,7 @@ private:
   void setStatus(const QString& status, const QString& error = {});
 
   AppSettings* m_settings = nullptr;
+  PlaySessionStore* m_playSessions = nullptr;
   QVector<Game> m_games;
   QSqlDatabase m_database;
   QString m_connectionName;

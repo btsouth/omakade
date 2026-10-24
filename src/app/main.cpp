@@ -1201,7 +1201,8 @@ int main(int argc, char* argv[]) {
     battleNetGames =
         std::make_unique<BattleNetGameModel>(steamLibrary->databasePath(), &preferences);
     battleNetLibrary = battleNetGames.get();
-    xodusGames = std::make_unique<XodusGameModel>(steamLibrary->databasePath(), &preferences);
+    xodusGames = std::make_unique<XodusGameModel>(steamLibrary->databasePath(), &preferences,
+                                                  playSessionStore.get());
     xodusLibrary = xodusGames.get();
     consolePortals = std::make_unique<ConsolePortalModel>();
     consolePortals->addRomModel(retroArchGames.get());
