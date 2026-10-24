@@ -7,7 +7,7 @@ theme's menu colours, font, corner radius and spacing.
 
 ```
 ┌───────────────────────────────────────────────┐
-│ [II PAUSED]              ◎ Xbox pad  9:47 PM  │
+│ [II PAUSED]       ◎ Xbox controller  9:47 PM  │
 │                                               │
 │ ┌────┐  Lantern Road                          │
 │ │    │  Steam                                 │

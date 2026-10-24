@@ -652,10 +652,15 @@ Item {
     .filter(function(v) { return typeof v === "string" && v !== "" }).join(" \u00b7 ") : ""
 
   // The connected pad by family, with its battery when UPower reports one.
-  readonly property string padName: ({xbox: "Xbox pad", playstation: "PlayStation pad", nintendo: "Nintendo pad",
-                                       deck: "Steam Deck", keyboard: "Keyboard"})[root.family] || "Gamepad"
-  readonly property string padText: root.padName + (root.family !== "keyboard" && root.padLevels.length
-    ? " " + root.padLevels.map(function(p) { return p + "%" }).join(" ") : "")
+  readonly property string padName: ({xbox: "Xbox controller", playstation: "PlayStation controller",
+                                       nintendo: "Nintendo controller", deck: "Steam Deck",
+                                       keyboard: "Keyboard"})[root.family] || "Controller"
+  readonly property string padBattery: root.family !== "keyboard" && root.padLevels.length
+    ? " " + root.padLevels.map(function(p) { return p + "%" }).join(" ") : ""
+  readonly property string padText: root.padName + root.padBattery
+  // For a status line too narrow for the brand, as with REC and two pads' batteries.
+  readonly property string padShortText: (root.family === "deck" || root.family === "keyboard"
+    ? root.padName : "Controller") + root.padBattery
 
   readonly property string recordingTime: {
     var r = root.recording
