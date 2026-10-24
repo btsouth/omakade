@@ -1,5 +1,7 @@
 #include "tracking/SessionDatabase.h"
 
+#include "highlights/ClipLibrary.h"
+
 #include "library/DatabaseTuning.h"
 
 #include <QDateTime>
@@ -192,7 +194,8 @@ bool ensureSchema(QSqlDatabase& database) {
       "WHEN NEW.session_key IS NULL OR NEW.session_key='' BEGIN "
       "UPDATE play_sessions SET session_key=lower(hex(randomblob(4)))||'-'||"
       "lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||"
-      "lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))) WHERE id=NEW.id; END");
+      "lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))) WHERE id=NEW.id; END") &&
+         ClipLibrary::ensureSchema(database);
 }
 
 int openSessionsForPath(QSqlDatabase& database, const QString& gamePath) {

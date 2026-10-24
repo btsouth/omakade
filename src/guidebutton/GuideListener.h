@@ -35,6 +35,8 @@ public:
     quint16 vendor = 0;
     quint16 product = 0;
     bool compactHidButtons = false;
+    // Its own capture button, which saves a highlight clip. Empty for most controllers.
+    QList<int> captureButtons;
   };
 
   explicit GuideListener(QString devDir = QStringLiteral("/dev/input"),
@@ -52,6 +54,8 @@ signals:
   void pressed(const QString& node, const QString& name);
   // The button stayed down alone for GuidePress::kHoldMs; its release is not a press.
   void held(const QString& node, const QString& name);
+  // The controller's capture button went down.
+  void capture(const QString& node, const QString& name);
   void devicesChanged();
 
 private:

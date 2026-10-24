@@ -1,4 +1,7 @@
 #include "app/AppSettings.h"
+
+#include "highlights/HighlightSettings.h"
+#include "highlights/ReplayBuffer.h"
 #include "backup/BackupArchive.h"
 #include <QDateTime>
 
@@ -822,6 +825,38 @@ void AppSettings::setPauseUnfocusedSessions(bool value) {
   emit pauseUnfocusedSessionsChanged();
 }
 
+void AppSettings::setHighlights(bool value) {
+  if (m_highlights == value) return;
+  m_highlights = value;
+  save();
+  emit highlightsChanged();
+}
+
+void AppSettings::setHighlightSeconds(int value) {
+  value = HighlightSettings::normalizedSeconds(value);
+  if (m_highlightSeconds == value) return;
+  m_highlightSeconds = value;
+  save();
+  emit highlightsChanged();
+}
+
+void AppSettings::setHighlightAchievements(bool value) {
+  if (m_highlightAchievements == value) return;
+  m_highlightAchievements = value;
+  save();
+  emit highlightsChanged();
+}
+
+QVariantList AppSettings::highlightLengths() {
+  QVariantList lengths;
+  for (const int length : HighlightSettings::kClipLengths) lengths.append(length);
+  return lengths;
+}
+
+QString AppSettings::highlightFolder() { return HighlightSettings::folder(); }
+
+bool AppSettings::highlightRecorderInstalled() { return !ReplayBuffer::findRecorder().isEmpty(); }
+
 bool AppSettings::discordPresence() const { return m_discordPresence; }
 
 void AppSettings::setDiscordPresence(bool value) {
@@ -1044,6 +1079,13 @@ void AppSettings::load() {
   m_statsPeriod = contents.contains(QRegularExpression(QStringLiteral("(?m)^stats_period\\s*=\\s*\"all\"\\s*$")))
                       ? QStringLiteral("all") : QStringLiteral("year");
   m_discordPresence = readEnabled(QStringLiteral("discord_presence"), false);
+  {
+    // The recorder in omakade-sessiond reads the same keys with the same parser.
+    const auto highlights = HighlightSettings::parse(contents);
+    m_highlights = highlights.enabled;
+    m_highlightSeconds = highlights.clipSeconds;
+    m_highlightAchievements = highlights.achievementClips;
+  }
   m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
@@ -1206,6 +1248,10 @@ bool AppSettings::save() {
   // at their limit, and it must round-trip so a hand-written id is not lost on save.
   contents += QStringLiteral("discord_client_id = \"%1\"\n").arg(m_discordClientId);
   contents += QStringLiteral("protondb_enabled = %1\n").arg(m_protonDbEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  contents += QStringLiteral("highlights = %1\nhighlight_seconds = %2\nhighlight_achievements = %3\n")
+                  .arg(m_highlights ? QStringLiteral("true") : QStringLiteral("false"))
+                  .arg(m_highlightSeconds)
+                  .arg(m_highlightAchievements ? QStringLiteral("true") : QStringLiteral("false"));
   contents += QStringLiteral("protondb_badges = %1\n").arg(m_protonDbBadges ? QStringLiteral("true") : QStringLiteral("false"));
   const auto jsonString = [](const QString& value) {
     const QByteArray array = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);

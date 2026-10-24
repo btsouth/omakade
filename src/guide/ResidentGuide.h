@@ -1,10 +1,12 @@
 #pragma once
 #include "guide/InGameGuide.h"
+#include "highlights/HighlightService.h"
 #include <QLocalServer>
 #include <QJsonArray>
 #include <QElapsedTimer>
 #include <QTimer>
 #include <atomic>
+#include <memory>
 
 // Constructed inside sessiond's dedicated guide thread. No library, GUI or QML engine.
 class ResidentGuide final : public QObject {
@@ -16,6 +18,8 @@ signals:
   void snapshotReady();
 private:
   InGameGuide m_guide;
+  // Omakade's replay buffer, following the same game as the guide. Absent without the guide.
+  std::unique_ptr<HighlightService> m_highlights;
   QLocalServer m_control;
   QTimer m_refresh, m_debounce, m_reconnect;
   QLocalSocket m_events;

@@ -62,6 +62,9 @@
 #include "gamemode/LaunchHold.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
+#include "highlights/HighlightClips.h"
+#include "highlights/ClipLibrary.h"
+#include <QLinearGradient>
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
 #include "tracking/PlaySessionStore.h"
@@ -80,6 +83,8 @@
 #include <QSet>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QProcess>
+#include <cstdio>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QFile>
@@ -767,6 +772,27 @@ int main(int argc, char* argv[]) {
       guideFallback = true;
     }
   }
+  if (rawArguments.contains("--clip")) {
+    // Saves a highlight from the running game through omakade-sessiond, with no window.
+    QCoreApplication commandApplication(argc, argv);
+    QEventLoop loop;
+    QString result, reason;
+    GuideClient::request({{"action", "clip"}}, &loop, [&](const QString& reply, const QJsonObject& data) {
+      result = reply;
+      reason = data.value("reason").toString();
+      loop.quit();
+    });
+    loop.exec();
+    if (result == "handled") return EXIT_SUCCESS;
+    if (reason.isEmpty()) {
+      // The service answers for itself when it runs; when it does not, say so here.
+      reason = QStringLiteral("Omakade's background service is not running.");
+      const QString sender = QStandardPaths::findExecutable(QStringLiteral("omarchy-notification-send"));
+      if (!sender.isEmpty()) QProcess::startDetached(sender, {QStringLiteral("Clip not saved"), reason});
+    }
+    fprintf(stderr, "omakade: %s\n", qPrintable(reason));
+    return EXIT_FAILURE;
+  }
   QElapsedTimer startupTimer;
   startupTimer.start();
 
@@ -1227,6 +1253,7 @@ int main(int argc, char* argv[]) {
       savedFilterTest || bulkEditorTest || renderOverlay == QStringLiteral("saved-filters") ||
       renderOverlay == QStringLiteral("bulk-editor") ||
       renderOverlay.startsWith(QStringLiteral("session-history")) ||
+      renderOverlay == QStringLiteral("game-clips") ||
       statsFixture || heroicOwnedFixture ||
       renderOverlay == QStringLiteral("now-playing") || renderOverlay == "library-repair-controls") {
     if (!artworkFixture.isValid()) return EXIT_FAILURE;
@@ -1975,6 +2002,9 @@ int main(int argc, char* argv[]) {
       QFileInfo(QDir::homePath() + QStringLiteral("/.local/share/omarchy")).isDir();
   GameModeShortcut gameModeShortcut(
       isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy);
+  GameModeShortcut clipShortcut(
+      isolatedTest ? QString{} : configRoot + QStringLiteral("/hypr/bindings.lua"), onOmarchy, nullptr,
+      GameModeShortcut::clip());
   GameModeGuideButton gameModeGuideButton(!isolatedTest);
   GameModeOverlay gameModeOverlay;
   GuideClient inGameGuide(!isolatedTest && onOmarchy);
@@ -2210,6 +2240,54 @@ int main(int argc, char* argv[]) {
     playSessionStore->setEnabled(preferences.trackPlaySessions());
   }
   engine.rootContext()->setContextProperty(QStringLiteral("SessionRecorderStatus"), playSessionStore.get());
+  // Highlight clips omakade-sessiond saved, read from the same library database.
+  HighlightClips highlightClips(libraryDatabasePath);
+  QObject::connect(&singleInstance, &SingleInstance::clipsChanged, &highlightClips, &HighlightClips::refresh);
+  engine.rootContext()->setContextProperty(QStringLiteral("HighlightClips"), &highlightClips);
+  if (renderOverlay == QStringLiteral("game-clips")) {
+    // Three saved clips for the first fixture game, with stills drawn here so no ffmpeg runs.
+    const QString fixture = QFileInfo(libraryDatabasePath).absolutePath() + QStringLiteral("/clip-fixture");
+    const QString thumbnails = fixture + QStringLiteral("/thumbnails");
+    QDir().mkpath(thumbnails);
+    const QString connection = QStringLiteral("omakade-game-clips-render");
+    {
+      QSqlDatabase database;
+      if (!SessionDatabase::open(database, libraryDatabasePath, connection)) return EXIT_FAILURE;
+      const qint64 now = QDateTime::currentSecsSinceEpoch();
+      const struct { const char* label; const char* trigger; int seconds; int age; QColor from, to; } seeds[] = {
+          {"Falsehood, Lost Kin", "achievement", 30, 600, QColor("#1d3b53"), QColor("#c97b2a")},
+          {"", "button", 30, 3600, QColor("#2b1d4f"), QColor("#4fa3a5")},
+          {"", "button", 90, 86400 * 3, QColor("#3f1f1f"), QColor("#d9c36a")},
+      };
+      for (const auto& seed : seeds) {
+        const QString staged = fixture + QStringLiteral("/Replay.mp4");
+        QFile file(staged);
+        if (!file.open(QIODevice::WriteOnly) || file.write("video") != 5) return EXIT_FAILURE;
+        file.close();
+        ClipLibrary::Clip clip;
+        clip.source = QStringLiteral("RetroArch");
+        clip.gameKey = QStringLiteral("/games/demo-0.nes");
+        clip.title = QStringLiteral("Demo Game");
+        clip.createdAt = now - seed.age;
+        clip.seconds = seed.seconds;
+        clip.trigger = QString::fromLatin1(seed.trigger);
+        clip.label = QString::fromLatin1(seed.label);
+        const ClipLibrary::Clip filed = ClipLibrary::file(database, staged, fixture + QStringLiteral("/Videos"), clip);
+        if (filed.id <= 0) return EXIT_FAILURE;
+        QImage still(640, 360, QImage::Format_RGB32);
+        QPainter painter(&still);
+        QLinearGradient gradient(0, 0, 640, 360);
+        gradient.setColorAt(0, seed.from);
+        gradient.setColorAt(1, seed.to);
+        painter.fillRect(still.rect(), gradient);
+        painter.end();
+        if (!still.save(ClipLibrary::thumbnailPath(filed.path, thumbnails))) return EXIT_FAILURE;
+      }
+      database.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    highlightClips.setThumbnailRoot(thumbnails);
+  }
   engine.rootContext()->setContextProperty(QStringLiteral("Controller"), &controller);
   engine.rootContext()->setContextProperty(QStringLiteral("Achievements"), &achievements);
   engine.rootContext()->setContextProperty(QStringLiteral("SteamAccount"), steamAccount.get());
@@ -2252,6 +2330,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeShortcut"), &gameModeShortcut);
+  engine.rootContext()->setContextProperty(QStringLiteral("ClipShortcut"), &clipShortcut);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeGuideButton"),
                                            &gameModeGuideButton);
   engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"),
@@ -3159,6 +3238,52 @@ int main(int argc, char* argv[]) {
                 if (details->property("historyPage").toInt() != 0) application.exit(EXIT_FAILURE);
               });
             });
+          });
+        });
+      }
+      if (renderOverlay == QStringLiteral("game-clips")) {
+        QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
+        // Main.qml may replace the installation with the model's own choice, so the fixture's
+        // is put back before each check, as the session history fixture does.
+        auto useFixtureInstallation = [quickWindow] {
+          auto* details = quickWindow->findChild<QObject*>("gameDetails");
+          if (details == nullptr) return false;
+          details->setProperty("selectedInstallation",
+                               QVariantMap{{"source", "RetroArch"}, {"installPath", "/games/demo-0.nes"},
+                                           {"launchTarget", "snes9x_libretro.so"}, {"appId", "demo-0"}});
+          return true;
+        };
+        QTimer::singleShot(120, quickWindow, [quickWindow, &application, useFixtureInstallation] {
+          if (!useFixtureInstallation()) { application.exit(EXIT_FAILURE); return; }
+          QTimer::singleShot(150, quickWindow, [quickWindow, &application, useFixtureInstallation] {
+            useFixtureInstallation();
+            auto* details = quickWindow->findChild<QObject*>("gameDetails");
+            auto* section = findVisualItem(quickWindow->contentItem(), "clipSection");
+            auto* count = findVisualItem(quickWindow->contentItem(), "clipCountText");
+            auto* trash = findVisualItem(quickWindow->contentItem(), "trashClip0");
+            auto* last = findVisualItem(quickWindow->contentItem(), "clipCard2");
+            if (!details || !section || !section->isVisible() || !count || count->property("text").toString() != "3" ||
+                !trash || !last) {
+              qCritical() << "The game's clips were not listed";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // Trash asks for a second press, so one stray press cannot lose a clip.
+            QMetaObject::invokeMethod(trash, "clicked");
+            if (trash->property("text").toString() != QStringLiteral("CONFIRM TRASH") ||
+                details->property("trashArmedClip").toInt() < 0) {
+              qCritical() << "Trashing a clip did not ask to confirm";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            details->setProperty("trashArmedClip", -1);
+            // Bring the clips into view for the screenshot.
+            if (auto* scroll = findVisualItem(quickWindow->contentItem(), "detailsScroll")) {
+              if (auto* flickable = scroll->property("navigationFlickable").value<QQuickItem*>()) {
+                const qreal target = section->mapToItem(flickable->property("contentItem").value<QQuickItem*>(), QPointF(0, 0)).y();
+                flickable->setProperty("contentY", qMax<qreal>(0, target - 24));
+              }
+            }
           });
         });
       }
@@ -4754,7 +4879,7 @@ int main(int argc, char* argv[]) {
         quickWindow->setProperty("diagnosticsOpen", true);
         if (renderOverlay.startsWith("settings-")) {
           auto* page = quickWindow->findChild<QQuickItem*>("settingsOverlay");
-          const QStringList sections{"sources", "library", "connections", "controls", "storage", "appearance", "streaming", "about"};
+          const QStringList sections{"sources", "library", "connections", "controls", "storage", "appearance", "streaming", "about", "highlights"};
           const int section = sections.indexOf(renderOverlay.mid(9));
           if (page && section >= 0) page->setProperty("section", section);
           if (page && renderOverlay == QStringLiteral("settings-melonds")) {

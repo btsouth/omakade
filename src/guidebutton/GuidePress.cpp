@@ -15,6 +15,32 @@ void GuidePress::opened(const QString& device, qint64 nowMs, const QList<int>& k
 
 void GuidePress::closed(const QString& device) { m_devices.remove(device); }
 
+void GuidePress::setCaptureButtons(const QString& device, const QList<int>& codes) {
+  auto state = m_devices.find(device);
+  if (state != m_devices.end()) state->captureButtons = codes;
+}
+
+bool GuidePress::capture(const QString& device, int type, int code, int value, qint64 nowMs) {
+  const auto state = m_devices.constFind(device);
+  if (state == m_devices.cend() || type != kEvKey || value != 1 || !state->captureButtons.contains(code) ||
+      nowMs < state->armedAt) {
+    return false;
+  }
+  const bool samePress = m_lastCapture >= 0 && device != m_lastCaptureDevice && nowMs - m_lastCapture < kSameReleaseMs;
+  if (samePress) return false;
+  m_lastCapture = nowMs;
+  m_lastCaptureDevice = device;
+  return true;
+}
+
+QList<int> GuidePress::captureButtons(const QString& keyCapabilities, const QString& driver) {
+  QList<int> codes;
+  if (hasBit(keyCapabilities, kKeyRecord)) codes.append(kKeyRecord);
+  // Other pads use BTN_Z for an ordinary face or shoulder button, so only Nintendo's driver counts.
+  if (driver == QLatin1String("nintendo") && hasBit(keyCapabilities, kBtnZ)) codes.append(kBtnZ);
+  return codes;
+}
+
 void GuidePress::setTrigger(const QString& device, int code, int pulledAt) {
   auto state = m_devices.find(device);
   if (state != m_devices.end()) {

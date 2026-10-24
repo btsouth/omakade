@@ -168,6 +168,45 @@ private slots:
     QVERIFY(GuidePress::hasBit(QStringLiteral("80000000 0"), 63, 32));
   }
 
+  void captureButtonSavesClip() {
+    // Xbox Series pads report Share as KEY_RECORD; Nintendo's driver reports Capture as BTN_Z.
+    const QString share = QStringLiteral("80 0 0 0 0 0");  // bit 167 in 32-bit words
+    QVERIFY(GuidePress::hasBit(share, KEY_RECORD, 32));
+    QVERIFY(GuidePress::captureButtons(QStringLiteral("80"), {}).isEmpty());
+    GuidePress press;
+    press.opened(QStringLiteral("event1"), 0);
+    press.opened(QStringLiteral("event2"), 0);
+    press.setCaptureButtons(QStringLiteral("event1"), {KEY_RECORD});
+    press.setCaptureButtons(QStringLiteral("event2"), {KEY_RECORD});
+    const auto capture = [&press](const QString& device, int code, int value, qint64 at) {
+      return press.capture(device, GuidePress::kEvKey, code, value, at);
+    };
+    // Not before the controller is armed, and only on the way down.
+    QVERIFY(!capture(QStringLiteral("event1"), KEY_RECORD, 1, kArmed - 1));
+    QVERIFY(capture(QStringLiteral("event1"), KEY_RECORD, 1, kArmed + 10));
+    QVERIFY(!capture(QStringLiteral("event1"), KEY_RECORD, 0, kArmed + 60));
+    // The same press mirrored on Steam Input's virtual pad is one clip, not two.
+    QVERIFY(!capture(QStringLiteral("event2"), KEY_RECORD, 1, kArmed + 20));
+    // A new press on the same pad is a new clip.
+    QVERIFY(capture(QStringLiteral("event1"), KEY_RECORD, 1, kArmed + 300));
+    // Other buttons, and the Guide button, never save a clip.
+    QVERIFY(!capture(QStringLiteral("event1"), BTN_SOUTH, 1, kArmed + 3000));
+    QVERIFY(!capture(QStringLiteral("event1"), BTN_MODE, 1, kArmed + 3000));
+    // A pad without a capture button has none.
+    press.opened(QStringLiteral("event3"), 0);
+    QVERIFY(!capture(QStringLiteral("event3"), KEY_RECORD, 1, kArmed + 5000));
+  }
+
+  void captureButtonsFromCapabilities() {
+    // KEY_RECORD (167) and BTN_Z (0x135) set, in 64-bit words as sysfs writes them.
+    const QString keys = QStringLiteral("20000000000000 0 8000000000 0 0");
+    const QList<int> xbox = GuidePress::captureButtons(keys, QStringLiteral("xpad"));
+    QCOMPARE(xbox, QList<int>{KEY_RECORD});
+    const QList<int> nintendo = GuidePress::captureButtons(keys, QStringLiteral("nintendo"));
+    QCOMPARE(nintendo, (QList<int>{KEY_RECORD, BTN_Z}));
+    QVERIFY(GuidePress::captureButtons(QStringLiteral("0"), QStringLiteral("nintendo")).isEmpty());
+  }
+
   void shortPressToggles() {
     GuidePress press;
     press.opened(QStringLiteral("event1"), 0);

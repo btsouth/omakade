@@ -44,6 +44,9 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
           emit fullscreenToggleRequested();
         } else if (command.startsWith("guide toggle")) {
           emit guideToggleRequested(QString::fromUtf8(command.mid(12)).trimmed());
+        } else if (command == "clips-changed") {
+          // Sent by omakade-sessiond when it saves a highlight clip.
+          emit clipsChanged();
         } else if (command == "quit") {
           emit quitRequested();
         } else if (command.contains("activate")) {
