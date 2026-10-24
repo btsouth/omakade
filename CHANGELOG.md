@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+Highlights: save the last moments of a game. See [Highlights](docs/HIGHLIGHTS.md).
+
+- **Settings → Highlights** keeps a short recording of the game's display in memory while a
+  game is in view, with gpu-screen-recorder. It is off until you turn it on.
+- **Clip 30 s** in the in-game guide saves a clip that ends where the game was when you
+  summoned the guide, and shows the result on the card.
+- **Ctrl + Print**, added from Settings, and `omakade --clip` save a clip from the keyboard.
+- The **Share** button on Xbox Series controllers and the **Capture** button on Nintendo
+  controllers save a clip while the controller Home button is on.
+- **Steam achievement clips** save the moment an achievement unlocks, named after it.
+- Clips are saved in Videos/Omakade, one folder per game, and listed on each game's page,
+  where they play and move to the trash.
+- The guide's Save N s tile for an outside replay buffer leaves Omakade's own buffer to the
+  Clip tile.
+
 One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 
 - **F11, Start and the GAME MODE button** start Game Mode on the display you are using.
@@ -12,6 +27,8 @@ One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 - **The controller Home button** does what Start does when no game is running, so it no
   longer moves Omakade to the Game Mode display. Over a game it opens the in-game guide,
   now also for a game started while Game Mode is parked. Holding it works as before.
+- **The guide's status row** says "Xbox controller", "PlayStation controller" and
+  "Nintendo controller" instead of "Xbox pad" and the like.
 - **Super + Ctrl + G and Start Game Mode** still use the display and sound output chosen
   in Settings. Those choices stay open to change while
   Game Mode started with F11 is running.

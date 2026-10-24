@@ -73,6 +73,14 @@ class AppSettings final : public QObject {
                  setPauseUnfocusedSessions NOTIFY pauseUnfocusedSessionsChanged)
   Q_PROPERTY(bool discordPresence READ discordPresence WRITE setDiscordPresence NOTIFY
                  discordPresenceChanged)
+  // Highlights: a replay buffer while a game is in view, and the clips saved from it.
+  Q_PROPERTY(bool highlights READ highlights WRITE setHighlights NOTIFY highlightsChanged)
+  Q_PROPERTY(int highlightSeconds READ highlightSeconds WRITE setHighlightSeconds NOTIFY highlightsChanged)
+  Q_PROPERTY(bool highlightAchievements READ highlightAchievements WRITE setHighlightAchievements NOTIFY
+                 highlightsChanged)
+  Q_PROPERTY(QVariantList highlightLengths READ highlightLengths CONSTANT)
+  Q_PROPERTY(QString highlightFolder READ highlightFolder CONSTANT)
+  Q_PROPERTY(bool highlightRecorderInstalled READ highlightRecorderInstalled CONSTANT)
   Q_PROPERTY(bool couchModeEnabled READ couchModeEnabled WRITE setCouchModeEnabled NOTIFY
                  couchModeEnabledChanged)
   Q_PROPERTY(QString couchLibraryView READ couchLibraryView WRITE setCouchLibraryView NOTIFY
@@ -223,6 +231,15 @@ public:
   // nothing. Only the game name and its source are ever published.
   [[nodiscard]] bool discordPresence() const;
   void setDiscordPresence(bool value);
+  [[nodiscard]] bool highlights() const { return m_highlights; }
+  void setHighlights(bool value);
+  [[nodiscard]] int highlightSeconds() const { return m_highlightSeconds; }
+  void setHighlightSeconds(int value);
+  [[nodiscard]] bool highlightAchievements() const { return m_highlightAchievements; }
+  void setHighlightAchievements(bool value);
+  [[nodiscard]] static QVariantList highlightLengths();
+  [[nodiscard]] static QString highlightFolder();
+  [[nodiscard]] static bool highlightRecorderInstalled();
   bool protectRetroArchSaves() const { return m_protectRetroArchSaves; }
   void setProtectRetroArchSaves(bool value);
   [[nodiscard]] bool couchModeEnabled() const;
@@ -265,6 +282,7 @@ signals:
   void trackPlaySessionsChanged();
   void pauseUnfocusedSessionsChanged();
   void discordPresenceChanged();
+  void highlightsChanged();
   void protectRetroArchSavesChanged();
   void couchModeEnabledChanged();
   void couchLibraryViewChanged();
@@ -342,6 +360,9 @@ private:
   bool m_trackPlaySessions = false;
   bool m_pauseUnfocusedSessions = false;
   bool m_discordPresence = false;
+  bool m_highlights = false;
+  int m_highlightSeconds = 30;
+  bool m_highlightAchievements = true;
   bool m_protectRetroArchSaves = true;
   bool m_couchModeEnabled = false;
   QString m_couchLibraryView = QStringLiteral("detail");

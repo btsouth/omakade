@@ -1,4 +1,5 @@
 #include "guide/ResidentGuide.h"
+#include "tracking/AppNotify.h"
 #include "app/AppSettings.h"
 #include "guide/GuideClient.h"
 #include "guide/GuideEnvironment.h"
@@ -242,6 +243,19 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
       QTimer::singleShot(2500, socket, [socket] { socket->abort(); socket->deleteLater(); });
     }
   });
+  m_highlights = std::make_unique<HighlightService>(HighlightService::defaultEnvironment());
+  // An open Omakade window lists the new clip on the game's page.
+  connect(m_highlights.get(), &HighlightService::clipSaved, this, [] { AppNotify::send("clips-changed"); });
+  connect(m_highlights.get(), &HighlightService::statusChanged, this, [this] {
+    m_guide.setHighlights(m_highlights->guideStatus());
+  });
+  connect(&m_guide, &InGameGuide::highlightRequested, this, [this](qint64 openMs) {
+    // The clip ends where the game was when the guide was summoned, not on the card.
+    m_highlights->clip(QStringLiteral("button"), {}, [this](const ClipLibrary::Clip& clip, const QString& error) {
+      if (clip.path.isEmpty()) m_guide.notice(QStringLiteral("Clip not saved"), error);
+      else m_guide.notice(QStringLiteral("Clip saved"), QStringLiteral("%1 s in Videos").arg(clip.seconds));
+    }, openMs);
+  });
   connect(&m_guide, &InGameGuide::summonFailed, this, &ResidentGuide::fallback);
   connect(&m_guide, &InGameGuide::desktopRequested, this, [this] { launch("--game-mode-desktop"); });
   m_refresh.setInterval(5000);
@@ -324,6 +338,16 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
     if (changed || !m_ready) refresh();
   }
   else if (action == "close") m_guide.close();
+  else if (action == "clip") {
+    if (!m_highlights) return {{"result", "unavailable"}, {"reason", "The in-game guide is not available"}};
+    const QString reason = m_highlights->unavailableReason();
+    if (!reason.isEmpty()) {
+      m_highlights->clip(QStringLiteral("button")); // Says why, in a notification.
+      return {{"result", "unavailable"}, {"reason", reason}};
+    }
+    // A clip asked for while the guide is up ends where the game was when it was summoned.
+    m_highlights->clip(QStringLiteral("button"), {}, {}, m_guide.showing() ? m_guide.summonElapsedMs() : 0);
+  }
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};
     const auto requested = data.value("requestNs").toString().toLongLong();
@@ -388,6 +412,7 @@ void ResidentGuide::refresh() {
       connect(watcher, &QFutureWatcher<Snapshot>::finished, this, [this, watcher] {
         const auto result = watcher->result(); watcher->deleteLater(); m_refreshing = false; m_ready = true; m_locked = result.locked; m_gameFocused = result.focused;
         m_guide.setSnapshot(result.session, result.metadata, result.output, result.window);
+        if (m_highlights) m_highlights->follow(HighlightService::gameFrom(result.session, result.metadata, result.output));
         if (m_guide.hasGame()) m_refresh.start(); else m_refresh.stop();
         emit snapshotReady();
         if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }

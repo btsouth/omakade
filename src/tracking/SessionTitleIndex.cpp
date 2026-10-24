@@ -216,6 +216,16 @@ bool SessionTitleIndex::refresh(QSqlDatabase& database) {
   return true;
 }
 
+QString SessionTitleIndex::titleForPath(const QString& gamePath) const {
+  QString found;
+  for (const Entry& entry : m_entries) {
+    if (entry.gamePath != gamePath) continue;
+    if (!found.isEmpty() && found != entry.title) return {};
+    found = entry.title;
+  }
+  return found;
+}
+
 QString SessionTitleIndex::pathForWindowTitle(const QString& windowTitle,
                                               const QString& emulator) const {
   const QString normalizedTitle = normalize(windowTitle);

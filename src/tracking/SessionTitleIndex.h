@@ -58,6 +58,9 @@ public:
   // refused with an empty answer rather than guessed at.
   [[nodiscard]] QString pathForGameId(const QString& identity, const QString& emulator = {}) const;
 
+  // The title the library shows for a content path, when exactly one title is known for it.
+  [[nodiscard]] QString titleForPath(const QString& gamePath) const;
+
   // Window titles are decorated: an emulator version, a separator, a status, and
   // sometimes a suffix. Comparing normalized text ignores that decoration.
   [[nodiscard]] static QString normalize(const QString& value);

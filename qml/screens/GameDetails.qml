@@ -178,6 +178,14 @@ Item {
         const revision = SaveBackups.revision
         return SaveBackups.count(saveGamePath)
     }
+    // Highlight clips omakade-sessiond saved for any of this game's installations.
+    readonly property var highlightClips: {
+        if (typeof HighlightClips === "undefined" || !HighlightClips) return []
+        const revision = HighlightClips.revision
+        return HighlightClips.clipsFor([root.selectedInstallation].concat(root.installations || []))
+    }
+    // The clip whose trash button was pressed once and now asks to confirm.
+    property int trashArmedClip: -1
     property int historyPage: 0
     readonly property string historyIdentity: JSON.stringify(sessionHistoryPaths.slice().sort())
     onHistoryIdentityChanged: historyPage = 0
@@ -1772,6 +1780,173 @@ Item {
                                             font.pixelSize: 8
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    id: clipSection
+                    objectName: "clipSection"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 18
+                    spacing: 10
+                    visible: root.highlightClips.length > 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "CLIPS"
+                            color: Theme.brightForeground
+                            font.family: Theme.fontFamily
+                            font.pixelSize: (root.couchMode ? 18 : 14) * root.uiScale
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.7
+                        }
+                        Text {
+                            objectName: "clipCountText"
+                            Layout.leftMargin: 10 * root.uiScale
+                            text: root.highlightClips.length
+                            color: Theme.accent
+                            font.family: Theme.fontFamily
+                            font.pixelSize: (root.couchMode ? 16 : 11) * root.uiScale
+                            font.weight: Font.DemiBold
+                        }
+                        Item { Layout.fillWidth: true }
+                        GlassButton {
+                            objectName: "clipFolderButton"
+                            // Opening a file manager is for the desk, not the TV.
+                            visible: !root.couchMode && root.highlightClips.length > 0
+                            compact: true
+                            text: "SHOW IN FOLDER"
+                            onClicked: HighlightClips.showInFolder(root.highlightClips[0].path)
+                        }
+                    }
+
+                    GridLayout {
+                        id: clipGrid
+                        objectName: "clipGrid"
+                        Layout.fillWidth: true
+                        columns: detailsContent.width < 520 ? 1 : detailsContent.width < 900 ? 2 : 3
+                        columnSpacing: 10
+                        rowSpacing: 10
+
+                        Repeater {
+                            model: root.highlightClips
+
+                            Rectangle {
+                                id: clipCard
+                                required property int index
+                                required property var modelData
+                                readonly property bool armed: root.trashArmedClip === modelData.id
+                                objectName: "clipCard" + index
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 220 * root.uiScale
+                                Layout.preferredHeight: clipColumn.implicitHeight + 16 * root.uiScale
+                                radius: Math.max(6, Theme.cornerRadius)
+                                color: root.alpha(Theme.foreground, 0.05)
+                                border.width: clipCard.activeFocus || playClip.activeFocus || trashClip.activeFocus ? 2 : 1
+                                border.color: clipCard.activeFocus || playClip.activeFocus || trashClip.activeFocus
+                                              ? Theme.accent : root.alpha(Theme.foreground, 0.10)
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: (modelData.label || "Clip") + ", " + modelData.when
+
+                                ColumnLayout {
+                                    id: clipColumn
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 8 * root.uiScale
+                                    spacing: 7 * root.uiScale
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: width * 9 / 16
+                                        radius: 4
+                                        color: root.alpha(Theme.darkerBackground, 0.7)
+                                        clip: true
+                                        Image {
+                                            anchors.fill: parent
+                                            source: clipCard.modelData.image
+                                            asynchronous: true
+                                            fillMode: Image.PreserveAspectCrop
+                                            visible: source !== ""
+                                        }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: clipCard.modelData.image === ""
+                                            text: "\u25b6"
+                                            color: Theme.mutedText
+                                            font.pixelSize: 22 * root.uiScale
+                                        }
+                                        Rectangle {
+                                            anchors.right: parent.right
+                                            anchors.bottom: parent.bottom
+                                            anchors.margins: 6 * root.uiScale
+                                            width: lengthText.implicitWidth + 10 * root.uiScale
+                                            height: lengthText.implicitHeight + 4 * root.uiScale
+                                            radius: 3
+                                            color: root.alpha(Theme.darkerBackground, 0.8)
+                                            Text {
+                                                id: lengthText
+                                                anchors.centerIn: parent
+                                                text: clipCard.modelData.seconds + " s"
+                                                color: Theme.brightForeground
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: (root.couchMode ? 13 : 9) * root.uiScale
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: clipCard.modelData.label !== "" ? clipCard.modelData.label
+                                              : clipCard.modelData.trigger === "achievement" ? "Achievement" : "Clip"
+                                        textFormat: Text.PlainText
+                                        color: Theme.brightForeground
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: (root.couchMode ? 16 : 11) * root.uiScale
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: (clipCard.modelData.trigger === "achievement" ? "ACHIEVEMENT \u00b7 " : "")
+                                              + clipCard.modelData.when.toUpperCase()
+                                        color: clipCard.modelData.trigger === "achievement" ? Theme.accent : Theme.mutedText
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: (root.couchMode ? 12 : 8) * root.uiScale
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8 * root.uiScale
+                                        GlassButton {
+                                            id: playClip
+                                            objectName: "playClip" + clipCard.index
+                                            Layout.fillWidth: true
+                                            compact: true
+                                            text: "PLAY"
+                                            onClicked: HighlightClips.play(clipCard.modelData.path)
+                                            onActiveFocusChanged: if (!activeFocus && clipCard.armed && !trashClip.activeFocus) root.trashArmedClip = -1
+                                        }
+                                        GlassButton {
+                                            id: trashClip
+                                            objectName: "trashClip" + clipCard.index
+                                            Layout.fillWidth: true
+                                            compact: true
+                                            // A second press confirms, so one stray press cannot lose a clip.
+                                            text: clipCard.armed ? "CONFIRM TRASH" : "TRASH"
+                                            selected: clipCard.armed
+                                            onClicked: {
+                                                if (!clipCard.armed) { root.trashArmedClip = clipCard.modelData.id; return }
+                                                root.trashArmedClip = -1
+                                                HighlightClips.moveToTrash(clipCard.modelData.id)
+                                            }
+                                            onActiveFocusChanged: if (!activeFocus && clipCard.armed) root.trashArmedClip = -1
                                         }
                                     }
                                 }

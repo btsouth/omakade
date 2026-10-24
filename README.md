@@ -26,6 +26,8 @@ with a keyboard, mouse, or controller.
   using or on a chosen display and sound output, with desktop restoration when you leave
 - Favorites, collections, tags, saved filters, custom artwork, and a random pick
 - Optional playtime recording, session history, stats, and a Year in Review image
+- [Highlights](docs/HIGHLIGHTS.md): save the last moments of a game from the in-game guide, a key or a
+  controller's capture button, and clip Steam achievements as they unlock
 - Steam achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
 - Emulator save backups, personal library backup and restore, and Sunshine/Moonlight export
 

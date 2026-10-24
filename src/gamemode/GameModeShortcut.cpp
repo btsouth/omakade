@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMutex>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -15,10 +16,9 @@
 
 namespace {
 constexpr int kCommandTimeoutMs = 2500;
-// Hyprland's modifier bits for Super and Ctrl.
-constexpr int kSuperCtrlMask = 64 | 4;
-const QString kComment =
-    QStringLiteral("-- Omakade Game Mode. Press it again to leave. Added by Omakade.");
+// Hyprland's modifier bits.
+constexpr int kCtrlMask = 4;
+constexpr int kSuperMask = 64;
 
 bool hyprctl(const QStringList& arguments, QByteArray* output = nullptr) {
   const QString executable = QStandardPaths::findExecutable(QStringLiteral("hyprctl"));
@@ -41,12 +41,14 @@ bool hyprctl(const QStringList& arguments, QByteArray* output = nullptr) {
   return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }
 
-const QRegularExpression& bindingPattern() {
-  // One uncommented o.bind or o.rebind line whose command runs Game Mode.
-  static const QRegularExpression pattern(
-      QStringLiteral(R"lua(^[ \t]*o\.(?:re)?bind\([ \t]*"([^"\\\n]+)"[ \t]*,[ \t]*(?:nil|"(?:\\.|[^"\\\n])*")[ \t]*,[ \t]*"omakade --game-mode(?:-toggle)?"[ \t]*\)[ \t]*(?:--[^\n]*)?$)lua"),
+QRegularExpression bindingPattern(const GameModeShortcut::Binding& binding) {
+  // One uncommented o.bind or o.rebind line whose command is one of the binding's.
+  QStringList commands;
+  for (const QString& command : binding.commands) commands.append(QRegularExpression::escape(command));
+  return QRegularExpression(
+      QStringLiteral(R"lua(^[ \t]*o\.(?:re)?bind\([ \t]*"([^"\\\n]+)"[ \t]*,[ \t]*(?:nil|"(?:\\.|[^"\\\n])*")[ \t]*,[ \t]*"(?:%1)"[ \t]*\)[ \t]*(?:--[^\n]*)?$)lua")
+          .arg(commands.join(QLatin1Char('|'))),
       QRegularExpression::MultilineOption);
-  return pattern;
 }
 
 bool readFile(const QString& path, QString* contents) {
@@ -89,25 +91,45 @@ bool writeFile(const QString& path, const QString& contents) {
 }
 } // namespace
 
-QString GameModeShortcut::defaultKey() { return QStringLiteral("SUPER + CTRL + G"); }
-
-QString GameModeShortcut::command() { return QStringLiteral("omakade --game-mode-toggle"); }
-
-QString GameModeShortcut::bindingLine() {
-  return QStringLiteral("o.bind(\"%1\", \"Game Mode\", \"%2\")").arg(defaultKey(), command());
+GameModeShortcut::Binding GameModeShortcut::gameMode() {
+  return {.key = QStringLiteral("SUPER + CTRL + G"),
+          .description = QStringLiteral("Game Mode"),
+          .command = QStringLiteral("omakade --game-mode-toggle"),
+          .commands = {QStringLiteral("omakade --game-mode-toggle"), QStringLiteral("omakade --game-mode")},
+          .comment = QStringLiteral("-- Omakade Game Mode. Press it again to leave. Added by Omakade."),
+          .modmask = kSuperMask | kCtrlMask,
+          .keyName = QStringLiteral("G")};
 }
 
-QString GameModeShortcut::liveBindingScript() {
-  return QStringLiteral("hl.unbind(\"%1\")\n").arg(defaultKey()) + bindingLine();
+GameModeShortcut::Binding GameModeShortcut::clip() {
+  return {.key = QStringLiteral("CTRL + PRINT"),
+          .description = QStringLiteral("Clip highlight"),
+          .command = QStringLiteral("omakade --clip"),
+          .commands = {QStringLiteral("omakade --clip")},
+          .comment = QStringLiteral("-- Omakade highlights: save the last moments of the game. Added by Omakade."),
+          .modmask = kCtrlMask,
+          .keyName = QStringLiteral("Print")};
 }
 
-QString GameModeShortcut::boundKey(const QString& contents) {
-  const QRegularExpressionMatch match = bindingPattern().match(contents);
+QString GameModeShortcut::defaultKey(const Binding& binding) { return binding.key; }
+
+QString GameModeShortcut::command(const Binding& binding) { return binding.command; }
+
+QString GameModeShortcut::bindingLine(const Binding& binding) {
+  return QStringLiteral("o.bind(\"%1\", \"%2\", \"%3\")").arg(binding.key, binding.description, binding.command);
+}
+
+QString GameModeShortcut::liveBindingScript(const Binding& binding) {
+  return QStringLiteral("hl.unbind(\"%1\")\n").arg(binding.key) + bindingLine(binding);
+}
+
+QString GameModeShortcut::boundKey(const QString& contents, const Binding& binding) {
+  const QRegularExpressionMatch match = bindingPattern(binding).match(contents);
   return match.hasMatch() ? match.captured(1).simplified() : QString{};
 }
 
-QString GameModeShortcut::withBinding(const QString& contents) {
-  if (!boundKey(contents).isEmpty()) {
+QString GameModeShortcut::withBinding(const QString& contents, const Binding& binding) {
+  if (!boundKey(contents, binding).isEmpty()) {
     return contents;
   }
   QString result = contents;
@@ -117,18 +139,19 @@ QString GameModeShortcut::withBinding(const QString& contents) {
   if (!result.isEmpty()) {
     result += QLatin1Char('\n');
   }
-  return result + kComment + QLatin1Char('\n') + bindingLine() + QLatin1Char('\n');
+  return result + binding.comment + QLatin1Char('\n') + bindingLine(binding) + QLatin1Char('\n');
 }
 
-QString GameModeShortcut::withoutBinding(const QString& contents) {
+QString GameModeShortcut::withoutBinding(const QString& contents, const Binding& binding) {
   QStringList kept;
   const QStringList lines = contents.split(QLatin1Char('\n'));
+  const QRegularExpression pattern = bindingPattern(binding);
   for (const QString& line : lines) {
-    if (!bindingPattern().match(line).hasMatch()) {
+    if (!pattern.match(line).hasMatch()) {
       kept.append(line);
       continue;
     }
-    if (!kept.isEmpty() && kept.last().trimmed() == kComment) {
+    if (!kept.isEmpty() && kept.last().trimmed() == binding.comment) {
       kept.removeLast();
       // The blank line Omakade put above its comment goes too, so adding and removing
       // leaves the file as it was.
@@ -140,9 +163,9 @@ QString GameModeShortcut::withoutBinding(const QString& contents) {
   return kept.join(QLatin1Char('\n'));
 }
 
-QString GameModeShortcut::removalScript(const QString& contents) {
+QString GameModeShortcut::removalScript(const QString& contents, const Binding& binding) {
   QStringList keys;
-  auto matches = bindingPattern().globalMatch(contents);
+  auto matches = bindingPattern(binding).globalMatch(contents);
   while (matches.hasNext()) {
     const QString key = matches.next().captured(1).simplified();
     if (!keys.contains(key)) {
@@ -157,13 +180,12 @@ QString GameModeShortcut::removalScript(const QString& contents) {
   return lines.join(QLatin1Char('\n'));
 }
 
-QString GameModeShortcut::takenBy(const QByteArray& bindsJson) {
+QString GameModeShortcut::takenBy(const QByteArray& bindsJson, const Binding& binding) {
   const QJsonDocument document = QJsonDocument::fromJson(bindsJson);
   for (const QJsonValue& value : document.array()) {
     const QJsonObject bind = value.toObject();
-    if (bind.value(QLatin1String("modmask")).toInt() != kSuperCtrlMask ||
-        bind.value(QLatin1String("key")).toString().compare(QLatin1String("G"),
-                                                           Qt::CaseInsensitive) != 0) {
+    if (bind.value(QLatin1String("modmask")).toInt() != binding.modmask ||
+        bind.value(QLatin1String("key")).toString().compare(binding.keyName, Qt::CaseInsensitive) != 0) {
       continue;
     }
     const QString description = bind.value(QLatin1String("description")).toString().trimmed();
@@ -172,8 +194,7 @@ QString GameModeShortcut::takenBy(const QByteArray& bindsJson) {
     // them. Our own file binding is already recognized before this conflict check.
     const QString dispatcher = bind.value(QLatin1String("dispatcher")).toString();
     const QString argument = bind.value(QLatin1String("arg")).toString().trimmed();
-    if (dispatcher == QLatin1String("exec") &&
-        (argument == command() || argument == QLatin1String("omakade --game-mode"))) {
+    if (dispatcher == QLatin1String("exec") && binding.commands.contains(argument)) {
       continue;
     }
     return description.isEmpty() ? QStringLiteral("another shortcut") : description;
@@ -190,8 +211,8 @@ QString GameModeShortcut::displayKey(const QString& key) {
   return parts.join(QStringLiteral(" + "));
 }
 
-GameModeShortcut::GameModeShortcut(const QString& bindingsPath, bool omarchy, QObject* parent)
-    : QObject(parent), m_path(bindingsPath), m_omarchy(omarchy) {
+GameModeShortcut::GameModeShortcut(const QString& bindingsPath, bool omarchy, QObject* parent, Binding binding)
+    : QObject(parent), m_binding(std::move(binding)), m_path(bindingsPath), m_omarchy(omarchy) {
   connect(&m_watcher, &QFutureWatcher<Outcome>::finished, this, [this] {
     const Outcome outcome = m_watcher.result();
     m_available = outcome.available;
@@ -205,7 +226,7 @@ GameModeShortcut::GameModeShortcut(const QString& bindingsPath, bool omarchy, QO
 GameModeShortcut::~GameModeShortcut() { m_watcher.waitForFinished(); }
 
 QString GameModeShortcut::keyLabel() const {
-  return displayKey(m_boundKey.isEmpty() ? defaultKey() : m_boundKey);
+  return displayKey(m_boundKey.isEmpty() ? m_binding.key : m_boundKey);
 }
 
 void GameModeShortcut::refresh() { start(Action::Refresh); }
@@ -219,12 +240,15 @@ void GameModeShortcut::start(Action action) {
     return;
   }
   m_watcher.setFuture(QtConcurrent::run(
-      [path = m_path, omarchy = m_omarchy, action] { return run(path, omarchy, action); }));
+      [path = m_path, omarchy = m_omarchy, action, binding = m_binding] { return run(path, omarchy, action, binding); }));
   emit changed();
 }
 
 GameModeShortcut::Outcome GameModeShortcut::run(const QString& path, bool omarchy,
-                                                Action action) {
+                                                Action action, const Binding& binding) {
+  // The Game Mode and clip keys share one bindings file: one reads and rewrites it at a time.
+  static QMutex fileLock;
+  const QMutexLocker locker(&fileLock);
   Outcome outcome;
   QString contents;
   QByteArray binds;
@@ -233,29 +257,29 @@ GameModeShortcut::Outcome GameModeShortcut::run(const QString& path, bool omarch
     return outcome;
   }
   outcome.available = true;
-  outcome.boundKey = boundKey(contents);
-  outcome.takenBy = outcome.boundKey.isEmpty() ? takenBy(binds) : QString{};
+  outcome.boundKey = boundKey(contents, binding);
+  outcome.takenBy = outcome.boundKey.isEmpty() ? takenBy(binds, binding) : QString{};
 
   if (action == Action::Add && outcome.boundKey.isEmpty() && outcome.takenBy.isEmpty()) {
-    if (!writeFile(path, withBinding(contents))) {
+    if (!writeFile(path, withBinding(contents, binding))) {
       outcome.statusText = QStringLiteral("Could not write %1.").arg(path);
       return outcome;
     }
-    outcome.boundKey = defaultKey();
+    outcome.boundKey = binding.key;
     // The file covers every later session. This makes the key work now, whether or not
     // the running Hyprland rereads its configuration on its own. When it does, the
     // reload and this can land in either order, so the key is cleared first to end up
-    // with one binding rather than two that each toggle Game Mode.
-    hyprctl({QStringLiteral("eval"), liveBindingScript()});
+    // with one binding rather than two that each run the command.
+    hyprctl({QStringLiteral("eval"), liveBindingScript(binding)});
   } else if (action == Action::Remove && !outcome.boundKey.isEmpty()) {
-    if (!writeFile(path, withoutBinding(contents))) {
+    if (!writeFile(path, withoutBinding(contents, binding))) {
       outcome.statusText = QStringLiteral("Could not write %1.").arg(path);
       return outcome;
     }
-    hyprctl({QStringLiteral("eval"), removalScript(contents)});
+    hyprctl({QStringLiteral("eval"), removalScript(contents, binding)});
     outcome.boundKey.clear();
     if (hyprctl({QStringLiteral("-j"), QStringLiteral("binds")}, &binds)) {
-      outcome.takenBy = takenBy(binds);
+      outcome.takenBy = takenBy(binds, binding);
     }
   }
   return outcome;

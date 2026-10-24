@@ -170,7 +170,8 @@ def recorders():
         fields = stat[stat.rfind(')') + 2:].split()
         started = boot + int(fields[19]) / ticks if boot is not None and len(fields) > 19 else None
         option = lambda name: args[args.index(name) + 1] if name in args[:-1] else None
-        found.append(dict(pid=int(entry.name), started=started, replay=option('-r'), output=option('-o')))
+        found.append(dict(pid=int(entry.name), started=started, replay=option('-r'), output=option('-o'),
+                          ipc=option('-ipc')))
     return found
 
 
@@ -220,6 +221,9 @@ def status():
                   recording=None, replay=None)
     clip = own_clip()
     for process in recorders():
+        # Omakade's own highlight buffer reaches the card through Omakade, as its Clip tile.
+        if process['ipc'] and '/omakade/highlights-' in process['ipc']:
+            continue
         if process['replay']:
             try:
                 seconds = int(process['replay'])

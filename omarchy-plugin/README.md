@@ -7,7 +7,7 @@ theme's menu colours, font, corner radius and spacing.
 
 ```
 ┌───────────────────────────────────────────────┐
-│ [II PAUSED]              ◎ Xbox pad  9:47 PM  │
+│ [II PAUSED]       ◎ Xbox controller  9:47 PM  │
 │                                               │
 │ ┌────┐  Lantern Road                          │
 │ │    │  Steam                                 │
@@ -19,7 +19,7 @@ theme's menu colours, font, corner radius and spacing.
 │ [ ▭  Desktop        ] [ ≡  RetroArch menu  ]  │  (only where they apply)
 │                                               │
 │ [ ◎             (Y) ] [ ◉                  ]  │
-│ [ Screenshot        ] [ Record clip        ]  │  (+ [Save 30 s] while a replay buffer runs)
+│ [ Screenshot        ] [ Record clip        ]  │  (+ [Clip 30 s] with highlights, or [Save 30 s] while an outside replay buffer runs)
 │                                               │
 │ SOUND                                    72%  │
 │ ◁  ━━━━━━━━━━━━━━━━━━━━━━━━━━○─────────────   │
@@ -86,9 +86,12 @@ and at least 80 ms. Record clip closes the guide, then records the game's output
 with desktop audio through its own gpu-screen-recorder and resumes the game; Stop
 recording stops it, and a notification follows when the clip is saved. The guide
 only shows and stops the recording it started, so a screen recording started from
-Omarchy runs on untouched, and Omarchy's stop leaves the guide's clip alone. Save last
-30 s appears only while a replay buffer runs and sends it SIGUSR1; the length
-comes from the buffer's own `-r`. Volume sets the output Omarchy's volume keys
+Omarchy runs on untouched, and Omarchy's stop leaves the guide's clip alone. With Omakade's
+highlights on, a third tile, Clip 30 s, asks Omakade to save the last seconds of its own
+replay buffer, ending where the game was when the guide was summoned; the tile shows Saving…
+and then Saved or Not saved. With three tiles Record clip reads Record. Without highlights, Save last 30 s appears only
+while an outside replay buffer runs and sends it SIGUSR1; the length comes from the
+buffer's own `-r`. Volume sets the output Omarchy's volume keys
 use (`omarchy-audio-output-sink`), through Quickshell PipeWire.
 
 ## Rendering
