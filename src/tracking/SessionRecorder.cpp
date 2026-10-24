@@ -689,10 +689,12 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
   // and has to end at this boundary. The title grace below would otherwise keep it billing
   // alongside the verified session, which is the same play counted twice and an extra row for it.
   QSet<qint64> verifiedPids;
+  QSet<QString> present;
   for (const SessionMatch& match : matches) {
     if (match.procStart > 0) {
       verifiedPids.insert(match.pid);
     }
+    present.insert(keyFor(match));
   }
   for (const SessionMatch& match : matches) {
     const QString key = keyFor(match);
@@ -722,6 +724,26 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
           existing = m_active.insert(key, adopted);
           break;
         }
+      }
+    }
+    // The process a handing-over session followed has exited and another process of the
+    // same game runs on: the session moves to it instead of ending and starting a new row.
+    if (existing == m_active.end() && match.handsOver && match.procStart > 0) {
+      for (auto candidate = m_active.begin(); candidate != m_active.end(); ++candidate) {
+        if (candidate->titleMatched || candidate->gamePath != match.gamePath ||
+            candidate->emulator != match.emulator || present.contains(candidate.key())) {
+          continue;
+        }
+        ActiveSession moved = *candidate;
+        m_active.erase(candidate);
+        moved.pid = match.pid;
+        moved.procStart = match.procStart;
+        if (moved.id > 0 &&
+            !SessionDatabase::moveSession(m_database, moved.id, match.pid, match.procStart)) {
+          m_storageFailure = true;
+        }
+        existing = m_active.insert(key, moved);
+        break;
       }
     }
     if (existing == m_active.end()) {

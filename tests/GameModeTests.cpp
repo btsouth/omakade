@@ -3062,7 +3062,8 @@ private slots:
               {QStringLiteral("Z:\\other\\Game.exe")}, {}, root.filePath(QStringLiteral("elsewhere"))}},
         {52, {1, QStringLiteral("/runtime/wine64-preloader"),
               {QStringLiteral("Z:\\chain\\Game.exe")}, {}, prefix}},
-        {60, {1, QStringLiteral("/opt/xodus/xodus-nexus.bin"), {}, {}, {}}}};
+        {60, {1, QStringLiteral("/opt/xodus/xodus-nexus.bin"), {}, {}, {}}},
+        {70, {1, QStringLiteral("/usr/bin/chromium"), {}, {}, {}}}};
     QMutex tableMutex;
     LaunchWatch watch(&compositor, [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
       QMutexLocker lock(&tableMutex);
@@ -3083,6 +3084,8 @@ private slots:
     QCOMPARE(watch.title(), QStringLiteral("Valor Mortis"));
     compositor.open({QStringLiteral("0x50"), 50, QStringLiteral("explorer.exe"), {}});
     compositor.open({QStringLiteral("0x51"), 51, QStringLiteral("steam_proton"), {}});
+    // An unrelated app opening meanwhile is not the launcher either.
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("chromium"), QStringLiteral("News")});
     QTest::qWait(150);
     QVERIFY(watch.active());
     QVERIFY(shown.isEmpty());
@@ -3092,7 +3095,8 @@ private slots:
     QVERIFY(!watch.active());
 
     // So does the launcher showing a window of its own, such as a sign-in.
-    for (const auto& address : {QStringLiteral("0x50"), QStringLiteral("0x51"), QStringLiteral("0x52")})
+    for (const auto& address : {QStringLiteral("0x50"), QStringLiteral("0x51"), QStringLiteral("0x52"),
+                                QStringLiteral("0x70")})
       compositor.close(address);
     QVERIFY(watch.begin(game));
     compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("xodus-nexus"), QStringLiteral("Sign in")});

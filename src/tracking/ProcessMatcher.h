@@ -44,6 +44,9 @@ struct SessionMatch {
   QString emulator;
   QString rescanSource;
   QString gamePath;
+  // The session may move to another process of the same game when this one exits, as when
+  // a launcher's bootstrap ends and the game it started keeps running.
+  bool handsOver = false;
 };
 
 struct ProcessProfileSet {
@@ -97,8 +100,8 @@ using AttributionResolver =
 // Launchers such as Xodus Nexus run each game in a Wine prefix of its own, from a
 // temporary copy of the game whose path says nothing about which game it is. The prefix
 // does: `games` maps a canonical prefix to the game path to record against. Each prefix
-// gives one match, its oldest Windows program outside C:\windows, so the session keeps
-// one process identity for as long as the game runs.
+// gives one match, its oldest Windows program outside C:\windows. The match hands over,
+// so when that program exits and another in the prefix runs on, the session continues.
 [[nodiscard]] QVector<SessionMatch> matchWinePrefixes(const QVector<ProcessSnapshot>& processes,
                                                       const QHash<QString, QString>& games,
                                                       const QString& source);

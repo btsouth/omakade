@@ -6,6 +6,7 @@
 #include "tracking/PlaySessionStore.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
+#include "tracking/SessionRecorder.h"
 
 #include <QBuffer>
 #include <QDir>
@@ -15,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -188,8 +190,9 @@ private slots:
     QVERIFY(XodusScanner::launchScript(profile, false).isEmpty());
     QVERIFY(XodusScanner::launchScript("relative/profile").isEmpty());
 
+    // Group write is allowed for a user-private group, so world write is the portable check.
     QFile(script).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-                                 QFileDevice::ExeOwner | QFileDevice::WriteGroup);
+                                 QFileDevice::ExeOwner | QFileDevice::WriteOther);
     QVERIFY(XodusScanner::launchScript(profile).isEmpty());
     QFile(script).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     QVERIFY(XodusScanner::launchScript(profile).isEmpty());
@@ -334,6 +337,56 @@ private slots:
     QVERIFY(ProcFs::isWindowsProgram("Z:\\games\\Game.exe"));
     QVERIFY(!ProcFs::isWindowsProgram("/usr/bin/wine"));
     QVERIFY(!ProcFs::isWindowsProgram("C:"));
+  }
+
+  void sessionMovesWhenTheBootstrapExits() {
+    QTemporaryDir directory;
+    const QString name = QUuid::createUuid().toString();
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, directory.path() + "/library.sqlite3", name));
+      qint64 nowMs = 0;
+      SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+      recorder.setFlushIntervalMs(1);
+      const SessionMatch bootstrap{.pid = 12, .procStart = 100, .emulator = "Xodus Nexus",
+                                   .rescanSource = {}, .gamePath = "/games/Valor",
+                                   .handsOver = true};
+      SessionMatch game = bootstrap;
+      game.pid = 13;
+      game.procStart = 101;
+      recorder.sync({bootstrap}, 1000);
+      nowMs += 60000;
+      recorder.sync({bootstrap}, 1060);
+      // The bootstrap exits; the game it started keeps the same session and row.
+      nowMs += 60000;
+      recorder.sync({game}, 1120);
+      QCOMPARE(recorder.activeCount(), 1);
+      nowMs += 60000;
+      recorder.sync({game}, 1180);
+      recorder.sync({}, 1180);
+      QCOMPARE(recorder.activeCount(), 0);
+      QSqlQuery query(database);
+      QVERIFY(query.exec("SELECT COUNT(*), MAX(seconds), MAX(pid), MAX(proc_start) FROM play_sessions"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 1);
+      QCOMPARE(query.value(1).toLongLong(), qint64(180));
+      QCOMPARE(query.value(2).toLongLong(), qint64(13));
+      QCOMPARE(query.value(3).toLongLong(), qint64(101));
+      query.finish();
+      // A match that does not hand over still starts its own session.
+      SessionMatch emulator = bootstrap;
+      emulator.handsOver = false;
+      recorder.sync({emulator}, 1200);
+      nowMs += 5000;
+      SessionMatch other = emulator;
+      other.pid = 14;
+      other.procStart = 102;
+      recorder.sync({other}, 1205);
+      QVERIFY(query.exec("SELECT COUNT(*) FROM play_sessions"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 3);
+    }
+    QSqlDatabase::removeDatabase(name);
   }
 
   void recordedSessionsGiveXodusGamesPlayTime() {

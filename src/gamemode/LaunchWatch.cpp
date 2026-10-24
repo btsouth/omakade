@@ -67,11 +67,12 @@ void LaunchWatch::scan() {
             scan.shown = true;
             break;
           }
-          // A window outside Wine, such as the launcher asking for a sign-in, is
-          // something to look at too. Wine's other windows, of this game's helpers or
-          // another prefix, are not.
+          // Nexus's own window, such as a sign-in it asks for, is something to look at
+          // too. Wine's other windows, of this game's helpers or another prefix, and
+          // unrelated apps opening meanwhile are not.
           const auto process = lookup(window.pid);
-          if (process && process->winePrefix.isEmpty()) {
+          if (process && process->winePrefix.isEmpty() &&
+              window.windowClass == QStringLiteral("xodus-nexus")) {
             scan.shown = true;
             break;
           }

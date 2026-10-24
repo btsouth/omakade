@@ -63,6 +63,8 @@ bool insertClosedSession(QSqlDatabase& database, const QString& gamePath, const 
                          qint64 startedAt, qint64 endedAt, qint64 seconds, qint64 pid,
                          qint64 procStart, const QString& sessionKey = {});
 bool updateProgress(QSqlDatabase& database, qint64 id, qint64 seconds, qint64 heartbeatAt);
+// Moves an open session to another process of the same game.
+bool moveSession(QSqlDatabase& database, qint64 id, qint64 pid, qint64 procStart);
 bool endSession(QSqlDatabase& database, qint64 id, qint64 endedAt, qint64 seconds);
 bool replaceSessionIntervals(QSqlDatabase& database, const QString& sessionKey,
                              const QVector<SessionInterval>& intervals);

@@ -256,7 +256,8 @@ QVector<SessionMatch> matchWinePrefixes(const QVector<ProcessSnapshot>& processe
   QVector<SessionMatch> matches;
   for (auto it = oldest.cbegin(); it != oldest.cend(); ++it)
     matches.append({.pid = it.value()->pid, .procStart = it.value()->procStart,
-                    .emulator = source, .rescanSource = {}, .gamePath = games.value(it.key())});
+                    .emulator = source, .rescanSource = {}, .gamePath = games.value(it.key()),
+                    .handsOver = true});
   return matches;
 }
 
