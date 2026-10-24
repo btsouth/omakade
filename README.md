@@ -111,3 +111,9 @@ Optional Steam and IGDB credentials use Secret Service.
 
 [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md) ·
 [Compatibility reports](docs/COMPATIBILITY.md) · [Security](SECURITY.md)
+
+## More for Omarchy
+
+- [Omaroll](https://github.com/btsouth/omaroll): a photo and video viewer and library that follows your theme.
+- [Omaframe](https://github.com/btsouth/omaframe): screenshots and screen recordings, with frames and backgrounds.
+- [Omalink](https://github.com/btsouth/omalink): your Android phone on the desktop, through KDE Connect.
