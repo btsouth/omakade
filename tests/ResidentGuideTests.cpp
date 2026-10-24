@@ -1,5 +1,6 @@
 #include "guide/GuideClient.h"
 #include "guide/GuidePayload.h"
+#include "guide/ResidentGuide.h"
 #include "tracking/SessionDatabase.h"
 #include <QtTest>
 #include <QTemporaryDir>
@@ -32,6 +33,7 @@ private slots:
   void ambiguousEnvironmentIsUnavailable();
   void gameLaunchCancelsRescan();
   void parkedGameOutOfViewKeepsResume();
+  void prefixSessionFindsXodusGame();
 };
 
 void ResidentGuideTests::residentOwnsShortcutWithoutGui() {
@@ -614,4 +616,47 @@ int main(int argc, char** argv) {
   }
   return QTest::qExec(&tests, arguments);
 }
+void ResidentGuideTests::prefixSessionFindsXodusGame() {
+  // Xodus Nexus (pid 10) runs Valor Mortis under the user's service manager, in the game's
+  // own prefix: its window belongs to pid 30, never to the process Omakade launched.
+  QTemporaryDir root; QVERIFY(root.isValid());
+  const auto prefix = root.path() + "/compatdata/43802bcbb9d5e7ea/pfx", other = root.path() + "/compatdata/8474125f9e2af4b9/pfx";
+  QVERIFY(QDir().mkpath(prefix)); QVERIFY(QDir().mkpath(other));
+  QVERIFY(QFile::link(prefix, root.path() + "/linked-pfx"));
+  QHash<qint64, ResidentGuide::WindowProcess> table{
+      {10, {100, "/tmp/.mount_Xodus/xodus-nexus.bin", {}}},
+      {20, {200, "C:\\windows\\system32\\explorer.exe", prefix}},
+      {30, {300, "Z:\\games\\.xodus-chain\\Game-Shipping.exe", root.path() + "/linked-pfx"}},
+      {40, {400, "Z:\\games\\Gears.exe", other}},
+      {50, {500, "/usr/bin/foot", {}}}};
+  const ResidentGuide::WindowProcessLookup lookup = [&](qint64 pid) -> std::optional<ResidentGuide::WindowProcess> {
+    if (!table.contains(pid)) return std::nullopt;
+    return table.value(pid);
+  };
+  const QJsonObject launched{{"pid", 10}, {"procStart", 100}, {"source", "Xodus Nexus"}, {"appId", "43802bcbb9d5e7ea"},
+                             {"winePrefix", prefix}, {"metadata", QJsonObject{{"title", "Valor Mortis"}}}};
+  const auto windows = [](std::initializer_list<qint64> pids) {
+    QJsonArray clients; for (const auto pid : pids) clients.append(QJsonObject{{"pid", pid}, {"address", QString("0x%1").arg(pid)}});
+    return clients;
+  };
+  const auto session = ResidentGuide::prefixSession({launched}, windows({50, 20, 40, 30}), 50, lookup);
+  QCOMPARE(session.value("pid").toLongLong(), 30);
+  QCOMPARE(session.value("procStart").toLongLong(), 300);
+  QCOMPARE(session.value("launcherPid").toLongLong(), 10);
+  QCOMPARE(session.value("source").toString(), "Xodus Nexus");
+  QCOMPARE(session.value("metadata").toMap().value("title").toString(), "Valor Mortis");
+  // Wine's own windows, another game's prefix and native windows are not the game.
+  QVERIFY(ResidentGuide::prefixSession({launched}, windows({10, 20, 40, 50}), 20, lookup).isEmpty());
+  // A session without a prefix is never matched this way.
+  auto plain = launched; plain.remove("winePrefix");
+  QVERIFY(ResidentGuide::prefixSession({plain}, windows({30}), 30, lookup).isEmpty());
+  // The focused game's window wins when two games share nothing but a launcher.
+  auto gears = launched; gears.insert("winePrefix", other); gears.insert("appId", "8474125f9e2af4b9");
+  QCOMPARE(ResidentGuide::prefixSession({launched, gears}, windows({30, 40}), 40, lookup).value("appId").toString(), "8474125f9e2af4b9");
+  // The real reader keeps only the prefix of this process's environment.
+  const auto self = ResidentGuide::readWindowProcess(QCoreApplication::applicationPid());
+  QVERIFY(self.has_value()); QVERIFY(self->procStart > 0); QVERIFY(!self->program.isEmpty());
+  QVERIFY(!ResidentGuide::readWindowProcess(1).has_value());
+}
+
 #include "ResidentGuideTests.moc"

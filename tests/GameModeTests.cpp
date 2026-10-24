@@ -3,6 +3,7 @@
 #include "gamemode/GameModeSession.h"
 #include "gamemode/GameModeShortcut.h"
 #include "gamemode/LaunchHold.h"
+#include "gamemode/LaunchWatch.h"
 #include "tracking/ProcFs.h"
 
 #include <QCoreApplication>
@@ -459,6 +460,11 @@ public:
   bool heldWindows(QVector<GameModeHeldWindow>* windows, QString*) override {
     QMutexLocker lock(&mutex);
     *windows = held;
+    return true;
+  }
+  bool openWindows(QVector<GameModeHeldWindow>* windows, QString*) override {
+    QMutexLocker lock(&mutex);
+    *windows = held + shown;
     return true;
   }
   bool releaseWindow(const QString& address, const QString& workspace, QString* = nullptr) override {
@@ -2893,6 +2899,17 @@ private slots:
     QCOMPARE(held.at(0).windowClass, QStringLiteral("steam"));
     QCOMPARE(held.at(0).title, QStringLiteral("Steam"));
     QVERIFY(Compositor::parseHeldWindows("[").isEmpty());
+
+    const auto open = Compositor::parseOpenWindows(R"([
+        {"address":"0x10","mapped":true,"pid":41,"class":"steam","title":"Steam",
+         "workspace":{"id":-98,"name":"special:omakade-launch"}},
+        {"address":"0x11","mapped":true,"pid":42,"class":"game","title":"Game",
+         "workspace":{"id":3,"name":"3"}},
+        {"address":"0x12","mapped":false,"pid":43,"class":"hidden","title":"",
+         "workspace":{"id":3,"name":"3"}}])");
+    QCOMPARE(open.size(), 2);
+    QCOMPARE(open.at(1).address, QStringLiteral("0x11"));
+    QCOMPARE(open.at(1).pid, 42);
   }
 
   void launchHoldKnowsTheGameWindow() {
@@ -2982,6 +2999,123 @@ private slots:
     QVERIFY(!LaunchHold::isGameWindow(window(70), dolphin, lookup));
     // A process that is its own parent ends the walk.
     QVERIFY(!LaunchHold::isGameWindow(window(90), dolphin, lookup));
+  }
+
+  void launchHoldKnowsXodusGamesByTheirPrefix() {
+    // Xodus Nexus runs Valor Mortis from a copy of its folder, in a prefix of its own,
+    // under the user's service manager rather than under Nexus.
+    QTemporaryDir root;
+    const QString install = root.filePath(QStringLiteral("Games/Xodus Nexus/Valor-Mortis"));
+    const QString prefix = root.filePath(QStringLiteral("compatdata/43802bcbb9d5e7ea/pfx"));
+    const QString other = root.filePath(QStringLiteral("compatdata/8474125f9e2af4b9/pfx"));
+    for (const QString& path : {install, prefix, other}) QVERIFY(QDir().mkpath(path));
+    const QString chain = QStringLiteral("Z:") +
+                          QString(root.filePath(QStringLiteral("Games/Xodus Nexus/.xodus-chain-mlcA2L")))
+                              .replace(QLatin1Char('/'), QLatin1Char('\\'));
+    const auto wine = [](const QString& program, const QString& winePrefix) {
+      return LaunchHoldProcess{1, QStringLiteral("/runtime/bin/wine64-preloader"), {program}, {}, winePrefix};
+    };
+    QHash<qint64, LaunchHoldProcess> table{
+        {10, wine(chain + QStringLiteral("\\ValorMortis\\Binaries\\Win64\\Game-Shipping.exe"), prefix)},
+        {11, wine(QStringLiteral("C:\\windows\\system32\\explorer.exe"), prefix)},
+        {12, wine(QStringLiteral("Z:\\other\\Game.exe"), other)},
+        {13, {1, QStringLiteral("/opt/xodus/xodus-nexus.bin"), {}, {}, {}}}};
+    const LaunchHold::ProcessLookup lookup = [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+      if (!table.contains(pid)) return std::nullopt;
+      return table.value(pid);
+    };
+    const auto window = [](qint64 pid) {
+      return GameModeHeldWindow{QStringLiteral("0x1"), pid, QStringLiteral("steam_proton"), {}};
+    };
+    const auto valor = LaunchHold::targetFor({{"source", "Xodus Nexus"},
+                                              {"appId", "43802bcbb9d5e7ea"},
+                                              {"installPath", install},
+                                              {"launchTarget", prefix}});
+    QCOMPARE(valor.winePrefix, QFileInfo(prefix).canonicalFilePath());
+    QVERIFY(LaunchHold::isGameWindow(window(10), valor, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(11), valor, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(12), valor, lookup));
+    QVERIFY(!LaunchHold::isGameWindow(window(13), valor, lookup));
+    // The same prefix through a link.
+    const QString linked = root.filePath(QStringLiteral("linked-pfx"));
+    QVERIFY(QFile::link(prefix, linked));
+    table[10].winePrefix = linked;
+    QVERIFY(LaunchHold::isGameWindow(window(10), valor, lookup));
+    // Only Xodus Nexus gives each game its own prefix; Battle.net's is shared.
+    const auto shared = LaunchHold::targetFor({{"source", "Battle.net"},
+                                               {"appId", "WoW"},
+                                               {"launchTarget", prefix}});
+    QVERIFY(shared.winePrefix.isEmpty());
+    QVERIFY(!LaunchHold::isGameWindow(window(10), shared, lookup));
+  }
+
+  void launchWatchWaitsForTheGameWindow() {
+    HoldCompositor compositor;
+    QTemporaryDir root;
+    const QString prefix = root.filePath(QStringLiteral("pfx"));
+    QVERIFY(QDir().mkpath(prefix));
+    QHash<qint64, LaunchHoldProcess> table{
+        {40, {1, QStringLiteral("/usr/bin/foot"), {}, {}, {}}},
+        {50, {1, QStringLiteral("/runtime/wine64-preloader"),
+              {QStringLiteral("C:\\windows\\system32\\explorer.exe")}, {}, prefix}},
+        {51, {1, QStringLiteral("/runtime/wine64-preloader"),
+              {QStringLiteral("Z:\\other\\Game.exe")}, {}, root.filePath(QStringLiteral("elsewhere"))}},
+        {52, {1, QStringLiteral("/runtime/wine64-preloader"),
+              {QStringLiteral("Z:\\chain\\Game.exe")}, {}, prefix}},
+        {60, {1, QStringLiteral("/opt/xodus/xodus-nexus.bin"), {}, {}, {}}}};
+    QMutex tableMutex;
+    LaunchWatch watch(&compositor, [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+      QMutexLocker lock(&tableMutex);
+      if (!table.contains(pid)) return std::nullopt;
+      return table.value(pid);
+    });
+    watch.setPollInterval(10);
+    const QVariantMap game{{"source", "Xodus Nexus"}, {"appId", "43802bcbb9d5e7ea"},
+                           {"title", "Valor Mortis"}, {"launchTarget", prefix}};
+    QSignalSpy shown(&watch, &LaunchWatch::shown);
+    QSignalSpy timedOut(&watch, &LaunchWatch::timedOut);
+
+    // A window open before the launch says nothing; nor do Wine's own windows or another
+    // prefix's.
+    compositor.open({QStringLiteral("0x40"), 40, QStringLiteral("foot"), QStringLiteral("Terminal")});
+    QVERIFY(watch.begin(game));
+    QVERIFY(watch.active());
+    QCOMPARE(watch.title(), QStringLiteral("Valor Mortis"));
+    compositor.open({QStringLiteral("0x50"), 50, QStringLiteral("explorer.exe"), {}});
+    compositor.open({QStringLiteral("0x51"), 51, QStringLiteral("steam_proton"), {}});
+    QTest::qWait(150);
+    QVERIFY(watch.active());
+    QVERIFY(shown.isEmpty());
+    // The game's window ends it.
+    compositor.open({QStringLiteral("0x52"), 52, QStringLiteral("steam_proton"), QStringLiteral("ValorMortis")});
+    QTRY_COMPARE(shown.size(), 1);
+    QVERIFY(!watch.active());
+
+    // So does the launcher showing a window of its own, such as a sign-in.
+    for (const auto& address : {QStringLiteral("0x50"), QStringLiteral("0x51"), QStringLiteral("0x52")})
+      compositor.close(address);
+    QVERIFY(watch.begin(game));
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("xodus-nexus"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(shown.size(), 2);
+
+    // Nothing opening ends it in time, and a cancelled watch says nothing.
+    compositor.close(QStringLiteral("0x60"));
+    watch.setTimeout(100);
+    QVERIFY(watch.begin(game));
+    QTRY_COMPARE(timedOut.size(), 1);
+    QVERIFY(!watch.active());
+    QVERIFY(watch.begin(game));
+    watch.cancel();
+    QVERIFY(!watch.active());
+    QTest::qWait(150);
+    QCOMPARE(shown.size(), 2);
+    QCOMPARE(timedOut.size(), 1);
+
+    // Without a way to list windows nothing could end it, so it does not start.
+    LaunchWatch blind(&m_compositor);
+    QVERIFY(!blind.begin(game));
+    LaunchWatch none(nullptr);
+    QVERIFY(!none.begin(game));
   }
 
   void launchHoldKeepsPublisherLaunchersOfSteamGames() {

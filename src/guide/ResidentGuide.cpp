@@ -126,6 +126,19 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
     for (const auto& value : clients) if (value.toObject().value("pid").toInteger() == session.value("pid").toLongLong()) { result.session = session; break; }
     if (!result.session.isEmpty()) break;
   }
+  // A launcher whose game runs in a prefix of its own, outside the launched process.
+  if (result.session.isEmpty()) {
+    QJsonArray launchers;
+    for (const auto& candidate : published) {
+      const auto session = candidate.toObject();
+      if (!session.value("winePrefix").toString().isEmpty() &&
+          ProcFs::processAlive(session.value("pid").toInteger(), session.value("procStart").toInteger()))
+        launchers.append(session);
+    }
+    if (!launchers.isEmpty())
+      result.session = ResidentGuide::prefixSession(launchers, clients, active.value("pid").toInteger(),
+                                                    &ResidentGuide::readWindowProcess);
+  }
   // A game the recorder found by its process still gets the library's title and art when the
   // library launched that same process; otherwise a PS4 game reads as its title ID.
   if (!result.session.isEmpty() && !result.session.contains("metadata")) for (const auto& candidate : published) {
@@ -403,4 +416,55 @@ void ResidentGuide::refresh() {
     process->setProcessEnvironment(m_environment);
     process->start("hyprctl", {"-j", query});
   }
+}
+
+QVariantMap ResidentGuide::prefixSession(const QJsonArray& published, const QJsonArray& clients,
+                                         qint64 focusedPid, const WindowProcessLookup& lookup) {
+  const auto canonical = [](const QString& path) {
+    const auto resolved = QFileInfo(path).canonicalFilePath();
+    return resolved.isEmpty() ? QDir::cleanPath(path) : resolved;
+  };
+  QList<qint64> pids;
+  for (const auto& value : clients) {
+    const auto pid = value.toObject().value("pid").toInteger();
+    if (pid <= 1 || pids.contains(pid)) continue;
+    if (pid == focusedPid) pids.prepend(pid); else pids.append(pid);
+  }
+  for (const auto pid : std::as_const(pids)) {
+    const auto process = lookup(pid);
+    if (!process || process->winePrefix.isEmpty() ||
+        process->program.startsWith(QStringLiteral("C:\\windows\\"), Qt::CaseInsensitive))
+      continue;
+    const auto prefix = canonical(process->winePrefix);
+    for (const auto& value : published) {
+      const auto launched = value.toObject();
+      const auto launcherPrefix = launched.value("winePrefix").toString();
+      if (launcherPrefix.isEmpty() || canonical(launcherPrefix) != prefix) continue;
+      auto session = launched.toVariantMap();
+      session.insert("launcherPid", session.value("pid"));
+      session.insert("pid", pid);
+      session.insert("procStart", process->procStart);
+      return session;
+    }
+  }
+  return {};
+}
+
+std::optional<ResidentGuide::WindowProcess> ResidentGuide::readWindowProcess(qint64 pid) {
+  const auto base = QStringLiteral("/proc/%1").arg(pid);
+  if (pid <= 1 || QFileInfo(base).ownerId() != uint(::getuid())) return std::nullopt;
+  QFile stat(base + "/stat");
+  if (!stat.open(QIODevice::ReadOnly)) return std::nullopt;
+  const auto raw = stat.readAll();
+  const auto fields = raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ');
+  if (fields.size() < 20) return std::nullopt;
+  WindowProcess process;
+  process.procStart = fields[19].toLongLong();
+  QFile cmdline(base + "/cmdline");
+  if (cmdline.open(QIODevice::ReadOnly)) process.program = QString::fromLocal8Bit(cmdline.read(4096).split('\0').value(0));
+  QFile environment(base + "/environ");
+  if (environment.open(QIODevice::ReadOnly))
+    for (const auto& field : environment.read(1024 * 1024).split('\0'))
+      if (field.startsWith("WINEPREFIX=")) process.winePrefix = QString::fromLocal8Bit(field.mid(11));
+  return process;
 }

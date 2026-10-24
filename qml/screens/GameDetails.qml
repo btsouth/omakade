@@ -136,6 +136,7 @@ Item {
     }
     property bool navigationEnabled: true
     property bool launchBusy: false
+    property string launchBusyText: "OPENING..."
     property string launchMessage: ""
     property bool launchFailed: false
     readonly property bool achievementSourceIsRetroArch: selectedInstallation.source === "RetroArch"
@@ -749,7 +750,7 @@ Item {
                             : gameActions.columns === 2 ? addToQueueButton
                             : gameActions.columns === 4 && root.stopGameAvailable
                                 ? detailManageButton : null
-                        text: root.launchBusy ? "OPENING..." : root.selectedInstallation.installed === false && root.selectedInstallation.source === "Steam"
+                        text: root.launchBusy ? root.launchBusyText : root.selectedInstallation.installed === false && root.selectedInstallation.source === "Steam"
                               ? "INSTALL IN STEAM" : root.selectedInstallation.installed === false && root.selectedInstallation.source === "Heroic"
                               ? "OPEN IN HEROIC" : "PLAY"
                         iconText: root.selectedInstallation.installed === false && root.selectedInstallation.source === "Steam" ? "↓" : "▶"
@@ -1926,7 +1927,7 @@ Item {
             Layout.fillWidth: true
             compact: true
             objectName: "manageButton"
-            visible: root.selectedInstallation.source === "Steam" || root.selectedInstallation.source === "Lutris" || root.selectedInstallation.source === "Heroic" || root.selectedInstallation.source === "GOG" || root.selectedInstallation.source === "Faugus" || root.selectedInstallation.source === "RetroArch" || root.selectedInstallation.source === "PCSX2" || root.selectedInstallation.source === "Ryujinx" || root.selectedInstallation.source === "shadPS4" || root.selectedInstallation.source === "Cemu" || root.selectedInstallation.source === "Dolphin" || root.selectedInstallation.source === "Battle.net"
+            visible: root.selectedInstallation.source === "Steam" || root.selectedInstallation.source === "Lutris" || root.selectedInstallation.source === "Heroic" || root.selectedInstallation.source === "GOG" || root.selectedInstallation.source === "Faugus" || root.selectedInstallation.source === "RetroArch" || root.selectedInstallation.source === "PCSX2" || root.selectedInstallation.source === "Ryujinx" || root.selectedInstallation.source === "shadPS4" || root.selectedInstallation.source === "Cemu" || root.selectedInstallation.source === "Dolphin" || root.selectedInstallation.source === "Battle.net" || root.selectedInstallation.source === "Xodus Nexus"
             text: "MANAGE IN " + (root.selectedInstallation.source || "LAUNCHER").toUpperCase()
             onClicked: detailManage.invoke(root.manageRequested)
         }

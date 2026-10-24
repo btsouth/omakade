@@ -153,6 +153,7 @@ QStringList BackupArchive::settingNames() {
           "heroic_enabled",
           "gog_enabled",
           "faugus_enabled",
+          "xodus_enabled",
           "retroarch_enabled",
           "rpcs3_enabled",
           "ppsspp_enabled",

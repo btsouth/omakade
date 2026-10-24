@@ -66,6 +66,10 @@ public:
   [[nodiscard]] static LaunchCommand heroicCommand(const QString& id, const QString& runner,
                                                    bool flatpak);
   [[nodiscard]] static LaunchCommand faugusCommand(const QString& id, bool flatpak);
+  // Starts an Xodus Nexus game through the shortcut script its profile holds. Without an id
+  // it opens Nexus itself.
+  [[nodiscard]] static LaunchCommand xodusCommand(const QString& profileRoot,
+                                                  const QString& id = {});
   [[nodiscard]] static LaunchCommand retroArchCommand(const QString& contentPath,
                                                       const QString& corePath, bool flatpak);
   [[nodiscard]] static LaunchCommand resolvedCartridgeCommand(const QString& contentPath,
@@ -144,6 +148,7 @@ private:
   bool launchLutris(const QString& id, bool flatpak, bool manageOnly);
   bool launchHeroic(const QString& id, const QString& runner, bool flatpak, bool manageOnly);
   bool launchFaugus(const QString& id, bool flatpak, bool manageOnly);
+  bool launchXodus(const QString& id, bool manageOnly);
   bool launchRetroArch(const QString& contentPath, const QString& corePath, bool flatpak,
                        bool manageOnly, const QString& system = {});
   bool launchPcsx2(const QString& id, bool isElf, bool flatpak, bool manageOnly);

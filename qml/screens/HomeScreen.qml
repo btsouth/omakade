@@ -106,6 +106,7 @@ FocusScope {
     property string focusedIdentity: ""
     property string focusedAction: ""
     property bool launchBusy: false
+    property string launchBusyText: "OPENING..."
     property string notice: ""
     property var menuGame: ({})
     property bool allPlaces: false
@@ -840,7 +841,7 @@ FocusScope {
                                     id: featuredPlay
                                     property string homeIdentity: root.focusKey(root.featured)
                                     objectName: "homeFeaturedPlay"
-                                    text: root.launchBusy ? "OPENING..." : "PLAY"
+                                    text: root.launchBusy ? root.launchBusyText : "PLAY"
                                     primary: true
                                     enabled: !!root.featured.available
                                     Accessible.description: root.launchBusy ? "Launch request in progress" : ""

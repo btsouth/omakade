@@ -58,6 +58,7 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
       {"heroic_games", "CASE WHEN runner='gog-direct' THEN 'GOG' ELSE 'Heroic' END", "app_id",
        "COALESCE(runner, '')"},
       {"faugus_games", "'Faugus'", "game_id", "''"},
+      {"xodus_games", "'Xodus Nexus'", "game_id", "''"},
       {"retroarch_games", "'RetroArch'", "game_id", "''"},
       {"pcsx2_games", "'PCSX2'", "'path:' || path", "COALESCE(serial, '')"},
       {"ryujinx_games", "'Ryujinx'", "game_id", "COALESCE(flatpak_app_id, '')"},

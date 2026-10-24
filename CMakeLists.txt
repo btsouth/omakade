@@ -203,6 +203,8 @@ add_library(omakade_core STATIC
   src/library/BattleNetGameModel.h
   src/library/FaugusGameModel.cpp
   src/library/FaugusGameModel.h
+  src/library/XodusGameModel.cpp
+  src/library/XodusGameModel.h
   src/library/HeroicGameModel.cpp
   src/library/HeroicGameModel.h
   src/library/LutrisGameModel.cpp
@@ -323,6 +325,8 @@ add_library(omakade_core STATIC
   src/sources/heroic/HeroicScanner.h
   src/sources/faugus/FaugusScanner.cpp
   src/sources/faugus/FaugusScanner.h
+  src/sources/xodus/XodusScanner.cpp
+  src/sources/xodus/XodusScanner.h
   src/sources/battlenet/BattleNetScanner.cpp
   src/sources/battlenet/BattleNetScanner.h
   src/gamemode/GameModeController.cpp
@@ -345,6 +349,8 @@ add_library(omakade_core STATIC
   src/gamemode/GameModeSession.h
   src/gamemode/LaunchHold.cpp
   src/gamemode/LaunchHold.h
+  src/gamemode/LaunchWatch.cpp
+  src/gamemode/LaunchWatch.h
   src/gamemode/GameModeShortcut.cpp
   src/gamemode/GameModeShortcut.h
   src/streaming/SunshineIntegration.cpp

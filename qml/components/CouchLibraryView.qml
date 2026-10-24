@@ -21,6 +21,8 @@ FocusScope {
         { label: "EMULATED", value: "Emulated" },
         { label: "STEAM", value: "Steam", enabled: Preferences.steamEnabled },
         { label: "BATTLE.NET", value: "Battle.net", enabled: Preferences.battleNetEnabled },
+        { label: "XODUS NEXUS", value: "Xodus Nexus",
+          enabled: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected },
         { label: "LUTRIS", value: "Lutris", enabled: Preferences.lutrisEnabled },
         { label: "HEROIC", value: "Heroic", enabled: Preferences.heroicEnabled },
         { label: "GOG", value: "GOG", enabled: Preferences.gogEnabled },

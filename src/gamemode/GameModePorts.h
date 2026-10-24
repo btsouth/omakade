@@ -172,6 +172,11 @@ public:
     if (error) *error = QStringLiteral("Held windows cannot be listed.");
     return false;
   }
+  // Every mapped window, on any workspace. False means unknown.
+  virtual bool openWindows(QVector<GameModeHeldWindow>*, QString* error) {
+    if (error) *error = QStringLiteral("Windows cannot be listed.");
+    return false;
+  }
   // Puts a shown window back out of sight with the held ones.
   virtual bool holdWindow(const QString&, QString* error = nullptr) {
     if (error) *error = QStringLiteral("Windows cannot be held.");
