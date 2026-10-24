@@ -13,6 +13,16 @@ Item {
   readonly property color markInk: status.recording ? g.urgentInk : g.accentInk
   width: parent ? parent.width : 0
   implicitHeight: Math.max(chip.height, right.implicitHeight)
+  // Width left for the pad's name: the line less the chip, a gap as wide as the right
+  // side's spacing, the clock and the pad's glyph.
+  readonly property real padRoom: status.width - (chip.visible ? chip.width + right.spacing : 0) -
+    right.spacing - clock.implicitWidth - padGlyph.width - pad.spacing
+
+  TextMetrics {
+    id: fullPad
+    font: padText.font
+    text: status.g.padText
+  }
 
   Rectangle {
     id: chip
@@ -63,9 +73,11 @@ Item {
     spacing: status.g.sized(Style.space(18))
 
     Row {
+      id: pad
       spacing: status.g.sized(Style.space(7))
       anchors.verticalCenter: parent.verticalCenter
       InkGlyph {
+        id: padGlyph
         width: status.g.sized(Style.space(18))
         height: padText.height
         text: status.g.family === "keyboard" ? status.g.icons.keyboard : status.g.icons.gamepad
@@ -76,7 +88,8 @@ Item {
       Text {
         id: padText
         textFormat: Text.PlainText
-        text: status.g.padText
+        // The brand when it fits beside the chip and the clock, else just "Controller".
+        text: fullPad.advanceWidth <= status.padRoom ? status.g.padText : status.g.padShortText
         color: status.g.dim
         font.family: status.g.fontFamily
         font.pixelSize: status.g.sized(Style.font.subtitle)
@@ -84,6 +97,7 @@ Item {
     }
 
     Text {
+      id: clock
       anchors.verticalCenter: parent.verticalCenter
       textFormat: Text.PlainText
       text: status.g.clock

@@ -12,6 +12,8 @@ One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 - **The controller Home button** does what Start does when no game is running, so it no
   longer moves Omakade to the Game Mode display. Over a game it opens the in-game guide,
   now also for a game started while Game Mode is parked. Holding it works as before.
+- **The guide's status row** says "Xbox controller", "PlayStation controller" and
+  "Nintendo controller" instead of "Xbox pad" and the like.
 - **Super + Ctrl + G and Start Game Mode** still use the display and sound output chosen
   in Settings. Those choices stay open to change while
   Game Mode started with F11 is running.
