@@ -1314,7 +1314,7 @@ foreach(shard RANGE 0 2)
   set_tests_properties(omakade_resident_guide_tests_${shard} PROPERTIES TIMEOUT 30)
 endforeach()
 qt_add_executable(omakade_highlight_tests HighlightTests.cpp)
-target_link_libraries(omakade_highlight_tests PRIVATE omakade_tracking Qt6::Test)
+target_link_libraries(omakade_highlight_tests PRIVATE omakade_core omakade_tracking Qt6::Test)
 target_compile_definitions(omakade_highlight_tests PRIVATE
   OMAKADE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 add_test(NAME omakade_highlight_tests COMMAND omakade_highlight_tests)
