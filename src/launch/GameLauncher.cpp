@@ -782,6 +782,10 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
   m_launchIdentity = {{"source", source}, {"appId", id}, {"path", (source == "Manual" || source == "Ports") ? id : installPath}};
+  // Xodus Nexus runs its game in this prefix, outside the process Omakade starts; the
+  // guide finds the game's window by it.
+  if (source == QStringLiteral("Xodus Nexus") && !launchTarget.isEmpty())
+    m_launchIdentity.insert("winePrefix", launchTarget);
   m_lastLaunchedPid = 0;
   const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
