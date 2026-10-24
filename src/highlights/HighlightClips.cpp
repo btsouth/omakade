@@ -16,19 +16,24 @@
 HighlightClips::HighlightClips(const QString& databasePath, QObject* parent)
     : QObject(parent), m_databasePath(databasePath) {}
 
-HighlightClips::~HighlightClips() {
-  if (m_database.isValid()) {
-    m_database.close();
-    m_database = QSqlDatabase();
-    QSqlDatabase::removeDatabase(m_connection);
-  }
+HighlightClips::~HighlightClips() { closeDatabase(); }
+
+void HighlightClips::closeDatabase() {
+  if (m_database.isValid()) m_database.close();
+  m_database = QSqlDatabase();
+  if (!m_connection.isEmpty()) QSqlDatabase::removeDatabase(m_connection);
+  m_connection.clear();
 }
 
 bool HighlightClips::open() {
   if (m_databasePath.isEmpty()) return false;
   if (m_database.isValid() && m_database.isOpen()) return true;
+  // A failed attempt, such as on a busy database, leaves its connection registered.
+  closeDatabase();
   m_connection = QStringLiteral("omakade-clips-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
-  return SessionDatabase::open(m_database, m_databasePath, m_connection);
+  if (SessionDatabase::open(m_database, m_databasePath, m_connection)) return true;
+  closeDatabase();
+  return false;
 }
 
 QVariantList HighlightClips::clipsFor(const QVariantList& installations) {
@@ -48,10 +53,17 @@ QVariantList HighlightClips::clipsFor(const QVariantList& installations) {
   for (const ClipLibrary::Clip& clip : ClipLibrary::forGames(m_database, keys)) {
     const QString image = ClipLibrary::thumbnailPath(clip.path, m_thumbnailRoot);
     const bool ready = QFileInfo(image).size() > 0;
-    if (!ready && !m_thumbnailsPending.contains(clip.path)) {
+    if (!ready && !m_thumbnailsPending.contains(clip.path) &&
+        !m_thumbnailsFailed.contains(clip.path)) {
       m_thumbnailsPending.insert(clip.path);
-      ClipLibrary::makeThumbnail(clip.path, this, [this, path = clip.path](const QString&) {
+      ClipLibrary::makeThumbnail(clip.path, this, [this, path = clip.path](const QString& made) {
         m_thumbnailsPending.remove(path);
+        // Without ffmpeg the answer comes at once, inside this call. A failure changes no
+        // list, and asking again would only fail again.
+        if (made.isEmpty()) {
+          m_thumbnailsFailed.insert(path);
+          return;
+        }
         ++m_revision;
         emit changed();
       }, m_thumbnailRoot);
@@ -103,6 +115,8 @@ bool HighlightClips::moveToTrash(qint64 id) {
 }
 
 void HighlightClips::refresh() {
+  // ffmpeg may have been installed since a still failed.
+  m_thumbnailsFailed.clear();
   ++m_revision;
   emit changed();
 }

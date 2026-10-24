@@ -34,6 +34,8 @@ public:
   ~InGameGuide() override;
   bool opened() const { return m_opened; }
   bool showing() const { return m_opened || m_opening; }
+  // Milliseconds since the guide was summoned, or 0 when no summon is timed.
+  qint64 summonElapsedMs() const { return m_summonClock.isValid() ? m_summonClock.elapsed() : 0; }
   bool gameModeParked() const { return m_context.value("gameModeParked").toBool(); }
   bool available() const { return m_enabled; }
   bool hasGame();

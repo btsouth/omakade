@@ -40,11 +40,14 @@ signals:
 
 private:
   bool open();
+  void closeDatabase();
 
   QString m_databasePath;
   QString m_connection;
   QSqlDatabase m_database;
   QSet<QString> m_thumbnailsPending;
+  // Clips whose still could not be made. They show without one instead of retrying.
+  QSet<QString> m_thumbnailsFailed;
   QString m_thumbnailRoot;
   int m_revision = 0;
 };

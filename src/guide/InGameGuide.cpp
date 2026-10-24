@@ -569,7 +569,7 @@ void InGameGuide::message(const QJsonObject& data) {
       if (event.value("type").toInt() != EV_SYN) m_input.inject(EV_SYN, SYN_REPORT, 0);
     }
   } else if (action == "save-highlight" && m_opened && !m_session.isEmpty() && !m_highlights.isEmpty()) {
-    emit highlightRequested(m_summonClock.isValid() ? m_summonClock.elapsed() : 0);
+    emit highlightRequested(summonElapsedMs());
   } else if (action == "desktop" && m_opened && !m_session.isEmpty() &&
              m_context.value("gameModeActive").toBool()) {
     // Leave the way holding Home does: close the guide, resume the game and let go of

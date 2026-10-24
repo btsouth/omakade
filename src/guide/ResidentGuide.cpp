@@ -332,7 +332,8 @@ QJsonObject ResidentGuide::command(const QJsonObject& data) {
       m_highlights->clip(QStringLiteral("button")); // Says why, in a notification.
       return {{"result", "unavailable"}, {"reason", reason}};
     }
-    m_highlights->clip(QStringLiteral("button"));
+    // A clip asked for while the guide is up ends where the game was when it was summoned.
+    m_highlights->clip(QStringLiteral("button"), {}, {}, m_guide.showing() ? m_guide.summonElapsedMs() : 0);
   }
   else if (action == "shortcut" || action == "toggle") {
     if (m_environment.value("HYPRLAND_INSTANCE_SIGNATURE").isEmpty()) return {{"result", "fallback"}};

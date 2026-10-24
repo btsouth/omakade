@@ -7,7 +7,8 @@ ask for one or unlock a Steam achievement. Nothing is kept until then.
 Turn it on in **Settings → Highlights**. It needs
 [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/), which Omarchy
 installs for its own screen recording, and Omakade's background service
-(`omakade-sessiond`), which Omakade installs and starts.
+(`omakade-sessiond`), which Omakade installs and starts. Clips that end before the guide
+card, and the still images on a game's page, also need `ffmpeg`.
 
 ## Save a clip
 

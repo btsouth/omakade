@@ -1,4 +1,5 @@
 #include "highlights/ClipLibrary.h"
+#include "highlights/HighlightClips.h"
 #include "highlights/HighlightService.h"
 #include "highlights/HighlightSettings.h"
 #include "highlights/ReplayBuffer.h"
@@ -79,6 +80,7 @@ private slots:
   void filingMovesAndRecords();
   void filingKeepsVideoWhenDatabaseRefuses();
   void listingSkipsMissingFiles();
+  void failedStillIsNotRetried();
   void titleForPathNeedsOneAnswer();
   void argumentsDescribeReplayBuffer();
   void bufferSavesThroughIpc();
@@ -228,6 +230,43 @@ void HighlightTests::filingMovesAndRecords() {
   QCOMPARE(ClipLibrary::forGame(database, QStringLiteral("Steam"), QStringLiteral("367520")).size(), 1);
   QVERIFY(ClipLibrary::forGame(database, QStringLiteral("RetroArch"), QStringLiteral("367520")).isEmpty());
   database.close();
+}
+
+void HighlightTests::failedStillIsNotRetried() {
+  const QString base = QFileInfo(m_config).absolutePath();
+  const QString database = base + QStringLiteral("/library.sqlite3");
+  {
+    QSqlDatabase handle;
+    QVERIFY(SessionDatabase::open(handle, database, QStringLiteral("still")));
+    const QString recorded = base + QStringLiteral("/Replay.mp4");
+    QFile file(recorded);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("not a video");
+    file.close();
+    ClipLibrary::Clip clip;
+    clip.source = QStringLiteral("Steam");
+    clip.gameKey = QStringLiteral("367520");
+    clip.title = QStringLiteral("Hollow Knight");
+    clip.createdAt = 1792000000;
+    clip.seconds = 30;
+    clip.trigger = QStringLiteral("button");
+    QVERIFY(ClipLibrary::file(handle, recorded, base + QStringLiteral("/Videos"), clip).id > 0);
+    handle.close();
+  }
+  QSqlDatabase::removeDatabase(QStringLiteral("still"));
+  HighlightClips clips(database);
+  clips.setThumbnailRoot(base + QStringLiteral("/stills"));
+  const QVariantList game{QVariantMap{{QStringLiteral("source"), QStringLiteral("Steam")},
+                                      {QStringLiteral("appId"), QStringLiteral("367520")}}};
+  // The still fails, with or without ffmpeg. That changes no list, so the page is not
+  // asked to read it again, and reading it again does not try again.
+  for (int round = 0; round < 2; ++round) {
+    const QVariantList listed = clips.clipsFor(game);
+    QCOMPARE(listed.size(), 1);
+    QVERIFY(listed.first().toMap().value(QStringLiteral("image")).toString().isEmpty());
+    QTest::qWait(1500);
+    QCOMPARE(clips.revision(), 0);
+  }
 }
 
 void HighlightTests::filingKeepsVideoWhenDatabaseRefuses() {
