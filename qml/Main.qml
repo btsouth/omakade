@@ -108,6 +108,7 @@ ApplicationWindow {
                                             || (KytyLibrary ? KytyLibrary.scanning : false)
                                             || (NativePortLibrary ? NativePortLibrary.scanning : false)
                                             || (BattleNetLibrary ? BattleNetLibrary.scanning : false)
+                                            || (XodusLibrary ? XodusLibrary.scanning : false)
     readonly property int ownedGameCount: SteamAccount
                                           ? SteamAccount.ownedGameCount
                                           : OwnedGameCountOverride
@@ -664,6 +665,7 @@ ApplicationWindow {
         if (NativePortLibrary && Preferences.nativePortsEnabled) NativePortLibrary.refresh()
         if (DolphinLibrary && Preferences.dolphinEnabled) DolphinLibrary.refresh()
         if (BattleNetLibrary && Preferences.battleNetEnabled) BattleNetLibrary.refresh()
+        if (XodusLibrary && Preferences.xodusEnabled) XodusLibrary.refresh()
     }
 
     function focusAboveGrid() {
@@ -2510,6 +2512,8 @@ ApplicationWindow {
                             ? "Dolphin was not found"
                             : root.emptySourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
                             ? "Battle.net was not found"
+                            : root.emptySourceFilter === "Xodus Nexus" && XodusLibrary && !XodusLibrary.xodusDetected
+                            ? "Xodus Nexus was not found"
                             : root.emptySourceFilter === "Lutris" && LutrisLibrary && !LutrisLibrary.lutrisDetected
                             ? "Lutris was not found"
                             : root.emptySourceFilter === "Steam" && SteamLibrary && !SteamLibrary.steamDetected
@@ -2558,12 +2562,14 @@ ApplicationWindow {
                               ? LutrisLibrary.errorText
                               : root.emptySourceFilter === "Battle.net" && BattleNetLibrary && BattleNetLibrary.errorText.length > 0
                               ? BattleNetLibrary.errorText
+                              : root.emptySourceFilter === "Xodus Nexus" && XodusLibrary && XodusLibrary.errorText.length > 0
+                              ? XodusLibrary.errorText
                               : (Library.sourceFilters.length === 0 || Library.sourceFilters.indexOf("Steam") >= 0)
                                 && SteamLibrary && SteamLibrary.errorText.length > 0
                                 ? SteamLibrary.errorText
                                 : Library.mode === 1 ? "Mark games as favorites from their details, or change this view to see more games."
                                 : Library.mode === 2 ? "Games you play appear here when they match this view."
-                                : "Install a game in Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, shadPS4, Cemu, melonDS, Dolphin, or Battle.net, then rescan your library."
+                                : "Install a game in Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, shadPS4, Cemu, melonDS, Dolphin, Battle.net, or Xodus Nexus, then rescan your library."
                 onGameActivated: index => root.openGame(index)
                 onFavoriteToggled: index => Library.toggleFavorite(index)
                 onCoverRequested: function(source, appId) {
@@ -3282,6 +3288,23 @@ ApplicationWindow {
                 }
                 onSecondaryClicked: {
                     Library.toggleSource("Battle.net")
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+            }
+            GlassButton {
+                id: xodusSourceButton
+                objectName: "xodusSourceButton"
+                text: "XODUS NEXUS"
+                compact: true
+                visible: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected
+                property string sourceName: "Xodus Nexus"
+                selected: Library.sourceFilters.indexOf("Xodus Nexus") >= 0
+                onClicked: {
+                    Library.sourceFilters = ["Xodus Nexus"]
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+                onSecondaryClicked: {
+                    Library.toggleSource("Xodus Nexus")
                     libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                 }
             }

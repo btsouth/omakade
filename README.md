@@ -7,7 +7,8 @@
 
 Omakade brings your Linux games into one library that follows your Omarchy theme.
 Browse, organize, and launch games from Steam, Heroic, Lutris, Faugus, Battle.net,
-GOG, and supported emulators with a keyboard, mouse, or controller.
+GOG, Microsoft Store and PC Game Pass (through Xodus Nexus), and supported emulators
+with a keyboard, mouse, or controller.
 
 [![Omakade library](docs/assets/library-preview.webp)](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
 

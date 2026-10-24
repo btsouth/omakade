@@ -169,6 +169,16 @@ private slots:
     QCOMPARE(battleNetIdentity.winePrefixes,
              QStringList{QStringLiteral("/home/user/.local/share/bottles/bottles/battlenet")});
 
+    // So does an Xodus Nexus row.
+    QVariantMap xodus = row(QStringLiteral("Xodus Nexus"), QStringLiteral("43802bcbb9d5e7ea"),
+                            QStringLiteral("Valor Mortis"));
+    const QString xodusPrefix =
+        QStringLiteral("/home/user/.local/share/xodus-nexus/compatdata/43802bcbb9d5e7ea/pfx");
+    xodus.insert(QStringLiteral("launchTarget"), xodusPrefix);
+    const GameStop::GameIdentity xodusIdentity = GameStopService::identityFor(xodus);
+    QCOMPARE(xodusIdentity.winePrefixes, QStringList{xodusPrefix});
+    QVERIFY(xodusIdentity.flatpakAppId.isEmpty());
+
     // An emulator row's content path is what a session is matched on.
     QVariantMap retroArch = row(QStringLiteral("RetroArch"), QStringLiteral("snes"),
                                 QStringLiteral("Chrono Trigger"));

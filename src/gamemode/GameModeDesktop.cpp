@@ -669,7 +669,8 @@ bool HyprlandGameModeCompositor::gameWindows(const QString& workspace, qint64 ow
       const QString comm = process.comm.toLower();
       const QStringList launchers{
           "steam",     "steamwebhelper", "heroic",       "lutris",       "faugus-launcher",
-          "legendary", "battle.net.exe", "explorer.exe", "services.exe", "wineserver"};
+          "legendary", "battle.net.exe", "explorer.exe", "services.exe", "wineserver",
+          "xodus-nexus", "xodus-cli"};
       if (launchers.contains(comm) || launchers.contains(executable))
         break;
       const GameModeProcess identity{pid, process.procStart, process.steamAppId, process.winePrefix,

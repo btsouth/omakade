@@ -157,7 +157,8 @@ bool restoreDatabase(QSqlDatabase& database, const QString& artworkDirectory,
                                  QStringLiteral("ryujinx_games"), QStringLiteral("battlenet_games"),
                                  QStringLiteral("dolphin_games"), QStringLiteral("cemu_games"),
                                  QStringLiteral("xenia_games"), QStringLiteral("shadps4_games"),
-                                 QStringLiteral("kyty_games"), QStringLiteral("native_port_games")})
+                                 QStringLiteral("kyty_games"), QStringLiteral("native_port_games"),
+                                 QStringLiteral("xodus_games")})
       if (tables.contains(table) && !query.exec("UPDATE " + table + " SET favorite=0, hidden=0"))
         return fail("Could not reset legacy personal flags.");
     // Replacing play history replaces the database's durable-recovery identity too, so a

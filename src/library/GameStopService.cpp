@@ -116,9 +116,10 @@ GameStop::GameIdentity GameStopService::identityFor(const QVariantMap& game) {
         identity.gamePaths.append(candidate);
       }
     }
-  } else if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
-    // For a Battle.net row the launch target is the Wine prefix, which is the
-    // rung that answers the reported complaint.
+  } else if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0 ||
+             source.compare(QStringLiteral("Xodus Nexus"), Qt::CaseInsensitive) == 0) {
+    // For Battle.net and Xodus Nexus rows the launch target is the Wine prefix, which is
+    // the rung that answers the reported complaint.
     if (!launchTarget.isEmpty()) {
       identity.winePrefixes.append(launchTarget);
     }

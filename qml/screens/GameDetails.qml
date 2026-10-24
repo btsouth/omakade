@@ -1926,7 +1926,7 @@ Item {
             Layout.fillWidth: true
             compact: true
             objectName: "manageButton"
-            visible: root.selectedInstallation.source === "Steam" || root.selectedInstallation.source === "Lutris" || root.selectedInstallation.source === "Heroic" || root.selectedInstallation.source === "GOG" || root.selectedInstallation.source === "Faugus" || root.selectedInstallation.source === "RetroArch" || root.selectedInstallation.source === "PCSX2" || root.selectedInstallation.source === "Ryujinx" || root.selectedInstallation.source === "shadPS4" || root.selectedInstallation.source === "Cemu" || root.selectedInstallation.source === "Dolphin" || root.selectedInstallation.source === "Battle.net"
+            visible: root.selectedInstallation.source === "Steam" || root.selectedInstallation.source === "Lutris" || root.selectedInstallation.source === "Heroic" || root.selectedInstallation.source === "GOG" || root.selectedInstallation.source === "Faugus" || root.selectedInstallation.source === "RetroArch" || root.selectedInstallation.source === "PCSX2" || root.selectedInstallation.source === "Ryujinx" || root.selectedInstallation.source === "shadPS4" || root.selectedInstallation.source === "Cemu" || root.selectedInstallation.source === "Dolphin" || root.selectedInstallation.source === "Battle.net" || root.selectedInstallation.source === "Xodus Nexus"
             text: "MANAGE IN " + (root.selectedInstallation.source || "LAUNCHER").toUpperCase()
             onClicked: detailManage.invoke(root.manageRequested)
         }
