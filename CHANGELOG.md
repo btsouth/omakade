@@ -14,6 +14,16 @@ Game Pass games, highlight clips and one Game Mode.
   window opens, and Game Mode's Starting screen recognizes the game by its prefix.
 - The in-game guide opens over Xodus games.
 - Play time is recorded for Xodus games and shows on their page and in Recent.
+- Xbox achievements show on an Xodus game's page, on its library card and in the in-game
+  guide. Nexus's own backend reads them from the Microsoft account it is signed in to;
+  Omakade only caches what it reports.
+
+### IGDB
+
+- Critic scores and play time estimates from IGDB show for every game matched to IGDB,
+  not only Steam games.
+- The in-game guide lists RetroAchievements for RetroArch games, as it already did Steam
+  achievements.
 
 ### Highlights
 
@@ -27,8 +37,8 @@ Save the last moments of a game. See [Highlights](docs/HIGHLIGHTS.md).
 - The **Share** button on Xbox Series controllers and the **Capture** button on Nintendo
   controllers save a clip while the controller Home button is on.
 - **Steam achievement clips** save the moment an achievement unlocks, named after it.
-- Clips are saved in Videos/Omakade, one folder per game, and listed on each game's page,
-  where they play and move to the trash.
+- Clips are saved in Videos/Omakade, one folder per game, and listed on each game's page
+  as thumbnail cards, where they play and move to the trash.
 - The guide's Save N s tile for an outside replay buffer leaves Omakade's own buffer to the
   Clip tile.
 
