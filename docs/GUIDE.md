@@ -42,6 +42,14 @@ Battle.net games come from the Battle.net Agent database inside a Wine, Proton,
 or Bottles prefix. Omakade launches each title through that prefix's Battle.net
 client. Wine, umu-launcher, or Bottles must be installed to play.
 
+Microsoft Store and PC Game Pass games come from
+[Xodus Nexus](https://github.com/domsvoboda/xodus-nexus). Omakade lists the games
+Nexus shows as ready to play, with posters and banners from the Microsoft Store, and
+starts them through Nexus's own shortcut, so sign-in, licences and the runtime stay with
+Nexus. Open Nexus once after installing or updating it so that shortcut exists. Whether
+a game runs, and online play for games with anti-cheat, depends on Nexus; see its
+compatibility list.
+
 ## Consoles and emulators
 
 Emulated games can sit behind one console card per system (Super Nintendo,

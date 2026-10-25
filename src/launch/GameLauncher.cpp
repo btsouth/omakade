@@ -1,4 +1,5 @@
 #include "launch/GameLauncher.h"
+#include "sources/xodus/XodusScanner.h"
 #include "launch/RetroArchHome.h"
 #include "saves/SaveBackups.h"
 #include "library/ManualGameModel.h"
@@ -489,6 +490,18 @@ LaunchCommand GameLauncher::faugusCommand(const QString& id, bool flatpak) {
                              {QStringLiteral("--game"), id}};
 }
 
+LaunchCommand GameLauncher::xodusCommand(const QString& profileRoot, const QString& id) {
+  const bool game = !id.isNull();
+  if (game && !XodusScanner::validGameId(id)) {
+    return {};
+  }
+  const QString script = XodusScanner::launchScript(profileRoot, game);
+  if (script.isEmpty()) {
+    return {};
+  }
+  return game ? LaunchCommand{script, {id}} : LaunchCommand{script, {}};
+}
+
 LaunchCommand GameLauncher::retroArchCommand(const QString& contentPath, const QString& corePath,
                                              bool flatpak) {
   if (contentPath.trimmed().isEmpty() || corePath.trimmed().isEmpty() ||
@@ -769,6 +782,10 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
                           const QString& runner, const QString& installPath,
                           const QString& launchTarget, const QString& system) {
   m_launchIdentity = {{"source", source}, {"appId", id}, {"path", (source == "Manual" || source == "Ports") ? id : installPath}};
+  // Xodus Nexus runs its game in this prefix, outside the process Omakade starts; the
+  // guide finds the game's window by it.
+  if (source == QStringLiteral("Xodus Nexus") && !launchTarget.isEmpty())
+    m_launchIdentity.insert("winePrefix", launchTarget);
   m_lastLaunchedPid = 0;
   const auto clearIdentity = qScopeGuard([this] { m_launchIdentity.clear(); });
   if (QStringList{"RetroArch","PCSX2","RPCS3","PPSSPP","Ryujinx","Cemu","melonDS","Dolphin","shadPS4","RomM"}
@@ -846,6 +863,9 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Faugus"), Qt::CaseInsensitive) == 0) {
     return launchFaugus(id, flatpak, false);
+  }
+  if (source.compare(QStringLiteral("Xodus Nexus"), Qt::CaseInsensitive) == 0) {
+    return launchXodus(id, false);
   }
   if (source.compare(QStringLiteral("RetroArch"), Qt::CaseInsensitive) == 0) {
     return launchRetroArch(installPath, launchTarget, flatpak, false, system);
@@ -930,6 +950,9 @@ bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Faugus"), Qt::CaseInsensitive) == 0) {
     return launchFaugus(id, flatpak, true);
+  }
+  if (source.compare(QStringLiteral("Xodus Nexus"), Qt::CaseInsensitive) == 0) {
+    return launchXodus(id, true);
   }
   if (source.compare(QStringLiteral("RetroArch"), Qt::CaseInsensitive) == 0) {
     return launchRetroArch({}, {}, flatpak, true);
@@ -1126,6 +1149,29 @@ bool GameLauncher::launchFaugus(const QString& id, bool flatpak, bool manageOnly
   }
   if (!startCommand(command, !manageOnly)) {
     setError(QStringLiteral("Faugus could not be started. Open Faugus and try again."));
+    return false;
+  }
+  setError({});
+  return true;
+}
+
+bool GameLauncher::launchXodus(const QString& id, bool manageOnly) {
+  if (!manageOnly && !XodusScanner::validGameId(id)) {
+    setError(QStringLiteral("This game has an invalid Xodus Nexus ID."));
+    return false;
+  }
+  // Nexus keeps one profile, in the same place the library scan reads.
+  const QString profileRoot = XodusScanner::discoverRoots().value(0);
+  const LaunchCommand command =
+      manageOnly ? xodusCommand(profileRoot) : xodusCommand(profileRoot, id);
+  if (!command.isValid()) {
+    // Nexus writes its shortcut scripts each time it starts from its AppImage.
+    setError(
+        QStringLiteral("Open Xodus Nexus once so Omakade can start its games, then try again."));
+    return false;
+  }
+  if (!startCommand(command, !manageOnly)) {
+    setError(QStringLiteral("Xodus Nexus could not be started. Open Xodus Nexus and try again."));
     return false;
   }
   setError({});

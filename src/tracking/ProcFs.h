@@ -17,6 +17,7 @@ struct ProcessSnapshot {
   // be read. A Wine process reports the wine loader here, not the Windows
   // executable it runs, so this catches native games and launchers.
   QString exePath;
+  // Read for every Windows program, and for any process with scopes included.
   QString winePrefix;
   QString flatpakAppId;
   // Steam's exact app identity, read from the process environment when present.
@@ -24,6 +25,11 @@ struct ProcessSnapshot {
 };
 
 namespace ProcFs {
+
+// True for a command line Wine reports for a Windows program, such as
+// "Z:\games\Game.exe". Wine's loader, wineserver and shell wrappers run under a
+// Unix path instead.
+[[nodiscard]] bool isWindowsProgram(const QString& argument);
 
 // Lists user-space processes. Kernel threads have an empty cmdline and are skipped.
 [[nodiscard]] QVector<ProcessSnapshot> listProcesses(bool includeScopes = false);

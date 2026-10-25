@@ -21,6 +21,7 @@
 #include <QJsonObject>
 #include <QLockFile>
 #include <QRegularExpression>
+#include <QSqlQuery>
 #include <QStandardPaths>
 #include <QTimer>
 #include <memory>
@@ -189,6 +190,27 @@ int main(int argc, char* argv[]) {
   std::vector<std::unique_ptr<AttributionAdapter::Adapter>> attribution;
   attribution.push_back(AttributionAdapter::dolphinTimePlayed());
   attribution.push_back(AttributionAdapter::pcsx2Emulog());
+  // Xodus Nexus games run in a prefix each, which the library records beside the install
+  // folder that their history is kept under. The table is small and read fresh each poll,
+  // so a game installed after the daemon started is recorded too.
+  const auto xodusGames = [&database] {
+    QHash<QString, QString> games;
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral("SELECT wine_prefix, install_path FROM xodus_games "
+                                   "WHERE wine_prefix <> '' AND install_path <> ''")))
+      return games;
+    while (query.next()) {
+      const QString prefix = query.value(0).toString();
+      const QString canonical = QFileInfo(prefix).canonicalFilePath();
+      games.insert(canonical.isEmpty() ? QDir::cleanPath(prefix) : canonical,
+                   query.value(1).toString());
+    }
+    return games;
+  };
+  const auto xodusMatches = [&](const QVector<ProcessSnapshot>& processes) {
+    return ProcessMatcher::matchWinePrefixes(processes, xodusGames(),
+                                             QStringLiteral("Xodus Nexus"));
+  };
   const auto pollOnce = [&] {
     Poll result;
     // The index the adapter resolves identities through has to stay current whether or not a
@@ -231,6 +253,7 @@ int main(int argc, char* argv[]) {
     if (!indexed || !compositor) {
       result.matches =
           ProcessMatcher::matchWithAttribution(processes, profiles, {}, {}, attribute);
+      result.matches += xodusMatches(processes);
       return result;
     }
     result.matches = ProcessMatcher::matchWithAttribution(
@@ -240,6 +263,7 @@ int main(int argc, char* argv[]) {
           return titleIndex.pathForWindowTitle(title, emulator);
         },
         attribute);
+    result.matches += xodusMatches(processes);
     // The snapshot is copied into the predicate, so the answer describes the poll
     // that produced these matches rather than a later moment.
     result.unfocused = [windows](qint64 pid) {
@@ -248,8 +272,12 @@ int main(int argc, char* argv[]) {
     return result;
   };
   const qint64 nowWall = QDateTime::currentSecsSinceEpoch();
-  if (toggle.load()) recorder.recover(ProcFs::listProcesses(), profiles, nowWall);
-  else recorder.endAll(nowWall);
+  if (toggle.load()) {
+    const QVector<ProcessSnapshot> processes = ProcFs::listProcesses();
+    recorder.recover(processes, profiles, nowWall, xodusMatches(processes));
+  } else {
+    recorder.endAll(nowWall);
+  }
 
   // Discord Rich Presence, when it is switched on and an application id is
   // configured. The client is rebuilt when the application id changes, because the

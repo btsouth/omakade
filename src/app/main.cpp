@@ -18,6 +18,7 @@
 #include "launch/PlayRequest.h"
 #include "launch/SteamLauncher.h"
 #include "library/BattleNetGameModel.h"
+#include "library/XodusGameModel.h"
 #include "library/CemuGameModel.h"
 #include "library/RommGameModel.h"
 #include "saves/SaveProtection.h"
@@ -60,6 +61,7 @@
 #include "guide/GuideClient.h"
 #include "gamemode/GameModeSession.h"
 #include "gamemode/LaunchHold.h"
+#include "gamemode/LaunchWatch.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
 #include "highlights/HighlightClips.h"
@@ -1054,6 +1056,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<LauncherGameModel> nativePortGames;
   std::unique_ptr<DolphinGameModel> dolphinGames;
   std::unique_ptr<BattleNetGameModel> battleNetGames;
+  std::unique_ptr<XodusGameModel> xodusGames;
   std::unique_ptr<PlaySessionStore> playSessionStore;
   std::unique_ptr<ConsolePortalModel> consolePortals;
   SteamGameModel* steamLibrary = nullptr;
@@ -1073,6 +1076,7 @@ int main(int argc, char* argv[]) {
   LauncherGameModel* nativePortLibrary = nullptr;
   DolphinGameModel* dolphinLibrary = nullptr;
   BattleNetGameModel* battleNetLibrary = nullptr;
+  XodusGameModel* xodusLibrary = nullptr;
   const bool sourceRescanFixture = renderMode && renderOverlay == "source-rescan";
   auto kytyRefreshes = std::make_shared<std::atomic<int>>(0);
   auto portRefreshes = std::make_shared<std::atomic<int>>(0);
@@ -1223,6 +1227,9 @@ int main(int argc, char* argv[]) {
     battleNetGames =
         std::make_unique<BattleNetGameModel>(steamLibrary->databasePath(), &preferences);
     battleNetLibrary = battleNetGames.get();
+    xodusGames = std::make_unique<XodusGameModel>(steamLibrary->databasePath(), &preferences,
+                                                  playSessionStore.get());
+    xodusLibrary = xodusGames.get();
     consolePortals = std::make_unique<ConsolePortalModel>();
     consolePortals->addRomModel(retroArchGames.get());
     consolePortals->addRomModel(dolphinGames.get());
@@ -1421,6 +1428,9 @@ int main(int argc, char* argv[]) {
   if (dolphinGames != nullptr) {
     unifiedGames.addSourceModel(dolphinGames.get());
   }
+  if (xodusGames != nullptr) {
+    unifiedGames.addSourceModel(xodusGames.get());
+  }
   if (battleNetGames != nullptr) {
     unifiedGames.addSourceModel(battleNetGames.get());
   }
@@ -1447,6 +1457,7 @@ int main(int argc, char* argv[]) {
     unifiedGames.setSourceEnabled(QStringLiteral("Ports"), preferences.nativePortsEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), preferences.dolphinEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Battle.net"), preferences.battleNetEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Xodus Nexus"), preferences.xodusEnabled());
   };
   applySourcePreferences();
   QObject::connect(&preferences, &AppSettings::sourcesChanged, &unifiedGames,
@@ -1586,6 +1597,10 @@ int main(int argc, char* argv[]) {
       } else if (key.source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0 &&
                  battleNetLibrary != nullptr && preferences.battleNetEnabled()) {
         battleNetLibrary->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("Xodus Nexus"), Qt::CaseInsensitive) == 0 &&
+                 xodusLibrary != nullptr && preferences.xodusEnabled()) {
+        xodusLibrary->refresh();
         refreshStarted = true;
       }
       if (refreshStarted) {
@@ -1993,6 +2008,7 @@ int main(int argc, char* argv[]) {
                         : isolatedTest ? nullptr
                                        : &gameModeCompositor,
                         GameModeController::workspace());
+  LaunchWatch launchWatch(gameModeTest || isolatedTest ? nullptr : &gameModeCompositor);
   // Omarchy keeps personal key bindings in this file and provides the `o.bind` helper the
   // Game Mode binding is written with.
   const QString omarchyPath = qEnvironmentVariable("OMARCHY_PATH");
@@ -2121,6 +2137,7 @@ int main(int argc, char* argv[]) {
   }
   engine.rootContext()->setContextProperty(QStringLiteral("DolphinLibrary"), dolphinLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("BattleNetLibrary"), battleNetLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("XodusLibrary"), xodusLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Launcher"), &launcher);
   engine.rootContext()->setContextProperty(QStringLiteral("SaveProtection"), &saveProtection);
   engine.rootContext()->setContextProperty(QStringLiteral("LibraryRepair"), &libraryRepair);
@@ -2299,6 +2316,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("Sunshine"), sunshine.get());
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
+  engine.rootContext()->setContextProperty(QStringLiteral("LaunchWatch"), &launchWatch);
   // The game a launching render shows, and the windows it holds, from
   // --render-game-info-file when one is given.
   QVariantMap launchingPreview;
@@ -7822,6 +7840,9 @@ int main(int argc, char* argv[]) {
   }
   if (battleNetLibrary != nullptr && preferences.battleNetEnabled()) {
     scheduleStartupScan(750, battleNetLibrary, &BattleNetGameModel::refresh);
+  }
+  if (xodusLibrary != nullptr && preferences.xodusEnabled()) {
+    scheduleStartupScan(755, xodusLibrary, &XodusGameModel::refresh);
   }
   if (kytyLibrary != nullptr && (preferences.kytyEnabled() || preferences.kytyAutoEnabled())) {
     scheduleStartupScan(760, kytyLibrary, &LauncherGameModel::refresh);

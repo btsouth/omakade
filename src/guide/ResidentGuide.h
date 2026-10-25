@@ -5,8 +5,11 @@
 #include <QJsonArray>
 #include <QElapsedTimer>
 #include <QTimer>
+#include <QVariantMap>
 #include <atomic>
+#include <functional>
 #include <memory>
+#include <optional>
 
 // Constructed inside sessiond's dedicated guide thread. No library, GUI or QML engine.
 class ResidentGuide final : public QObject {
@@ -14,6 +17,22 @@ class ResidentGuide final : public QObject {
 public:
   explicit ResidentGuide(QObject* parent = nullptr);
   void refresh();
+
+  // What the guide reads of a window's process: its start time, the program Wine shows
+  // it running and its Wine prefix. Nothing else of its environment.
+  struct WindowProcess {
+    qint64 procStart = -1;
+    QString program;
+    QString winePrefix;
+  };
+  using WindowProcessLookup = std::function<std::optional<WindowProcess>(qint64 pid)>;
+  // Xodus Nexus starts a game outside the process Omakade launched, in a Wine prefix of the
+  // game's own. A published session carrying that prefix is the game whose window runs in
+  // it, the focused one first; Wine's own programs are never the game. Returns the session
+  // with the game's process in place of the launcher's, or an empty map.
+  [[nodiscard]] static QVariantMap prefixSession(const QJsonArray& published, const QJsonArray& clients,
+                                                 qint64 focusedPid, const WindowProcessLookup& lookup);
+  [[nodiscard]] static std::optional<WindowProcess> readWindowProcess(qint64 pid);
 signals:
   void snapshotReady();
 private:

@@ -232,7 +232,10 @@ void PlaySessionStore::refreshNowPlaying() {
           {QStringLiteral("startedAt"), session.startedAt},
           {QStringLiteral("elapsedSeconds"), session.seconds + sinceFlush},
           {QStringLiteral("stopping"), stopping},
-          {QStringLiteral("stoppable"), !titled},
+          // An Xodus Nexus session records one process of the game's prefix, which can
+          // be a bootstrap the game outlives. The library and the guide stop it whole.
+          {QStringLiteral("stoppable"),
+           !titled && session.source != QStringLiteral("Xodus Nexus")},
           {QStringLiteral("forceReady"),
            stopping && pending->deadline > 0 && m_stopClock.elapsed() >= pending->deadline},
       });

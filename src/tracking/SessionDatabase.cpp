@@ -351,6 +351,16 @@ bool updateProgress(QSqlDatabase& database, qint64 id, qint64 seconds, qint64 he
   return query.exec() && query.numRowsAffected() == 1;
 }
 
+bool moveSession(QSqlDatabase& database, qint64 id, qint64 pid, qint64 procStart) {
+  QSqlQuery query(database);
+  query.prepare(QStringLiteral(
+      "UPDATE play_sessions SET pid = ?, proc_start = ? WHERE id = ? AND ended_at = 0"));
+  query.addBindValue(pid);
+  query.addBindValue(procStart);
+  query.addBindValue(id);
+  return query.exec() && query.numRowsAffected() == 1;
+}
+
 bool endSession(QSqlDatabase& database, qint64 id, qint64 endedAt, qint64 seconds) {
   QSqlQuery query(database);
   query.prepare(QStringLiteral("UPDATE play_sessions SET ended_at = ?, seconds = ? WHERE id = ?"));

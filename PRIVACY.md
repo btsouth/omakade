@@ -9,8 +9,10 @@ Omakade reads Steam library manifests, artwork caches, playtime, recent-play
 state, and achievement caches. It also reads installed-game manifests and
 cached artwork from Lutris and Heroic, Heroic's sideloaded game list and play
 timestamps, configured playlists, thumbnails, and runtime logs from RetroArch,
-and Battle.net Agent product databases plus last-played stamps inside Wine,
-Proton, and Bottles prefixes. It also reads configured emulator paths and game metadata from PCSX2,
+Battle.net Agent product databases plus last-played stamps inside Wine,
+Proton, and Bottles prefixes, and the game list in Xodus Nexus's
+`launcher-state.json` (titles, install folders and saved covers; never its sign-in
+tokens). It also reads configured emulator paths and game metadata from PCSX2,
 Ryujinx, Cemu, shadPS4, and Dolphin. Switch title/icon extraction reads installed
 Ryujinx keys locally; those keys and game files are not uploaded. It never writes
 into source launcher directories during discovery or backup creation. A
@@ -159,7 +161,9 @@ When a Steam game is detected, the in-game guide may download missing wide hero 
 
 Omakade may request missing covers and achievement icons from Steam's public
 HTTPS artwork hosts, missing Battle.net covers and banners from Lutris's
-public game-art URLs, and missing RetroArch box art from Libretro's public
+public game-art URLs, Xodus Nexus game posters and banners from Microsoft's public
+store catalog (`displaycatalog.mp.microsoft.com`, sending only the games' store IDs)
+and its image host (`store-images.s-microsoft.com`), and missing RetroArch box art from Libretro's public
 thumbnail CDN (`thumbnails.libretro.com`). Missing Dolphin covers may be requested
 from GameTDB (`art.gametdb.com`) using the disc's game ID. Libretro requests send a
 playlist name and game label in the URL. They do not upload ROMs or hashes.

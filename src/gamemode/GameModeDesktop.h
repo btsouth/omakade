@@ -43,6 +43,7 @@ public:
   bool setLaunchHold(const QString& workspace, QString* error = nullptr) override;
   bool setSteamHold(const QString& workspace, QString* error = nullptr) override;
   bool heldWindows(QVector<GameModeHeldWindow>* windows, QString* error) override;
+  bool openWindows(QVector<GameModeHeldWindow>* windows, QString* error) override;
   bool releaseWindow(const QString& address, const QString& workspace,
                      QString* error = nullptr) override;
   bool holdWindow(const QString& address, QString* error = nullptr) override;
@@ -89,6 +90,8 @@ public:
   [[nodiscard]] static QString launchHoldScript(const QString& workspace);
   [[nodiscard]] static QString steamHoldScript(const QString& workspace);
   [[nodiscard]] static QVector<GameModeHeldWindow> parseHeldWindows(const QByteArray& clientsJson);
+  // Every mapped window, wherever it is.
+  [[nodiscard]] static QVector<GameModeHeldWindow> parseOpenWindows(const QByteArray& clientsJson);
   [[nodiscard]] static QString presentScript(const QString& address, const QString& workspace,
                                              int width, int height);
 

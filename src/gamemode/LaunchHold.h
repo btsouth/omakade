@@ -22,6 +22,9 @@ struct LaunchHoldTarget {
   // itself; a launcher such as Heroic or Lutris shows its own windows from it.
   qint64 pid = 0;
   bool directProcess = false;
+  // A prefix only this game runs in, as Xodus Nexus gives each game. Any program in it
+  // is the game, wherever it runs from.
+  QString winePrefix;
 };
 
 struct LaunchHoldProcess {
@@ -62,8 +65,8 @@ public:
   void setPollInterval(int milliseconds) { m_poll.setInterval(milliseconds); }
   void setTimeout(int milliseconds) { m_timeout.setInterval(milliseconds); }
 
-  // Starts holding before the game is launched. `game` carries title, source, appId and
-  // installPath from the library. False when the compositor cannot hold windows.
+  // Starts holding before the game is launched. `game` carries title, source, appId,
+  // installPath and launchTarget from the library. False when the compositor cannot hold windows.
   Q_INVOKABLE bool begin(const QVariantMap& game);
   // The process the launch started, once it is known.
   Q_INVOKABLE void launched(qint64 pid);

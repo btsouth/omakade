@@ -51,6 +51,13 @@ One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 - Link game details to known ports you have not installed, including their Linux availability.
 - Propose monthly catalog updates through a reviewable pull request.
 
+### Xodus Nexus
+
+- Added Xodus Nexus as a library source, so Microsoft Store and PC Game Pass games
+  installed through Nexus appear with their covers and banners and launch from Omakade,
+  including from Game Mode. Omakade starts them through Nexus's own shortcut and can stop
+  them through their Wine prefix.
+
 ## 1.17.0
 
 Game Mode keeps launchers out of the way while a game starts.

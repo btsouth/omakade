@@ -130,6 +130,7 @@ QJsonObject AppSettings::backupSettings() const {
           {"heroic_enabled", m_heroicEnabled},
           {"gog_enabled", m_gogEnabled},
           {"faugus_enabled", m_faugusEnabled},
+          {"xodus_enabled", m_xodusEnabled},
           {"retroarch_enabled", m_retroArchEnabled},
           {"rpcs3_enabled", m_rpcs3Enabled},
           {"ppsspp_enabled", m_ppssppEnabled},
@@ -183,6 +184,7 @@ void AppSettings::assignBackupSettings(const QJsonObject& settings) {
   m_heroicEnabled = settings.value("heroic_enabled").toBool();
   m_gogEnabled = settings.value("gog_enabled").toBool();
   m_faugusEnabled = settings.value("faugus_enabled").toBool();
+  m_xodusEnabled = settings.value("xodus_enabled").toBool();
   m_retroArchEnabled = settings.value("retroarch_enabled").toBool();
   m_rpcs3Enabled = settings.value("rpcs3_enabled").toBool();
   m_ppssppEnabled = settings.value("ppsspp_enabled").toBool();
@@ -223,7 +225,8 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
                    "console_portals_enabled", "expand_consoles",
                    "prefer_standalone_emulators", "track_play_sessions", "cover_size",
                    "couch_cover_size", "console_expand_limit", "rom_folders", "console_layouts",
-                   "pause_unfocused_sessions", "discord_presence", "stats_period"})
+                   "pause_unfocused_sessions", "discord_presence", "stats_period",
+                   "xodus_enabled"})
     if (!settings.contains(key))
       merged.insert(key, before.value(key));
   for (auto value = settings.begin(); value != settings.end(); ++value) merged.insert(value.key(), value.value());
@@ -428,6 +431,17 @@ void AppSettings::setPcsx2Enabled(bool value) {
     return;
   }
   m_pcsx2Enabled = value;
+  save();
+  emit sourcesChanged();
+}
+
+bool AppSettings::xodusEnabled() const { return m_xodusEnabled; }
+
+void AppSettings::setXodusEnabled(bool value) {
+  if (m_xodusEnabled == value) {
+    return;
+  }
+  m_xodusEnabled = value;
   save();
   emit sourcesChanged();
 }
@@ -1071,6 +1085,7 @@ void AppSettings::load() {
     m_romFolders = romFoldersMatch.captured(1).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
   }
   m_battleNetEnabled = readEnabled(QStringLiteral("battlenet_enabled"), true);
+  m_xodusEnabled = readEnabled(QStringLiteral("xodus_enabled"), true);
   m_rommEnabled = readEnabled(QStringLiteral("romm_enabled"), false);
   m_protonDbEnabled = readEnabled(QStringLiteral("protondb_enabled"), false);
   m_protonDbBadges = readEnabled(QStringLiteral("protondb_badges"), false);
@@ -1152,7 +1167,7 @@ bool AppSettings::save() {
                      "igdb_client_id = \"%4\"\nretroachievements_username = \"%5\"\n"
                      "steam_enabled = %6\nlutris_enabled = %7\nheroic_enabled = %8\n"
                      "gog_enabled = %9\nfaugus_enabled = %10\nretroarch_enabled = %11\n"
-                     "battlenet_enabled = %12\n")
+                     "battlenet_enabled = %12\nxodus_enabled = %13\n")
           .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_artworkCacheLimitMb)
           .arg(m_steamId)
@@ -1164,7 +1179,8 @@ bool AppSettings::save() {
           .arg(m_gogEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_faugusEnabled ? QStringLiteral("true") : QStringLiteral("false"))
           .arg(m_retroArchEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-          .arg(m_battleNetEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+          .arg(m_battleNetEnabled ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_xodusEnabled ? QStringLiteral("true") : QStringLiteral("false"));
   if (!m_pcsx2Auto) {
     contents += QStringLiteral("pcsx2_enabled = %1\n")
                     .arg(m_pcsx2Enabled ? QStringLiteral("true") : QStringLiteral("false"));

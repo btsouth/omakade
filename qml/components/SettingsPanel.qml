@@ -316,6 +316,11 @@ import QtQuick.Layouts
                           error: BattleNetLibrary ? BattleNetLibrary.errorText : "",
                           paths: BattleNetLibrary ? BattleNetLibrary.detectedPaths : [],
                           lastScan: BattleNetLibrary ? BattleNetLibrary.lastScan : 0 },
+                        { name: "XODUS NEXUS", enabled: Preferences.xodusEnabled,
+                          status: XodusLibrary ? XodusLibrary.statusText : "Unavailable",
+                          error: XodusLibrary ? XodusLibrary.errorText : "",
+                          paths: XodusLibrary ? XodusLibrary.detectedPaths : [],
+                          lastScan: XodusLibrary ? XodusLibrary.lastScan : 0 },
                         { name: "LUTRIS", enabled: Preferences.lutrisEnabled,
                           status: LutrisLibrary ? LutrisLibrary.statusText : "Unavailable",
                           error: LutrisLibrary ? LutrisLibrary.errorText : "",
@@ -434,6 +439,10 @@ import QtQuick.Layouts
                                         Preferences.battleNetEnabled = !Preferences.battleNetEnabled
                                         nowEnabled = Preferences.battleNetEnabled
                                         if (Preferences.battleNetEnabled && BattleNetLibrary) BattleNetLibrary.refresh()
+                                    } else if (modelData.name === "XODUS NEXUS") {
+                                        Preferences.xodusEnabled = !Preferences.xodusEnabled
+                                        nowEnabled = Preferences.xodusEnabled
+                                        if (Preferences.xodusEnabled && XodusLibrary) XodusLibrary.refresh()
                                     } else if (modelData.name === "LUTRIS") {
                                         Preferences.lutrisEnabled = !Preferences.lutrisEnabled
                                         nowEnabled = Preferences.lutrisEnabled
@@ -522,6 +531,7 @@ import QtQuick.Layouts
                                 onClicked: {
                                     if (modelData.name === "STEAM") SteamLibrary.refresh()
                                     else if (modelData.name === "BATTLE.NET" && BattleNetLibrary) BattleNetLibrary.refresh()
+                                    else if (modelData.name === "XODUS NEXUS" && XodusLibrary) XodusLibrary.refresh()
                                     else if (modelData.name === "LUTRIS") LutrisLibrary.refresh()
                                     else if (modelData.name === "HEROIC") HeroicLibrary.refresh()
                                     else if (modelData.name === "GOG") HeroicLibrary.refresh()

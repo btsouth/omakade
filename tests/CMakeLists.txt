@@ -987,6 +987,11 @@ endforeach()
 add_executable(omakade_metadata_audit EXCLUDE_FROM_ALL ../tools/MetadataAudit.cpp)
 target_link_libraries(omakade_metadata_audit PRIVATE omakade_core Qt6::Core)
 
+qt_add_executable(omakade_xodus_tests XodusTests.cpp)
+target_link_libraries(omakade_xodus_tests PRIVATE omakade_core Qt6::Test)
+add_test(NAME omakade_xodus_tests COMMAND omakade_xodus_tests)
+set_tests_properties(omakade_xodus_tests PROPERTIES TIMEOUT 30)
+
 qt_add_executable(omakade_protondb_tests ProtonDbTests.cpp)
 target_link_libraries(omakade_protondb_tests PRIVATE omakade_core Qt6::Test)
 add_test(NAME omakade_protondb_tests COMMAND omakade_protondb_tests)

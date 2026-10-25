@@ -228,6 +228,39 @@ QVector<SessionMatch> matchWithAttribution(
   return matches;
 }
 
+QVector<SessionMatch> matchWinePrefixes(const QVector<ProcessSnapshot>& processes,
+                                        const QHash<QString, QString>& games,
+                                        const QString& source) {
+  QHash<QString, const ProcessSnapshot*> oldest;
+  QHash<QString, QString> canonical;
+  for (const ProcessSnapshot& process : processes) {
+    if (process.winePrefix.isEmpty() || process.procStart < 0) continue;
+    // Wine reports a Windows program's own command line. Its loader, wineserver and
+    // the runner script carry the prefix too, but run under a Unix path.
+    const QString program = process.arguments.value(0);
+    if (!ProcFs::isWindowsProgram(program) ||
+        program.startsWith(QStringLiteral("C:\\windows\\"), Qt::CaseInsensitive))
+      continue;
+    auto prefix = canonical.find(process.winePrefix);
+    if (prefix == canonical.end()) {
+      const QString resolved = QFileInfo(process.winePrefix).canonicalFilePath();
+      prefix = canonical.insert(process.winePrefix,
+                                resolved.isEmpty() ? QDir::cleanPath(process.winePrefix) : resolved);
+    }
+    if (!games.contains(*prefix)) continue;
+    const ProcessSnapshot*& current = oldest[*prefix];
+    if (current == nullptr || process.procStart < current->procStart ||
+        (process.procStart == current->procStart && process.pid < current->pid))
+      current = &process;
+  }
+  QVector<SessionMatch> matches;
+  for (auto it = oldest.cbegin(); it != oldest.cend(); ++it)
+    matches.append({.pid = it.value()->pid, .procStart = it.value()->procStart,
+                    .emulator = source, .rescanSource = {}, .gamePath = games.value(it.key()),
+                    .handsOver = true});
+  return matches;
+}
+
 QString profilesPath() {
   const QString userPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                            QStringLiteral("/omakade/sessiond-profiles.json");

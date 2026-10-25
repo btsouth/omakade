@@ -27,6 +27,7 @@ class AppSettings final : public QObject {
   Q_PROPERTY(bool heroicEnabled READ heroicEnabled WRITE setHeroicEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool gogEnabled READ gogEnabled WRITE setGogEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool faugusEnabled READ faugusEnabled WRITE setFaugusEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool xodusEnabled READ xodusEnabled WRITE setXodusEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(
       bool retroArchEnabled READ retroArchEnabled WRITE setRetroArchEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool pcsx2Enabled READ pcsx2Enabled WRITE setPcsx2Enabled NOTIFY sourcesChanged)
@@ -131,6 +132,8 @@ public:
   void setGogEnabled(bool value);
   [[nodiscard]] bool faugusEnabled() const;
   void setFaugusEnabled(bool value);
+  [[nodiscard]] bool xodusEnabled() const;
+  void setXodusEnabled(bool value);
   [[nodiscard]] bool retroArchEnabled() const;
   void setRetroArchEnabled(bool value);
   [[nodiscard]] bool pcsx2Enabled() const;
@@ -318,6 +321,7 @@ private:
   bool m_heroicEnabled = true;
   bool m_gogEnabled = true;
   bool m_faugusEnabled = true;
+  bool m_xodusEnabled = true;
   bool m_retroArchEnabled = true;
   bool m_pcsx2Enabled = false;
   bool m_rpcs3Enabled = false;

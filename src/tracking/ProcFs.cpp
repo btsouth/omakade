@@ -39,6 +39,11 @@ QString executablePath(const QString& base) {
 
 namespace ProcFs {
 
+bool isWindowsProgram(const QString& argument) {
+  return argument.size() > 3 && argument.at(0).isLetter() && argument.at(1) == QLatin1Char(':') &&
+         argument.at(2) == QLatin1Char('\\');
+}
+
 QVector<ProcessSnapshot> listProcesses(bool includeScopes) {
   QVector<ProcessSnapshot> processes;
   QDir procDir(QStringLiteral("/proc"));
@@ -81,7 +86,9 @@ QVector<ProcessSnapshot> listProcesses(bool includeScopes) {
                              .winePrefix = {},
                              .flatpakAppId = {},
                              .steamAppId = {}};
-    if (includeScopes) {
+    // Wine programs keep their prefix even without scopes: it is what tells one
+    // launcher's games apart when they all run under the same loader.
+    if (includeScopes || isWindowsProgram(arguments.first())) {
       QFile environment(base + QStringLiteral("/environ"));
       if (environment.open(QIODevice::ReadOnly)) {
         // Retain only these two scope identifiers. Never log or expose the environment.

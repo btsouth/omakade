@@ -7,6 +7,7 @@ these details:
 - Omarchy version and active theme
 - The launcher or emulator version and whether it is native or Flatpak
 - For Battle.net, whether it runs under Wine, Proton, or Bottles
+- For Xodus Nexus games, the Nexus launcher and backend versions from its Settings
 - The source shown for the affected game
 - `umu-launcher` version for a direct Windows GOG game
 - Steps that reproduce the problem
