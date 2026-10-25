@@ -419,7 +419,15 @@ void GameInsightsService::finishRequest(QNetworkReply* reply) {
       requestGame();
     }
   } else if (kind == RequestKind::Game) {
-    if (!IgdbApi::parseGame(contents, &m_insight, &error)) {
+    if (igdbIdFor(m_refreshAppId) > 0 && contents.trimmed() == "[]") {
+      // IGDB deleted or merged the matched game. Remember it like a missing Steam mapping.
+      m_insight = {};
+      m_updatedAt = QDateTime::currentSecsSinceEpoch();
+      persist();
+      m_busy = false;
+      m_statusText = QStringLiteral("IGDB has no entry for this game");
+      emit changed();
+    } else if (!IgdbApi::parseGame(contents, &m_insight, &error)) {
       fail(error);
     } else {
       requestTime();

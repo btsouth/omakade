@@ -23,6 +23,8 @@ struct XodusAchievementsResult {
   bool valid = false;
   QVector<XodusAchievementRecord> achievements;
   int unlocked = 0;
+  // Nexus could not read every achievement.
+  bool partial = false;
 };
 
 // Read-only Xbox achievements for Xodus Nexus games. Nexus's own backend, signed in to the
@@ -67,7 +69,8 @@ private:
   [[nodiscard]] QString profileRoot() const;
   [[nodiscard]] QString installPath(const QString& gameId) const;
   void finish();
-  bool persist(const QString& gameId, const XodusAchievementsResult& result);
+  bool persist(const QString& gameId, const XodusAchievementsResult& result, qint64 updatedAt);
+  [[nodiscard]] bool cached(const QString& gameId) const;
   void setStatus(const QString& state, const QString& text);
 
   QSqlDatabase m_database;
@@ -78,6 +81,7 @@ private:
   QString m_gameId;
   QString m_titleId;
   QString m_pendingGameId;
+  QString m_shownGameId;
   QString m_statusText;
   QString m_state;
 };

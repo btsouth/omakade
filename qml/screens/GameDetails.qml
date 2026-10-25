@@ -151,9 +151,11 @@ Item {
         if (typeof Insights !== "undefined" && Insights && root.selectedInstallation.source !== "Steam")
             Insights.loadSteam(root.igdbInsightsKey)
     }
-    // Main.qml clears the insights when the selection changes, so load after it.
+    // Main.qml clears the insights when the selection changes, so load after it. The page is
+    // created after the selection is made, and reopening a game keeps the same key.
     onIgdbInsightsKeyChanged: Qt.callLater(loadIgdbInsights)
     onSelectedInstallationChanged: Qt.callLater(loadIgdbInsights)
+    Component.onCompleted: Qt.callLater(loadIgdbInsights)
     readonly property bool achievementSourceIsRetroArch: selectedInstallation.source === "RetroArch"
     readonly property bool achievementSourceIsXbox: selectedInstallation.source === "Xodus Nexus"
     readonly property var achievementAccount: achievementSourceIsRetroArch ? RetroAchievements

@@ -86,6 +86,7 @@ XodusAchievementsResult XodusAchievementsService::parse(const QByteArray& json,
       !root.value(QStringLiteral("items")).isArray() || items.size() > kMaximumAchievements) {
     return result;
   }
+  result.partial = root.value(QStringLiteral("partial")).toBool();
   QSet<QString> ids;
   for (const QJsonValue& value : items) {
     const QJsonObject item = value.toObject();
@@ -126,8 +127,22 @@ QString XodusAchievementsService::installPath(const QString& gameId) const {
   return query.exec() && query.next() ? query.value(0).toString() : QString{};
 }
 
+bool XodusAchievementsService::cached(const QString& gameId) const {
+  if (!m_database.isOpen()) return false;
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "SELECT 1 FROM achievement_summary WHERE app_id = ? AND source = 'xbox' AND total > 0"));
+  query.addBindValue(cacheKey(gameId));
+  return query.exec() && query.next();
+}
+
 void XodusAchievementsService::refreshAchievementsIfStale(const QString& gameId) {
   if (gameId.isEmpty()) return;
+  // A message about the last game does not belong on this one.
+  if (gameId != m_shownGameId) {
+    m_shownGameId = gameId;
+    setStatus({}, {});
+  }
   if (busy()) {
     m_pendingGameId = gameId;
     return;
@@ -177,10 +192,11 @@ void XodusAchievementsService::refreshAchievements(const QString& gameId) {
   connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
     if (error == QProcess::FailedToStart) finish();
   });
-  m_process->start();
-  m_timeout->start(kTimeoutMs);
+  // start() can fail at once and finish() then reports why, so say what is happening first.
   emit busyChanged();
   setStatus(QStringLiteral("refreshing"), QStringLiteral("Reading Xbox achievements"));
+  m_timeout->start(kTimeoutMs);
+  m_process->start();
 }
 
 void XodusAchievementsService::finish() {
@@ -196,11 +212,18 @@ void XodusAchievementsService::finish() {
   emit busyChanged();
 
   const XodusAchievementsResult result = parse(output, m_titleId);
-  if (!exited || !result.valid) {
+  // An empty partial list says nothing, not that the game has no achievements.
+  if (!exited || !result.valid || (result.partial && result.achievements.isEmpty())) {
     setStatus(QStringLiteral("error"),
               QStringLiteral("Xodus Nexus could not read Xbox achievements. Check that you are "
                              "signed in and online."));
-  } else if (!persist(m_gameId, result)) {
+  } else if (result.partial && cached(m_gameId)) {
+    // A short list would replace the full one, so keep what is cached.
+    setStatus(QStringLiteral("error"),
+              QStringLiteral("Xodus Nexus could only read some Xbox achievements. Showing the "
+                             "cached list."));
+  } else if (!persist(m_gameId, result,
+                      result.partial ? 0 : QDateTime::currentSecsSinceEpoch())) {
     setStatus(QStringLiteral("error"), QStringLiteral("Could not cache Xbox achievements"));
   } else {
     setStatus(QStringLiteral("connected"),
@@ -214,8 +237,9 @@ void XodusAchievementsService::finish() {
   }
 }
 
+// A partial list is stored as already stale, so the next visit asks again.
 bool XodusAchievementsService::persist(const QString& gameId,
-                                       const XodusAchievementsResult& result) {
+                                       const XodusAchievementsResult& result, qint64 updatedAt) {
   if (!m_database.isOpen() || !m_database.transaction()) return false;
   const QString key = cacheKey(gameId);
   QSqlQuery query(m_database);
@@ -226,7 +250,7 @@ bool XodusAchievementsService::persist(const QString& gameId,
   query.addBindValue(key);
   query.addBindValue(result.unlocked);
   query.addBindValue(static_cast<int>(result.achievements.size()));
-  query.addBindValue(QDateTime::currentSecsSinceEpoch());
+  query.addBindValue(updatedAt);
   bool okay = query.exec();
   query.prepare(QStringLiteral("DELETE FROM achievements WHERE app_id = ?"));
   query.addBindValue(key);

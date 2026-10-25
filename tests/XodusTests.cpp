@@ -108,13 +108,13 @@ QString writeBackend(const QString& profile, const QByteArray& script,
   return cli;
 }
 
-QByteArray achievementsJson(const QString& titleId) {
+QByteArray achievementsJson(const QString& titleId, bool partial = false) {
   return QJsonDocument(
              QJsonObject{
                  {"schema", 1},
                  {"account", "player"},
                  {"titleId", titleId},
-                 {"partial", false},
+                 {"partial", partial},
                  {"items",
                   QJsonArray{
                       QJsonObject{{"id", "a:1"}, {"name", "Torn Banner"},
@@ -634,6 +634,30 @@ private slots:
     // Fresh data is not asked for again.
     service.refreshAchievementsIfStale(kValor);
     QVERIFY(!service.busy());
+
+    // A partial answer does not replace the full cached list.
+    QVERIFY(reply.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QJsonObject partial = QJsonDocument::fromJson(achievementsJson("1982861109", true)).object();
+    QJsonArray items = partial.value("items").toArray();
+    items.removeLast();
+    partial.insert("items", items);
+    reply.write(QJsonDocument(partial).toJson(QJsonDocument::Compact));
+    reply.close();
+    service.refreshAchievements(kValor);
+    QTRY_VERIFY_WITH_TIMEOUT(!service.busy(), 10000);
+    QCOMPARE(service.state(), QStringLiteral("error"));
+    QCOMPARE(updated.size(), 1);
+    {
+      QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "xbox-partial");
+      db.setDatabaseName(database);
+      QVERIFY(db.open());
+      QSqlQuery query(db);
+      QVERIFY(query.exec("SELECT total FROM achievement_summary"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 2);
+      db.close();
+    }
+    QSqlDatabase::removeDatabase("xbox-partial");
   }
 
   void malformedStateKeepsCachedGames() {
