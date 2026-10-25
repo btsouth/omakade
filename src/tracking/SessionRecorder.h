@@ -121,6 +121,10 @@ private:
     // time. Such a session is closed only after the title stays unresolved.
     bool titleMatched = false;
     int missedPolls = 0;
+    // The session moved to another process of its game, and storage has not yet accepted
+    // the row's new process identity. Retried on each flush, so a recorder restart finds
+    // the row under the process that is still running.
+    bool movePending = false;
   };
 
   QString keyFor(const SessionMatch& match) const;

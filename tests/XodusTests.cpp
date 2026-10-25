@@ -389,6 +389,45 @@ private slots:
     QSqlDatabase::removeDatabase(name);
   }
 
+  void refusedMoveIsRetried() {
+    QTemporaryDir directory;
+    const QString name = QUuid::createUuid().toString();
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, directory.path() + "/library.sqlite3", name));
+      qint64 nowMs = 0;
+      SessionRecorder recorder(database, [&nowMs] { return nowMs; });
+      recorder.setFlushIntervalMs(1);
+      const SessionMatch bootstrap{.pid = 12, .procStart = 100, .emulator = "Xodus Nexus",
+                                   .rescanSource = {}, .gamePath = "/games/Valor",
+                                   .handsOver = true};
+      SessionMatch game = bootstrap;
+      game.pid = 13;
+      game.procStart = 101;
+      recorder.sync({bootstrap}, 1000);
+      QSqlQuery query(database);
+      QVERIFY(query.exec("CREATE TRIGGER refuse_move BEFORE UPDATE OF pid ON play_sessions "
+                         "BEGIN SELECT RAISE(FAIL, 'busy'); END"));
+      nowMs += 60000;
+      recorder.sync({game}, 1060);
+      QVERIFY(recorder.takeStorageFailure());
+      QVERIFY(query.exec("SELECT pid FROM play_sessions"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toLongLong(), qint64(12));
+      query.finish();
+      // Storage accepts writes again: the next flush records the process that runs on.
+      QVERIFY(query.exec("DROP TRIGGER refuse_move"));
+      nowMs += 60000;
+      recorder.sync({game}, 1120);
+      QVERIFY(query.exec("SELECT COUNT(*), MAX(pid), MAX(proc_start) FROM play_sessions"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 1);
+      QCOMPARE(query.value(1).toLongLong(), qint64(13));
+      QCOMPARE(query.value(2).toLongLong(), qint64(101));
+    }
+    QSqlDatabase::removeDatabase(name);
+  }
+
   void recordedSessionsGiveXodusGamesPlayTime() {
     QTemporaryDir directory;
     const QString profile = directory.path() + "/xodus-nexus";

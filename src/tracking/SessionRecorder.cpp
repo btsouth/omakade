@@ -221,6 +221,13 @@ void SessionRecorder::flush(ActiveSession& session, qint64 nowMs, qint64 nowWall
   // to the journal, bounded to one record per flush interval, so a killed recorder loses at
   // most one interval instead of the whole session.
   bool stored = false;
+  if (session.id > 0 && session.movePending) {
+    session.movePending =
+        !SessionDatabase::moveSession(m_database, session.id, session.pid, session.procStart);
+    if (session.movePending) {
+      m_storageFailure = true;
+    }
+  }
   if (session.id > 0) {
     stored =
         SessionDatabase::updateProgress(m_database, session.id, session.elapsedMs / 1000, nowWall);
@@ -738,8 +745,9 @@ void SessionRecorder::sync(const QVector<SessionMatch>& matches, qint64 nowWall,
         m_active.erase(candidate);
         moved.pid = match.pid;
         moved.procStart = match.procStart;
-        if (moved.id > 0 &&
-            !SessionDatabase::moveSession(m_database, moved.id, match.pid, match.procStart)) {
+        moved.movePending = moved.id > 0 && !SessionDatabase::moveSession(
+                                                   m_database, moved.id, match.pid, match.procStart);
+        if (moved.movePending) {
           m_storageFailure = true;
         }
         existing = m_active.insert(key, moved);
