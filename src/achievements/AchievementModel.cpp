@@ -127,7 +127,9 @@ bool AchievementModel::acceptsIconUrl(const QUrl& url) {
          (host == QStringLiteral("steamcdn-a.akamaihd.net") ||
           host == QStringLiteral("steamstatic.com") ||
           host.endsWith(QStringLiteral(".steamstatic.com")) ||
-          host == QStringLiteral("media.retroachievements.org"));
+          host == QStringLiteral("media.retroachievements.org") ||
+          host == QStringLiteral("images-eds-ssl.xboxlive.com") ||
+          host == QStringLiteral("images-eds.xboxlive.com"));
 }
 
 void AchievementModel::load(const QString& appId) {
@@ -154,7 +156,8 @@ void AchievementModel::load(const QString& appId) {
       summarySource = summary.value(2).toString();
       confirmedEmpty = m_total == 0 &&
                        (summarySource == QStringLiteral("steam-web") ||
-                        summarySource == QStringLiteral("retroachievements"));
+                        summarySource == QStringLiteral("retroachievements") ||
+                        summarySource == QStringLiteral("xbox"));
     }
 
     QSqlQuery query(m_database);
@@ -186,6 +189,8 @@ void AchievementModel::load(const QString& appId) {
   if (confirmedEmpty) {
     m_statusText = summarySource == QStringLiteral("retroachievements")
                        ? QStringLiteral("This game has no RetroAchievements.")
+                   : summarySource == QStringLiteral("xbox")
+                       ? QStringLiteral("This game has no Xbox achievements.")
                        : QStringLiteral("This game has no Steam achievements.");
   } else if (m_total == 0) {
     m_statusText = QStringLiteral("No achievement data is cached yet.");

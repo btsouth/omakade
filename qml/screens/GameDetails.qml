@@ -140,7 +140,11 @@ Item {
     property string launchMessage: ""
     property bool launchFailed: false
     readonly property bool achievementSourceIsRetroArch: selectedInstallation.source === "RetroArch"
-    readonly property var achievementAccount: achievementSourceIsRetroArch ? RetroAchievements : SteamAccount
+    readonly property bool achievementSourceIsXbox: selectedInstallation.source === "Xodus Nexus"
+    readonly property var achievementAccount: achievementSourceIsRetroArch ? RetroAchievements
+                                              : achievementSourceIsXbox
+                                                ? (typeof XboxAchievements !== "undefined" ? XboxAchievements : null)
+                                                : SteamAccount
     readonly property int displayedAchievementTotal: Achievements.total > 0
                                                        ? Achievements.total
                                                        : (game.achievementsTotal || 0)
@@ -1540,6 +1544,7 @@ Item {
                     spacing: 9
                     visible: root.selectedInstallation.source === "Steam"
                              || root.selectedInstallation.source === "RetroArch"
+                             || root.achievementSourceIsXbox
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -1587,6 +1592,7 @@ Item {
                     spacing: 10
                     visible: root.selectedInstallation.source === "Steam"
                              || root.selectedInstallation.source === "RetroArch"
+                             || root.achievementSourceIsXbox
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -1627,11 +1633,15 @@ Item {
                             property Item controllerLeftTarget:
                                 achievementSortButton.visible && achievementSortButton.enabled
                                 ? achievementSortButton : null
+                            // Xbox achievements come through Xodus Nexus, which has nothing to
+                            // connect here.
                             visible: root.achievementAccount !== null
+                                     && (root.achievementAccount.hasApiKey || !root.achievementSourceIsXbox)
                             compact: true
                             text: root.achievementAccount && root.achievementAccount.hasApiKey
                                   ? (root.achievementAccount.busy ? "REFRESHING"
                                      : root.achievementSourceIsRetroArch ? "REFRESH RETROACHIEVEMENTS"
+                                     : root.achievementSourceIsXbox ? "REFRESH XBOX"
                                      : "REFRESH STEAM")
                                   : root.achievementSourceIsRetroArch ? "CONNECT RETROACHIEVEMENTS"
                                                                        : "CONNECT STEAM"
@@ -1774,7 +1784,8 @@ Item {
                                                    ? "UNLOCKED " + UserDates.format(new Date(unlockTime * 1000), "day").toUpperCase() + "  ·  "
                                                    : "")
                                                   + (rarity > 0 ? rarity.toFixed(1) + "% OF PLAYERS"
-                                                     : root.achievementSourceIsRetroArch ? "RETROACHIEVEMENTS" : "STEAM")
+                                                     : root.achievementSourceIsRetroArch ? "RETROACHIEVEMENTS"
+                                                     : root.achievementSourceIsXbox ? "XBOX" : "STEAM")
                                             color: unlocked ? Theme.accent : root.alpha(Theme.foreground, 0.45)
                                             font.family: Theme.fontFamily
                                             font.pixelSize: 8
@@ -1829,8 +1840,11 @@ Item {
                     GridLayout {
                         id: clipGrid
                         objectName: "clipGrid"
-                        Layout.fillWidth: true
-                        columns: detailsContent.width < 520 ? 1 : detailsContent.width < 900 ? 2 : 3
+                        // Cards keep a thumbnail size instead of stretching, so one clip does not
+                        // fill the page with its still.
+                        readonly property real cardWidth: Math.min(detailsContent.width, 300 * root.uiScale)
+                        columns: Math.max(1, Math.floor((detailsContent.width + columnSpacing)
+                                                        / (cardWidth + columnSpacing)))
                         columnSpacing: 10
                         rowSpacing: 10
 
@@ -1843,8 +1857,7 @@ Item {
                                 required property var modelData
                                 readonly property bool armed: root.trashArmedClip === modelData.id
                                 objectName: "clipCard" + index
-                                Layout.fillWidth: true
-                                Layout.minimumWidth: 220 * root.uiScale
+                                Layout.preferredWidth: clipGrid.cardWidth
                                 Layout.preferredHeight: clipColumn.implicitHeight + 16 * root.uiScale
                                 radius: Math.max(6, Theme.cornerRadius)
                                 color: root.alpha(Theme.foreground, 0.05)

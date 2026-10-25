@@ -190,6 +190,8 @@ add_library(omakade_core STATIC
   src/achievements/SteamAchievementApi.h
   src/achievements/SteamAccountService.cpp
   src/achievements/SteamAccountService.h
+  src/achievements/XodusAchievementsService.cpp
+  src/achievements/XodusAchievementsService.h
   src/app/AppSettings.cpp
   src/app/AppSettings.h
   src/app/SingleInstance.cpp

@@ -930,6 +930,14 @@ ApplicationWindow {
             if (Insights) {
                 Insights.loadSteam("")
             }
+        } else if (!DemoMode && selectedInstallation.source === "Xodus Nexus") {
+            Achievements.load("xodus:" + selectedInstallation.appId)
+            if (XboxAchievements) {
+                XboxAchievements.refreshAchievementsIfStale(selectedInstallation.appId)
+            }
+            if (Insights) {
+                Insights.loadSteam("")
+            }
         } else {
             Achievements.load("")
             if (Insights) {
@@ -1742,6 +1750,14 @@ ApplicationWindow {
             Achievements.load(installation.appId)
             if (RetroAchievements) {
                 RetroAchievements.refreshAchievementsIfStale(installation.appId)
+            }
+            if (Insights) {
+                Insights.loadSteam("")
+            }
+        } else if (!DemoMode && installation.source === "Xodus Nexus") {
+            Achievements.load("xodus:" + installation.appId)
+            if (XboxAchievements) {
+                XboxAchievements.refreshAchievementsIfStale(installation.appId)
             }
             if (Insights) {
                 Insights.loadSteam("")

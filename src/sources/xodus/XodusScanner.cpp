@@ -24,6 +24,7 @@ namespace {
 constexpr qint64 kMaximumStateBytes = 256 * 1024 * 1024;
 constexpr qint64 kMaximumCoverBytes = 16 * 1024 * 1024;
 constexpr qint64 kMaximumScriptBytes = 64 * 1024;
+constexpr qint64 kMaximumConfigBytes = 1024 * 1024;
 
 QString profileFromConfig(const QString& config) {
   return QDir::cleanPath(config + QStringLiteral("/xodus-nexus"));
@@ -218,6 +219,54 @@ QString XodusScanner::launchScript(const QString& givenRoot, bool game) {
     return {};
   }
   return script;
+}
+
+QString XodusScanner::backendCli(const QString& givenRoot) {
+  if (givenRoot.isEmpty() || !QDir::isAbsolutePath(givenRoot)) {
+    return {};
+  }
+  const QString profileRoot = QFileInfo(givenRoot).canonicalFilePath();
+  if (profileRoot.isEmpty()) {
+    return {};
+  }
+  const QString backends = profileRoot + QStringLiteral("/xodus-backends");
+  const QString pointer = backends + QStringLiteral("/current.json");
+  const QString releases = backends + QStringLiteral("/releases");
+  if (!privateEntry(profileRoot, true) || !privateEntry(backends, true) ||
+      !privateEntry(releases, true) || !privateEntry(pointer, false)) {
+    return {};
+  }
+  QFile file(pointer);
+  if (file.size() > kMaximumScriptBytes || !file.open(QIODevice::ReadOnly)) {
+    return {};
+  }
+  const QString binaryPath =
+      QJsonDocument::fromJson(file.readAll()).object().value(QStringLiteral("binaryPath")).toString();
+  // Only a release Nexus unpacked itself, one directory below releases, is run.
+  const QFileInfo binary(QFileInfo(binaryPath).canonicalFilePath());
+  const QString release = binary.absolutePath();
+  if (!QDir::isAbsolutePath(binaryPath) || binary.fileName() != QStringLiteral("xodus-cli") ||
+      QFileInfo(release).absolutePath() != releases || !privateEntry(release, true) ||
+      !privateEntry(binary.absoluteFilePath(), false) || !binary.isExecutable()) {
+    return {};
+  }
+  return binary.absoluteFilePath();
+}
+
+QString XodusScanner::xboxTitleId(const QString& installPath) {
+  if (!QDir::isAbsolutePath(installPath)) {
+    return {};
+  }
+  QFile file(installPath + QStringLiteral("/MicrosoftGame.config"));
+  if (file.size() > kMaximumConfigBytes || !file.open(QIODevice::ReadOnly)) {
+    return {};
+  }
+  static const QRegularExpression pattern(
+      QStringLiteral("<TitleId>\\s*([0-9A-Fa-f]{1,8})\\s*</TitleId>"));
+  const QRegularExpressionMatch match = pattern.match(QString::fromUtf8(file.readAll()));
+  bool okay = false;
+  const quint32 titleId = match.hasMatch() ? match.captured(1).toUInt(&okay, 16) : 0;
+  return okay && titleId != 0 ? QString::number(titleId) : QString{};
 }
 
 QStringList XodusScanner::discoverRoots() {

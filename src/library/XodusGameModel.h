@@ -44,6 +44,8 @@ public:
   Q_INVOKABLE void toggleFavorite(int row);
   Q_INVOKABLE void toggleHidden(int row);
   Q_INVOKABLE void refresh();
+  // Takes the achievement count XodusAchievementsService cached under key.
+  void reloadAchievementSummary(const QString& key);
   void refreshFromRoots(const QStringList& roots, const QString& artworkCache = {});
   // Tests turn artwork requests off so a scan never reaches the network.
   void setArtworkDownloadsEnabled(bool enabled) { m_downloadArtwork = enabled; }
@@ -59,6 +61,8 @@ private:
     QString heroPath;
     bool favorite = false;
     bool hidden = false;
+    int achievementsUnlocked = 0;
+    int achievementsTotal = 0;
     QColor accentStart;
     QColor accentEnd;
   };

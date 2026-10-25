@@ -1,4 +1,5 @@
 #include "achievements/AchievementModel.h"
+#include "achievements/XodusAchievementsService.h"
 #include "achievements/RetroAchievementsService.h"
 #include "achievements/SteamAccountService.h"
 #include "app/AppSettings.h"
@@ -1713,6 +1714,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<GameMetadata> gameMetadata;
   std::unique_ptr<QTemporaryDir> demoMetadataDir;
   std::unique_ptr<RetroAchievementsService> retroAchievements;
+  std::unique_ptr<XodusAchievementsService> xboxAchievements;
   if (steamLibrary != nullptr) {
     steamAccount =
         std::make_unique<SteamAccountService>(steamLibrary->databasePath(), &preferences);
@@ -1762,6 +1764,15 @@ int main(int argc, char* argv[]) {
     QObject::connect(retroAchievements.get(), &RetroAchievementsService::achievementsCleared,
                      &achievements,
                      [&achievements] { achievements.load(achievements.appId()); });
+  }
+  if (xodusLibrary != nullptr && steamLibrary != nullptr && !demoMode && !stressMode) {
+    xboxAchievements = std::make_unique<XodusAchievementsService>(steamLibrary->databasePath());
+    QObject::connect(xboxAchievements.get(), &XodusAchievementsService::achievementsUpdated,
+                     &achievements, [&achievements](const QString& key) {
+                       if (achievements.appId() == key) achievements.load(key);
+                     });
+    QObject::connect(xboxAchievements.get(), &XodusAchievementsService::achievementsUpdated,
+                     xodusLibrary, &XodusGameModel::reloadAchievementSummary);
   }
   const QString saveFixtureGame = artworkFixture.filePath("save-protection/roms/Test Game.sfc");
   std::unique_ptr<SaveBackups> saveBackupsOwner;
@@ -2310,6 +2321,8 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("SteamAccount"), steamAccount.get());
   engine.rootContext()->setContextProperty(QStringLiteral("RetroAchievements"),
                                            retroAchievements.get());
+  engine.rootContext()->setContextProperty(QStringLiteral("XboxAchievements"),
+                                           xboxAchievements.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Insights"), gameInsights.get());
   engine.rootContext()->setContextProperty(QStringLiteral("Metadata"), gameMetadata.get());
   engine.rootContext()->setContextProperty(QStringLiteral("ProtonDB"), &protonDb);
@@ -3283,6 +3296,14 @@ int main(int argc, char* argv[]) {
             if (!details || !section || !section->isVisible() || !count || count->property("text").toString() != "3" ||
                 !trash || !last) {
               qCritical() << "The game's clips were not listed";
+              application.exit(EXIT_FAILURE);
+              return;
+            }
+            // A clip card keeps a thumbnail size rather than stretching across the page.
+            auto* first = findVisualItem(quickWindow->contentItem(), "clipCard0");
+            const qreal widest = 300 * details->property("uiScale").toReal() + 1;
+            if (first == nullptr || first->width() > widest) {
+              qCritical() << "A clip card stretched to" << (first ? first->width() : 0) << "px";
               application.exit(EXIT_FAILURE);
               return;
             }
