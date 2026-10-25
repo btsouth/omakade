@@ -96,12 +96,12 @@ QString writeBackend(const QString& profile, const QByteArray& script,
     QFile(path).setPermissions(kPrivateDirectory);
   const QString cli = release + "/xodus-cli";
   QFile file(cli);
-  file.open(QIODevice::WriteOnly | QIODevice::Truncate);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
   file.write(script);
   file.close();
   file.setPermissions(kPrivateDirectory);
   QFile pointer(profile + "/xodus-backends/current.json");
-  pointer.open(QIODevice::WriteOnly | QIODevice::Truncate);
+  if (!pointer.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
   pointer.write(QJsonDocument(QJsonObject{{"binaryPath", pointTo.isEmpty() ? cli : pointTo},
                                           {"version", "0.2.11"}})
                     .toJson());

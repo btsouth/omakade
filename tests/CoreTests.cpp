@@ -4944,6 +4944,27 @@ void CoreTests::igdbInsightsLoadFromOfflineCache() {
   insights.loadSteam(QStringLiteral("20"));
   QVERIFY(!insights.available());
   QCOMPARE(insights.statusText(), QStringLiteral("IGDB has no entry for this game"));
+
+  // Games outside Steam are cached under the IGDB match the library made for them.
+  insights.m_refreshAppId = QStringLiteral("igdb:361833");
+  insights.m_insight = {.gameId = 361833, .title = QStringLiteral("Valor Mortis"), .criticScore = 82,
+                        .criticReviewCount = 7, .rushedSeconds = 0, .normalSeconds = 72000,
+                        .completeSeconds = 0, .timeSampleCount = 4};
+  insights.m_updatedAt = QDateTime::currentSecsSinceEpoch();
+  QVERIFY(insights.persist());
+  insights.loadSteam(QStringLiteral("igdb:361833"));
+  QVERIFY(insights.available());
+  QCOMPARE(insights.criticScore(), 82);
+  QCOMPARE(insights.normalHours(), 20);
+  // The Steam game with the same number is a different game.
+  insights.loadSteam(QStringLiteral("361833"));
+  QVERIFY(!insights.available());
+  for (const QString& invalid : {QStringLiteral("igdb:"), QStringLiteral("igdb:0"),
+                                 QStringLiteral("igdb:abc")}) {
+    insights.loadSteam(invalid);
+    QVERIFY(!insights.available());
+    QVERIFY(insights.statusText().isEmpty());
+  }
 }
 
 void CoreTests::retroAchievementsHasherAppliesHeaderStripRules() {

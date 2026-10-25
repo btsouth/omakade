@@ -139,6 +139,21 @@ Item {
     property string launchBusyText: "OPENING..."
     property string launchMessage: ""
     property bool launchFailed: false
+    // Games outside Steam reach IGDB's critic score and play times through the match the
+    // library already made.
+    readonly property string igdbInsightsKey: selectedInstallation.source !== "Steam"
+                                              && detailsEntry.igdbId > 0
+                                              && !detailsEntry.identityAmbiguous && !detailsEntry.rejected
+                                              ? "igdb:" + detailsEntry.igdbId : ""
+    readonly property string insightsKey: selectedInstallation.source === "Steam"
+                                          ? (selectedInstallation.appId || "") : igdbInsightsKey
+    function loadIgdbInsights() {
+        if (typeof Insights !== "undefined" && Insights && root.selectedInstallation.source !== "Steam")
+            Insights.loadSteam(root.igdbInsightsKey)
+    }
+    // Main.qml clears the insights when the selection changes, so load after it.
+    onIgdbInsightsKeyChanged: Qt.callLater(loadIgdbInsights)
+    onSelectedInstallationChanged: Qt.callLater(loadIgdbInsights)
     readonly property bool achievementSourceIsRetroArch: selectedInstallation.source === "RetroArch"
     readonly property bool achievementSourceIsXbox: selectedInstallation.source === "Xodus Nexus"
     readonly property var achievementAccount: achievementSourceIsRetroArch ? RetroAchievements
@@ -1391,7 +1406,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.topMargin: 12
                     spacing: 10
-                    visible: root.selectedInstallation.source === "Steam" && Insights !== null
+                    visible: root.insightsKey !== "" && Insights !== null
                     readonly property var metrics: {
                         if (!Insights) {
                             return []
@@ -1445,7 +1460,7 @@ Item {
                             enabled: Insights && !Insights.refreshing
                             onClicked: {
                                 if (Insights.configured) {
-                                    Insights.refreshSteam(root.selectedInstallation.appId)
+                                    Insights.refreshSteam(root.insightsKey)
                                 } else {
                                     root.connectRequested()
                                 }
