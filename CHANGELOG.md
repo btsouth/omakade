@@ -1,8 +1,23 @@
 # Changelog
 
-## Unreleased
+## 1.18.0
 
-Highlights: save the last moments of a game. See [Highlights](docs/HIGHLIGHTS.md).
+Game Pass games, highlight clips and one Game Mode.
+
+### Xodus Nexus
+
+- Microsoft Store and PC Game Pass games installed through
+  [Xodus Nexus](https://github.com/domsvoboda/xodus-nexus) appear in the library with
+  their covers and banners and launch from Omakade, including from Game Mode. Omakade
+  starts them through Nexus's own shortcut and stops them through their Wine prefix.
+- Nexus shows nothing while a game starts, so Omakade says the game is starting until its
+  window opens, and Game Mode's Starting screen recognizes the game by its prefix.
+- The in-game guide opens over Xodus games.
+- Play time is recorded for Xodus games and shows on their page and in Recent.
+
+### Highlights
+
+Save the last moments of a game. See [Highlights](docs/HIGHLIGHTS.md).
 
 - **Settings → Highlights** keeps a short recording of the game's display in memory while a
   game is in view, with gpu-screen-recorder. It is off until you turn it on.
@@ -17,7 +32,9 @@ Highlights: save the last moments of a game. See [Highlights](docs/HIGHLIGHTS.md
 - The guide's Save N s tile for an outside replay buffer leaves Omakade's own buffer to the
   Clip tile.
 
-One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
+### One Game Mode
+
+Couch Mode is gone: fullscreen is always Game Mode.
 
 - **F11, Start and the GAME MODE button** start Game Mode on the display you are using.
   Sound and notifications are left alone, and the screen is kept awake only while a game
@@ -45,18 +62,13 @@ One Game Mode. Couch Mode is gone: fullscreen is always Game Mode.
 - Return to Desktop shows the page the desktop had before Game Mode, and resuming goes
   back to the Game Mode page you left.
 
+### Native ports and Kyty
+
 - Discover PlayStation 5 dumps through Kyty and preserve per-game launcher settings.
 - Find installed native ports such as SpartanPort and bbport, grouped with matching
   console dumps as alternate installations. Unlinked pairs stay separate.
 - Link game details to known ports you have not installed, including their Linux availability.
 - Propose monthly catalog updates through a reviewable pull request.
-
-### Xodus Nexus
-
-- Added Xodus Nexus as a library source, so Microsoft Store and PC Game Pass games
-  installed through Nexus appear with their covers and banners and launch from Omakade,
-  including from Game Mode. Omakade starts them through Nexus's own shortcut and can stop
-  them through their Wine prefix.
 
 ## 1.17.0
 
