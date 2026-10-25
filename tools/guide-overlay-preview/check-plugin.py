@@ -78,7 +78,7 @@ def layout(name, s):
         if s['view'] == 'main':
             check(g['rows'].get(key), f'{name}: {key} not shown')
     # Buttons in a row share one width; every icon sits inside its control.
-    for group in (('screenshot', 'record', 'replay'), ('desktop', 'retroarch')):
+    for group in (('screenshot', 'record', 'replay'), ('desktop', 'retroarch'), ('ask', 'lookup')):
         boxes = [g['rows'][k] for k in group if g['rows'].get(k)]
         if boxes:
             check(max(b[2] for b in boxes) - min(b[2] for b in boxes) <= 1, f'{name}: {group} widths {[b[2] for b in boxes]}')
@@ -165,6 +165,22 @@ def main(scales):
     s = summon('highlights')
     expect(s['rows'][:4], ['resume', 'screenshot', 'record', 'replay'], 'Clip is the third tile')
     expect(press('a')['geometry']['lastAct'], 'save-highlight', 'A on Clip 90 s')
+
+    # Ask: A on What now? or X anywhere asks; Look it up follows a first answer.
+    s = summon('ask')
+    expect(s['rows'], ['resume', 'ask', 'screenshot', 'record', 'volume', 'quit'], 'Ask under Resume')
+    expect(press('a')['geometry']['lastAct'], 'ask', 'A on What now? asks')
+    s = summon('ask')
+    expect(press('up', 'x')['geometry']['lastAct'], 'ask', 'X asks from anywhere on the card')
+    s = summon('lantern-road')
+    expect(press('x')['geometry']['lastAct'], '', 'X does nothing without Ask')
+    s = summon('ask-answer')
+    expect(s['rows'][:3], ['resume', 'ask', 'lookup'], 'Look it up beside Ask again')
+    expect(press('left')['cursor'], 'ask', 'left to Ask again')
+    expect(press('right', 'a')['geometry']['lastAct'], 'ask', 'A on Look it up asks')
+    s = summon('ask-thinking')
+    expect(s['rows'][:2], ['resume', 'ask'], 'no Look it up while it thinks')
+    expect(press('a', 'x')['geometry']['lastAct'], '', 'nothing more while it thinks')
 
     s = summon('sound-outputs')
     expect(s['cursor'], 'output', 'fixture cursor')

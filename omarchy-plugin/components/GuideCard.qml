@@ -4,7 +4,7 @@ import qs.Commons as Commons
 import qs.Ui
 
 // What the panel shows, top to bottom: the status line, the game, Resume,
-// Desktop and the RetroArch menu where they apply, the capture tiles, sound,
+// Desktop and the RetroArch menu where they apply, Ask, the capture tiles, sound,
 // performance, then Quit under a rule and what the buttons do. Sections that
 // do not apply are left out. The quit question takes Quit's place. `g` is the
 // guide: its state, colours, sizes and actions. The cursor moves as
@@ -68,6 +68,14 @@ Column {
         label: spec.label
       }
     }
+  }
+
+  // Ask the user's agent what to do now, and its answer.
+  AskBlock {
+    id: ask
+    visible: !!card.g.game && !!card.g.ask
+    g: card.g
+    width: parent.width
   }
 
   // Capture. Save N s joins as a third tile while a replay buffer runs.

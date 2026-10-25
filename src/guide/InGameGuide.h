@@ -62,6 +62,8 @@ public:
   void setAchievementDatabase(const QString& path) { m_achievementDatabase = path; }
   // {seconds} while Omakade's replay buffer runs for the game, which adds the Clip tile.
   void setHighlights(const QJsonObject& status);
+  // Ask's status for the game in view ({agent, state, ...}), which adds Ask to the card.
+  void setAsk(const QJsonObject& status);
   // A short message on the open card, such as a clip's result. Nothing when it is closed.
   void notice(const QString& title, const QString& detail = {}) { if (m_opened) toast(title, detail); }
 signals:
@@ -73,6 +75,8 @@ signals:
   // Clip was chosen. openMs is how long ago the guide was summoned, so the clip can end
   // where the game did rather than on the card.
   void highlightRequested(qint64 openMs);
+  // Ask was chosen: mode "next" with the guide's picture of the paused game, or "lookup".
+  void askRequested(const QString& mode, const QString& image);
 private:
   friend class InGameGuideTests;
   void refreshGame();
@@ -116,6 +120,7 @@ private:
   GameModeWindow m_window;
   QJsonArray m_achievements;
   QJsonObject m_highlights;
+  QJsonObject m_ask;
   QString m_achievementKey;
   void cacheAchievements();
   GuideActions::Tree m_resumeTree, m_quitTree;

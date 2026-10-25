@@ -28,6 +28,8 @@ with a keyboard, mouse, or controller.
 - Optional playtime recording, session history, stats, and a Year in Review image
 - [Highlights](docs/HIGHLIGHTS.md): save the last moments of a game from the in-game guide, a key or a
   controller's capture button, and clip Steam achievements as they unlock
+- [Ask](docs/ASK.md): stuck in a game? Ask your AI agent (Codex or Claude Code) what to do next
+  from the in-game guide, spoiler-free
 - Steam and Xbox achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
 - Emulator save backups, personal library backup and restore, and Sunshine/Moonlight export
 

@@ -247,6 +247,12 @@ void InGameGuide::setHighlights(const QJsonObject& status) {
   if (m_opened) send({{"type", "update"}, {"payload", payload()}});
 }
 
+void InGameGuide::setAsk(const QJsonObject& status) {
+  if (status == m_ask) return;
+  m_ask = status;
+  if (m_opened) send({{"type", "update"}, {"payload", payload()}});
+}
+
 bool InGameGuide::hasGame() {
   if (!m_enabled) return false;
   return !m_session.isEmpty();
@@ -340,6 +346,7 @@ QJsonObject InGameGuide::payload() const {
     if (!stats.isEmpty()) model.insert("performance", stats);
   }
   if (!m_session.isEmpty() && !m_highlights.isEmpty()) model.insert("highlights", m_highlights);
+  if (!m_session.isEmpty() && !m_ask.isEmpty()) model.insert("ask", m_ask);
   // Desktop is Game Mode's park; a game outside Game Mode or parked is already on the desktop.
   model.insert("desktop", !m_session.isEmpty() && m_context.value("gameModeActive").toBool() &&
                               !m_context.value("gameModeParked").toBool());
@@ -582,6 +589,9 @@ void InGameGuide::message(const QJsonObject& data) {
     }
   } else if (action == "save-highlight" && m_opened && !m_session.isEmpty() && !m_highlights.isEmpty()) {
     emit highlightRequested(summonElapsedMs());
+  } else if (action == "ask" && m_opened && !m_session.isEmpty() && !m_ask.isEmpty()) {
+    const auto value = data.value("value").toObject();
+    emit askRequested(value.value("mode").toString(), value.value("image").toString());
   } else if (action == "desktop" && m_opened && !m_session.isEmpty() &&
              m_context.value("gameModeActive").toBool()) {
     // Leave the way holding Home does: close the guide, resume the game and let go of

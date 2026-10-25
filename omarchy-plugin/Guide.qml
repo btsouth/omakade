@@ -63,6 +63,13 @@ Item {
   // Omakade's own replay buffer for this game: {seconds, saving, saved, failed, error}. It
   // takes the place of any outside buffer's tile.
   readonly property var highlights: root.model.highlights || null
+  // Ask for this game, from Omakade: {agent, state, mode, text, started, at, lookup, shots}.
+  // "What now?" sends a picture of the paused game to the user's default agent.
+  readonly property var ask: root.model.ask || null
+  // From pressing Ask until Omakade says it is thinking: the picture is being taken and sent.
+  property bool askSending: false
+  property string askSendingMode: "next"
+  readonly property bool asking: root.askSending || (!!root.ask && root.ask.state === "thinking")
   // "saved" or "failed" for a moment after a clip from this card finishes.
   property string clipOutcome: ""
   property int clipsSeen: -1
@@ -85,6 +92,7 @@ Item {
                                            ? root.game.retroarchMenu : ""
   readonly property var grid: Focus.grid({game: !!root.game, replay: !!root.replay || !!root.highlights,
                                           desktop: root.showDesktop, retroarch: root.showRetroarch,
+                                          ask: !!root.ask, lookup: !!root.ask && !!root.ask.lookup && !root.asking,
                                           volume: root.volumeAvailable, outputs: root.outputs.length})
   readonly property var rows: [].concat.apply([], root.grid)
   // Where across the card the cursor is (0..1), kept through one-item rows.
@@ -134,7 +142,8 @@ Item {
     resume: "\u{f040a}", pause: "\u{f03e4}", desktop: "\u{f0379}", retroarch: "\u{f035c}",
     screenshot: "\u{f0d5d}", record: "\u{f043e}", stop: "\u{f0666}", replay: "\u{f02da}",
     volume: "\u{f057e}", volumeOff: "\u{f0581}", speaker: "\u{f04c3}", headphones: "\u{f02cb}",
-    chevron: "\u{f0142}", quit: "\u{f0425}", gamepad: "\u{f0297}", keyboard: "\u{f030c}"
+    chevron: "\u{f0142}", quit: "\u{f0425}", gamepad: "\u{f0297}", keyboard: "\u{f030c}",
+    ask: "\u{f0336}", lookup: "\u{f0349}"
   })
 
   // The performance readings, one box each; missing ones are left out.
@@ -303,6 +312,7 @@ Item {
     root.capturing = false
     root.captureKind = ""
     shutter.stop()
+    root.askSending = false
     root.surfaceShown = false
     card.opacity = 0
     fadeIn.stop()
@@ -471,6 +481,7 @@ Item {
     case "b": if (Date.now() - root.backAt > 300) root.close(); break
     case "guide": case "start": root.close(); break
     case "y": root.activate("screenshot"); break
+    case "x": if (root.ask) root.activate("ask"); break
     }
     return "ok"
   }
@@ -493,6 +504,16 @@ Item {
       if (root.clipOutcome === "saved") return {icon: root.icons.replay, label: "Saved"}
       if (root.clipOutcome === "failed") return {icon: root.icons.replay, urgent: true, label: "Not saved"}
       return {icon: root.icons.replay, label: "Clip " + root.replaySeconds + " s"}
+    // Ask's button: "What now?" at rest, the wait while the agent thinks, then Ask again.
+    case "ask":
+      var agent = root.ask ? root.ask.agent : ""
+      if (root.asking) return {icon: root.icons.ask, value: root.askElapsed,
+                               label: (root.askSending ? root.askSendingMode : root.ask && root.ask.mode) === "lookup"
+                                      ? "Looking it up\u2026" : "Asking " + agent + "\u2026"}
+      if (root.ask && root.ask.state === "answer") return {icon: root.icons.ask, label: "Ask again"}
+      if (root.ask && root.ask.state === "failed") return {icon: root.icons.ask, label: "Try again"}
+      return {icon: root.icons.ask, label: "What now?", value: agent}
+    case "lookup": return {icon: root.icons.lookup, label: "Look it up"}
     case "volume": return {icon: root.muted ? root.icons.volumeOff : root.icons.volume, label: "Volume",
                            value: root.muted ? "Muted" : Math.round(root.volume * 100) + "%"}
     case "output":
@@ -521,6 +542,7 @@ Item {
     case Qt.Key_Return: case Qt.Key_Enter: case Qt.Key_Space: return "a"
     case Qt.Key_Escape: return "b"
     case Qt.Key_Y: return "y"
+    case Qt.Key_X: return "x"
     case Qt.Key_G: case Qt.Key_Home: return "guide"
     }
     return ""
@@ -536,6 +558,9 @@ Item {
     case "screenshot": root.act("screenshot"); break
     case "record": root.act("record"); break
     case "replay": root.act(root.highlights ? "save-highlight" : "save-replay"); break
+    // One question at a time.
+    case "ask": if (!root.asking) root.act("ask", "next"); break
+    case "lookup": if (!root.asking) root.act("ask", "lookup"); break
     case "volume": root.act("mute"); break
     case "quit":
       if (root.quitting && !root.forceReady) break
@@ -570,6 +595,15 @@ Item {
       else capture.toggleRecording()
       break
     case "save-replay": capture.saveReplay(); break
+    // "next" takes a picture of the paused game first, with the card out of it; "lookup"
+    // checks the last answer against a guide, about the same picture.
+    case "ask":
+      if (!root.ask || root.asking) break
+      if (value === "lookup") {
+        if (!root.ask.lookup) break
+        root.sendAsk({mode: "lookup"})
+      } else root.beginCapture("ask")
+      break
     // Omakade saves it, trimmed to end where the game was when the card was summoned.
     case "save-highlight": if (root.highlights && !root.highlights.saving) root.notify(name, null); break
     // Omakade closes the guide itself: Desktop once Game Mode has parked the game,
@@ -590,6 +624,28 @@ Item {
     root.model = copy
   }
 
+  function sendAsk(question) {
+    root.askSending = true
+    root.askSendingMode = question.mode
+    askSendingTimer.restart()
+    root.notify("ask", question)
+  }
+
+  onAskChanged: if (root.askSending && root.ask && root.ask.state === "thinking") { root.askSending = false; askSendingTimer.stop() }
+  // Look it up leaves while the agent thinks, and after it has looked; the cursor stays on Ask.
+  onRowsChanged: if (root.opened && root.cursor === "lookup" && root.rows.indexOf("lookup") < 0 && root.rows.indexOf("ask") >= 0) root.cursor = "ask"
+  // Omakade answers an ask at once; one it never took leaves the wait.
+  Timer { id: askSendingTimer; interval: 3000; onTriggered: root.askSending = false }
+
+  // How long the agent has been at it, and how long ago it answered.
+  readonly property string askElapsed: root.ask && root.ask.started && !root.askSending
+    ? root.duration(root.now.getTime() / 1000 - root.ask.started) : ""
+  readonly property string askAge: {
+    if (!root.ask || !root.ask.at) return ""
+    var minutes = Math.floor((root.now.getTime() / 1000 - root.ask.at) / 60)
+    return minutes < 1 ? "just now" : minutes < 60 ? minutes + " min ago" : Math.floor(minutes / 60) + " h ago"
+  }
+
   function beginCapture(kind) {
     if (root.capturing) return
     root.captureKind = kind
@@ -607,6 +663,17 @@ Item {
       // The mapped surface has already submitted a frame without card or scrim.
       root.close()
       capture.toggleRecording()
+    } else if (kind === "ask") {
+      root.askSending = true
+      root.askSendingMode = "next"
+      capture.askShot(960, root.ask ? root.ask.shots : "", function(path) {
+        if (root.captureKind === "") root.capturing = false
+        if (path && root.ask && root.opened) root.sendAsk({mode: "next", image: path})
+        else {
+          root.askSending = false
+          if (!path) root.notice("Couldn't ask", "The picture of the game could not be taken")
+        }
+      })
     } else capture.screenshot(function() { if (root.captureKind === "") root.capturing = false })
   }
 
@@ -721,12 +788,12 @@ Item {
     onTriggered: root.now = new Date()
   }
 
-  // Printed button names for the connected pad, by position: south, east, north.
+  // Printed button names for the connected pad, by position: south, east, north, west.
   readonly property var buttons: ({
-    keyboard: ["Enter", "Esc", "Y"],
-    playstation: ["✕", "○", "△"],
-    nintendo: ["B", "A", "X"]
-  })[root.family] || ["A", "B", "Y"]
+    keyboard: ["Enter", "Esc", "Y", "X"],
+    playstation: ["✕", "○", "△", "□"],
+    nintendo: ["B", "A", "X", "Y"]
+  })[root.family] || ["A", "B", "Y", "X"]
 
   // What the buttons do, under the card: the button's glyph, then its action.
   readonly property var hint: [[root.buttons[0], "Select"],
@@ -748,6 +815,7 @@ Item {
     id: capture
     active: root.opened && !root.fixtureMode
     output: root.gameScreen() ? root.gameScreen().name : ""
+    screen: root.gameScreen()
   }
 
   LiveAudio {

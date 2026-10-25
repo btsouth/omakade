@@ -4918,7 +4918,7 @@ int main(int argc, char* argv[]) {
         quickWindow->setProperty("diagnosticsOpen", true);
         if (renderOverlay.startsWith("settings-")) {
           auto* page = quickWindow->findChild<QQuickItem*>("settingsOverlay");
-          const QStringList sections{"sources", "library", "connections", "controls", "storage", "appearance", "streaming", "about", "highlights"};
+          const QStringList sections{"sources", "library", "connections", "controls", "storage", "appearance", "streaming", "about", "highlights", "ask"};
           const int section = sections.indexOf(renderOverlay.mid(9));
           if (page && section >= 0) page->setProperty("section", section);
           if (page && renderOverlay == QStringLiteral("settings-melonds")) {

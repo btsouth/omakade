@@ -84,7 +84,7 @@ import QtQuick.Layouts
         readonly property var sections: [
             {label: "Sources", section: 0}, {label: "Library & launching", section: 1},
             {label: "Appearance", section: 5}, {label: "Controls", section: 3},
-            {label: "Highlights", section: 8},
+            {label: "Highlights", section: 8}, {label: "Ask", section: 9},
             {label: "Connections", section: 2}, {label: "Streaming", section: 6},
             {label: "Backup & storage", section: 4}, {label: "About & help", section: 7}
         ]
@@ -2026,6 +2026,76 @@ import QtQuick.Layouts
                 Text {
                     Layout.fillWidth: true
                     text: "The recording is of the display the game is on, including anything shown over it, with the sound your computer plays. It stays in memory and on this computer, and nothing is kept until a clip is saved."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                }
+                ColumnLayout {
+                    objectName: "askSettings"
+                    Layout.fillWidth: true
+                    spacing: 14
+                    visible: settingsOverlay.section === 9
+                    // The default agent is chosen in Omarchy, so look again each time this opens.
+                    onVisibleChanged: if (visible) Preferences.refreshAskAgent()
+                Text {
+                    text: "ASK"
+                    color: Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Stuck in a game? Choose \u201cWhat now?\u201d in the in-game guide, or press X on a controller while the guide is open, and your AI agent tells you what to do next. It looks at the paused game and answers on the card, without spoilers. With Claude Code, \u201cLook it up\u201d then checks the answer against a guide on the web."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    GlassButton {
+                        objectName: "askToggle"
+                        compact: true
+                        enabled: Preferences.askAgentSupported || Preferences.ask
+                        text: "ASK: " + (Preferences.ask ? "ON" : "OFF")
+                        selected: Preferences.ask
+                        onClicked: Preferences.ask = !Preferences.ask
+                    }
+                }
+                Text {
+                    objectName: "askAgent"
+                    Layout.fillWidth: true
+                    text: Preferences.askAgentSupported
+                          ? "Ask uses " + Preferences.askAgentName + ", your default agent in Omarchy, with your own account and its usage limits. Change it in Omarchy's menu under Setup > Defaults > Agent."
+                          : Preferences.askAgentId !== ""
+                            ? "Your default agent in Omarchy is " + Preferences.askAgentName + ", which Ask can't use yet. Ask works with Codex and Claude Code: choose one in Omarchy's menu under Setup > Defaults > Agent."
+                          : Preferences.askAgentChoosable
+                            ? "Ask uses your default agent in Omarchy, and none is chosen yet. Ask works with Codex and Claude Code: choose one in Omarchy's menu under Setup > Defaults > Agent."
+                            : "Ask uses your default agent in Omarchy, which this version of Omarchy doesn't have yet. It arrives with an Omarchy update."
+                    color: Preferences.askAgentSupported ? Theme.foreground : Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: (Preferences.askAgentSupported ? 11 : 12) * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    objectName: "askRequirement"
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: Preferences.ask && !!SessionRecorderStatus && !SessionRecorderStatus.recorderRunning
+                          ? "Ask runs in Omakade's background service, which is not running. Start it in a terminal: systemctl --user enable --now omakade-sessiond"
+                          : ""
+                    color: Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Each question sends your agent a picture of the display the game is on and the game's name. The agent works in an empty folder with every tool that could read your files or change your computer turned off, and only Look it up may search the web. Codex has no Look it up, because its web search needs a tool that can also read your files. The picture goes to the company behind the agent, as anything you ask it does. Omakade keeps its copy in memory until your next question or game, then deletes it."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 11 * settingsPanel.uiScale

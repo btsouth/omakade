@@ -81,6 +81,12 @@ class AppSettings final : public QObject {
   Q_PROPERTY(QVariantList highlightLengths READ highlightLengths CONSTANT)
   Q_PROPERTY(QString highlightFolder READ highlightFolder CONSTANT)
   Q_PROPERTY(bool highlightRecorderInstalled READ highlightRecorderInstalled CONSTANT)
+  // Ask: the guide's "What now?" asks the user's default agent (Omarchy's) about the paused game.
+  Q_PROPERTY(bool ask READ ask WRITE setAsk NOTIFY askChanged)
+  Q_PROPERTY(QString askAgentId READ askAgentId NOTIFY askAgentChanged)
+  Q_PROPERTY(QString askAgentName READ askAgentName NOTIFY askAgentChanged)
+  Q_PROPERTY(bool askAgentSupported READ askAgentSupported NOTIFY askAgentChanged)
+  Q_PROPERTY(bool askAgentChoosable READ askAgentChoosable NOTIFY askAgentChanged)
   Q_PROPERTY(bool couchModeEnabled READ couchModeEnabled WRITE setCouchModeEnabled NOTIFY
                  couchModeEnabledChanged)
   Q_PROPERTY(QString couchLibraryView READ couchLibraryView WRITE setCouchLibraryView NOTIFY
@@ -240,6 +246,17 @@ public:
   [[nodiscard]] static QVariantList highlightLengths();
   [[nodiscard]] static QString highlightFolder();
   [[nodiscard]] static bool highlightRecorderInstalled();
+  // Off by default: Ask sends a picture of the game to the agent's provider.
+  [[nodiscard]] bool ask() const { return m_ask; }
+  void setAsk(bool value);
+  // Omarchy's default agent, read when asked: the user changes it outside Omakade.
+  [[nodiscard]] static QString askAgentId();
+  [[nodiscard]] static QString askAgentName();
+  [[nodiscard]] static bool askAgentSupported();
+  // This Omarchy has `omarchy default agent`, so one can be chosen.
+  [[nodiscard]] static bool askAgentChoosable();
+  // Settings shows the agent again after the user may have changed it.
+  Q_INVOKABLE void refreshAskAgent() { emit askAgentChanged(); }
   bool protectRetroArchSaves() const { return m_protectRetroArchSaves; }
   void setProtectRetroArchSaves(bool value);
   [[nodiscard]] bool couchModeEnabled() const;
@@ -283,6 +300,8 @@ signals:
   void pauseUnfocusedSessionsChanged();
   void discordPresenceChanged();
   void highlightsChanged();
+  void askChanged();
+  void askAgentChanged();
   void protectRetroArchSavesChanged();
   void couchModeEnabledChanged();
   void couchLibraryViewChanged();
@@ -363,6 +382,7 @@ private:
   bool m_highlights = false;
   int m_highlightSeconds = 30;
   bool m_highlightAchievements = true;
+  bool m_ask = false;
   bool m_protectRetroArchSaves = true;
   bool m_couchModeEnabled = false;
   QString m_couchLibraryView = QStringLiteral("detail");

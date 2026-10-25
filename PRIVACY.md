@@ -110,6 +110,25 @@ it was saved for, in the `highlight_clips` table. Stills for the game page are c
 the running game's Steam stats files in Steam's `appcache/stats` folder. Clips and their
 records are not uploaded and are not part of Omakade backups.
 
+## Ask
+
+Ask is off by default. When it is on, **What now?** in the in-game guide sends your default
+AI agent in Omarchy (Codex or Claude Code) the game's name, its platform when known, and one
+picture of the display the game is on, scaled to about 960 pixels wide. The picture
+includes anything shown over the game on that display, but not the guide. Omakade runs the
+agent you installed, signed in to your own account, so the question and picture go to that
+agent's company (OpenAI or Anthropic) under your account and its terms. Omakade itself
+contacts no AI service and holds no AI credentials.
+
+The agent runs in an empty folder with nothing that can read your files or change the
+computer: Claude Code with no tools, and Codex in its read-only sandbox with its shell,
+code-mode host, plugins, image viewer, sub-agents, skills and MCP servers turned off. Look
+it up, with Claude Code only, adds web search and opening the pages it finds; the search
+sees the game's name and the agent's earlier answer. Codex has no Look it up, because its
+web search needs the code-mode host. Neither agent leaves a session in its history. The picture is kept in
+`$XDG_RUNTIME_DIR/omakade/ask/`, readable only by you, until the next question or game, then
+deleted. Answers are not saved. `ask = true` in `config.toml` is the only setting.
+
 ## Optional RomM library
 
 RomM is disabled by default. Connecting stores a Client API Token in Secret Service
@@ -156,6 +175,9 @@ recovery jobs are retained; they are not automatically deleted after success.
 Restoring does not reconnect accounts or launch imported entries.
 
 ## Network requests
+
+Omakade's own requests are listed here. Ask's questions are sent by your AI agent, as
+described under [Ask](#ask).
 
 When a Steam game is detected, the in-game guide may download missing wide hero artwork and logos from the same Steam CDN (`shared.steamstatic.com`), using only the Steam App ID.
 

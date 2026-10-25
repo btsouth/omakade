@@ -1,0 +1,20 @@
+#!/bin/bash
+# Stands in for `codex exec --json`, logging its arguments to $FAKE_ASK_LOG, one per line.
+# FAKE_ASK picks a behaviour: "answer" (a message, then the answer), "linger" (answer, then
+# keep running), "fail" (an error on stderr), "turnfail" (a failed turn), "hang" (never
+# answer) or "silent" (exit without a word).
+printf '%s\n' "$@" > "$FAKE_ASK_LOG"
+case "$FAKE_ASK" in
+  answer|linger)
+    echo '{"type":"thread.started"}'
+    echo '{"type":"turn.started"}'
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"Let me check a guide."}}'
+    echo '{"type":"item.completed","item":{"type":"agent_message","text":"Walk up to **Grim** and press Triangle ([Guide](https://example.com/rc))."}}'
+    echo '{"type":"turn.completed"}'
+    [ "$FAKE_ASK" = linger ] && exec sleep 30
+    ;;
+  fail) echo "Error: not logged in" >&2; exit 1 ;;
+  turnfail) echo '{"type":"turn.failed","error":{"message":"usage limit reached"}}'; exit 1 ;;
+  hang) exec sleep 30 ;;
+  silent) exit 0 ;;
+esac

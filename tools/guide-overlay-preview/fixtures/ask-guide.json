@@ -1,0 +1,37 @@
+{
+  "pad": "xbox",
+  "clock": "9:47 PM",
+  "game": {
+    "title": "Lantern Road",
+    "source": "Steam",
+    "kind": "steam",
+    "cover": "@/cover.jpg",
+    "sessionMinutes": 42,
+    "totalMinutes": 1080,
+    "pauseWhileOpen": true,
+    "paused": true
+  },
+  "performance": {
+    "mangohud": true,
+    "fps": 58,
+    "frametime": 17.2
+  },
+  "stats": {
+    "cpu": 41,
+    "cpuTemp": 67,
+    "gpu": 88,
+    "gpuTemp": 71
+  },
+  "audio": {
+    "volume": 0.72,
+    "muted": false
+  },
+  "capture": {},
+  "ask": {
+    "agent": "Codex",
+    "state": "answer",
+    "mode": "lookup",
+    "lookup": false,
+    "text": "You're in the garage, helping lower the ship. Walk up to the glowing bolt crank in front of the mechanic and press Square, then hold the left stick left until the ship comes down. Afterwards, look at each of the ship's lights with the right stick as he calls them out. (Neoseeker)"
+  }
+}

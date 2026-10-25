@@ -34,6 +34,7 @@ private slots:
   void changedPayloadKeepsStaticData();
   void telemetryRequiresRealFreshReadings();
   void desktopResumesBeforeParking();
+  void askNeedsItsStatus();
   void surfaceFailureResumes();
   void openingDeadlineResumes();
   void pluginParser();
@@ -121,6 +122,32 @@ qint64 processStart(qint64 pid) {
   if (!stat.open(QIODevice::ReadOnly)) return 0;
   const auto raw = stat.readAll(); return raw.mid(raw.lastIndexOf(')') + 2).simplified().split(' ')[19].toLongLong();
 }
+}
+
+void InGameGuideTests::askNeedsItsStatus() {
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_session = {{"pid", 4242}, {"procStart", 7}, {"name", "Lantern Road"}};
+  guide.m_opened = true; guide.m_token = "test";
+  QSignalSpy asked(&guide, &InGameGuide::askRequested);
+  const QJsonObject question{{"action", "ask"}, {"value", QJsonObject{{"mode", "next"}, {"image", "/run/shot.jpg"}}}};
+  // Without Ask's status the card has no Ask, and an ask from it is not taken.
+  QVERIFY(!guide.payload().value("data").toObject().contains("ask"));
+  guide.message(question);
+  QCOMPARE(asked.count(), 0);
+  const QJsonObject status{{"agent", "Codex"}, {"state", "ready"}, {"mode", "next"}, {"lookup", false}};
+  guide.setAsk(status);
+  QCOMPARE(guide.payload().value("data").toObject().value("ask").toObject(), status);
+  guide.message(question);
+  QCOMPARE(asked.count(), 1);
+  QCOMPARE(asked.at(0).at(0).toString(), QStringLiteral("next"));
+  QCOMPARE(asked.at(0).at(1).toString(), QStringLiteral("/run/shot.jpg"));
+  // Nor with the card closed, or with no game.
+  guide.m_opened = false;
+  guide.message(question);
+  guide.m_opened = true; guide.m_session = {};
+  guide.message(question);
+  QCOMPARE(asked.count(), 1);
+  QVERIFY(!guide.payload().value("data").toObject().contains("ask"));
 }
 
 void InGameGuideTests::desktopResumesBeforeParking() {
@@ -314,6 +341,12 @@ void InGameGuideTests::pluginFocus() {
   auto desktop = full; desktop.insert("desktop", true);
   QCOMPARE(keys(grid(desktop)), (QStringList{"resume", "desktop", "screenshot,record", "volume", "quit"}));
   QCOMPARE(keys(grid({{"game", true}})), (QStringList{"resume", "screenshot,record", "quit"}));
+  // Ask sits under Resume and Desktop; Look it up joins it once there is an answer to follow up.
+  auto ask = desktop; ask.insert("ask", true);
+  QCOMPARE(keys(grid(ask)), (QStringList{"resume", "desktop", "ask", "screenshot,record", "volume", "quit"}));
+  ask.insert("lookup", true);
+  QCOMPARE(keys(grid(ask)), (QStringList{"resume", "desktop", "ask,lookup", "screenshot,record", "volume", "quit"}));
+  QCOMPARE(keys(grid({{"ask", true}})), (QStringList{"screenshot,record"}));
   QCOMPARE(keys(grid({})), (QStringList{"screenshot,record"}));
   QCOMPARE(global.property("home").call({grid({})}).toString(), QStringLiteral("screenshot"));
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "guide/InGameGuide.h"
+#include "ask/AskService.h"
 #include "highlights/HighlightService.h"
 #include <QLocalServer>
 #include <QJsonArray>
@@ -39,6 +40,8 @@ private:
   InGameGuide m_guide;
   // Omakade's replay buffer, following the same game as the guide. Absent without the guide.
   std::unique_ptr<HighlightService> m_highlights;
+  // Ask's questions about the same game. Absent without the guide.
+  std::unique_ptr<AskService> m_ask;
   QLocalServer m_control;
   QTimer m_refresh, m_debounce, m_reconnect;
   QLocalSocket m_events;

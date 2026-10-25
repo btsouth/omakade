@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Ask
+
+- Stuck in a game? **What now?** in the in-game guide, or X on the controller, asks your AI
+  agent what to do next. It looks at the paused game and answers on the card in a few
+  seconds, without spoilers. With Claude Code, **Look it up** checks the answer against a
+  guide on the web.
+  See [Ask](docs/ASK.md).
+- Ask uses your default agent in Omarchy (Setup → Defaults → Agent) with your own account:
+  Codex or Claude Code, run with no tools that can read your files or change your computer. It is off until
+  you turn it on in Settings → Ask.
+
 ## 1.18.0
 
 Game Pass games, highlight clips and one Game Mode.

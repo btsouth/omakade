@@ -6,6 +6,8 @@
   record OUTPUT          record a clip of OUTPUT with the guide's own recorder
   record-stop PID        stop the clip `record` started
   replay-save PID        save the replay buffer of gpu-screen-recorder PID
+  ask-shot OUTPUT SCALE FOLDER
+                         save OUTPUT's frame at SCALE as a JPEG in FOLDER for Ask; print its path
 
 Capture actions report through Omarchy notifications, and only after the file exists.
 """
@@ -276,6 +278,32 @@ def screenshot(output):
     return 1
 
 
+def ask_shot(output, scale, folder):
+    # Ask's picture is for the agent, not the user: small, private and never notified.
+    try:
+        factor = float(scale)
+    except ValueError:
+        return 1
+    if not 0 < factor <= 4 or not folder:
+        return 1
+    folder = Path(folder)
+    try:
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return 1
+    path = folder / ('ask-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.jpg')
+    command = ['grim', '-t', 'jpeg', '-q', '80', '-s', format(factor, '.4f')] + (['-o', output] if output else []) + [str(path)]
+    try:
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=True)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if path.is_file() and path.stat().st_size:
+        print(path)
+        return 0
+    path.unlink(missing_ok=True)
+    return 1
+
+
 def videos():
     path = Path(os.environ.get('OMARCHY_SCREENRECORD_DIR') or xdg('VIDEOS', 'Videos')).expanduser()
     path.mkdir(parents=True, exist_ok=True)
@@ -395,5 +423,7 @@ elif command == 'record-stop':
     sys.exit(record_stop(int(sys.argv[2])))
 elif command == 'replay-save':
     sys.exit(replay_save(int(sys.argv[2])))
+elif command == 'ask-shot':
+    sys.exit(ask_shot(sys.argv[2], sys.argv[3], sys.argv[4]) if len(sys.argv) > 4 else 1)
 else:
     print(json.dumps(status()))

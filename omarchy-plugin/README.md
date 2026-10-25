@@ -17,6 +17,7 @@ theme's menu colours, font, corner radius and spacing.
 │ ┃ ▶  Resume                            (B) ┃  │
 │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  │
 │ [ ▭  Desktop        ] [ ≡  RetroArch menu  ]  │  (only where they apply)
+│ [ ✦  What now?                   Codex  (X) ] │  (with Ask on; see Ask below)
 │                                               │
 │ [ ◎             (Y) ] [ ◉                  ]  │
 │ [ Screenshot        ] [ Record clip        ]  │  (+ [Clip 30 s] with highlights, or [Save 30 s] while an outside replay buffer runs)
@@ -62,7 +63,7 @@ Actions arrive from the keyboard or, for controllers, from Omakade over the guid
 socket:
 
 ```sh
-omarchy-shell omakade.guide input <up|down|left|right|a|b|y|guide>
+omarchy-shell omakade.guide input <up|down|left|right|a|b|x|y|guide>
 ```
 
 The cursor starts on Resume each time the card opens. Up and down move between
@@ -72,8 +73,8 @@ keeps the cursor's place across the card, through the one-control rows too, so
 Record, down through volume and Quit and round past Resume, comes back to
 Record. On volume left and right change the level, on the output row they pick
 the next output. A activates, B backs out of the quit question first and then
-resumes. Y takes a screenshot. Keyboard: arrows, Enter or Space (A), Escape (B),
-Y, G or Home (Guide). The button glyphs on the card and in the hint line follow
+resumes. Y takes a screenshot and X asks (with Ask on). Keyboard: arrows, Enter or
+Space (A), Escape (B), Y, X, G or Home (Guide). The button glyphs on the card and in the hint line follow
 the pad: Xbox and Steam Deck letters, PlayStation symbols, Nintendo's swapped A
 and B.
 
@@ -93,6 +94,19 @@ and then Saved or Not saved. With three tiles Record clip reads Record. Without 
 while an outside replay buffer runs and sends it SIGUSR1; the length comes from the
 buffer's own `-r`. Volume sets the output Omarchy's volume keys
 use (`omarchy-audio-output-sink`), through Quickshell PipeWire.
+
+## Ask
+
+With Ask on, Omakade's payload has `ask` and the card shows **What now?** under Resume,
+with the agent's name. A or X takes a picture of the game the way Screenshot does, card
+and dim out of it, scaled to about 960 pixels wide, into the folder `ask.shots` names
+(`guide-files.py ask-shot`), and sends the action `ask` with `{mode: "next", image}`. The
+button reads **Asking Codex…** and counts the seconds until Omakade's status says
+`answer` or `failed`. The answer then sits above **Ask again** and **Look it up** under
+a WHAT NOW heading with the agent and how long ago it answered; a failure reads in the
+urgent colour above **Try again**. Look it up sends `{mode: "lookup"}`, needs no new
+picture, reads **Looking it up…**, and its answer comes under FROM A GUIDE. One question
+runs at a time: A and X do nothing while one is out.
 
 ## Rendering
 

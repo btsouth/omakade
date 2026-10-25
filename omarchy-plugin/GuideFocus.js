@@ -2,16 +2,17 @@
 
 // The card's focus model: its controls as rows of keys, top to bottom. Resume
 // and Quit are rows of their own, as are volume and the sound output; Desktop
-// and the RetroArch menu share a row, as do the capture tiles. Only what the
-// card shows is in the grid, so nothing is skipped.
+// and the RetroArch menu share a row, as do Ask and Look it up, and the capture
+// tiles. Only what the card shows is in the grid, so nothing is skipped.
 //
-// `shown` says what is on the card: {game, replay, desktop, retroarch, volume,
-// outputs}.
+// `shown` says what is on the card: {game, replay, desktop, retroarch, ask,
+// lookup, volume, outputs}.
 function grid(shown) {
   var s = shown || {}
   return [
     s.game ? ["resume"] : [],
     [].concat(s.desktop ? ["desktop"] : [], s.retroarch ? ["retroarch"] : []),
+    s.game && s.ask ? ["ask"].concat(s.lookup ? ["lookup"] : []) : [],
     ["screenshot", "record"].concat(s.replay ? ["replay"] : []),
     s.volume ? ["volume"] : [],
     (s.outputs || 0) > 1 ? ["output"] : [],

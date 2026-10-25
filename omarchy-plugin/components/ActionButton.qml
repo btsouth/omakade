@@ -4,8 +4,9 @@ import qs.Commons as Commons
 import qs.Ui
 
 // A button with its icon and name side by side: Resume, Desktop, the RetroArch
-// menu, Quit and the quit question's two choices. Left-aligned unless
-// `centered`; a pad button's glyph (`hint`) may sit at its right end.
+// menu, Ask, Quit and the quit question's two choices. Left-aligned unless
+// `centered`; a quiet figure (`value`) and a pad button's glyph (`hint`) may
+// sit at its right end.
 Focusable {
   id: button
 
@@ -16,6 +17,7 @@ Focusable {
   property bool strong: false
   property bool centered: false
   property string hint: ""
+  property string value: ""
   readonly property int padX: g.sized(Style.space(18))
 
   iconItem: glyph
@@ -43,7 +45,8 @@ Focusable {
       textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       width: Math.min(implicitWidth, button.width - button.padX * 2 - (glyph.visible ? glyph.width + content.spacing : 0)
-                      - (hintGlyph.visible ? hintGlyph.width + content.spacing : 0))
+                      - (hintGlyph.visible ? hintGlyph.width + content.spacing : 0)
+                      - (valueText.visible ? valueText.implicitWidth + content.spacing : 0))
       text: button.label
       color: button.ink
       font.family: button.g.fontFamily
@@ -51,6 +54,20 @@ Focusable {
       font.weight: button.strong ? Font.DemiBold : Font.Normal
       elide: Text.ElideRight
     }
+  }
+
+  Text {
+    id: valueText
+    visible: button.value !== ""
+    textFormat: Text.PlainText
+    anchors.right: hintGlyph.visible ? hintGlyph.left : parent.right
+    anchors.rightMargin: hintGlyph.visible ? content.spacing : button.padX
+    anchors.verticalCenter: parent.verticalCenter
+    text: button.value
+    color: button.g.dim
+    font.family: button.g.fontFamily
+    font.pixelSize: button.g.sized(Style.font.body)
+    font.weight: Font.Medium
   }
 
   ButtonGlyph {

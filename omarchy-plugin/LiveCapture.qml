@@ -10,6 +10,8 @@ Item {
 
   property bool active: false
   property string output: ""
+  // The game's screen, for sizing Ask's picture.
+  property var screen: null
   // {cpu, cpuTemp, gpu, gpuTemp, recording: {pid, started}, replay: {pid, seconds}}
   property var status: ({})
   property bool busy: false
@@ -51,6 +53,15 @@ Item {
   // `done(ok)` runs once the file exists, or once it is known not to.
   function screenshot(done) {
     run(["python3", "-I", root.helper, "screenshot", root.output], function(ok) { if (done) done(ok) })
+  }
+
+  // Ask's picture of the game: scaled so its width is about `width` pixels, saved in
+  // `folder`. `done(path)` gets its path, or "" when none was saved.
+  function askShot(width, folder, done) {
+    var screen = root.screen
+    var scale = screen && screen.width > 0 ? Math.min(1, width / screen.width) : 0.5
+    run(["python3", "-I", root.helper, "ask-shot", root.output, String(scale), folder],
+        function(ok, path) { done(ok ? path : "") })
   }
 
   function toggleRecording() {

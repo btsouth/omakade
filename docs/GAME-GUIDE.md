@@ -11,8 +11,10 @@ The panel shows the game's art, session and total time, the clock and any
 controller battery UPower reports. Below that: Resume, Screenshot and Record
 clip, sound volume and output, the performance readings that are available, and
 Quit, which asks before it acts. Clip N s appears while [highlights](HIGHLIGHTS.md) are
-recording the game, and Save last N seconds while an outside replay buffer runs. Unknown
-readings stay absent.
+recording the game, and Save last N seconds while an outside replay buffer runs. With
+[Ask](ASK.md) on, **What now?** sits under Resume: it asks your AI agent what to do next,
+from a picture of the paused game, and the answer appears there. X asks from anywhere on
+the card. Unknown readings stay absent.
 
 In Game Mode the panel adds **Desktop**, which parks the session as Home did
 before the guide: the game is hidden and muted and keeps running. Home on the
@@ -58,13 +60,13 @@ cannot be grabbed produces a notification; available readers keep working.
 
 One controller gesture moves one row. Hats, sticks and buttons share a report;
 physical and virtual mirrors are grouped. B, Home and Start require release
-before firing again. Keyboard arrows, Enter, Escape and Y use the same actions.
+before firing again. Keyboard arrows, Enter, Escape, Y and X use the same actions.
 Quit asks first, then sends SIGTERM to the pinned tree. A surviving game offers
 Force quit after five seconds.
 
 ## Capture, sound and scale
 
-Screenshot and Record clip hide both the card and scrim and wait for a submitted
+Screenshot, Record clip and Ask hide both the card and scrim and wait for a submitted
 guide-free frame and at least 80 ms. Screenshot then captures the game's output;
 Record clip closes the guide and records the game with its own recorder. A screen
 recording you start from Omarchy is separate: the guide does not show it as its
@@ -105,6 +107,11 @@ After opening, newline-delimited socket messages keep the shape
 replace as a whole. Unchanged payloads send nothing. Static achievements and art
 are sent on open and again only when their content changes. The integrated
 plugin merges a delta before validating the complete version 1 data.
+
+Data includes `ask` while Ask is on for the game: `{agent, state, mode, text, started, at,
+lookup, shots}`, where `state` is `ready`, `thinking`, `answer` or `failed`. The card saves
+its picture in `shots` and sends the action `ask` with `{mode: "next", image}`, or
+`{mode: "lookup"}` to look the last answer up.
 
 The user-only socket accepts `{version: 1, token, action, value}`. Controller input
 and updates share that ordered connection. Lifecycle commands are serialized;

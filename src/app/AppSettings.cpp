@@ -1,5 +1,6 @@
 #include "app/AppSettings.h"
 
+#include "ask/AskAgent.h"
 #include "highlights/HighlightSettings.h"
 #include "highlights/ReplayBuffer.h"
 #include "backup/BackupArchive.h"
@@ -869,6 +870,18 @@ QVariantList AppSettings::highlightLengths() {
 
 QString AppSettings::highlightFolder() { return HighlightSettings::folder(); }
 
+void AppSettings::setAsk(bool value) {
+  if (m_ask == value) return;
+  m_ask = value;
+  save();
+  emit askChanged();
+}
+
+QString AppSettings::askAgentId() { return AskAgent::defaultAgent(QDir::homePath()).id; }
+QString AppSettings::askAgentName() { return AskAgent::defaultAgent(QDir::homePath()).name; }
+bool AppSettings::askAgentSupported() { return AskAgent::defaultAgent(QDir::homePath()).supported; }
+bool AppSettings::askAgentChoosable() { return !QStandardPaths::findExecutable(QStringLiteral("omarchy-default-agent")).isEmpty(); }
+
 bool AppSettings::highlightRecorderInstalled() { return !ReplayBuffer::findRecorder().isEmpty(); }
 
 bool AppSettings::discordPresence() const { return m_discordPresence; }
@@ -1101,6 +1114,8 @@ void AppSettings::load() {
     m_highlightSeconds = highlights.clipSeconds;
     m_highlightAchievements = highlights.achievementClips;
   }
+  // omakade-sessiond reads the same key with the same parser.
+  m_ask = AskAgent::enabled(contents);
   m_protectRetroArchSaves = readEnabled(QStringLiteral("protect_retroarch_saves"), true);
   m_trackPlaySessions = readEnabled(QStringLiteral("track_play_sessions"), true);
   m_couchModeEnabled = readEnabled(QStringLiteral("couch_mode_enabled"), false);
@@ -1269,6 +1284,7 @@ bool AppSettings::save() {
                   .arg(m_highlightSeconds)
                   .arg(m_highlightAchievements ? QStringLiteral("true") : QStringLiteral("false"));
   contents += QStringLiteral("protondb_badges = %1\n").arg(m_protonDbBadges ? QStringLiteral("true") : QStringLiteral("false"));
+  contents += QStringLiteral("ask = %1\n").arg(m_ask ? QStringLiteral("true") : QStringLiteral("false"));
   const auto jsonString = [](const QString& value) {
     const QByteArray array = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
     return QString::fromUtf8(array.mid(1, array.size() - 2));

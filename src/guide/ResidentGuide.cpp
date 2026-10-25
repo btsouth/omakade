@@ -256,6 +256,11 @@ ResidentGuide::ResidentGuide(QObject* parent) : QObject(parent), m_guide(nullptr
       else m_guide.notice(QStringLiteral("Clip saved"), QStringLiteral("%1 s in Videos").arg(clip.seconds));
     }, openMs);
   });
+  m_ask = std::make_unique<AskService>(AskService::defaultEnvironment());
+  connect(m_ask.get(), &AskService::statusChanged, this, [this] { m_guide.setAsk(m_ask->guideStatus()); });
+  connect(&m_guide, &InGameGuide::askRequested, this, [this](const QString& mode, const QString& image) {
+    if (!m_ask->ask(mode, image)) m_guide.notice(QStringLiteral("Couldn't ask"), QStringLiteral("Try again in a moment"));
+  });
   connect(&m_guide, &InGameGuide::summonFailed, this, &ResidentGuide::fallback);
   connect(&m_guide, &InGameGuide::desktopRequested, this, [this] { launch("--game-mode-desktop"); });
   m_refresh.setInterval(5000);
@@ -413,6 +418,7 @@ void ResidentGuide::refresh() {
         const auto result = watcher->result(); watcher->deleteLater(); m_refreshing = false; m_ready = true; m_locked = result.locked; m_gameFocused = result.focused;
         m_guide.setSnapshot(result.session, result.metadata, result.output, result.window);
         if (m_highlights) m_highlights->follow(HighlightService::gameFrom(result.session, result.metadata, result.output));
+        if (m_ask) m_ask->follow(AskService::gameFrom(result.session, result.metadata));
         if (m_guide.hasGame()) m_refresh.start(); else m_refresh.stop();
         emit snapshotReady();
         if (m_refreshPending) { m_refreshPending = false; m_debounce.start(); }

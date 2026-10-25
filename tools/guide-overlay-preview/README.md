@@ -27,7 +27,8 @@ A fixture is the card's data without the backend: `game` as Omakade sends it,
 `gpuTemp`), `audio` (`volume`, `muted`, `outputs: [{name, current}]`), `pads` (battery
 percentages), `capture` (`recording: {seconds}`, `replay: {seconds}`), `desktop`
 (Game Mode's Desktop button), plus `clock`, `cursor` (the focused row) and
-`confirm` (the quit question open). `"@/..."` paths point into this folder,
+`confirm` (the quit question open), `ask` (Ask as Omakade sends it: `agent`,
+`state` of `ready`, `thinking`, `answer` or `failed`, `mode`, `text`, `lookup`). `"@/..."` paths point into this folder,
 where the pictures live. Actions in fixture mode change the fixture and are
 logged as `GUIDE_ACT`.
 
