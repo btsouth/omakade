@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QImage>
 #include <QHash>
 #include <QNetworkAccessManager>
 #include <QQueue>
@@ -56,6 +57,10 @@ public:
   void setSortMode(int sortMode);
 
   [[nodiscard]] static bool acceptsIconUrl(const QUrl& url);
+  // Wide achievement art, such as Xbox's 16:9 pictures of an icon on a plain backdrop, cut
+  // to the square icon a tile shows: the icon without its backdrop, or the middle of a
+  // picture that fills the frame. Square art is returned as it is.
+  [[nodiscard]] static QImage squareIcon(const QImage& image);
 
   Q_INVOKABLE void load(const QString& appId);
   Q_INVOKABLE void clearCache();

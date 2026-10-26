@@ -2013,6 +2013,38 @@ void CoreTests::achievementModelLoadsLocalSteamCache() {
       QUrl(QStringLiteral("https://media.retroachievements.org/Badge/012345.png"))));
   QVERIFY(!AchievementModel::acceptsIconUrl(
       QUrl(QStringLiteral("https://media.retroachievements.org.example.com/Badge/x.png"))));
+
+  // Xbox art is a 16:9 picture: a framed icon on a backdrop that darkens toward the corners.
+  QImage art(480, 270, QImage::Format_RGB32);
+  for (int y = 0; y < art.height(); ++y) {
+    for (int x = 0; x < art.width(); ++x) {
+      const int shade = 58 - (std::abs(x - 240) + std::abs(y - 135)) / 12;
+      art.setPixel(x, y, qRgb(shade, shade, shade - 2));
+    }
+  }
+  art.setPixel(20, 20, qRgb(255, 255, 255));
+  for (int y = 63; y < 207; ++y) {
+    for (int x = 168; x < 312; ++x) {
+      const bool frame = x < 172 || x >= 308 || y < 67 || y >= 203;
+      art.setPixel(x, y, frame ? qRgb(230, 230, 230) : qRgb(10, 10, 10));
+    }
+  }
+  const QImage icon = AchievementModel::squareIcon(art);
+  QCOMPARE(icon.size(), QSize(144, 144));
+  QCOMPARE(icon.pixel(0, 0), qRgb(230, 230, 230));
+  QCOMPARE(icon.pixel(72, 72), qRgb(10, 10, 10));
+  // A picture that fills the frame keeps its middle.
+  QImage scene(480, 270, QImage::Format_RGB32);
+  for (int y = 0; y < scene.height(); ++y) {
+    for (int x = 0; x < scene.width(); ++x) {
+      scene.setPixel(x, y, (x / 8 + y / 8) % 2 ? qRgb(200, 40, 40) : qRgb(30, 30, 200));
+    }
+  }
+  QCOMPARE(AchievementModel::squareIcon(scene), scene.copy(105, 0, 270, 270));
+  // Square art, such as Steam's and RetroAchievements', is left alone.
+  QImage square(64, 64, QImage::Format_RGB32);
+  square.fill(qRgb(1, 2, 3));
+  QCOMPARE(AchievementModel::squareIcon(square), square);
 }
 
 void CoreTests::steamAchievementApiParsesPlayerSchemaAndRarity() {

@@ -2,6 +2,7 @@
 
 #include "app/AppSettings.h"
 
+#include <QBuffer>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -22,6 +23,8 @@
 namespace {
 constexpr qint64 kMaximumIconBytes = 2 * 1024 * 1024;
 constexpr int kMaximumConcurrentIconDownloads = 4;
+// How far a channel strays from the backdrop before a pixel counts as part of the icon.
+constexpr int kIconBackdropTolerance = 46;
 
 QString localUrl(const QString& path) {
   return path.isEmpty() ? QString{} : QUrl::fromLocalFile(path).toString();
@@ -130,6 +133,62 @@ bool AchievementModel::acceptsIconUrl(const QUrl& url) {
           host == QStringLiteral("media.retroachievements.org") ||
           host == QStringLiteral("images-eds-ssl.xboxlive.com") ||
           host == QStringLiteral("images-eds.xboxlive.com"));
+}
+
+QImage AchievementModel::squareIcon(const QImage& source) {
+  if (source.isNull() || source.width() <= source.height()) {
+    return source;
+  }
+  const QImage image = source.convertToFormat(QImage::Format_RGB32);
+  const int width = image.width();
+  const int height = image.height();
+  // The backdrop is the colour of the corners.
+  int red = 0, green = 0, blue = 0;
+  for (const QRgb corner : {image.pixel(0, 0), image.pixel(width - 1, 0),
+                            image.pixel(0, height - 1), image.pixel(width - 1, height - 1)}) {
+    red += qRed(corner);
+    green += qGreen(corner);
+    blue += qBlue(corner);
+  }
+  red /= 4;
+  green /= 4;
+  blue /= 4;
+  QList<int> rows(height, 0);
+  QList<int> columns(width, 0);
+  for (int y = 0; y < height; ++y) {
+    const auto* line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
+    for (int x = 0; x < width; ++x) {
+      const QRgb pixel = line[x];
+      if (std::max({std::abs(qRed(pixel) - red), std::abs(qGreen(pixel) - green),
+                    std::abs(qBlue(pixel) - blue)}) > kIconBackdropTolerance) {
+        ++rows[y];
+        ++columns[x];
+      }
+    }
+  }
+  // A lone stray pixel in a row or column does not widen the icon.
+  const auto first = [](const QList<int>& counts) {
+    const auto found = std::find_if(counts.cbegin(), counts.cend(), [](int count) { return count > 1; });
+    return found == counts.cend() ? -1 : int(found - counts.cbegin());
+  };
+  const auto last = [](const QList<int>& counts) {
+    const auto found = std::find_if(counts.crbegin(), counts.crend(), [](int count) { return count > 1; });
+    return found == counts.crend() ? -1 : int(counts.crend() - found) - 1;
+  };
+  const int left = first(columns);
+  const int top = first(rows);
+  int side = height;
+  int centreX = width / 2;
+  int centreY = height / 2;
+  if (left >= 0 && top >= 0) {
+    const int right = last(columns);
+    const int bottom = last(rows);
+    side = std::clamp(std::max(right - left + 1, bottom - top + 1), height / 3, height);
+    centreX = (left + right + 1) / 2;
+    centreY = (top + bottom + 1) / 2;
+  }
+  return image.copy(std::clamp(centreX - side / 2, 0, width - side),
+                    std::clamp(centreY - side / 2, 0, height - side), side, side);
 }
 
 void AchievementModel::load(const QString& appId) {
@@ -339,8 +398,19 @@ void AchievementModel::requestIcon(int row) {
       }
     }
     const bool validRow = row >= 0;
+    QImage image;
     if (reply->error() == QNetworkReply::NoError && validRow && !contents.isEmpty() &&
-        !tooLarge && !QImage::fromData(contents).isNull()) {
+        !tooLarge && image.loadFromData(contents)) {
+      if (image.width() > image.height()) {
+        // Wide art is stored as the square icon the tile shows.
+        contents.clear();
+        QBuffer buffer(&contents);
+        if (!buffer.open(QIODevice::WriteOnly) || !squareIcon(image).save(&buffer, "JPG", 92)) {
+          contents.clear();
+        }
+      }
+    }
+    if (!image.isNull() && !contents.isEmpty()) {
       const QString path = pathForIcon(appId, m_achievements.at(row).iconUrl);
       QDir().mkpath(QFileInfo(path).absolutePath());
       QSaveFile file(path);
