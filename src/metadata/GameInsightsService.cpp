@@ -66,6 +66,18 @@ InsightsSecretResult secretOperation(int action, QByteArray value) {
   return result;
 }
 
+// Games outside Steam are already matched to IGDB by the library and arrive as "igdb:<id>".
+qint64 igdbIdFor(const QString& key) {
+  if (!key.startsWith(QStringLiteral("igdb:"))) return 0;
+  bool okay = false;
+  const qint64 id = key.mid(5).toLongLong(&okay);
+  return okay && id > 0 ? id : 0;
+}
+
+bool knownKey(const QString& key) {
+  return igdbIdFor(key) > 0 || !IgdbApi::steamMappingQuery(key).isEmpty();
+}
+
 int hoursFor(int seconds) {
   return seconds <= 0 ? 0 : qMax(1, qRound(static_cast<double>(seconds) / 3600.0));
 }
@@ -166,7 +178,7 @@ void GameInsightsService::loadSteam(const QString& appId) {
   clearCurrent();
   if (appId != m_appId) m_pendingRefreshAppId.clear();
   m_appId = appId;
-  if (IgdbApi::steamMappingQuery(appId).isEmpty()) {
+  if (!knownKey(appId)) {
     m_statusText.clear();
     emit changed();
     return;
@@ -186,7 +198,7 @@ void GameInsightsService::loadSteam(const QString& appId) {
 }
 
 void GameInsightsService::refreshSteam(const QString& appId) {
-  if (!configured() || IgdbApi::steamMappingQuery(appId).isEmpty()) return;
+  if (!configured() || !knownKey(appId)) return;
   if (m_busy) {
     if (appId == m_appId && !refreshing()) {
       m_pendingRefreshAppId = appId;
@@ -282,6 +294,12 @@ void GameInsightsService::requestToken(QByteArray secret) {
 }
 
 void GameInsightsService::requestMapping() {
+  if (const qint64 gameId = igdbIdFor(m_refreshAppId); gameId > 0) {
+    m_insight = {};
+    m_insight.gameId = gameId;
+    requestGame();
+    return;
+  }
   QNetworkRequest request(QUrl(QStringLiteral("https://api.igdb.com/v4/external_games")));
   request.setTransferTimeout(15000);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
@@ -401,7 +419,15 @@ void GameInsightsService::finishRequest(QNetworkReply* reply) {
       requestGame();
     }
   } else if (kind == RequestKind::Game) {
-    if (!IgdbApi::parseGame(contents, &m_insight, &error)) {
+    if (igdbIdFor(m_refreshAppId) > 0 && contents.trimmed() == "[]") {
+      // IGDB deleted or merged the matched game. Remember it like a missing Steam mapping.
+      m_insight = {};
+      m_updatedAt = QDateTime::currentSecsSinceEpoch();
+      persist();
+      m_busy = false;
+      m_statusText = QStringLiteral("IGDB has no entry for this game");
+      emit changed();
+    } else if (!IgdbApi::parseGame(contents, &m_insight, &error)) {
       fail(error);
     } else {
       requestTime();
@@ -447,8 +473,10 @@ bool GameInsightsService::loadCache(const QString& appId) {
   query.prepare(QStringLiteral(
       "SELECT provider_game_id, title, critic_score, critic_review_count, rushed_seconds, "
       "normal_seconds, complete_seconds, time_sample_count, updated_at FROM game_insights WHERE "
-      "source = 'Steam' AND app_id = ? AND provider = 'igdb'"));
-  query.addBindValue(appId);
+      "source = ? AND app_id = ? AND provider = 'igdb'"));
+  const qint64 igdbId = igdbIdFor(appId);
+  query.addBindValue(igdbId > 0 ? QStringLiteral("IGDB") : QStringLiteral("Steam"));
+  query.addBindValue(igdbId > 0 ? QString::number(igdbId) : appId);
   if (!query.exec() || !query.next()) {
     return false;
   }
@@ -472,8 +500,10 @@ bool GameInsightsService::persist() {
   query.prepare(QStringLiteral(
       "INSERT OR REPLACE INTO game_insights(source, app_id, provider, provider_game_id, title, "
       "critic_score, critic_review_count, rushed_seconds, normal_seconds, complete_seconds, "
-      "time_sample_count, updated_at) VALUES('Steam', ?, 'igdb', ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
-  query.addBindValue(m_refreshAppId);
+      "time_sample_count, updated_at) VALUES(?, ?, 'igdb', ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+  const qint64 igdbId = igdbIdFor(m_refreshAppId);
+  query.addBindValue(igdbId > 0 ? QStringLiteral("IGDB") : QStringLiteral("Steam"));
+  query.addBindValue(igdbId > 0 ? QString::number(igdbId) : m_refreshAppId);
   query.addBindValue(m_insight.gameId);
   query.addBindValue(m_insight.title);
   query.addBindValue(m_insight.criticScore);

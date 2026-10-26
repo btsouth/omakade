@@ -28,7 +28,7 @@ with a keyboard, mouse, or controller.
 - Optional playtime recording, session history, stats, and a Year in Review image
 - [Highlights](docs/HIGHLIGHTS.md): save the last moments of a game from the in-game guide, a key or a
   controller's capture button, and clip Steam achievements as they unlock
-- Steam achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
+- Steam and Xbox achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
 - Emulator save backups, personal library backup and restore, and Sunshine/Moonlight export
 
 ![Game details, playtime, and achievements](docs/assets/game-details.webp)
@@ -63,10 +63,10 @@ explicitly; normal system updates prefer OPR's copy.
 You can also download and verify a release package directly:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.17.0/omakade-1.17.0-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.17.0/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.18.0/omakade-1.18.0-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.18.0/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.17.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.18.0-1-x86_64.pkg.tar.zst
 ```
 
 For ARM64, replace `x86_64` with `aarch64`. Packages are also available under

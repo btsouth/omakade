@@ -1,5 +1,6 @@
 #include "guide/InGameGuide.h"
 #include "achievements/AchievementModel.h"
+#include "achievements/XodusAchievementsService.h"
 #include "guide/GuidePayload.h"
 #include "guide/GuideAnr.h"
 #include "gamemode/GameModeDesktop.h"
@@ -8,6 +9,7 @@
 #include "library/UnifiedGameModel.h"
 #include "launch/GameLauncher.h"
 #include "launch/RetroArchHome.h"
+#include "sources/xodus/XodusScanner.h"
 #include "tracking/PlaySessionStore.h"
 #include "tracking/ProcFs.h"
 #include "tracking/SessionStopper.h"
@@ -250,7 +252,7 @@ bool InGameGuide::hasGame() {
   return !m_session.isEmpty();
 }
 
-// The running Steam game's achievements for the guide's list: unlocked newest first, then
+// The running game's achievements for the guide's list: unlocked newest first, then
 // locked by how common they are. Read-only, so the library's own model is left alone.
 QJsonArray InGameGuide::achievementItems(const QString& appId, const QString& path) {
   QJsonArray items;
@@ -287,8 +289,18 @@ QJsonArray InGameGuide::achievementItems(const QString& appId, const QString& pa
   return items;
 }
 
+// Where the running game's achievements are cached: Steam by app ID, RetroAchievements by
+// the library's game ID, and Xbox under the key XodusAchievementsService writes.
+static QString achievementKey(const QString& source, const QVariantMap& metadata) {
+  const auto id = metadata.value("appId").toString();
+  if (source == QStringLiteral("Xodus Nexus"))
+    return XodusScanner::validGameId(id) ? XodusAchievementsService::cacheKey(id) : QString{};
+  if (source == QStringLiteral("RetroArch")) return id;
+  return GuideArt::appId(source, metadata);
+}
+
 void InGameGuide::cacheAchievements() {
-  const auto id = GuideArt::appId(m_session.value("source").toString(), m_metadata);
+  const auto id = achievementKey(m_session.value("source").toString(), m_metadata);
   if (id == m_achievementKey) return;
   m_achievementKey = id; m_achievements = {};
   auto* watcher = new QFutureWatcher<QJsonArray>(this);

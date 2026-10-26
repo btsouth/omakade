@@ -31,6 +31,15 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.18.0" date="2026-10-25">
+      <description>
+        <p>Microsoft Store and PC Game Pass games installed through Xodus Nexus appear in the library, launch from Omakade and Game Mode, show that they are starting, record play time and show Xbox achievements.</p>
+        <p>Highlights keeps the last moments of a game in memory and saves clips from the in-game guide, the keyboard, a controller's capture button or a Steam achievement.</p>
+        <p>Fullscreen is always Game Mode, and the controller Home button opens the in-game guide over a game.</p>
+        <p>IGDB critic scores and play time estimates show for every game matched to IGDB, not only Steam games.</p>
+        <p>PlayStation 5 dumps through Kyty and installed native ports such as SpartanPort and bbport appear in the library.</p>
+      </description>
+    </release>
     <release version="1.17.0" date="2026-10-18">
       <description>
         <p>Game Mode can hold a launcher's own windows while a game starts, so updates, splash screens and sign-ins no longer take focus. A Starting screen shows the game's artwork, lists them and any can be opened with a controller.</p>

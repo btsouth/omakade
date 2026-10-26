@@ -47,6 +47,11 @@ public:
   // The launch-game script Nexus writes into its profile, or empty when it is missing
   // or not safe to run.
   [[nodiscard]] static QString launchScript(const QString& givenRoot, bool game = true);
+  // The xodus-cli Nexus installed and points at in its profile, or empty when it is missing
+  // or not safe to run.
+  [[nodiscard]] static QString backendCli(const QString& givenRoot);
+  // The decimal Xbox title ID from the game's MicrosoftGame.config, or empty.
+  [[nodiscard]] static QString xboxTitleId(const QString& installPath);
   [[nodiscard]] static QUrl safeArtworkUrl(const QString& value);
   [[nodiscard]] static bool validStoreId(const QString& storeId);
   // The public catalog request for up to 20 store IDs; invalid IDs are left out.

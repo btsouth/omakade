@@ -1,3 +1,4 @@
+#include "achievements/XodusAchievementsService.h"
 #include "app/AppSettings.h"
 #include "launch/GameLauncher.h"
 #include "library/GameRoles.h"
@@ -9,17 +10,21 @@
 #include "tracking/SessionRecorder.h"
 
 #include <QBuffer>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSignalSpy>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimeZone>
+#include <QUrlQuery>
 #include <QUuid>
 
 namespace {
@@ -76,6 +81,55 @@ QString writeScript(const QString& profile, const QString& name, const QByteArra
   file.close();
   file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
   return path;
+}
+
+constexpr QFileDevice::Permissions kPrivateDirectory =
+    QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner;
+
+// A backend release the way Nexus unpacks one, with current.json pointing at it.
+QString writeBackend(const QString& profile, const QByteArray& script,
+                     const QString& pointTo = {}) {
+  const QString release = profile + "/xodus-backends/releases/xodus-nexus-backend-0.2.11";
+  QDir().mkpath(release);
+  for (const QString& path : {profile, profile + "/xodus-backends",
+                              profile + "/xodus-backends/releases", release})
+    QFile(path).setPermissions(kPrivateDirectory);
+  const QString cli = release + "/xodus-cli";
+  QFile file(cli);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+  file.write(script);
+  file.close();
+  file.setPermissions(kPrivateDirectory);
+  QFile pointer(profile + "/xodus-backends/current.json");
+  if (!pointer.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+  pointer.write(QJsonDocument(QJsonObject{{"binaryPath", pointTo.isEmpty() ? cli : pointTo},
+                                          {"version", "0.2.11"}})
+                    .toJson());
+  return cli;
+}
+
+QByteArray achievementsJson(const QString& titleId, bool partial = false) {
+  return QJsonDocument(
+             QJsonObject{
+                 {"schema", 1},
+                 {"account", "player"},
+                 {"titleId", titleId},
+                 {"partial", partial},
+                 {"items",
+                  QJsonArray{
+                      QJsonObject{{"id", "a:1"}, {"name", "Torn Banner"},
+                                  {"description", "Kill General Lothaire."}, {"state", "unlocked"},
+                                  {"secret", true}, {"revoked", false}, {"gamerscore", 30},
+                                  {"progress", QJsonValue()},
+                                  {"unlockedAt", "2026-10-24T21:51:39.4430000Z"},
+                                  {"iconUrl", "https://images-eds-ssl.xboxlive.com/image?url=abc"}},
+                      QJsonObject{{"id", "a:2"}, {"name", "Nephtis Superioris"},
+                                  {"description", "Obtain all achievements."},
+                                  {"state", "in-progress"}, {"secret", false},
+                                  {"revoked", false}, {"gamerscore", 50}, {"progress", 40.0},
+                                  {"unlockedAt", QJsonValue()},
+                                  {"iconUrl", "https://example.com/icon.png"}}}}})
+      .toJson(QJsonDocument::Compact);
 }
 } // namespace
 
@@ -457,6 +511,154 @@ private slots:
     QCOMPARE(model.data(row, GameRoles::Hours).toInt(), 1);
     QVERIFY(model.data(row, GameRoles::LastPlayed).toLongLong() > 0);
     QVERIFY(model.data(row, GameRoles::Recent).toBool());
+  }
+
+  void backendMustBeNexusOwnRelease() {
+    QTemporaryDir directory;
+    const QString profile = directory.path() + "/xodus-nexus";
+    const QString cli = writeBackend(profile, "#!/bin/sh\nexit 0\n");
+    QCOMPARE(XodusScanner::backendCli(profile), QFileInfo(cli).canonicalFilePath());
+    // Anything another user could have written is not run.
+    QFile(cli).setPermissions(kPrivateDirectory | QFileDevice::WriteOther);
+    QVERIFY(XodusScanner::backendCli(profile).isEmpty());
+    QFile(cli).setPermissions(kPrivateDirectory);
+    // Nor a program outside Nexus's releases, or one with another name.
+    QFile outside(directory.path() + "/xodus-cli");
+    QVERIFY(outside.open(QIODevice::WriteOnly));
+    outside.close();
+    outside.setPermissions(kPrivateDirectory);
+    writeBackend(profile, "#!/bin/sh\nexit 0\n", outside.fileName());
+    QVERIFY(XodusScanner::backendCli(profile).isEmpty());
+    QVERIFY(QFile::link(outside.fileName(), profile + "/xodus-backends/releases/link"));
+    writeBackend(profile, "#!/bin/sh\nexit 0\n", profile + "/xodus-backends/releases/link");
+    QVERIFY(XodusScanner::backendCli(profile).isEmpty());
+  }
+
+  void titleIdComesFromTheGameConfig() {
+    QTemporaryDir directory;
+    QFile config(directory.path() + "/MicrosoftGame.config");
+    QVERIFY(config.open(QIODevice::WriteOnly));
+    config.write("<Game><Identity Name=\"Valor\"/>\n  <TitleId>76300F35</TitleId>\n</Game>");
+    config.close();
+    QCOMPARE(XodusScanner::xboxTitleId(directory.path()), QStringLiteral("1982861109"));
+    QVERIFY(XodusScanner::xboxTitleId(directory.path() + "/missing").isEmpty());
+  }
+
+  void achievementsParseAndKeepOnlyXboxArt() {
+    const XodusAchievementsResult result =
+        XodusAchievementsService::parse(achievementsJson("1982861109"), "1982861109");
+    QVERIFY(result.valid);
+    QCOMPARE(result.achievements.size(), 2);
+    QCOMPARE(result.unlocked, 1);
+    const XodusAchievementRecord& unlocked = result.achievements.at(0);
+    QVERIFY(unlocked.unlocked);
+    QVERIFY(unlocked.hidden);
+    QCOMPARE(unlocked.unlockTime,
+             QDateTime(QDate(2026, 10, 24), QTime(21, 51, 39), QTimeZone::UTC).toSecsSinceEpoch());
+    // The image service scales the multi-megabyte art down to an icon.
+    const QUrl icon(unlocked.iconUrl);
+    QCOMPARE(icon.host(), QStringLiteral("images-eds-ssl.xboxlive.com"));
+    QCOMPARE(QUrlQuery(icon).queryItemValue("w"), QStringLiteral("480"));
+    QCOMPARE(QUrlQuery(icon).queryItemValue("h"), QStringLiteral("270"));
+    QCOMPARE(QUrlQuery(icon).queryItemValue("url"), QStringLiteral("abc"));
+    QCOMPARE(result.achievements.at(1).progress, 40.0);
+    QVERIFY(result.achievements.at(1).iconUrl.isEmpty());
+    // Another title's answer is not taken for this one.
+    QVERIFY(!XodusAchievementsService::parse(achievementsJson("1"), "1982861109").valid);
+    QVERIFY(!XodusAchievementsService::parse("not json", "1982861109").valid);
+  }
+
+  void refreshCachesWhatTheBackendReports() {
+    QTemporaryDir directory;
+    const QString profile = directory.path() + "/xodus-nexus";
+    const QString install = directory.path() + "/games/Valor";
+    QVERIFY(QDir().mkpath(install));
+    QFile config(install + "/MicrosoftGame.config");
+    QVERIFY(config.open(QIODevice::WriteOnly));
+    config.write("<Game><TitleId>76300F35</TitleId></Game>");
+    config.close();
+    QFile reply(directory.path() + "/reply.json");
+    QVERIFY(reply.open(QIODevice::WriteOnly));
+    reply.write(achievementsJson("1982861109"));
+    reply.close();
+    // The fake backend answers only the request Nexus itself would make.
+    writeBackend(profile, "#!/bin/sh\n[ \"$1 $2 $3\" = \"achievements 1982861109 --json\" ] || exit 3\n"
+                          "cat '" + reply.fileName().toUtf8() + "'\n");
+    const QString database = directory.path() + "/omakade.sqlite3";
+    {
+      QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "xbox-fixture");
+      db.setDatabaseName(database);
+      QVERIFY(db.open());
+      QSqlQuery query(db);
+      QVERIFY(query.exec("CREATE TABLE xodus_games (game_id TEXT PRIMARY KEY, install_path TEXT)"));
+      QVERIFY(query.exec("INSERT INTO xodus_games VALUES ('" + QString::fromLatin1(kValor) +
+                         "', '" + install + "')"));
+      QVERIFY(query.exec("CREATE TABLE achievement_summary (app_id TEXT PRIMARY KEY, unlocked "
+                         "INTEGER NOT NULL, total INTEGER NOT NULL, source TEXT NOT NULL, "
+                         "updated_at INTEGER NOT NULL)"));
+      QVERIFY(query.exec("CREATE TABLE achievements (app_id TEXT NOT NULL, api_name TEXT NOT "
+                         "NULL, title TEXT NOT NULL, description TEXT, icon_url TEXT, icon_path "
+                         "TEXT, unlocked INTEGER NOT NULL, unlock_time INTEGER NOT NULL, rarity "
+                         "REAL NOT NULL, hidden INTEGER NOT NULL, current_progress REAL NOT NULL, "
+                         "maximum_progress REAL NOT NULL, source TEXT NOT NULL, PRIMARY "
+                         "KEY(app_id, api_name))"));
+      db.close();
+    }
+    QSqlDatabase::removeDatabase("xbox-fixture");
+
+    XodusAchievementsService service(database);
+    service.setProfileRoot(profile);
+    QVERIFY(service.hasApiKey());
+    QSignalSpy updated(&service, &XodusAchievementsService::achievementsUpdated);
+    service.refreshAchievementsIfStale(kValor);
+    QVERIFY(service.busy());
+    QVERIFY(updated.wait(10000));
+    QCOMPARE(updated.at(0).at(0).toString(), QStringLiteral("xodus:") + kValor);
+    QCOMPARE(service.state(), QStringLiteral("connected"));
+    {
+      QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "xbox-check");
+      db.setDatabaseName(database);
+      QVERIFY(db.open());
+      QSqlQuery query(db);
+      QVERIFY(query.exec("SELECT unlocked, total, source FROM achievement_summary"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 1);
+      QCOMPARE(query.value(1).toInt(), 2);
+      QCOMPARE(query.value(2).toString(), QStringLiteral("xbox"));
+      QVERIFY(query.exec("SELECT count(*) FROM achievements WHERE app_id = 'xodus:" +
+                         QString::fromLatin1(kValor) + "'"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 2);
+      db.close();
+    }
+    QSqlDatabase::removeDatabase("xbox-check");
+    // Fresh data is not asked for again.
+    service.refreshAchievementsIfStale(kValor);
+    QVERIFY(!service.busy());
+
+    // A partial answer does not replace the full cached list.
+    QVERIFY(reply.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QJsonObject partial = QJsonDocument::fromJson(achievementsJson("1982861109", true)).object();
+    QJsonArray items = partial.value("items").toArray();
+    items.removeLast();
+    partial.insert("items", items);
+    reply.write(QJsonDocument(partial).toJson(QJsonDocument::Compact));
+    reply.close();
+    service.refreshAchievements(kValor);
+    QTRY_VERIFY_WITH_TIMEOUT(!service.busy(), 10000);
+    QCOMPARE(service.state(), QStringLiteral("error"));
+    QCOMPARE(updated.size(), 1);
+    {
+      QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "xbox-partial");
+      db.setDatabaseName(database);
+      QVERIFY(db.open());
+      QSqlQuery query(db);
+      QVERIFY(query.exec("SELECT total FROM achievement_summary"));
+      QVERIFY(query.next());
+      QCOMPARE(query.value(0).toInt(), 2);
+      db.close();
+    }
+    QSqlDatabase::removeDatabase("xbox-partial");
   }
 
   void malformedStateKeepsCachedGames() {

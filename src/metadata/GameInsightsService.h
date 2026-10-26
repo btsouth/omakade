@@ -58,6 +58,7 @@ public:
   Q_INVOKABLE void setClientId(const QString& clientId);
   Q_INVOKABLE void storeClientSecret(QString secret);
   Q_INVOKABLE void removeCredentials();
+  // appId is a Steam app ID, or "igdb:<id>" for a game the library already matched to IGDB.
   Q_INVOKABLE void loadSteam(const QString& appId);
   Q_INVOKABLE void refreshSteam(const QString& appId);
 

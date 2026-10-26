@@ -1,5 +1,6 @@
 #include "library/XodusGameModel.h"
 
+#include "achievements/XodusAchievementsService.h"
 #include "app/AppSettings.h"
 #include "library/CoverCachePolicy.h"
 #include "library/DatabaseTuning.h"
@@ -191,6 +192,16 @@ void XodusGameModel::loadDatabase() {
     setStatus(QStringLiteral("Could not load cached Xodus Nexus games"), query.lastError().text());
     return;
   }
+  QHash<QString, QPair<int, int>> achievementSummaries;
+  QSqlQuery achievementsQuery(m_database);
+  if (achievementsQuery.exec(QStringLiteral(
+          "SELECT app_id, unlocked, total FROM achievement_summary WHERE source = 'xbox'"))) {
+    while (achievementsQuery.next()) {
+      achievementSummaries.insert(achievementsQuery.value(0).toString(),
+                                  {achievementsQuery.value(1).toInt(),
+                                   achievementsQuery.value(2).toInt()});
+    }
+  }
   while (query.next()) {
     XodusGameRecord record{.gameId = query.value(0).toString(),
                            .title = query.value(1).toString(),
@@ -205,17 +216,41 @@ void XodusGameModel::loadDatabase() {
     const auto existing = [](const QString& path) {
       return !path.isEmpty() && QFileInfo::exists(path) ? path : QString{};
     };
+    const QPair<int, int> summary =
+        achievementSummaries.value(XodusAchievementsService::cacheKey(record.gameId));
     loaded.append({.xodus = record,
                    .posterPath = existing(query.value(9).toString()),
                    .heroPath = existing(query.value(10).toString()),
                    .favorite = query.value(12).toBool(),
                    .hidden = query.value(13).toBool(),
+                   .achievementsUnlocked = summary.first,
+                   .achievementsTotal = summary.second,
                    .accentStart = colorFor(record.gameId, 0),
                    .accentEnd = colorFor(record.gameId, 1)});
   }
   beginResetModel();
   m_games = loaded;
   endResetModel();
+}
+
+void XodusGameModel::reloadAchievementSummary(const QString& key) {
+  if (!m_database.isOpen()) return;
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "SELECT unlocked, total FROM achievement_summary WHERE app_id = ? AND source = 'xbox'"));
+  query.addBindValue(key);
+  if (!query.exec()) return;
+  const bool found = query.next();
+  for (int row = 0; row < m_games.size(); ++row) {
+    Game& game = m_games[row];
+    if (XodusAchievementsService::cacheKey(game.xodus.gameId) != key) continue;
+    game.achievementsUnlocked = found ? query.value(0).toInt() : 0;
+    game.achievementsTotal = found ? query.value(1).toInt() : 0;
+    emit dataChanged(
+        index(row), index(row),
+        {GameRoles::Progress, GameRoles::AchievementsUnlocked, GameRoles::AchievementsTotal});
+    return;
+  }
 }
 
 void XodusGameModel::loadSourceState() {
@@ -503,8 +538,13 @@ QVariant XodusGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::Recent:
     return PlaySessionStore::displayedLastPlayed(m_playSessions, game.xodus.installPath, 0) > 0;
   case GameRoles::Progress:
+    return game.achievementsTotal > 0
+               ? (game.achievementsUnlocked * 100) / game.achievementsTotal
+               : 0;
   case GameRoles::AchievementsUnlocked:
+    return game.achievementsUnlocked;
   case GameRoles::AchievementsTotal:
+    return game.achievementsTotal;
   case GameRoles::Year:
     return 0;
   case GameRoles::Favorite:

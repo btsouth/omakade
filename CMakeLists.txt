@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(Omakade VERSION 1.17.0 LANGUAGES C CXX)
+project(Omakade VERSION 1.18.0 LANGUAGES C CXX)
 
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto)
@@ -190,6 +190,8 @@ add_library(omakade_core STATIC
   src/achievements/SteamAchievementApi.h
   src/achievements/SteamAccountService.cpp
   src/achievements/SteamAccountService.h
+  src/achievements/XodusAchievementsService.cpp
+  src/achievements/XodusAchievementsService.h
   src/app/AppSettings.cpp
   src/app/AppSettings.h
   src/app/SingleInstance.cpp
