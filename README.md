@@ -57,8 +57,8 @@ curl -fsSL https://pkgs.btso.dev/install.sh | bash
 sudo pacman -S btsouth/omakade
 ```
 
-On Omarchy, use `sudo pacman -Syu btsouth/omakade` to update from this repository
-explicitly; normal system updates prefer OPR's copy.
+On Omarchy, normal system updates prefer OPR's copy. To take this repository's
+newer version early, run `omarchy update` and then `sudo pacman -S btsouth/omakade`.
 
 You can also download and verify a release package directly:
 
