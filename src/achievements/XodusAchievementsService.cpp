@@ -21,6 +21,7 @@ constexpr int kTimeoutMs = 35000;
 constexpr int kMaximumAchievements = 500;
 
 // Achievement art is a full screenshot several megabytes in size; the image service scales it.
+// It only answers some sizes: 480x270 works, 192x108 and 256x144 get 400 Bad Request.
 QString iconUrl(const QString& value) {
   QUrl url(value);
   const QString host = url.host().toLower();
@@ -33,8 +34,8 @@ QString iconUrl(const QString& value) {
   query.removeAllQueryItems(QStringLiteral("w"));
   query.removeAllQueryItems(QStringLiteral("h"));
   query.removeAllQueryItems(QStringLiteral("format"));
-  query.addQueryItem(QStringLiteral("w"), QStringLiteral("192"));
-  query.addQueryItem(QStringLiteral("h"), QStringLiteral("108"));
+  query.addQueryItem(QStringLiteral("w"), QStringLiteral("480"));
+  query.addQueryItem(QStringLiteral("h"), QStringLiteral("270"));
   query.addQueryItem(QStringLiteral("format"), QStringLiteral("jpg"));
   url.setQuery(query);
   return url.toString(QUrl::FullyEncoded);

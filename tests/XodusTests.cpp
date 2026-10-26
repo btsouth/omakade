@@ -558,7 +558,8 @@ private slots:
     // The image service scales the multi-megabyte art down to an icon.
     const QUrl icon(unlocked.iconUrl);
     QCOMPARE(icon.host(), QStringLiteral("images-eds-ssl.xboxlive.com"));
-    QCOMPARE(QUrlQuery(icon).queryItemValue("w"), QStringLiteral("192"));
+    QCOMPARE(QUrlQuery(icon).queryItemValue("w"), QStringLiteral("480"));
+    QCOMPARE(QUrlQuery(icon).queryItemValue("h"), QStringLiteral("270"));
     QCOMPARE(QUrlQuery(icon).queryItemValue("url"), QStringLiteral("abc"));
     QCOMPARE(result.achievements.at(1).progress, 40.0);
     QVERIFY(result.achievements.at(1).iconUrl.isEmpty());
