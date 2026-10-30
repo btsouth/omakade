@@ -347,6 +347,52 @@
       ]
     },
     {
+      "id": "ghostship",
+      "name": "Ghostship",
+      "game": "Super Mario 64",
+      "system": "n64",
+      "repo": "https://github.com/HarbourMasters/Ghostship",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Super Mario 64"
+      ],
+      "files": [
+        "ghostship"
+      ]
+    },
+    {
+      "id": "dk64-recompiled",
+      "name": "Donkey Kong 64: Recompiled",
+      "game": "Donkey Kong 64",
+      "system": "n64",
+      "repo": "https://github.com/Rainchus/Donkey-Kong-64-Recompiled",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Donkey Kong 64"
+      ],
+      "files": [
+        "dk64recompiled",
+        "dk64recomp"
+      ]
+    },
+    {
+      "id": "paperboat",
+      "name": "PaperBoat",
+      "game": "Paper Mario",
+      "system": "n64",
+      "repo": "https://github.com/HarbourMasters/PaperBoat",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Paper Mario"
+      ],
+      "files": [
+        "paperboat"
+      ]
+    },
+    {
       "id": "banjorecomp",
       "name": "Banjo: Recompiled",
       "game": "Banjo-Kazooie",
@@ -375,6 +421,25 @@
       ],
       "files": [
         "dusklight"
+      ]
+    },
+    {
+      "id": "strikers",
+      "name": "Strikers",
+      "game": "Super Mario Strikers",
+      "system": "gamecube",
+      "repo": "https://github.com/new-coke/strikers",
+      "linux": true,
+      "serials": [
+        "G4QE01",
+        "G4QP01"
+      ],
+      "titles": [
+        "Super Mario Strikers",
+        "Mario Smash Football"
+      ],
+      "files": [
+        "strikers"
       ]
     },
     {
@@ -409,6 +474,133 @@
         "God of War: Ghost of Sparta"
       ],
       "files": []
+    },
+    {
+      "id": "zelda3",
+      "name": "zelda3",
+      "game": "The Legend of Zelda: A Link to the Past",
+      "system": "snes",
+      "repo": "https://github.com/snesrev/zelda3",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "The Legend of Zelda: A Link to the Past"
+      ],
+      "files": [
+        "zelda3"
+      ]
+    },
+    {
+      "id": "snesrev-sm",
+      "name": "sm",
+      "game": "Super Metroid",
+      "system": "snes",
+      "repo": "https://github.com/snesrev/sm",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Super Metroid"
+      ],
+      "files": [
+        "snesrev-sm"
+      ]
+    },
+    {
+      "id": "super-mario-world-recomp",
+      "name": "Super Mario World Recomp",
+      "game": "Super Mario World",
+      "system": "snes",
+      "repo": "https://github.com/mstan/SuperMarioWorldRecomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Super Mario World"
+      ],
+      "files": [
+        "supermarioworldrecomp"
+      ]
+    },
+    {
+      "id": "mega-man-x-recomp",
+      "name": "Mega Man X Recomp",
+      "game": "Mega Man X",
+      "system": "snes",
+      "repo": "https://github.com/mstan/MegaManXSNESRecomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Mega Man X"
+      ],
+      "files": [
+        "megamanxsnesrecomp"
+      ]
+    },
+    {
+      "id": "belthasar",
+      "name": "Belthasar",
+      "game": "Chrono Trigger",
+      "system": "snes",
+      "repo": "https://github.com/TemplarServant/BelthasarProject",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Chrono Trigger"
+      ],
+      "files": [
+        "belthasar"
+      ]
+    },
+    {
+      "id": "primerecomp",
+      "name": "PrimeRecomp",
+      "game": "Metroid Prime Remastered",
+      "system": "switch",
+      "repo": "https://github.com/gminustwo/primerecomp",
+      "linux": true,
+      "serials": [
+        "010012101468C000"
+      ],
+      "titles": [
+        "Metroid Prime Remastered"
+      ],
+      "files": [
+        "primerecomp"
+      ]
+    },
+    {
+      "id": "metroid-dread-recomp",
+      "name": "Metroid Dread Recomp",
+      "game": "Metroid Dread",
+      "system": "switch",
+      "repo": "https://github.com/yozander2009-stack/Metroid-Dread-Recomp",
+      "linux": true,
+      "serials": [
+        "010093801237C000"
+      ],
+      "titles": [
+        "Metroid Dread"
+      ],
+      "files": [
+        "metroid_dread",
+        "metroid-dread-recomp"
+      ]
+    },
+    {
+      "id": "tenkaichi3decomp",
+      "name": "Tenkaichi3Decomp",
+      "game": "Dragon Ball Z: Budokai Tenkaichi 3",
+      "system": "ps2",
+      "repo": "https://github.com/z3xox/Tenkaichi3Decomp",
+      "linux": true,
+      "serials": [
+        "SLUS-21678"
+      ],
+      "titles": [
+        "Dragon Ball Z: Budokai Tenkaichi 3"
+      ],
+      "files": [
+        "tenkaichi3decomp"
+      ]
     }
   ]
 }
