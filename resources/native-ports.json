@@ -536,6 +536,21 @@
       ]
     },
     {
+      "id": "super-mario-all-stars-recomp",
+      "name": "Super Mario All-Stars Recomp",
+      "game": "Super Mario All-Stars",
+      "system": "snes",
+      "repo": "https://github.com/TanookiStudios/SuperMarioAllStarsRecomp",
+      "linux": true,
+      "serials": [],
+      "titles": [
+        "Super Mario All-Stars"
+      ],
+      "files": [
+        "supermarioallstars"
+      ]
+    },
+    {
       "id": "belthasar",
       "name": "Belthasar",
       "game": "Chrono Trigger",
