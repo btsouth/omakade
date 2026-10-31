@@ -4440,11 +4440,15 @@ int main(int argc, char* argv[]) {
                 auto* description = quickWindow->findChild<QQuickItem*>("gameDescription");
                 if (renderOverlay == "game-info-native-port") {
                   auto* portButton = findVisualItem(quickWindow->contentItem(), "nativePortButton");
+                  // Every catalog port for the title is suggested; none are installed here.
+                  const auto catalogPorts = PortCatalog::bundled().portsFor(
+                      QStringLiteral("n64"), QString(), QStringLiteral("Super Mario 64"));
                   if (details->property("metadataStatusShown").toBool() ||
                       !section->property("entry").toMap().isEmpty() ||
                       !section->property("background").toString().isEmpty() ||
                       details->property("displayTitle").toString() != "Super Mario 64" ||
-                      details->property("nativePortSuggestions").toList().size() != 1 ||
+                      catalogPorts.isEmpty() ||
+                      details->property("nativePortSuggestions").toList().size() != catalogPorts.size() ||
                       !portButton || !portButton->isVisible()) {
                     qCritical() << "Native port suggestion hidden without catalog metadata"
                                 << details->property("metadataStatusShown")
