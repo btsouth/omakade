@@ -87,6 +87,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QProcess>
+#include <QThread>
 #include <cstdio>
 #include <QGuiApplication>
 #include <QIcon>
@@ -2246,12 +2247,19 @@ int main(int argc, char* argv[]) {
     fixtureGame->start(QStringLiteral("/bin/sh"),
                        {QStringLiteral("-c"), QStringLiteral("trap '' TERM; sleep 300")});
     if (!fixtureGame->waitForStarted(5000)) return EXIT_FAILURE;
+    // waitForStarted can return while exec is still finishing. Until it does, /proc
+    // shows an empty command line and listProcesses skips the process.
     qint64 procStart = -1;
-    for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
-      if (snapshot.pid == fixtureGame->processId()) {
-        procStart = snapshot.procStart;
-        break;
+    QElapsedTimer fixtureWait;
+    fixtureWait.start();
+    while (procStart < 0 && fixtureWait.elapsed() < 2000) {
+      for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
+        if (snapshot.pid == fixtureGame->processId()) {
+          procStart = snapshot.procStart;
+          break;
+        }
       }
+      if (procStart < 0) QThread::msleep(10);
     }
     const bool recorded =
         procStart >= 0 &&
