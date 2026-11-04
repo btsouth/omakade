@@ -13485,6 +13485,8 @@ void CoreTests::sessionDaemonRejectsDuplicateOwner() {
   restarted.start(executable, {});
   QVERIFY(restarted.waitForStarted());
   QTest::qWait(200);
+  // A loaded machine can take longer than the fixed wait to reach the lock.
+  QTRY_VERIFY_WITH_TIMEOUT(PlaySessionStore::recorderOwnsDatabase(databasePath), 5000);
   QCOMPARE(restarted.state(), QProcess::Running);
   status.refreshRecorderStatus();
   QVERIFY(status.recorderRunning());
