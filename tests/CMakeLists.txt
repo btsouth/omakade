@@ -194,7 +194,6 @@ foreach(size IN ITEMS 900x700 1280x720 1920x1080 2560x1080 3840x2160)
   set_tests_properties(omakade_couch_navigation_contract_${size} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 90
-    RUN_SERIAL TRUE
   )
 endforeach()
 
@@ -1335,3 +1334,13 @@ add_test(NAME omakade_source_rescan_enablement COMMAND omakade
 set_tests_properties(omakade_source_rescan_enablement PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
+
+# CI runs ctest with 8 slots on 4 vCPU runners. Navigation sweeps and contracts are
+# nearly all fixed settling time (93 s of wall time for 4 s of CPU), so they take one
+# slot each. Everything else takes two, which keeps CPU-heavy tests at 4 at a time.
+get_property(omakade_all_tests DIRECTORY PROPERTY TESTS)
+foreach(omakade_test IN LISTS omakade_all_tests)
+  if(NOT omakade_test MATCHES "_navigation_(sweep|contract)_")
+    set_tests_properties(${omakade_test} PROPERTIES PROCESSORS 2)
+  endif()
+endforeach()

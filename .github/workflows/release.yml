@@ -36,6 +36,10 @@ jobs:
   test:
     timeout-minutes: 60
     name: Test (${{ matrix.arch }})
+    env:
+      # Match CI so the compiler outputs it saves on main are hits here. It also
+      # keeps the absolute __FILE__ paths the source-inspection tests read.
+      CCACHE_BASEDIR: ""
     strategy:
       fail-fast: false
       matrix:
@@ -60,12 +64,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Cache compiler outputs
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # CI saves these from main, the one scope a tag or dispatch run can read.
+      - name: Restore compiler outputs
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
+          key: ccache-v2-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-v2-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
@@ -73,7 +78,7 @@ jobs:
         run: |
           cmake --preset release
           cmake --build --preset release
-          ctest --preset release --parallel 4 --output-junit test-results.xml
+          ctest --preset release --parallel 8 --output-junit test-results.xml
           python tests/SbomGeneratorTests.py
           desktop-file-validate packaging/io.github.tsouth89.Omakade.desktop
           appstreamcli validate packaging/io.github.tsouth89.Omakade.metainfo.xml
