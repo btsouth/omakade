@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QtConcurrent>
+#include <algorithm>
 #include <unistd.h>
 
 namespace {
@@ -116,7 +117,8 @@ Place placeOf(const LaunchHoldProcess& process, const QString& installPath, bool
 LaunchHold::LaunchHold(GameModeCompositor* compositor, QString workspace, ProcessLookup lookup,
                        QObject* parent)
     : QObject(parent), m_compositor(compositor), m_workspace(std::move(workspace)),
-      m_lookup(lookup ? std::move(lookup) : ProcessLookup(&LaunchHold::readProcess)) {
+      m_lookup(lookup ? std::move(lookup) : ProcessLookup(&LaunchHold::readProcess)),
+      m_steamLaunchCheck(&LaunchHold::steamLaunchRunning) {
   m_poll.setInterval(400);
   connect(&m_poll, &QTimer::timeout, this, &LaunchHold::scan);
   // Gives up only when nothing is listed or shown, counted from the last window that
@@ -125,7 +127,14 @@ LaunchHold::LaunchHold(GameModeCompositor* compositor, QString workspace, Proces
   m_timeout.setInterval(90 * 1000);
   m_timeout.setSingleShot(true);
   connect(&m_timeout, &QTimer::timeout, this, [this] {
-    if (m_windows.isEmpty() && m_presented.isEmpty()) release({});
+    if (m_windows.isEmpty() && m_presented.isEmpty()) release({}, Ending::Cancelled);
+  });
+  // Long enough for a game that restarts itself through Steam to come back.
+  m_closedGrace.setInterval(10 * 1000);
+  m_closedGrace.setSingleShot(true);
+  connect(&m_closedGrace, &QTimer::timeout, this, [this] {
+    // Someone answering a shown window is still working on this launch.
+    if (m_active && m_presented.isEmpty()) release({}, Ending::GameClosed);
   });
   connect(&m_scanWatcher, &QFutureWatcher<Scan>::finished, this, &LaunchHold::finishScan);
 }
@@ -193,6 +202,33 @@ std::optional<LaunchHoldProcess> LaunchHold::readProcess(qint64 pid) {
   return process;
 }
 
+bool LaunchHold::isSteamLaunch(const QStringList& arguments, const QString& appId) {
+  if (appId.isEmpty() || arguments.size() < 3 || arguments.at(1) != QStringLiteral("SteamLaunch") ||
+      QFileInfo(arguments.at(0)).fileName() != QStringLiteral("reaper"))
+    return false;
+  bool found = false;
+  for (qsizetype index = 2; index < arguments.size() && arguments.at(index) != QStringLiteral("--"); ++index) {
+    if (arguments.at(index) == QStringLiteral("Install=1")) return false;
+    if (arguments.at(index) == QStringLiteral("AppId=") + appId) found = true;
+  }
+  return found;
+}
+
+bool LaunchHold::steamLaunchRunning(const QString& appId) {
+  const QStringList processes = QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+  for (const QString& name : processes) {
+    if (!name.front().isDigit()) continue;
+    QFile cmdline(QStringLiteral("/proc/%1/cmdline").arg(name));
+    if (!cmdline.open(QIODevice::ReadOnly)) continue;
+    // reaper's own options come first, so the start of the line is enough.
+    QStringList arguments;
+    for (const QByteArray& argument : cmdline.read(4096).split('\0'))
+      if (!argument.isEmpty()) arguments.append(QString::fromLocal8Bit(argument));
+    if (isSteamLaunch(arguments, appId)) return true;
+  }
+  return false;
+}
+
 bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHoldTarget& target,
                               const ProcessLookup& lookup) {
   const bool steam = !target.steamAppId.isEmpty() && target.steamAppId != QStringLiteral("0");
@@ -240,7 +276,7 @@ bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHold
 }
 
 bool LaunchHold::begin(const QVariantMap& game) {
-  if (m_active) release({});
+  if (m_active) release({}, Ending::Cancelled);
   m_scanWatcher.waitForFinished();
   m_actionWatcher.waitForFinished();
   if (!m_compositor || !m_compositor->available() || !m_compositor->setLaunchHold(m_workspace))
@@ -258,6 +294,8 @@ bool LaunchHold::begin(const QVariantMap& game) {
   ++m_generation;
   m_target = targetFor(game);
   m_windows.clear();
+  m_order.clear();
+  m_steamLaunchSeen = false;
   m_presented.clear();
   m_active = true;
   m_poll.start();
@@ -279,7 +317,7 @@ void LaunchHold::launched(qint64 pid) {
 }
 
 void LaunchHold::cancel() {
-  if (m_active) release({});
+  if (m_active) release({}, Ending::Cancelled);
 }
 
 void LaunchHold::abandon() {
@@ -291,6 +329,7 @@ void LaunchHold::abandon() {
 void LaunchHold::stop() {
   m_poll.stop();
   m_timeout.stop();
+  m_closedGrace.stop();
   m_active = false;
   m_kept.clear();
   m_windows.clear();
@@ -304,9 +343,11 @@ void LaunchHold::scan() {
   if (!m_active || m_scanWatcher.isRunning() || m_actionWatcher.isRunning()) return;
   m_scanWatcher.setFuture(QtConcurrent::run(
       [compositor = m_compositor, target = m_target, lookup = m_lookup, ignored = m_ignored,
-       generation = m_generation] {
+       generation = m_generation, steamLaunch = m_steamLaunchCheck] {
         Scan scan;
         scan.generation = generation;
+        if (!target.steamAppId.isEmpty() && steamLaunch)
+          scan.steamLaunchRunning = steamLaunch(target.steamAppId);
         scan.ok = compositor->heldWindows(&scan.windows, nullptr);
         scan.windows.removeIf([&](const auto& window) { return ignored.contains(window.address); });
         for (const auto& window : std::as_const(scan.windows)) {
@@ -326,25 +367,29 @@ void LaunchHold::finishScan() {
   if (!scan.game.isEmpty()) {
     // Record what opened alongside the game, so it is kept out of the next launch.
     setWindows(scan.windows);
-    release(scan.game);
+    release(scan.game, Ending::GameShown);
     return;
   }
   setWindows(scan.windows);
+  // A game that dies before it opens a window would otherwise leave Steam's window listed
+  // and this screen waiting for good.
+  if (scan.steamLaunchRunning) {
+    m_steamLaunchSeen = true;
+    m_closedGrace.stop();
+  } else if (m_steamLaunchSeen && !m_closedGrace.isActive()) {
+    m_closedGrace.start();
+  }
 }
 
 void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
-  // Keep the order windows arrived in, so the list does not jump while it is read.
-  QVector<GameModeHeldWindow> ordered;
-  for (const auto& known : std::as_const(m_windows)) {
-    const auto found = std::find_if(windows.cbegin(), windows.cend(),
-                                    [&](const auto& window) { return window.address == known.address; });
-    if (found != windows.cend()) ordered.append(*found);
-  }
-  for (const auto& window : windows) {
-    if (std::none_of(ordered.cbegin(), ordered.cend(),
-                     [&](const auto& known) { return known.address == window.address; }))
-      ordered.append(window);
-  }
+  // Keep the order windows first arrived in, so the list does not jump while it is read,
+  // and a window that was shown goes back to its own row.
+  QVector<GameModeHeldWindow> ordered = windows;
+  for (const auto& window : windows)
+    if (!m_order.contains(window.address)) m_order.append(window.address);
+  std::stable_sort(ordered.begin(), ordered.end(), [&](const auto& a, const auto& b) {
+    return m_order.indexOf(a.address) < m_order.indexOf(b.address);
+  });
   const bool same = ordered.size() == m_windows.size() &&
                     std::equal(ordered.cbegin(), ordered.cend(), m_windows.cbegin(),
                                [](const auto& a, const auto& b) {
@@ -362,13 +407,18 @@ void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
   emit changed();
 }
 
-void LaunchHold::release(const QString& game) {
+void LaunchHold::release(const QString& game, Ending ending) {
   m_poll.stop();
   m_timeout.stop();
+  m_closedGrace.stop();
   m_active = false;
-  if (!game.isEmpty()) {
+  // A window still shown when the game opens goes back with the others, or it would sit
+  // over Game Mode when the game ends.
+  const QString presented = ending == Ending::GameShown && m_presented != game ? m_presented : QString{};
+  if (ending != Ending::Cancelled) {
     for (const auto& window : std::as_const(m_windows))
       if (window.address != game && !m_kept.contains(window.address)) m_kept.append(window.address);
+    if (!presented.isEmpty() && !m_kept.contains(presented)) m_kept.append(presented);
   }
   m_windows.clear();
   m_presented.clear();
@@ -383,9 +433,13 @@ void LaunchHold::release(const QString& game) {
   const qint64 owner = QCoreApplication::applicationPid();
   // Stop holding first, so nothing opens out of sight after.
   m_actionWatcher.setFuture(QtConcurrent::run(
-      [compositor = m_compositor, workspace = m_workspace, game, owner, ignored = m_ignored] {
+      [compositor = m_compositor, workspace = m_workspace, game, owner, ignored = m_ignored,
+       ending, presented] {
         compositor->setLaunchHold({});
-        if (game.isEmpty()) {
+        // The game is gone, so the library is what's left in front. Its launcher's windows
+        // stay out of sight, as they would have after it played.
+        if (ending == Ending::GameClosed) return;
+        if (ending == Ending::Cancelled) {
           // No game: this launch's windows come back, as if there had been no hold.
           QVector<GameModeHeldWindow> held;
           if (compositor->heldWindows(&held, nullptr))
@@ -394,6 +448,7 @@ void LaunchHold::release(const QString& game) {
                 compositor->releaseWindow(window.address, workspace);
           return;
         }
+        if (!presented.isEmpty()) compositor->holdWindow(presented);
         // The launcher's windows stay out of sight until Game Mode ends. The game takes
         // over fullscreen from the library, as any window opening in Game Mode does.
         const GameModeWindow root = compositor->windowForPid(owner);
@@ -402,8 +457,12 @@ void LaunchHold::release(const QString& game) {
         compositor->setWindowMode(game, 2, 2);
         compositor->focusWindow(game);
       }));
-  if (game.isEmpty()) emit released();
-  else emit gameShown();
+  if (ending == Ending::GameShown) {
+    emit gameShown();
+    return;
+  }
+  emit released();
+  if (ending == Ending::GameClosed) emit gameClosed();
 }
 
 void LaunchHold::present(const QString& address) {
@@ -426,8 +485,9 @@ void LaunchHold::present(const QString& address) {
         int height = 810;
         for (const auto& output : compositor->outputs()) {
           if (output.name == root.output && output.width > 0 && output.height > 0) {
-            width = output.width * 3 / 4;
-            height = output.height * 3 / 4;
+            const double scale = output.scale > 0 ? output.scale : 1.0;
+            width = qRound(output.width / scale) * 3 / 4;
+            height = qRound(output.height / scale) * 3 / 4;
           }
         }
         // A floating window is covered by a fullscreen library on the same workspace.
@@ -442,6 +502,7 @@ void LaunchHold::returnToLibrary() {
   m_presented.clear();
   // A sign-in can take any time; the hold's own time starts again from here.
   if (m_active) m_timeout.start();
+  m_closedGrace.stop();
   emit changed();
   if (!m_compositor) return;
   m_actionWatcher.waitForFinished();

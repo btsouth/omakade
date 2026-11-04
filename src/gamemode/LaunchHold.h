@@ -51,6 +51,8 @@ class LaunchHold final : public QObject {
 
 public:
   using ProcessLookup = std::function<std::optional<LaunchHoldProcess>(qint64)>;
+  // Whether Steam is running this app's launch right now.
+  using SteamLaunchCheck = std::function<bool(const QString&)>;
 
   // `workspace` is the Game Mode workspace. A null lookup reads procfs.
   LaunchHold(GameModeCompositor* compositor, QString workspace, ProcessLookup lookup = {},
@@ -64,6 +66,8 @@ public:
 
   void setPollInterval(int milliseconds) { m_poll.setInterval(milliseconds); }
   void setTimeout(int milliseconds) { m_timeout.setInterval(milliseconds); }
+  void setSteamLaunchCheck(SteamLaunchCheck check) { m_steamLaunchCheck = std::move(check); }
+  void setClosedGrace(int milliseconds) { m_closedGrace.setInterval(milliseconds); }
 
   // Starts holding before the game is launched. `game` carries title, source, appId,
   // installPath and launchTarget from the library. False when the compositor cannot hold windows.
@@ -89,6 +93,10 @@ public:
                                          const ProcessLookup& lookup);
   [[nodiscard]] static LaunchHoldTarget targetFor(const QVariantMap& game);
   [[nodiscard]] static std::optional<LaunchHoldProcess> readProcess(qint64 pid);
+  // reaper SteamLaunch AppId=N -- ..., which lives as long as the game. Setup Steam runs
+  // for the game first has the same shape with Install=1, and does not count.
+  [[nodiscard]] static bool isSteamLaunch(const QStringList& arguments, const QString& appId);
+  [[nodiscard]] static bool steamLaunchRunning(const QString& appId);
 
 signals:
   void changed();
@@ -96,6 +104,8 @@ signals:
   void gameShown();
   // The hold ended without finding the game: cancelled, timed out or failed.
   void released();
+  // Steam's launch ended and no window of the game ever opened.
+  void gameClosed();
 
 private:
   struct Scan {
@@ -103,18 +113,24 @@ private:
     bool ok = false;
     QVector<GameModeHeldWindow> windows;
     QString game;
+    bool steamLaunchRunning = false;
   };
+  enum class Ending { Cancelled, GameShown, GameClosed };
   void stop();
   void scan();
   void finishScan();
-  void release(const QString& game);
+  void release(const QString& game, Ending ending);
   void setWindows(const QVector<GameModeHeldWindow>& windows);
 
   GameModeCompositor* m_compositor = nullptr;
   QString m_workspace;
   ProcessLookup m_lookup;
   LaunchHoldTarget m_target;
+  SteamLaunchCheck m_steamLaunchCheck;
   QVector<GameModeHeldWindow> m_windows;
+  // Every window this hold has listed, in the order they first arrived.
+  QStringList m_order;
+  bool m_steamLaunchSeen = false;
   // Windows an earlier launch left held once its game opened. They wait for Game Mode to
   // end, not for this game. Windows held for any other reason, such as Steam starting in
   // the background, are listed for the next launch.
@@ -126,6 +142,7 @@ private:
   bool m_active = false;
   QTimer m_poll;
   QTimer m_timeout;
+  QTimer m_closedGrace;
   QFutureWatcher<Scan> m_scanWatcher;
   QFutureWatcher<void> m_actionWatcher;
 };

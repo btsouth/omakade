@@ -47,9 +47,13 @@ Rectangle {
     // everything go by landing on Show All Windows. With no window yet it rests on the
     // screen itself, and Show All Windows is a deliberate move away.
     property bool moved: false
+    // The list is rebuilt when a shown window comes back: focus goes back to its row.
+    property string lastOpened: ""
 
     function focusFirst() {
-        if (windowRepeater.count > 0 && buttons.length > 0) buttons[0].forceActiveFocus(Qt.TabFocusReason)
+        const last = buttons.find(button => button.objectName === "launchingWindow_" + lastOpened)
+        if (last && windowRepeater.count > 0) last.forceActiveFocus(Qt.TabFocusReason)
+        else if (windowRepeater.count > 0 && buttons.length > 0) buttons[0].forceActiveFocus(Qt.TabFocusReason)
         else screen.forceActiveFocus(Qt.OtherFocusReason)
     }
 
@@ -68,7 +72,7 @@ Rectangle {
         return true
     }
 
-    onVisibleChanged: if (visible) { moved = false; Qt.callLater(focusFirst) }
+    onVisibleChanged: if (visible) { moved = false; lastOpened = ""; Qt.callLater(focusFirst) }
     // A window that opened or closed must not strand focus on a button that went away.
     onButtonsChanged: if (visible && (!moved || !buttons.some(button => button.activeFocus)))
                           Qt.callLater(focusFirst)
@@ -259,7 +263,8 @@ Rectangle {
                     text: screen.title
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: (screen.couchMode ? 54 : 30) * screen.uiScale
+                    // Beside the window list on a small screen, a long word would break at 54.
+                    font.pixelSize: (screen.couchMode ? (screen.wide && screen.width < 1500 * screen.uiScale ? 40 : 54) : 30) * screen.uiScale
                     font.weight: Font.Bold
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
@@ -271,7 +276,8 @@ Rectangle {
                 // no promise of how long. Reduced motion leaves it still.
                 Item {
                     id: progress
-                    Layout.preferredWidth: Math.min(440 * screen.uiScale, content.width)
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 440 * screen.uiScale
                     Layout.preferredHeight: 3 * screen.uiScale
                     Layout.topMargin: 6 * screen.uiScale
                     clip: true
@@ -320,7 +326,8 @@ Rectangle {
         ColumnLayout {
             id: windowColumn
             Layout.fillWidth: !screen.wide
-            Layout.preferredWidth: screen.wide ? 560 * screen.uiScale : -1
+            // Shares a small screen with the game's title, such as 1080p at a scale of 1.6.
+            Layout.preferredWidth: screen.wide ? Math.min(560 * screen.uiScale, (content.width - content.columnSpacing) * 0.42) : -1
             Layout.alignment: Qt.AlignBottom | Qt.AlignRight
             spacing: 10 * screen.uiScale
 
@@ -346,7 +353,10 @@ Rectangle {
                     implicitHeight: 58 * screen.uiScale
                     objectName: "launchingWindow_" + modelData.address
                     text: modelData.title
-                    onClicked: LaunchHold.present(modelData.address)
+                    onClicked: {
+                        screen.lastOpened = modelData.address
+                        LaunchHold.present(modelData.address)
+                    }
 
                     contentItem: RowLayout {
                         spacing: 16 * screen.uiScale

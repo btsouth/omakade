@@ -8284,6 +8284,8 @@ int main(int argc, char* argv[]) {
       settle();
       first = item(QStringLiteral("launchingWindow_0x1"));
       second = item(QStringLiteral("launchingWindow_0x2"));
+      if (!failed && first && first->mapToScene(QPointF(first->width(), 0)).x() > quickWindow->width())
+        fail(QStringLiteral("the window list runs off the screen"));
       expectFocus(first, QStringLiteral("the first window was not focused over a game page"));
       // A page that takes focus late does not keep it.
       play->forceActiveFocus(Qt::OtherFocusReason);
@@ -8303,6 +8305,16 @@ int main(int argc, char* argv[]) {
                       launchHold.title() != QStringLiteral("Celeste")))
         fail(QStringLiteral("Return did not open the focused window, or reached the game page"));
       launchHold.returnToLibrary();
+      // The list comes back with the window that was shown; its row has focus again.
+      launchHold.preview(QStringLiteral("Celeste"),
+                         {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"), QStringLiteral("Heroic Games Launcher")}});
+      settle();
+      launchHold.preview(QStringLiteral("Celeste"),
+                         {{QStringLiteral("0x1"), 0, QStringLiteral("heroic"), QStringLiteral("Heroic Games Launcher")},
+                          {QStringLiteral("0x2"), 0, QStringLiteral("upc.exe"), QStringLiteral("Sign in to Ubisoft")}});
+      settle();
+      expectFocus(item(QStringLiteral("launchingWindow_0x2")),
+                  QStringLiteral("focus did not return to the window that was shown"));
       launchHold.cancel();
       settle();
       // The window is active again once the game closes: the page's Play takes focus,

@@ -269,6 +269,11 @@ such as `_CommonRedist` or `__Installer`, are held too. Windows that open on ano
 workspace are never held. If Omakade quits while it holds windows, the next
 start, **End Game Mode** or `omakade --game-mode-exit` brings them back.
 
+If a Steam game closes before it opens a window, Omakade says so and goes back to the
+library 10 seconds later, in case the game is restarting itself. Steam's windows stay out of
+sight, as they do after a game has played. Other launchers don't report this, so a launch
+through them waits as described above.
+
 ## Limits
 
 - Choosing a display and the dedicated workspace need Hyprland with a Lua configuration,
