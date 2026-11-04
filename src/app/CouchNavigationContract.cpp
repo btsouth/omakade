@@ -737,7 +737,6 @@ bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) 
                               .arg(describe(window->activeFocusItem()));
     };
     auto* home = item("homeScreen");
-    auto* settings = item("settingsOverlay");
     const bool couch = window->property("couchMode").toBool();
 
     // Library, Home and Stats, as each opens.
@@ -753,6 +752,7 @@ bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) 
 
     // Every Settings page.
     open("diagnosticsOpen", true);
+    auto* settings = item("settingsOverlay");
     const QVariantList sections = settings->property("sections").toList();
     for (const QVariant& entry : sections) {
       const auto page = entry.toMap();

@@ -643,7 +643,7 @@ ApplicationWindow {
             root.revealNavigationItem(container, chosen)
             return true
         }
-        if (container === settingsOverlay && settingsOverlay.navigateFallback(current, key)) return true
+        if (settingsOverlay && container === settingsOverlay && settingsOverlay.navigateFallback(current, key)) return true
         return false
     }
 
@@ -758,7 +758,7 @@ ApplicationWindow {
             homeScreen.reveal(item)
         } else if (container === savedFiltersEditor) {
             savedFiltersEditor.reveal(item)
-        } else if (container === settingsOverlay) {
+        } else if (settingsOverlay && container === settingsOverlay) {
             settingsOverlay.reveal(item)
         } else if (container === linkDialogOverlay && root.isWithin(item, candidateList)) {
             candidateList.positionViewAtIndex(candidateList.currentIndex, ListView.Contain)
@@ -1878,7 +1878,7 @@ ApplicationWindow {
         backupEditorOpen = true
         Qt.callLater(backupEditor.focusEditor)
     }
-    function focusGogLibraryPath() { settingsOverlay.focusGogFolderField() }
+    function focusGogLibraryPath() { loadSettingsPanel().focusGogFolderField() }
     function removeGogLibraryFolder(path) {
         if (!Preferences.removeGogLibraryPath(path)) root.showToast("Could not remove that folder")
         Qt.callLater(root.focusGogLibraryPath)
@@ -2871,7 +2871,7 @@ ApplicationWindow {
                     root.showToast("Original cover restored")
                 }
             }
-            onConnectRequested: { settingsOverlay.section = 2; root.diagnosticsOpen = true }
+            onConnectRequested: { root.loadSettingsPanel().section = 2; root.diagnosticsOpen = true }
             onHiddenRequested: {
                 Library.toggleHidden(root.selectedIndex)
                 root.closeDetails()
@@ -3899,7 +3899,7 @@ ApplicationWindow {
             text: "MANAGE COLLECTIONS"
             onClicked: libraryActions.invoke(function () {
                 root.diagnosticsOpen = true
-                settingsOverlay.focusCollections()
+                root.loadSettingsPanel().focusCollections()
             })
         }
 
@@ -3996,10 +3996,27 @@ ApplicationWindow {
         }
     }
 
-    SettingsPanel {
-        id: settingsOverlay
-        host: root
-        libraryCount: libraryView.count
+    // Settings is the largest hidden panel, about a fifth of the time to the first frame.
+    // It loads when first needed and then stays, so its pages keep their state.
+    property bool settingsRequested: false
+    readonly property var settingsOverlay: settingsLoader.item
+    function loadSettingsPanel() {
+        settingsRequested = true
+        return settingsLoader.item
+    }
+    Loader {
+        id: settingsLoader
+        anchors.fill: parent
+        z: 20
+        active: root.diagnosticsOpen || root.settingsRequested
+        asynchronous: false
+        onLoaded: root.settingsRequested = true
+        sourceComponent: Component {
+            SettingsPanel {
+                host: root
+                libraryCount: libraryView.count
+            }
+        }
     }
 
     Rectangle {

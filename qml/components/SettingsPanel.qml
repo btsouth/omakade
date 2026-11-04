@@ -132,17 +132,22 @@ import QtQuick.Layouts
         z: 20
         Keys.onPressed: function(event) { host.handleArrowKey(settingsOverlay, event) }
         color: host.alpha(Theme.darkerBackground, 0.72)
+        function handleOpened() {
+            if (SessionRecorderStatus) SessionRecorderStatus.refreshRecorderStatus()
+            settingsOverlay.refreshGameMode()
+            previousFocus = host.activeFocusItem
+            Qt.callLater(function() { host.focusWithin(settingsOverlay, true) })
+        }
         onVisibleChanged: {
             if (visible) {
-                if (SessionRecorderStatus) SessionRecorderStatus.refreshRecorderStatus()
-                settingsOverlay.refreshGameMode()
-                previousFocus = host.activeFocusItem
-                Qt.callLater(function() { host.focusWithin(settingsOverlay, true) })
+                handleOpened()
             } else if (previousFocus) {
                 host.restoreFocus(previousFocus)
                 previousFocus = null
             }
         }
+        // Opening Settings for the first time creates it already visible, with no change to report.
+        Component.onCompleted: if (visible) handleOpened()
 
         MouseArea {
             anchors.fill: parent
