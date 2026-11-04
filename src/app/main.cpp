@@ -5496,8 +5496,6 @@ int main(int argc, char* argv[]) {
             quickWindow->findChild<QQuickItem*>(QStringLiteral("couchFavoriteButton"));
         auto* settings =
             quickWindow->findChild<QQuickItem*>(QStringLiteral("couchSettingsButton"));
-        auto* settingsScroll =
-            quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsScroll"));
         auto* search = quickWindow->findChild<QQuickItem*>(QStringLiteral("couchSearchButton"));
         auto* browsePanel =
             quickWindow->findChild<QQuickItem*>(QStringLiteral("couchBrowsePanel"));
@@ -5521,7 +5519,7 @@ int main(int argc, char* argv[]) {
             !couch->isVisible() || strip == nullptr || grid == nullptr || view == nullptr ||
             show == nullptr || sourceFilter == nullptr || sortOrder == nullptr || layout == nullptr ||
             favorite == nullptr || settings == nullptr ||
-            settingsScroll == nullptr || search == nullptr || preferences == nullptr ||
+            search == nullptr || preferences == nullptr ||
             browsePanel == nullptr || browseCategories == nullptr || browseOptions == nullptr ||
             keyboard == nullptr || keyboardGrid == nullptr || textEntryKeyboard == nullptr ||
             textEntryGrid == nullptr || desktopSearch == nullptr) {
@@ -5556,7 +5554,7 @@ int main(int argc, char* argv[]) {
         QTimer::singleShot(50, quickWindow,
                            [quickWindow, &application, &controller, couch, couchCursor, strip, grid,
                             view, show, sourceFilter, sortOrder, layout, favorite, browsePanel,
-                            browseCategories, browseOptions, search, settings, settingsScroll,
+                            browseCategories, browseOptions, search, settings,
                             keyboard, keyboardGrid, textEntryKeyboard, textEntryGrid, desktopSearch,
                             preferences, fail] {
           if (!strip->hasActiveFocus() || strip->property("currentIndex").toInt() != 1) {
@@ -5962,13 +5960,18 @@ int main(int argc, char* argv[]) {
           }
           sendKey(Qt::Key_Return);
           QTimer::singleShot(80, quickWindow,
-                             [quickWindow, &application, &controller, couch, settingsScroll,
+                             [quickWindow, &application, &controller, couch,
                               fail] {
             if (!quickWindow->property("diagnosticsOpen").toBool()) {
               fail(QStringLiteral("Couch Settings did not open"));
               return;
             }
             auto* settingsPage = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsOverlay"));
+            auto* settingsScroll = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsScroll"));
+            if (settingsPage == nullptr || settingsScroll == nullptr) {
+              fail(QStringLiteral("Settings opened without its controls"));
+              return;
+            }
                     settingsPage->setProperty("section", 1);
                     QEventLoop settingsLayout;
                     QTimer::singleShot(50, &settingsLayout, &QEventLoop::quit);
@@ -6621,7 +6624,6 @@ int main(int argc, char* argv[]) {
               auto* view = item("viewMenuButton");
               auto* more = item("libraryMoreButton");
               auto* settings = item("settingsButton");
-              auto* settingsScroll = item("settingsScroll");
               for (auto* control : {sort, sources, filters, view, more, settings, search}) {
                 if (!withinWindow(control)) { fail("Library toolbar extends outside the window"); return; }
               }
@@ -6857,13 +6859,18 @@ int main(int argc, char* argv[]) {
               if (!activate(settings)) { fail("Settings is unreachable"); return; }
               QTimer::singleShot(
                   100, quickWindow,
-                  [quickWindow, &application, &controller, grid, settingsScroll, fail] {
+                  [quickWindow, &application, &controller, grid, fail] {
                     if (!quickWindow->property("diagnosticsOpen").toBool() ||
                         quickWindow->activeFocusItem() == nullptr) {
                       fail(QStringLiteral("Controller Open did not enter Settings"));
                       return;
                     }
                     auto* settingsPage = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsOverlay"));
+                    auto* settingsScroll = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsScroll"));
+                    if (settingsPage == nullptr || settingsScroll == nullptr) {
+                      fail(QStringLiteral("Settings opened without its controls"));
+                      return;
+                    }
                     settingsPage->setProperty("section", 1);
                     QEventLoop settingsLayout;
                     QTimer::singleShot(50, &settingsLayout, &QEventLoop::quit);
@@ -7900,6 +7907,7 @@ int main(int argc, char* argv[]) {
   }
 
   if (gogSettingsTest || linkedPreferenceTest) {
+    if (gogSettingsTest) QMetaObject::invokeMethod(rootWindow, "loadSettingsPanel");
     auto* timer = new QTimer(rootWindow);
     timer->setInterval(100);
     auto step = std::make_shared<int>(0);
@@ -8880,6 +8888,7 @@ int main(int argc, char* argv[]) {
       rootWindow->setProperty("homeOpen", true);
       auto* home = rootWindow->findChild<QQuickItem*>("homeScreen");
       auto* homeLibrary = findVisualItem(qobject_cast<QQuickWindow*>(rootWindow)->contentItem(), "homeLibraryButton");
+      QMetaObject::invokeMethod(rootWindow, "loadSettingsPanel");
       auto* settings = rootWindow->findChild<QQuickItem*>("settingsOverlay");
       // The section sidebar is hidden at compact widths; Close stays available
       // in both layouts while the selected Controls section is checked below.
