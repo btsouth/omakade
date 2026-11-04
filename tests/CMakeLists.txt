@@ -1102,7 +1102,9 @@ add_test(NAME omakade_card_export COMMAND omakade --stats-fixture
 add_test(NAME omakade_card_export_dimensions COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/CheckPngSize.py
   ${CMAKE_CURRENT_BINARY_DIR}/stats-card.png 1200 2000)
-set_tests_properties(omakade_card_export_dimensions PROPERTIES DEPENDS omakade_card_export)
+# A fixture rather than DEPENDS, so CI's shards also run the export when they select only the check.
+set_tests_properties(omakade_card_export PROPERTIES FIXTURES_SETUP omakade_card_export_file)
+set_tests_properties(omakade_card_export_dimensions PROPERTIES FIXTURES_REQUIRED omakade_card_export_file)
 # The same screen in Couch Mode, which is how it reaches a television.
 add_test(NAME omakade_stats_couch COMMAND omakade --couch
   --render-overlay=stats --render-size=1920x1080

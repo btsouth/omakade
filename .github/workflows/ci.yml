@@ -75,10 +75,16 @@ jobs:
     # Still builds if change detection fails.
     if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
     timeout-minutes: 30
-    name: Build and test (${{ matrix.check }})
+    name: Test (${{ matrix.check }}, shard ${{ matrix.shard }})
+    # Current Arch only warns about newer Qt, so it can't block a merge.
+    continue-on-error: ${{ matrix.check == 'x86_64 current Arch' }}
     strategy:
       fail-fast: false
       matrix:
+        # Each leg runs half the tests on its own runner, because most of a test's time
+        # is waiting and a 4 vCPU runner only fits so many at once. Every leg still builds.
+        check: [x86_64, x86_64 current Arch, aarch64]
+        shard: [1, 2]
         # x86_64 releases build on Omarchy stable, so the required x86_64 check
         # does too. Current Arch catches newer Qt early.
         include:
@@ -126,14 +132,18 @@ jobs:
       - name: Build
         run: cmake --build --preset release
       - name: Test
-        run: ctest --preset release --parallel 8 --output-junit test-results.xml
+        # Every second test, so the shards together cover the whole suite.
+        run: ctest --preset release --parallel 8 -I ${{ matrix.shard }},,2 --output-junit test-results.xml
       - name: Test release tooling
+        if: matrix.shard == 1
         run: python tests/SbomGeneratorTests.py
       - name: Validate metadata
+        if: matrix.shard == 1
         run: |
           desktop-file-validate packaging/io.github.tsouth89.Omakade.desktop
           appstreamcli validate packaging/io.github.tsouth89.Omakade.metainfo.xml
       - name: Verify staged install
+        if: matrix.shard == 1
         run: |
           cmake --install build/release --prefix "$PWD/stage/usr"
           test -x stage/usr/bin/omakade
@@ -155,7 +165,7 @@ jobs:
         if: always()
         run: ccache --show-stats
       - name: Save compiler outputs
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.shard == 1
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
@@ -164,7 +174,23 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tests-${{ github.job }}-${{ matrix.packages }}-${{ runner.arch }}
+          name: tests-${{ github.job }}-${{ matrix.packages }}-${{ runner.arch }}-${{ matrix.shard }}
           path: '**/test-results.xml'
           if-no-files-found: ignore
           retention-days: 7
+
+  build-and-test-result:
+    # Reports the required check names, so branch protection doesn't depend on the shards.
+    name: Build and test (${{ matrix.check }})
+    needs: [changes, build-and-test]
+    if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' }}
+    strategy:
+      matrix:
+        check: [x86_64, aarch64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every shard
+        env:
+          RESULT: ${{ needs.build-and-test.result }}
+        run: test "$RESULT" = success
