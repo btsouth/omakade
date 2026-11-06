@@ -1645,6 +1645,13 @@ ApplicationWindow {
     }
 
     Connections {
+        target: LaunchHold
+        function onGameClosed() {
+            root.showToast(LaunchHold.title + " closed before it opened a window.")
+        }
+    }
+
+    Connections {
         target: LaunchWatch
         function onChanged() { if (!LaunchWatch.active) launchFeedback.done() }
         function onTimedOut() {

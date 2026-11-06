@@ -18,6 +18,8 @@ struct GameModeOutput {
   int height = 0;
   // Selector for the workspace the output currently shows. Empty when disabled.
   QString workspace;
+  // Width and height are physical pixels; window sizes are these divided by the scale.
+  double scale = 1.0;
 };
 
 struct GameModeSink {

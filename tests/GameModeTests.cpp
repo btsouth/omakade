@@ -422,12 +422,16 @@ class HoldCompositor final : public GameModeCompositor {
 public:
   bool available() override { return true; }
   QVector<GameModeOutput> outputs(QString* = nullptr) override {
-    return {{0, kTv, kTvDescription, true, true, 2560, 1440, GameModeController::workspace()}};
+    return {{0, kTv, kTvDescription, true, true, outputWidth, outputHeight,
+             GameModeController::workspace(), outputScale}};
   }
   bool setOutputEnabled(const QString&, bool, QString* = nullptr) override { return true; }
   GameModeWindow windowForPid(qint64) override {
     return {kAddress, GameModeController::workspace(), kTv};
   }
+  int outputWidth = 2560;
+  int outputHeight = 1440;
+  double outputScale = 1.0;
   int otherWindowsOn(const QString&, qint64) override { return 0; }
   QStringList otherWindowAddressesOn(const QString&, qint64) override { return {}; }
   GameModeWindow placeholderForPid(qint64) override { return {}; }
@@ -3448,6 +3452,139 @@ private slots:
     QVERIFY(log.lastIndexOf(QStringLiteral("hold ")) < log.indexOf(QStringLiteral("release 0x70 name:omakade")));
     QVERIFY(log.lastIndexOf(QStringLiteral("hold ")) < log.indexOf(QStringLiteral("release 0x71 name:omakade")));
     QVERIFY(!log.contains(QStringLiteral("focus 0x71")));
+  }
+
+  void launchHoldSizesAShownWindowForTheOutputsScale() {
+    const auto outputs = HyprlandGameModeCompositor::parseOutputs(
+        R"([{"name":"eDP-1","width":1920,"height":1080,"scale":1.6},{"name":"DP-2"}])");
+    QCOMPARE(outputs.at(0).scale, 1.6);
+    QCOMPARE(outputs.at(1).scale, 1.0);
+
+    // 1920x1080 at 1.6 is a 1200x675 screen: a window of 1440x810 falls off its edges.
+    HoldCompositor compositor;
+    compositor.outputWidth = 1920;
+    compositor.outputHeight = 1080;
+    compositor.outputScale = 1.6;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x70 name:omakade 900x506")));
+    hold.returnToLibrary();
+    hold.cancel();
+  }
+
+  void launchHoldPutsAShownWindowBackInItsRow() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    compositor.open({QStringLiteral("0x71"), 71, QStringLiteral("heroic"), QStringLiteral("Update")});
+    QTRY_COMPARE(hold.windows().size(), 2);
+    hold.present(QStringLiteral("0x70"));
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.returnToLibrary();
+    QTRY_COMPARE(hold.windows().size(), 2);
+    QCOMPARE(hold.windows().at(0).toMap().value("address").toString(), QStringLiteral("0x70"));
+    QCOMPARE(hold.windows().at(1).toMap().value("address").toString(), QStringLiteral("0x71"));
+    hold.cancel();
+  }
+
+  void launchHoldPutsBackAWindowStillShownWhenTheGameOpens() {
+    HoldCompositor compositor;
+    const QHash<qint64, LaunchHoldProcess> table{
+        {60, {1, QStringLiteral("/usr/lib/steam/steam"), {}, {}}},
+        {61, {1, QStringLiteral("/usr/bin/wine64-preloader"), {}, QStringLiteral("367520")}}};
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [&](qint64 pid) -> std::optional<LaunchHoldProcess> {
+                      if (!table.contains(pid)) return std::nullopt;
+                      return table.value(pid);
+                    });
+    hold.setPollInterval(10);
+    QSignalSpy shown(&hold, &LaunchHold::gameShown);
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "367520"}, {"title", "Hollow Knight"}}));
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("steam"), QStringLiteral("EULA")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x60"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x60 name:omakade 1920x1080")));
+    compositor.open({QStringLiteral("0x61"), 61, QStringLiteral("hollow_knight"), QStringLiteral("Hollow Knight")});
+    QTRY_COMPARE(shown.size(), 1);
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("focus 0x61")));
+    const QStringList log = compositor.entries();
+    QVERIFY(log.contains(QStringLiteral("hold-window 0x60")));
+    QVERIFY(log.indexOf(QStringLiteral("hold-window 0x60")) < log.indexOf(QStringLiteral("release 0x61 name:omakade")));
+
+    // The next launch leaves it alone.
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "10"}, {"title", "Next"}}));
+    QTest::qWait(50);
+    QVERIFY(hold.windows().isEmpty());
+    hold.cancel();
+    QTest::qWait(50);
+    QVERIFY(!compositor.entries().contains(QStringLiteral("release 0x60 name:omakade")));
+  }
+
+  void launchHoldNoticesASteamGameThatClosed() {
+    const QString reaper = QStringLiteral("/home/me/.steam/ubuntu12_32/reaper");
+    QVERIFY(LaunchHold::isSteamLaunch({reaper, "SteamLaunch", "AppId=250900", "--", "game"}, "250900"));
+    QVERIFY(!LaunchHold::isSteamLaunch({reaper, "SteamLaunch", "AppId=2509000", "--", "game"}, "250900"));
+    QVERIFY(!LaunchHold::isSteamLaunch({reaper, "SteamLaunch", "AppId=250900", "Install=1", "--", "x"}, "250900"));
+    QVERIFY(!LaunchHold::isSteamLaunch({"/bin/bash", "SteamLaunch", "AppId=250900"}, "250900"));
+    QVERIFY(!LaunchHold::isSteamLaunch({reaper, "SteamLaunch", "--", "AppId=250900"}, "250900"));
+
+    HoldCompositor compositor;
+    std::atomic<bool> running = false;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    hold.setClosedGrace(300);
+    hold.setSteamLaunchCheck([&](const QString&) { return running.load(); });
+    QSignalSpy closed(&hold, &LaunchHold::gameClosed);
+    QSignalSpy released(&hold, &LaunchHold::released);
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "250900"}, {"title", "Isaac"}}));
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("steam"), QStringLiteral("Steam")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+
+    // Steam has not started the game yet: nothing to notice, however long that takes.
+    QTest::qWait(300);
+    QVERIFY(closed.isEmpty());
+
+    // A game that restarts itself comes back inside the grace.
+    running = true;
+    QTest::qWait(50);
+    running = false;
+    QTest::qWait(100);
+    running = true;
+    QTest::qWait(400);
+    QVERIFY(closed.isEmpty());
+    QVERIFY(hold.active());
+
+    // Someone answering a shown window is not cut off.
+    hold.present(QStringLiteral("0x60"));
+    QTRY_COMPARE(hold.windows().size(), 0);
+    running = false;
+    QTest::qWait(500);
+    QVERIFY(closed.isEmpty());
+    hold.returnToLibrary();
+    QTRY_COMPARE(hold.windows().size(), 1);
+
+    // Gone for good: the hold ends, Steam's window stays out of sight and is not listed
+    // for the next launch.
+    QTRY_COMPARE(closed.size(), 1);
+    QCOMPARE(released.size(), 1);
+    QVERIFY(!hold.active());
+    QCOMPARE(hold.title(), QStringLiteral("Isaac"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("hold ")));
+    QVERIFY(!compositor.entries().contains(QStringLiteral("release 0x60 name:omakade")));
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "10"}, {"title", "Next"}}));
+    QTest::qWait(50);
+    QVERIFY(hold.windows().isEmpty());
+    hold.cancel();
   }
 
   void launchHoldNeedsACompositorThatCanHold() {

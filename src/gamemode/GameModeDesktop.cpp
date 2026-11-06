@@ -107,6 +107,7 @@ QVector<GameModeOutput> HyprlandGameModeCompositor::parseOutputs(const QByteArra
     output.focused = monitor.value(QLatin1String("focused")).toBool();
     output.width = monitor.value(QLatin1String("width")).toInt();
     output.height = monitor.value(QLatin1String("height")).toInt();
+    output.scale = monitor.value(QLatin1String("scale")).toDouble(1.0);
     if (output.enabled) {
       output.workspace =
           workspaceSelector(monitor.value(QLatin1String("activeWorkspace")).toObject());
