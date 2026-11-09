@@ -327,6 +327,7 @@ QVector<ReviewAvailability::Entry> UnifiedGameModel::reviewAvailabilitySnapshot(
       const QVariant installed = index.data(GameRoles::Installed);
       entry.installedKnown = installed.isValid();
       entry.installed = installed.toBool();
+      entry.storageUnavailable = index.data(GameRoles::StorageUnavailable).toBool();
       entry.mode = setup.value(QStringLiteral("mode"), QStringLiteral("Automatic")).toString();
       entry.route = entry.mode == QStringLiteral("Automatic")
                         ? GameLauncher::routeForReview(installation) : entry.mode;

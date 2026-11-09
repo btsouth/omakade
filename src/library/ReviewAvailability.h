@@ -28,6 +28,8 @@ struct Entry {
   bool manual = false;
   bool installedKnown = false;
   bool installed = true;
+  // The source knows the game's library storage is disconnected (an unplugged Steam drive).
+  bool storageUnavailable = false;
 };
 
 struct Plan {

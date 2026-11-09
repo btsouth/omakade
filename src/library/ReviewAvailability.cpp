@@ -27,6 +27,7 @@ struct MissingEntry {
   int index = -1;
   QString path;
   QString ancestor;
+  bool storage = false;
 };
 } // namespace
 
@@ -97,6 +98,13 @@ QVector<ReviewAvailability::Result> ReviewAvailability::evaluate(
                        QStringLiteral("Emulator or core unavailable"), plan.error);
         }
       }
+    } else if (entry.storageUnavailable) {
+      result.pathChecked = true;
+      result.contentAvailable = false;
+      result.launchable = false;
+      const QString ancestor = missingAncestor ? missingAncestor(entry.path) : QString{};
+      missingEntries.append({static_cast<int>(results.size()), entry.path,
+                             ancestor.isEmpty() ? entry.path : ancestor, true});
     } else {
       result.launchable = !entry.installedKnown || entry.installed;
       if (entry.source != QStringLiteral("Steam") && entry.source != QStringLiteral("Heroic") && entry.installedKnown && !entry.installed) {
@@ -110,7 +118,8 @@ QVector<ReviewAvailability::Result> ReviewAvailability::evaluate(
   }
 
   for (const MissingEntry& missing : missingEntries) {
-    const bool storage = !missing.ancestor.isEmpty() && missingAncestors.value(missing.ancestor) >= 2;
+    const bool storage = missing.storage || (!missing.ancestor.isEmpty() &&
+                                             missingAncestors.value(missing.ancestor) >= 2);
     appendReason(results[missing.index], storage ? QStringLiteral("missing-storage")
                                                  : QStringLiteral("missing-file"),
                  storage ? QStringLiteral("Drive or folder disconnected")

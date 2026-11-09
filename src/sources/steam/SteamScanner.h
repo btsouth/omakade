@@ -43,6 +43,9 @@ struct SteamScanResult {
   QStringList warnings;
   QStringList unreadableManifests;
   bool incomplete = false;
+  // Libraries listed in libraryfolders.vdf whose steamapps folder is missing or unreadable,
+  // such as an unplugged drive. Their cached installations are kept.
+  QStringList unavailableLibraries;
   bool operator==(const SteamScanResult&) const = default;
 };
 

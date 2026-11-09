@@ -434,10 +434,11 @@ SteamScanResult SteamScanner::scan(const QStringList& steamRoots) {
     result.libraryPaths.append(discoveredLibraries);
     for (const QString& library : discoveredLibraries) {
       QDir steamapps(library + QStringLiteral("/steamapps"));
-      if (!steamapps.exists()) {
-        // Skip stale entries (e.g. moved partition left in libraryfolders.vdf) - warn but don't abort scan.
-        // Steam doesn't clean up libraryfolders.vdf when a drive is moved without removal.
+      if (!steamapps.exists() || !QFileInfo(steamapps.path()).isReadable()) {
+        // An unplugged drive or a stale entry left in libraryfolders.vdf. Warn and keep its
+        // cached games; Settings can forget a library that is gone for good.
         result.warnings.append(QStringLiteral("Steam library is unavailable, skipping: %1").arg(library));
+        result.unavailableLibraries.append(cleanPath(library));
         continue;
       }
       const QStringList manifests =
@@ -492,6 +493,7 @@ SteamScanResult SteamScanner::scan(const QStringList& steamRoots) {
   importNonSteamShortcuts(steamRoots, activity, &gridListings, &importedIds, &result);
 
   result.libraryPaths.removeDuplicates();
+  result.unavailableLibraries.removeDuplicates();
 
   std::sort(result.games.begin(), result.games.end(), [](const auto& left, const auto& right) {
     return left.title.localeAwareCompare(right.title) < 0;

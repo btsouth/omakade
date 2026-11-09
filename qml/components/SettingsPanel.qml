@@ -620,6 +620,34 @@ import "Counts.js" as Counts
                             font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                             wrapMode: Text.Wrap
                         }
+                        Repeater {
+                            model: detail && modelData.name === "STEAM" && SteamLibrary
+                                   ? SteamLibrary.unavailableLibraries : []
+                            RowLayout {
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Text {
+                                    objectName: "steamUnavailableLibrary_" + index
+                                    Layout.fillWidth: true
+                                    text: modelData.path + "\nUnavailable. " + modelData.games
+                                          + (modelData.games === 1 ? " game is" : " games are")
+                                          + " kept until the drive is back."
+                                    color: Theme.mutedText
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
+                                    wrapMode: Text.WrapAnywhere
+                                }
+                                GlassButton {
+                                    objectName: "steamForgetLibrary_" + index
+                                    compact: true
+                                    text: "FORGET"
+                                    Accessible.name: "Forget Steam library " + modelData.path
+                                    onClicked: SteamLibrary.forgetLibrary(modelData.path)
+                                }
+                            }
+                        }
                     }
                 }
                 ColumnLayout {

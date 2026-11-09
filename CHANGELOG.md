@@ -6,6 +6,9 @@
   README's screenshots, so every link in the installed docs opens. Troubleshooting now
   says a source that is on but not found is listed under Available, and the user guides
   no longer carry test checklists.
+- Games on a Steam library drive that is unplugged or unreadable now stay in the library,
+  marked as on a disconnected drive, instead of disappearing until the drive is back.
+  Settings > Sources > Steam lists such libraries with Forget for one that is gone for good.
 - A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes of
   memory by giving thousands of files the same long name. Such archives are skipped.
 - Omakade's library database, settings and cache folders are now private to your user.

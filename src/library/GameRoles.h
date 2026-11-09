@@ -58,6 +58,9 @@ enum Role {
   NeedsIdentification,
   ReviewReasons,
   ReasonDetails,
+  // An installed game whose library drive is unplugged or unreadable. The source keeps it and
+  // review availability reports it as disconnected storage.
+  StorageUnavailable,
 };
 
 inline QString formatPlaytime(qint64 seconds) {
