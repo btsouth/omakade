@@ -624,6 +624,7 @@ FocusScope {
                         Layout.fillWidth: true
                         spacing: 3 * root.scaleFactor
                         Text {
+                            textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: headline.topGameTitle || ""
                             color: Theme.brightForeground
@@ -982,6 +983,7 @@ FocusScope {
                     Repeater {
                         model: root.backlogReturns
                         Text {
+                            textFormat: Text.PlainText
                             required property var modelData
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
@@ -1155,6 +1157,7 @@ FocusScope {
                     Repeater {
                         model: root.topRatedGames
                         Text {
+                            textFormat: Text.PlainText
                             required property var modelData
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap

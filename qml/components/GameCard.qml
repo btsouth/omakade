@@ -326,6 +326,7 @@ FocusScope {
                    ? protonBadgeDot.width + protonBadge.width + spacing * 2 : 0)
 
             Text {
+                textFormat: Text.PlainText
                 width: Math.min(implicitWidth, Math.max(0, parent.width - metaRow.trailingWidth))
                 elide: Text.ElideRight
                 text: root.subtitle

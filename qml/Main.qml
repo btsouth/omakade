@@ -2510,6 +2510,7 @@ ApplicationWindow {
                     onClicked: root.leaveConsole()
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: Library.consoleTitle
                     color: Theme.foreground
                     font.family: Theme.fontFamily

@@ -259,6 +259,7 @@ Rectangle {
                 }
                 Text {
                     objectName: "launchingTitle"
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: screen.title
                     color: Theme.brightForeground

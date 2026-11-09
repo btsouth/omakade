@@ -407,6 +407,7 @@ Item {
             font.pixelSize: 42
         }
         Text {
+            textFormat: Text.PlainText
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.scanning ? "Scanning libraries" : root.emptyTitle
             color: Theme.foreground

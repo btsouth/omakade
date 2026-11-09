@@ -104,6 +104,7 @@ Button {
         anchors.centerIn: parent
 
         Text {
+            textFormat: Text.PlainText
             visible: root.iconText.length > 0
             text: root.iconText
             color: root.enabled ? (root.primary ? Theme.brightForeground : Theme.foreground)
@@ -115,6 +116,7 @@ Button {
 
         Text {
             id: buttonLabel
+            textFormat: Text.PlainText
             width: Math.min(implicitWidth, root.maximumLabelWidth)
             elide: Text.ElideRight
             text: root.text

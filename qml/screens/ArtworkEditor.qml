@@ -92,6 +92,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 6 * editor.uiScale
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         text: modelData.title + " · " + modelData.note

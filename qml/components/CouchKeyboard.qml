@@ -143,6 +143,7 @@ FocusScope {
                     spacing: 3 * root.uiScale
 
                     Text {
+                        textFormat: Text.PlainText
                         text: root.title
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
