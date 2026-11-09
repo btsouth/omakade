@@ -78,7 +78,7 @@ private slots:
     QTest::newRow("ppsspp") << "ppsspp" << "ppsspp";
     QTest::newRow("PPSSPP") << "PPSSPP" << "";
     QTest::newRow("RetroArch") << "RetroArch" << "/usr/bin/RetroArch";
-    QTest::newRow("dolphin truncated comm") << "dolphin-emu-nog" << "/usr/bin/dolphin-emu-nogui";
+    QTest::newRow("dolphin argv0 fallback") << "dolphin-emu-nog" << "/usr/bin/dolphin-emu-nogui";
   }
   void runningGuardMatchesEmulatorProcessNames() {
     QFETCH(QString, comm); QFETCH(QString, argv0);
