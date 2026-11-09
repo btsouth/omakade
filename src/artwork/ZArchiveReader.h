@@ -30,18 +30,14 @@ private:
     quint32 firstChild = 0;  // directory: index of first child node
     quint32 childCount = 0;
   };
-  struct OffsetRecord {
-    quint64 baseOffset = 0;
-    quint16 sizes[16] = {};
-  };
-
   ZArchiveReader() = default;
   [[nodiscard]] int lookup(const QString& path) const;
   [[nodiscard]] bool readBlock(quint64 blockIndex, QByteArray* block);
 
   QFile m_file;
   QVector<Node> m_nodes;
-  QVector<OffsetRecord> m_records;
+  // Block offset records, kept as read: a base offset and 16 compressed block sizes each.
+  QByteArray m_records;
   quint64 m_dataOffset = 0;
   quint64 m_dataSize = 0;
 };

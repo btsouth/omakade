@@ -11,6 +11,9 @@
 
 #include <openssl/evp.h>
 
+#include <initializer_list>
+#include <limits>
+
 namespace {
 constexpr qint64 kNcaHeaderBytes = 0xC00;
 constexpr qint64 kSectorBytes = 0x200;
@@ -102,6 +105,30 @@ Keys loadKeys(const QStringList& keyFiles, const QStringList& titleKeyFiles) {
   return keys;
 }
 
+// Offsets and sizes in a dump are 64-bit values read from the file. These add them without
+// letting a huge value wrap around to a small one: -1 when any part is negative or the sum
+// does not fit.
+qint64 checkedSum(std::initializer_list<qint64> parts) {
+  qint64 total = 0;
+  for (const qint64 part : parts) {
+    if (part < 0 || part > std::numeric_limits<qint64>::max() - total) {
+      return -1;
+    }
+    total += part;
+  }
+  return total;
+}
+
+// A 64-bit value from the file as a signed offset, or -1 when it does not fit.
+qint64 fileOffset(quint64 value) {
+  return value > static_cast<quint64>(std::numeric_limits<qint64>::max()) ? -1 : static_cast<qint64>(value);
+}
+
+// True when [offset, offset + size) lies inside [0, length).
+bool fits(qint64 offset, qint64 size, qint64 length) {
+  return offset >= 0 && size >= 0 && length >= 0 && size <= length && offset <= length - size;
+}
+
 // A named region of the dump: an NCA inside an NSP (PFS0) or XCI (HFS0).
 struct Entry {
   QString name;
@@ -110,7 +137,7 @@ struct Entry {
 };
 
 QByteArray readAt(QFile& file, qint64 offset, qint64 size) {
-  if (offset < 0 || size <= 0 || offset + size > file.size() || !file.seek(offset)) {
+  if (size <= 0 || !fits(offset, size, file.size()) || !file.seek(offset)) {
     return {};
   }
   const QByteArray bytes = file.read(size);
@@ -120,6 +147,9 @@ QByteArray readAt(QFile& file, qint64 offset, qint64 size) {
 // PFS0 (NSP) and HFS0 (XCI partition) share a layout; only the entry size differs.
 QVector<Entry> readPartition(QFile& file, qint64 base, const char* magic, int entrySize) {
   QVector<Entry> entries;
+  if (!fits(base, 0x10, file.size())) {
+    return entries;
+  }
   const QByteArray header = readAt(file, base, 0x10);
   if (header.size() != 0x10 || !header.startsWith(magic)) {
     return entries;
@@ -139,8 +169,8 @@ QVector<Entry> readPartition(QFile& file, qint64 base, const char* magic, int en
   for (quint32 index = 0; index < count; ++index) {
     const char* record = table.constData() + static_cast<qsizetype>(index) * entrySize;
     Entry entry;
-    entry.offset = dataBase + static_cast<qint64>(qFromLittleEndian<quint64>(record));
-    entry.size = static_cast<qint64>(qFromLittleEndian<quint64>(record + 8));
+    entry.offset = checkedSum({dataBase, fileOffset(qFromLittleEndian<quint64>(record))});
+    entry.size = fileOffset(qFromLittleEndian<quint64>(record + 8));
     const auto nameOffset = qFromLittleEndian<quint32>(record + 16);
     if (nameOffset >= stringTableSize) {
       continue;
@@ -150,7 +180,7 @@ QVector<Entry> readPartition(QFile& file, qint64 base, const char* magic, int en
                                    (end < 0 ? strings.size() : end) - static_cast<int>(nameOffset));
     // Trimmed XCIs cut the file short inside the last partition; keep entries
     // that start inside the file and let reads past the end fail on their own.
-    if (entry.size > 0 && entry.offset < file.size()) {
+    if (entry.size > 0 && entry.offset >= 0 && entry.offset < file.size()) {
       entries.append(entry);
     }
   }
@@ -167,7 +197,7 @@ QVector<Entry> ncaEntries(QFile& file, QVector<Entry>* tickets, QStringList* not
     all = readPartition(file, 0, "PFS0", 0x18);
   } else if (head.mid(0x100, 4) == "HEAD") {
     // XCI: the root HFS0 lists partitions; game content lives in "secure".
-    const auto rootOffset = static_cast<qint64>(qFromLittleEndian<quint64>(head.constData() + 0x130));
+    const qint64 rootOffset = fileOffset(qFromLittleEndian<quint64>(head.constData() + 0x130));
     for (const Entry& partition : readPartition(file, rootOffset, "HFS0", 0x40)) {
       if (notes != nullptr) {
         notes->append(QStringLiteral("xci partition %1 at %2 (%3 bytes)")
@@ -295,11 +325,12 @@ bool findControl(QFile& file, const Keys& keys, const QVector<Entry>& ncas,
     control->ncaOffset = nca.offset;
     control->sectionStart = nca.offset + static_cast<qint64>(mediaStart) * kMediaUnit;
     control->sectionEnd = nca.offset + static_cast<qint64>(mediaEnd) * kMediaUnit;
-    control->romfsOffset = static_cast<qint64>(qFromLittleEndian<quint64>(fsHeader + 0x90));
+    control->romfsOffset = fileOffset(qFromLittleEndian<quint64>(fsHeader + 0x90));
     control->ctrKey = ctrKey;
     control->sectionCtr = QByteArray(fsHeader + 0x140, 8);
-    if (control->sectionEnd - control->sectionStart > kMaximumControlSection ||
-        control->sectionStart >= file.size()) {
+    if (control->sectionEnd < control->sectionStart ||
+        control->sectionEnd - control->sectionStart > kMaximumControlSection ||
+        control->sectionStart >= file.size() || control->romfsOffset < 0) {
       *failure = QStringLiteral("control section has an unexpected size");
       return false;
     }
@@ -309,18 +340,18 @@ bool findControl(QFile& file, const Keys& keys, const QVector<Entry>& ncas,
   return false;
 }
 
-// Reads and decrypts [offset, offset+size) of the control section, where
-// offset is relative to the section start.
+// Reads and decrypts [offset, offset+size) of the control section, where offset is relative to
+// the section start and is the checked sum of offsets, -1 if they did not add up.
 QByteArray readSection(QFile& file, const ControlSection& control, qint64 offset, qint64 size) {
+  if (size <= 0 || !fits(offset, size, control.sectionEnd - control.sectionStart)) {
+    return {};
+  }
   // Counter blocks are aligned to offsets inside the NCA, which itself may sit
   // at any offset in the container.
   const qint64 relative = control.sectionStart - control.ncaOffset + offset;
   const qint64 alignedRelative = relative & ~static_cast<qint64>(0xF);
   const qint64 skew = relative - alignedRelative;
   const qint64 alignedSize = ((size + skew + 0xF) & ~static_cast<qint64>(0xF));
-  if (control.sectionStart + offset + size > control.sectionEnd) {
-    return {};
-  }
   const QByteArray encrypted = readAt(file, control.ncaOffset + alignedRelative, alignedSize);
   if (encrypted.isEmpty()) {
     return {};
@@ -356,14 +387,15 @@ bool extract(QFile& file, const ControlSection& control, SwitchTitleInfo* info) 
     info->failure = QStringLiteral("control data did not decrypt to a RomFS");
     return false;
   }
-  const auto fileTableOffset = static_cast<qint64>(qFromLittleEndian<quint64>(romfsHeader.constData() + 0x38));
-  const auto fileTableSize = static_cast<qint64>(qFromLittleEndian<quint64>(romfsHeader.constData() + 0x40));
-  const auto dataOffset = static_cast<qint64>(qFromLittleEndian<quint64>(romfsHeader.constData() + 0x48));
+  const qint64 fileTableOffset = fileOffset(qFromLittleEndian<quint64>(romfsHeader.constData() + 0x38));
+  const qint64 fileTableSize = fileOffset(qFromLittleEndian<quint64>(romfsHeader.constData() + 0x40));
+  const qint64 dataOffset = fileOffset(qFromLittleEndian<quint64>(romfsHeader.constData() + 0x48));
   if (fileTableSize <= 0 || fileTableSize > 1024 * 1024) {
     info->failure = QStringLiteral("control RomFS file table is invalid");
     return false;
   }
-  const QByteArray fileTable = readSection(file, control, control.romfsOffset + fileTableOffset, fileTableSize);
+  const QByteArray fileTable =
+      readSection(file, control, checkedSum({control.romfsOffset, fileTableOffset}), fileTableSize);
   if (fileTable.size() != fileTableSize) {
     info->failure = QStringLiteral("could not read the control RomFS file table");
     return false;
@@ -377,8 +409,8 @@ bool extract(QFile& file, const ControlSection& control, SwitchTitleInfo* info) 
   qint64 cursor = 0;
   while (cursor + 0x20 <= fileTable.size()) {
     const char* entry = fileTable.constData() + cursor;
-    const auto offset = static_cast<qint64>(qFromLittleEndian<quint64>(entry + 0x8));
-    const auto size = static_cast<qint64>(qFromLittleEndian<quint64>(entry + 0x10));
+    const qint64 offset = fileOffset(qFromLittleEndian<quint64>(entry + 0x8));
+    const qint64 size = fileOffset(qFromLittleEndian<quint64>(entry + 0x10));
     const auto nameLength = qFromLittleEndian<quint32>(entry + 0x1C);
     if (nameLength > 0x300 || cursor + 0x20 + nameLength > fileTable.size()) {
       break;
@@ -387,7 +419,8 @@ bool extract(QFile& file, const ControlSection& control, SwitchTitleInfo* info) 
     cursor += 0x20 + ((nameLength + 3) & ~3);
   }
   const auto readRomFile = [&](const RomFile& romFile) {
-    return readSection(file, control, control.romfsOffset + dataOffset + romFile.offset, romFile.size);
+    return readSection(file, control, checkedSum({control.romfsOffset, dataOffset, romFile.offset}),
+                       romFile.size);
   };
   QString iconName;
   for (const RomFile& romFile : files) {
