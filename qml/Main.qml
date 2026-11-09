@@ -323,8 +323,10 @@ ApplicationWindow {
                 return
             }
             if (root.activeActionMenu && root.activeActionMenu.opened) return
-            if (root.detailOpen && !root.diagnosticsOpen && !root.linkDialogOpen
-                    && !root.collectionDeleteOpen) {
+            // An editor or dialog over the details owns the screen, so X must not
+            // change the game hidden behind it.
+            if (root.detailOpen && detailsLoader.item
+                    && root.navigationContainer() === detailsLoader.item) {
                 Library.toggleFavorite(root.selectedIndex)
                 root.refreshAfterOrganization()
             } else if (root.couchMode && !root.detailOpen

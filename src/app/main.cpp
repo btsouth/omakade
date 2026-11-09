@@ -9653,8 +9653,28 @@ int main(int argc, char* argv[]) {
           }
           QMetaObject::invokeMethod(rootWindow, "closeCouchTextEntry", Q_ARG(QVariant, false));
         }
+        // The details stay open under the editor; X on the editor must not favorite that game.
+        auto* artworkEditor = rootWindow->findChild<QQuickItem*>(QStringLiteral("artworkEditor"));
+        if (!artworkEditor || !rootWindow->property("detailOpen").toBool()) {
+          fail("Artwork editor is not open over the details"); return;
+        }
+        QMetaObject::invokeMethod(artworkEditor, "focusEditor");
+        const bool favoriteBefore = rootWindow->property("selectedGame").toMap().value("favorite").toBool();
+        controller.favoriteRequested();
+        QCoreApplication::processEvents();
+        if (rootWindow->property("selectedGame").toMap().value("favorite").toBool() != favoriteBefore ||
+            !rootWindow->property("artworkEditorOpen").toBool()) {
+          fail("Controller favorite changed the game behind the artwork editor"); return;
+        }
         controller.backRequested();
         if (rootWindow->property("artworkEditorOpen").toBool()) { fail("Artwork editor cannot close"); return; }
+        QCoreApplication::processEvents();
+        controller.favoriteRequested();
+        QCoreApplication::processEvents();
+        if (rootWindow->property("selectedGame").toMap().value("favorite").toBool() == favoriteBefore) {
+          fail("Controller favorite no longer works on the details"); return;
+        }
+        controller.favoriteRequested();
         application.quit();
       });
     });
