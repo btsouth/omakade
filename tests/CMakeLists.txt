@@ -544,8 +544,10 @@ foreach(settings_section IN ITEMS sources library connections controls storage a
 endforeach()
 # Settings > Appearance > Text size scales the type roles and control heights on the
 # desktop, and Game Mode keeps its own scale. The settings render checks both.
-foreach(text_size_case IN ITEMS appearance-desktop-130 appearance-desktop-150 appearance-couch-150
-                                storage-desktop-150)
+foreach(text_size_case IN ITEMS appearance-desktop-90 appearance-desktop-130 appearance-couch-150
+                                sources-desktop-150 library-desktop-150 connections-desktop-150
+                                controls-desktop-150 storage-desktop-150 appearance-desktop-150
+                                streaming-desktop-150 about-desktop-150)
   string(REPLACE "-" ";" text_size_parts ${text_size_case})
   list(GET text_size_parts 0 text_size_page)
   list(GET text_size_parts 1 text_size_mode)

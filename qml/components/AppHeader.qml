@@ -39,7 +39,7 @@ RowLayout {
                 text: "OMAKADE"
                 color: Theme.brightForeground
                 font.family: Theme.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: UiMetrics.scaled(15)
                 font.weight: Font.Bold
                 font.letterSpacing: 1.5
             }

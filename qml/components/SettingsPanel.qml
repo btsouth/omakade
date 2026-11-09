@@ -932,6 +932,8 @@ import "Counts.js" as Counts
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
                             text: "STANDALONE EMULATORS"
                             color: Preferences.preferStandaloneEmulators ? Theme.accent : Theme.mutedText
                             font.family: Theme.fontFamily
@@ -1918,8 +1920,9 @@ import "Counts.js" as Counts
                     Text { text: "CONSOLE VIEW"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * settingsPanel.uiScale; Layout.fillWidth: true }
                     GlassButton { compact: true; text: Preferences.expandConsoles ? "GAMES" : "CONSOLES"; onClicked: Preferences.expandConsoles = !Preferences.expandConsoles }
                 }
-                RowLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
+                    spacing: 8 * settingsPanel.uiScale
                     Text {
                         text: "MOTION"
                         color: Theme.foreground
@@ -1927,19 +1930,24 @@ import "Counts.js" as Counts
                         font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                         Layout.fillWidth: true
                     }
-                    Repeater {
-                        model: ["system", "reduced", "full"]
-                        GlassButton {
-                            required property string modelData
-                            objectName: "motion_" + modelData
-                            compact: true
-                            text: modelData === "system"
-                                  ? "SYSTEM (" + (Preferences.systemReducedMotion ? "REDUCED" : "FULL") + ")"
-                                  : modelData.toUpperCase()
-                            Accessible.name: "Motion: " + text.toLowerCase()
-                            selectable: true
-                            selected: Preferences.motionPreference === modelData
-                            onClicked: Preferences.motionPreference = modelData
+                    // Wraps, so the choices fit a narrow window at a large text size.
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8 * settingsPanel.uiScale
+                        Repeater {
+                            model: ["system", "reduced", "full"]
+                            GlassButton {
+                                required property string modelData
+                                objectName: "motion_" + modelData
+                                compact: true
+                                text: modelData === "system"
+                                      ? "SYSTEM (" + (Preferences.systemReducedMotion ? "REDUCED" : "FULL") + ")"
+                                      : modelData.toUpperCase()
+                                Accessible.name: "Motion: " + text.toLowerCase()
+                                selectable: true
+                                selected: Preferences.motionPreference === modelData
+                                onClicked: Preferences.motionPreference = modelData
+                            }
                         }
                     }
                 }
@@ -1948,6 +1956,7 @@ import "Counts.js" as Counts
                     Layout.fillWidth: true
                     spacing: 8 * settingsPanel.uiScale
                     Text {
+                        Layout.fillWidth: true
                         text: "TEXT SIZE"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
