@@ -114,13 +114,16 @@ with Flatseal, or move the game into a folder it can already read.
 Omakade reads every library folder in Steam's `libraryfolders.vdf`. When one of
 those folders is not there, for example because its drive is not mounted, the
 **Steam** details show `Steam library is unavailable, skipping:` and the path. Games
-in that folder leave the installed list until it is back.
+already found in that folder stay in the library, marked **Drive or folder
+disconnected**, until it is back.
 
 1. Mount the drive at the same path Steam uses.
 2. Choose **Rescan Source** in Steam's **Details**.
 
-If you moved or removed the library on purpose, remove it in Steam's **Storage**
-settings too so it stops appearing in the warning.
+If you moved or removed the library on purpose, choose **Forget** next to it in
+Steam's **Details** to drop its installed games. Games you own on Steam stay listed as
+not installed. Remove the library in Steam's **Storage** settings too so it stops
+appearing in the warning.
 
 ## ROMs are missing or under the wrong console
 

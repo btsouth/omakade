@@ -24,6 +24,7 @@ class SteamGameModel final : public QAbstractListModel {
   Q_PROPERTY(QString errorText READ errorText NOTIFY statusChanged)
   Q_PROPERTY(int artworkCount READ artworkCount NOTIFY statusChanged)
   Q_PROPERTY(QStringList detectedPaths READ detectedPaths NOTIFY statusChanged)
+  Q_PROPERTY(QVariantList unavailableLibraries READ unavailableLibraries NOTIFY statusChanged)
   Q_PROPERTY(qint64 lastScan READ lastScan NOTIFY statusChanged)
   Q_PROPERTY(QString databasePath READ databasePath CONSTANT)
 
@@ -42,6 +43,8 @@ public:
   [[nodiscard]] QString errorText() const;
   [[nodiscard]] int artworkCount() const;
   [[nodiscard]] QStringList detectedPaths() const;
+  // Unavailable libraries that still have cached games, as {path, games} maps.
+  [[nodiscard]] QVariantList unavailableLibraries() const;
   [[nodiscard]] qint64 lastScan() const;
   [[nodiscard]] QString databasePath() const;
 
@@ -52,6 +55,8 @@ public:
   Q_INVOKABLE void reloadAchievementSummary(const QString& appId);
   Q_INVOKABLE void reloadOwnedGames();
   Q_INVOKABLE void requestCover(const QString& appId);
+  // Drops the cached games of an unavailable library that is gone for good.
+  Q_INVOKABLE bool forgetLibrary(const QString& path);
   void refreshFromRoots(const QStringList& roots);
 
 signals:
@@ -66,6 +71,7 @@ private:
     int achievementsUnlocked = 0;
     int achievementsTotal = 0;
     bool installed = true;
+    bool libraryUnavailable = false;
     QColor accentStart;
     QColor accentEnd;
   };
@@ -74,6 +80,7 @@ private:
   [[nodiscard]] QVariant valueForRole(const Game& game, int role) const;
   bool openDatabase(const QString& path);
   bool ensureSchema();
+  void loadUnavailableLibraries();
   void loadDatabase();
   void loadSourceState();
   void applyScan(const SteamScanResult& result);
@@ -114,6 +121,7 @@ private:
   QString m_statusText;
   QString m_errorText;
   QStringList m_detectedPaths;
+  QStringList m_unavailableLibraries;
   qint64 m_lastScan = 0;
   AppSettings* m_settings = nullptr;
   QNetworkAccessManager m_network;

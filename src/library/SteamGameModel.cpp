@@ -89,6 +89,7 @@ SteamGameModel::SteamGameModel(const QString& databasePath, AppSettings* setting
 
   const QString path = databasePath.isEmpty() ? defaultDatabasePath() : databasePath;
   if (openDatabase(path) && ensureSchema()) {
+    loadUnavailableLibraries();
     loadDatabase();
     loadSourceState();
     QTimer::singleShot(800, this, [this] { requestMissingCovers(); });
@@ -139,6 +140,36 @@ int SteamGameModel::artworkCount() const {
 }
 
 QStringList SteamGameModel::detectedPaths() const { return m_detectedPaths; }
+
+QVariantList SteamGameModel::unavailableLibraries() const {
+  QVariantList libraries;
+  for (const QString& path : m_unavailableLibraries) {
+    const auto games = std::count_if(m_games.cbegin(), m_games.cend(), [&path](const Game& game) {
+      return game.libraryUnavailable && game.steam.libraryPath == path;
+    });
+    if (games > 0) {
+      libraries.append(QVariantMap{{QStringLiteral("path"), path},
+                                   {QStringLiteral("games"), static_cast<int>(games)}});
+    }
+  }
+  return libraries;
+}
+
+bool SteamGameModel::forgetLibrary(const QString& path) {
+  if (!m_unavailableLibraries.contains(path) || !m_database.isOpen()) {
+    return false;
+  }
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral("DELETE FROM installations WHERE library_path = ?"));
+  query.addBindValue(path);
+  if (!query.exec()) {
+    setStatus(QStringLiteral("Could not forget the Steam library"), query.lastError().text());
+    return false;
+  }
+  loadDatabase();
+  emit statusChanged();
+  return true;
+}
 
 qint64 SteamGameModel::lastScan() const { return m_lastScan; }
 
@@ -277,6 +308,9 @@ QVariant SteamGameModel::valueForRole(const Game& game, int role) const {
   case GameRoles::Subtitle:
     return QStringLiteral("Steam");
   case GameRoles::Description:
+    if (game.libraryUnavailable) {
+      return QStringLiteral("Installed on a Steam library that is not connected.");
+    }
     return game.installed ? QStringLiteral("Installed locally through Steam.")
                           : QStringLiteral("Owned on Steam and ready to install.");
   case GameRoles::PlaytimeSeconds:
@@ -328,6 +362,8 @@ QVariant SteamGameModel::valueForRole(const Game& game, int role) const {
     return game.hidden;
   case GameRoles::Installed:
     return game.installed;
+  case GameRoles::StorageUnavailable:
+    return game.libraryUnavailable;
   default:
     return {};
   }
@@ -448,6 +484,22 @@ void SteamGameModel::loadSourceState() {
   }
 }
 
+void SteamGameModel::loadUnavailableLibraries() {
+  // Until the first scan finishes, a cached library counts as unavailable when its steamapps
+  // folder is missing or unreadable, so Play never opens a game on an unplugged drive.
+  QSqlQuery query(m_database);
+  if (!query.exec(QStringLiteral("SELECT DISTINCT library_path FROM installations"))) {
+    return;
+  }
+  while (query.next()) {
+    const QString library = query.value(0).toString();
+    const QFileInfo steamapps(library + QStringLiteral("/steamapps"));
+    if (!library.isEmpty() && (!steamapps.isDir() || !steamapps.isReadable())) {
+      m_unavailableLibraries.append(library);
+    }
+  }
+}
+
 void SteamGameModel::loadDatabase() {
   QVector<Game> loaded;
   QVector<QPair<QString, QString>> cachedCoverUpdates;
@@ -501,6 +553,8 @@ void SteamGameModel::loadDatabase() {
                    .achievementsUnlocked = query.value(12).toInt(),
                    .achievementsTotal = query.value(13).toInt(),
                    .installed = query.value(14).toBool(),
+                   .libraryUnavailable = query.value(14).toBool() &&
+                                         m_unavailableLibraries.contains(steam.libraryPath),
                    .accentStart = colorFor(steam.appId, 0),
                    .accentEnd = colorFor(steam.appId, 1)});
   }
@@ -569,23 +623,25 @@ void SteamGameModel::applyScan(const SteamScanResult& result) {
     return;
   }
   QSqlQuery query(m_database);
-  bool okay = true;
-  if (result.unreadableManifests.isEmpty()) {
-    okay = query.exec(QStringLiteral("DELETE FROM installations"));
-  } else {
-    // Keep the cached rows for manifests Steam is still writing or that are corrupt so a
-    // transient read failure never drops an installed game.
-    QStringList placeholders;
-    for (int index = 0; index < result.unreadableManifests.size(); ++index) {
-      placeholders.append(QStringLiteral("?"));
+  // Keep the cached rows for manifests Steam is still writing or that are corrupt, and for
+  // libraries on a drive that is unplugged, so neither drops an installed game.
+  QStringList keep;
+  const auto keepColumn = [&keep](const QString& column, const QStringList& values) {
+    if (!values.isEmpty()) {
+      keep.append(QStringLiteral("%1 NOT IN (%2)")
+                      .arg(column, QStringList(values.size(), QStringLiteral("?"))
+                                       .join(QStringLiteral(", "))));
     }
-    query.prepare(QStringLiteral("DELETE FROM installations WHERE manifest_path NOT IN (%1)")
-                      .arg(placeholders.join(QStringLiteral(", "))));
-    for (const QString& manifest : result.unreadableManifests) {
-      query.addBindValue(manifest);
-    }
-    okay = query.exec();
+  };
+  keepColumn(QStringLiteral("manifest_path"), result.unreadableManifests);
+  keepColumn(QStringLiteral("library_path"), result.unavailableLibraries);
+  query.prepare(QStringLiteral("DELETE FROM installations") +
+                (keep.isEmpty() ? QString{}
+                                : QStringLiteral(" WHERE ") + keep.join(QStringLiteral(" AND "))));
+  for (const QString& value : result.unreadableManifests + result.unavailableLibraries) {
+    query.addBindValue(value);
   }
+  bool okay = query.exec();
   for (const SteamGameRecord& game : result.games) {
     query.prepare(QStringLiteral(
         "INSERT INTO games(app_id, title) VALUES(?, ?) ON CONFLICT(app_id) DO UPDATE SET "
@@ -673,6 +729,7 @@ void SteamGameModel::applyScan(const SteamScanResult& result) {
     return;
   }
 
+  m_unavailableLibraries = result.unavailableLibraries;
   loadDatabase();
   m_appliedScan = result;
   m_explicitRefresh = false;

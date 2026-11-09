@@ -271,6 +271,7 @@ Rectangle {
                                     : reasonKey === "missing-file" ? recheckMissingButton
                                     : reasonKey === "missing-storage" && manualSource ? editManualButton
                                     : reasonKey === "missing-storage" && emulatorSource ? recheckButton
+                                    : reasonKey === "missing-storage" ? recheckMissingButton
                                     : reasonKey === "runtime" && manualSource ? editManualButton
                                     : reasonKey === "runtime" ? launchSetupButton
                                     : reasonKey === "source-error" ? retrySourceButton : null

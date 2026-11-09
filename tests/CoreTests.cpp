@@ -1105,6 +1105,7 @@ private slots:
   void steamProtonPrefixIsDerivedFromTheInstallPath();
   void steamModelPersistsFavoritesAndHiddenState();
   void steamModelSkipsUnchangedRescans();
+  void steamModelKeepsGamesOnAnUnavailableLibrary();
   void steamModelMigratesVersionOneDatabase();
   void steamModelMigratesUnscopedOwnedGamesCache();
   void achievementModelLoadsLocalSteamCache();
@@ -1929,6 +1930,7 @@ void CoreTests::steamScannerSurvivesMissingLibrariesAndBrokenManifests() {
   QCOMPARE(result.unreadableManifests.size(), 2);
   QCOMPARE(result.warnings.size(), 3);
   QVERIFY(result.warnings.join(QLatin1Char('\n')).contains(QStringLiteral("Unmounted Drive")));
+  QCOMPARE(result.unavailableLibraries, QStringList{missing});
   QVERIFY(SteamScanner::isToolTitle(QStringLiteral("Proton 9.0 (Beta)")));
   QVERIFY(SteamScanner::isToolTitle(QStringLiteral("Steam Linux Runtime 3.0 (sniper)")));
   QVERIFY(!SteamScanner::isToolTitle(QStringLiteral("Protonic Blast")));
@@ -2011,6 +2013,120 @@ void CoreTests::steamModelSkipsUnchangedRescans() {
   QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(), 3000);
   QCOMPARE(model.rowCount(), 3);
   QCOMPARE(resets.count(), 2);
+}
+
+void CoreTests::steamModelKeepsGamesOnAnUnavailableLibrary() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  // Steam root discovery looks under HOME, so a source rescan finds only this fixture.
+  const auto home = redirectVariable("HOME", directory.path().toUtf8());
+  QString root = directory.path() + QStringLiteral("/.local/share/Steam");
+  const QString second = directory.path() + QStringLiteral("/Drive/SteamLibrary");
+  createSteamFixture(root, second);
+  root = QFileInfo(root).canonicalFilePath();
+
+  SteamGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  const auto scan = [&model, &root] {
+    model.refreshFromRoots({root});
+    QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(), 3000);
+  };
+  const auto game = [&model](const QString& appId) {
+    for (int row = 0; row < model.rowCount(); ++row) {
+      if (model.index(row).data(GameRoles::AppId).toString() == appId)
+        return model.index(row);
+    }
+    return QModelIndex{};
+  };
+  scan();
+  QCOMPARE(model.rowCount(), 2);
+  QVERIFY(!game(QStringLiteral("20")).data(GameRoles::StorageUnavailable).toBool());
+  QVERIFY(model.unavailableLibraries().isEmpty());
+
+  // Unplugging the drive keeps its game and reports the drive as disconnected.
+  const QString unplugged = directory.path() + QStringLiteral("/Unplugged");
+  QVERIFY(QDir().rename(directory.path() + QStringLiteral("/Drive"), unplugged));
+  scan();
+  QCOMPARE(model.rowCount(), 2);
+  QVERIFY(game(QStringLiteral("20")).data(GameRoles::Installed).toBool());
+  QVERIFY(game(QStringLiteral("20")).data(GameRoles::StorageUnavailable).toBool());
+  QVERIFY(!game(QStringLiteral("10")).data(GameRoles::StorageUnavailable).toBool());
+  QCOMPARE(model.unavailableLibraries().size(), 1);
+  const QVariantMap library = model.unavailableLibraries().constFirst().toMap();
+  QCOMPARE(library.value(QStringLiteral("path")).toString(), second);
+  QCOMPARE(library.value(QStringLiteral("games")).toInt(), 1);
+
+  {
+    // A restart with the drive still unplugged knows before its first scan finishes.
+    SteamGameModel restarted(directory.path() + QStringLiteral("/omakade.sqlite3"));
+    QCOMPARE(restarted.rowCount(), 2);
+    for (int row = 0; row < restarted.rowCount(); ++row) {
+      const QModelIndex index = restarted.index(row);
+      QCOMPARE(index.data(GameRoles::StorageUnavailable).toBool(),
+               index.data(GameRoles::AppId).toString() == QStringLiteral("20"));
+    }
+    QCOMPARE(restarted.unavailableLibraries().size(), 1);
+  }
+
+  UnifiedGameModel games(directory.path() + QStringLiteral("/unified.sqlite3"));
+  games.addSourceModel(&model);
+  QTRY_COMPARE_WITH_TIMEOUT(games.rowCount(), 2, 3000);
+  const auto unifiedRow = [&games] {
+    for (int row = 0; row < games.rowCount(); ++row) {
+      if (games.data(games.index(row), GameRoles::AppId).toString() == QStringLiteral("20"))
+        return row;
+    }
+    return -1;
+  };
+  QVERIFY(unifiedRow() >= 0);
+  QTRY_VERIFY_WITH_TIMEOUT(
+      games.reviewReasons(unifiedRow()).contains(QStringLiteral("missing-storage")), 4000);
+  QVERIFY(!games.data(games.index(unifiedRow()), GameRoles::Installed).toBool());
+
+  // Plugging it back in and rechecking the game rescans Steam and restores it as available.
+  QVERIFY(QDir().rename(unplugged, directory.path() + QStringLiteral("/Drive")));
+  games.recheckAvailability(
+      {games.data(games.index(unifiedRow()), GameRoles::MetadataKey).toString()});
+  QTRY_VERIFY_WITH_TIMEOUT(
+      !game(QStringLiteral("20")).data(GameRoles::StorageUnavailable).toBool(), 4000);
+  QTRY_VERIFY_WITH_TIMEOUT(!model.scanning(), 3000);
+  QCOMPARE(model.rowCount(), 2);
+  QVERIFY(model.unavailableLibraries().isEmpty());
+  QTRY_VERIFY_WITH_TIMEOUT(
+      !games.reviewReasons(unifiedRow()).contains(QStringLiteral("missing-storage")), 4000);
+
+  // An unreadable library is treated the same as an unplugged one.
+  const QString steamapps = second + QStringLiteral("/steamapps");
+  const QFile::Permissions permissions = QFile::permissions(steamapps);
+  QVERIFY(QFile::setPermissions(steamapps, QFile::Permissions{}));
+  if (!QFileInfo(steamapps).isReadable()) {
+    scan();
+    QCOMPARE(model.rowCount(), 2);
+    QVERIFY(game(QStringLiteral("20")).data(GameRoles::StorageUnavailable).toBool());
+  }
+  QVERIFY(QFile::setPermissions(steamapps, permissions));
+  scan();
+  QVERIFY(!game(QStringLiteral("20")).data(GameRoles::StorageUnavailable).toBool());
+
+  // Uninstalling from a connected library still removes the game.
+  QVERIFY(QFile::remove(steamapps + QStringLiteral("/appmanifest_20.acf")));
+  scan();
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(!game(QStringLiteral("20")).isValid());
+
+  // A library that is gone for good can be forgotten.
+  writeFile(steamapps + QStringLiteral("/appmanifest_20.acf"),
+            manifest("20", "Team Fortress Classic", "Team Fortress Classic"));
+  scan();
+  QCOMPARE(model.rowCount(), 2);
+  QVERIFY(!model.forgetLibrary(second));
+  QVERIFY(QDir().rename(directory.path() + QStringLiteral("/Drive"), unplugged));
+  scan();
+  QCOMPARE(model.rowCount(), 2);
+  QVERIFY(model.forgetLibrary(second));
+  QCOMPARE(model.rowCount(), 1);
+  QVERIFY(model.unavailableLibraries().isEmpty());
+  scan();
+  QCOMPARE(model.rowCount(), 1);
 }
 
 void CoreTests::steamModelMigratesVersionOneDatabase() {
