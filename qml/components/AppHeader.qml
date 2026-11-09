@@ -47,7 +47,7 @@ RowLayout {
                 text: Theme.themeName.toUpperCase()
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 8
+                font.pixelSize: UiMetrics.caption
                 font.letterSpacing: 0.7
             }
         }

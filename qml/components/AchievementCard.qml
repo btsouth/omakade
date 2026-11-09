@@ -31,7 +31,7 @@ Rectangle {
     Accessible.role: Accessible.ListItem
     Accessible.focused: activeFocus
     Layout.minimumWidth: 260
-    Layout.preferredHeight: 82
+    Layout.preferredHeight: UiMetrics.scaled(82)
     radius: Math.max(6, Theme.cornerRadius)
     color: alpha(Theme.foreground, unlocked ? 0.075 : 0.035)
     border.width: activeFocus ? 2 : 1
@@ -79,7 +79,7 @@ Rectangle {
                 textFormat: Text.PlainText
                 color: card.unlocked ? Theme.brightForeground : Theme.foreground
                 font.family: Theme.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: UiMetrics.label
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
@@ -89,7 +89,7 @@ Rectangle {
                 textFormat: Text.PlainText
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 9
+                font.pixelSize: UiMetrics.supporting
                 elide: Text.ElideRight
             }
             Text {
@@ -99,7 +99,7 @@ Rectangle {
                       + (card.rarity > 0 ? card.rarity.toFixed(1) + "% OF PLAYERS" : card.sourceLabel)
                 color: card.unlocked ? Theme.accent : card.alpha(Theme.foreground, 0.45)
                 font.family: Theme.fontFamily
-                font.pixelSize: 8
+                font.pixelSize: UiMetrics.caption
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }

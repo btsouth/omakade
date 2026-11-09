@@ -201,7 +201,7 @@ FocusScope {
             id: statusMetrics
             text: root.completionStatus.toUpperCase()
             font.family: Theme.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: UiMetrics.caption
             font.weight: Font.Bold
             font.letterSpacing: 0.5
         }
@@ -215,9 +215,9 @@ FocusScope {
             readonly property bool tight: statusMetrics.advanceWidth + 20 > availableWidth
             readonly property int padding: tight ? 14 : 20
             visible: root.completionStatus.length > 0
-            height: 25
+            height: UiMetrics.caption + 14
             width: Math.max(0, Math.min(statusMetrics.advanceWidth + padding, availableWidth))
-            radius: 13
+            radius: Math.ceil(height / 2)
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.margins: 9
@@ -245,7 +245,7 @@ FocusScope {
                     return Theme.readableOn(statusPill.color)
                 }
                 font.family: Theme.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: UiMetrics.caption
                 font.weight: Font.Bold
                 font.letterSpacing: statusPill.tight ? 0 : 0.5
                 // Shrinks toward the old 8px label on the narrowest covers instead of

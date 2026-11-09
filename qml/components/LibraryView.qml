@@ -218,7 +218,8 @@ Item {
         readonly property int columns: Math.max(1, Math.min(Math.floor(8 * 100 / Preferences.coverSize), Math.floor(width / (210 * Preferences.coverSize / 100))))
         onColumnsChanged: Qt.callLater(function() { if (grid.currentIndex >= 0) grid.positionViewAtIndex(grid.currentIndex, GridView.Contain) })
         cellWidth: width / columns
-        cellHeight: Math.round(cellWidth * 1.5) + 70
+        // Room for the caption under the cover, which grows with the text size.
+        cellHeight: Math.round(cellWidth * 1.5) + 26 + UiMetrics.scaled(44)
 
         delegate: Item {
             id: delegateRoot
@@ -418,7 +419,7 @@ Item {
             text: root.scanning ? "Scanning libraries" : root.emptyTitle
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 16
+            font.pixelSize: UiMetrics.scaled(16)
             font.weight: Font.DemiBold
         }
         Text {
@@ -429,7 +430,7 @@ Item {
             text: root.scanning ? "Looking for installed games and local artwork." : root.emptyMessage
             color: Theme.mutedText
             font.family: Theme.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: UiMetrics.supporting
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
         }
