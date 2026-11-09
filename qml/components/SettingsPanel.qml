@@ -151,7 +151,12 @@ import QtQuick.Layouts
             if (SessionRecorderStatus) SessionRecorderStatus.refreshRecorderStatus()
             settingsOverlay.refreshGameMode()
             previousFocus = host.activeFocusItem
-            Qt.callLater(function() { host.focusWithin(settingsOverlay, true) })
+            // Opening on a section chosen just before, as Connect does, already started that
+            // section on its first control. Stepping on from there would skip it.
+            Qt.callLater(function() {
+                if (!host.isWithin(host.activeFocusItem, settingsOverlay))
+                    host.focusWithin(settingsOverlay, true)
+            })
         }
         onVisibleChanged: {
             if (visible) {

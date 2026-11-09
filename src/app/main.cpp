@@ -7046,11 +7046,29 @@ int main(int argc, char* argv[]) {
                       return;
                     }
                     controller.backRequested();
-                    QTimer::singleShot(50, quickWindow, [quickWindow, &application, &controller, grid, fail] {
+                    QTimer::singleShot(50, quickWindow, [quickWindow, &application, &controller, grid, fail, settingsPage] {
                       if (quickWindow->property("diagnosticsOpen").toBool()) {
                         fail(QStringLiteral("Controller Back did not close Settings"));
                         return;
                       }
+                      // Connect in game details picks Connections and then opens Settings.
+                      // Opening must not step past the section's first control.
+                      settingsPage->setProperty("section", 2);
+                      quickWindow->setProperty("diagnosticsOpen", true);
+                      QEventLoop connectionsLayout;
+                      QTimer::singleShot(50, &connectionsLayout, &QEventLoop::quit);
+                      connectionsLayout.exec();
+                      QQuickItem* connectionsStart = quickWindow->activeFocusItem();
+                      if (connectionsStart == nullptr ||
+                          connectionsStart->objectName() != QStringLiteral("rommConnectionToggle")) {
+                        fail(QStringLiteral("Opening Settings on Connections did not focus its first control (%1)")
+                                 .arg(connectionsStart ? connectionsStart->objectName() : QStringLiteral("nothing")));
+                        return;
+                      }
+                      quickWindow->setProperty("diagnosticsOpen", false);
+                      QEventLoop connectionsClosed;
+                      QTimer::singleShot(50, &connectionsClosed, &QEventLoop::quit);
+                      connectionsClosed.exec();
                       controller.toolbarRequested();
                       if (!grid->hasActiveFocus()) {
                         fail(QStringLiteral("Controller Controls did not return to the game grid"));

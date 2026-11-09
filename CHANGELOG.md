@@ -12,9 +12,10 @@
   interpreter is told to run code from its arguments, including through wrappers
   like gamemoderun or a terminal. Merge and Replace confirmations
   say these commands will be able to run when you choose Play.
-- Choosing a Settings category now puts focus on its first control instead of the second.
-  On Home, Down from Play and the buttons beside it goes to the first card on the shelf
-  below rather than the nearest one.
+- Choosing a Settings category, or opening Settings on one as Connect in game details
+  does, now puts focus on its first control instead of the second. On Home, Down from
+  Play and the buttons beside it goes to the first card on the shelf below rather than
+  the nearest one.
 - Settings > Connections explains that a connected IGDB or SteamGridDB looks up the
   whole library in the background, and a new Identify Library Automatically switch
   turns that off. Privacy now describes these lookups as they really happen.
