@@ -3,25 +3,58 @@
 # files that belong to another target.
 
 # Adds every .cpp and .h in the calling directory to <target>. RECURSE takes subdirectories
-# too. Files named after EXCEPT belong to another target, which the caller adds them to.
+# too. Each TO <other> group names files that build into <other> instead. A file can be in
+# more than one TO group, and each one must exist, so a file can't be left out of every target.
+#
+#   omakade_add_directory_sources(<target> [RECURSE] [TO <other> <file>...]...)
 function(omakade_add_directory_sources target)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "RECURSE" "" "EXCEPT")
   set(glob GLOB)
-  if(arg_RECURSE)
-    set(glob GLOB_RECURSE)
+  set(destinations "")
+  set(destination "")
+  set(expect_destination FALSE)
+  foreach(arg IN LISTS ARGN)
+    if(expect_destination)
+      if(NOT TARGET "${arg}")
+        message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE} sends files to ${arg}, which is not a target.")
+      endif()
+      set(destination "${arg}")
+      list(APPEND destinations "${arg}")
+      set(expect_destination FALSE)
+    elseif(arg STREQUAL "RECURSE")
+      set(glob GLOB_RECURSE)
+    elseif(arg STREQUAL "TO")
+      set(expect_destination TRUE)
+    elseif(destination STREQUAL "")
+      message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE} names ${arg} before any TO <target>.")
+    else()
+      list(APPEND moved_to_${destination} "${arg}")
+      list(APPEND moved "${arg}")
+    endif()
+  endforeach()
+  if(expect_destination)
+    message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE} ends with TO and no target.")
   endif()
+
   file(${glob} sources CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
-  foreach(exception IN LISTS arg_EXCEPT)
-    if(NOT exception IN_LIST sources)
-      message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE} names ${exception}, which does not exist.")
+  foreach(file IN LISTS moved)
+    if(NOT file IN_LIST sources)
+      message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE} names ${file}, which does not exist.")
     endif()
   endforeach()
-  if(arg_EXCEPT)
-    list(REMOVE_ITEM sources ${arg_EXCEPT})
+  if(moved)
+    list(REMOVE_ITEM sources ${moved})
   endif()
   target_sources(${target} PRIVATE ${sources})
+
+  list(REMOVE_DUPLICATES destinations)
+  foreach(other IN LISTS destinations)
+    if(NOT moved_to_${other})
+      message(FATAL_ERROR "${CMAKE_CURRENT_LIST_FILE} sends no files to ${other}.")
+    endif()
+    target_sources(${other} PRIVATE ${moved_to_${other}})
+  endforeach()
 endfunction()
 
 # The binaries find each other next to themselves, so they all build into the top of the

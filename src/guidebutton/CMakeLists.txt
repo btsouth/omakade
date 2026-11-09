@@ -1,3 +1,1 @@
-omakade_add_directory_sources(omakade_guide EXCEPT main.cpp)
-
-target_sources(omakade-guide-button PRIVATE main.cpp)
+omakade_add_directory_sources(omakade_guide TO omakade-guide-button main.cpp)
