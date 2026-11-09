@@ -388,11 +388,13 @@ FocusScope {
                         color: categoryList.currentIndex === index
                                ? root.alpha(Theme.accent, 0.16)
                                : root.alpha(Theme.foreground, 0.04)
-                        border.width: categoryList.activeFocus
-                                      && categoryList.currentIndex === index ? 3 : 1
-                        border.color: categoryList.activeFocus
-                                      && categoryList.currentIndex === index
-                                      ? Theme.accent : root.alpha(Theme.foreground, 0.12)
+                        border.width: 1
+                        border.color: root.alpha(Theme.foreground, 0.12)
+
+                        FocusRing {
+                            shown: categoryList.activeFocus && categoryList.currentIndex === index
+                            thickness: 3 * root.uiScale
+                        }
 
                         Text {
                             anchors.left: parent.left
@@ -480,13 +482,14 @@ FocusScope {
                                ? root.alpha(Theme.accent, 0.15)
                                : selected ? root.alpha(Theme.foreground, 0.075)
                                           : root.alpha(Theme.foreground, 0.035)
-                        border.width: optionList.activeFocus
-                                      && optionList.currentIndex === index ? 3 : 1
-                        border.color: optionList.activeFocus
-                                      && optionList.currentIndex === index
-                                      ? Theme.accent : selected
-                                        ? root.alpha(Theme.accent, 0.5)
-                                        : root.alpha(Theme.foreground, 0.1)
+                        border.width: 1
+                        border.color: selected ? root.alpha(Theme.accent, 0.5)
+                                               : root.alpha(Theme.foreground, 0.1)
+
+                        FocusRing {
+                            shown: optionList.activeFocus && optionList.currentIndex === index
+                            thickness: 3 * root.uiScale
+                        }
 
                         RowLayout {
                             anchors.fill: parent

@@ -297,8 +297,10 @@ import QtQuick.Layouts
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
                         color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.045)
-                        border.width: sourceSearchField.activeFocus ? 2 : 1
-                        border.color: sourceSearchField.activeFocus ? Theme.accent : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+
+                        FocusRing { shown: sourceSearchField.activeFocus }
                     }
                     property bool controllerNavigation: host.couchMode || (Controller !== null && Controller.driving)
 
@@ -773,8 +775,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: gogLibraryPathField.activeFocus ? 2 : 1
-                            border.color: gogLibraryPathField.activeFocus ? Theme.accent : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: gogLibraryPathField.activeFocus }
                         }
                     
                         rightPadding: gogLibraryPathFieldClear.visible ? gogLibraryPathFieldClear.reservedWidth : 12
@@ -1087,8 +1091,10 @@ import QtQuick.Layouts
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
                         color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.045)
-                        border.width: gridKeyField.activeFocus ? 2 : 1
-                        border.color: gridKeyField.activeFocus ? Theme.accent : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+
+                        FocusRing { shown: gridKeyField.activeFocus }
                     }
                     property bool controllerNavigation: host.couchMode || (Controller !== null && Controller.driving)
 
@@ -1156,10 +1162,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: steamIdField.activeFocus ? 2 : 1
-                            border.color: steamIdField.activeFocus
-                                          ? Theme.accent
-                                          : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: steamIdField.activeFocus }
                         }
                     
                         rightPadding: steamIdFieldClear.visible ? steamIdFieldClear.reservedWidth : 12
@@ -1200,10 +1206,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: apiKeyField.activeFocus ? 2 : 1
-                            border.color: apiKeyField.activeFocus
-                                          ? Theme.accent
-                                          : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: apiKeyField.activeFocus }
                         }
                     
                         rightPadding: apiKeyFieldClear.visible ? apiKeyFieldClear.reservedWidth : 12
@@ -1303,10 +1309,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: retroAchievementsUsernameField.activeFocus ? 2 : 1
-                            border.color: retroAchievementsUsernameField.activeFocus
-                                          ? Theme.accent
-                                          : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: retroAchievementsUsernameField.activeFocus }
                         }
                     
                         rightPadding: retroAchievementsUsernameFieldClear.visible ? retroAchievementsUsernameFieldClear.reservedWidth : 12
@@ -1348,10 +1354,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: retroAchievementsKeyField.activeFocus ? 2 : 1
-                            border.color: retroAchievementsKeyField.activeFocus
-                                          ? Theme.accent
-                                          : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: retroAchievementsKeyField.activeFocus }
                         }
                     
                         rightPadding: retroAchievementsKeyFieldClear.visible ? retroAchievementsKeyFieldClear.reservedWidth : 12
@@ -1436,10 +1442,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: igdbClientIdField.activeFocus ? 2 : 1
-                            border.color: igdbClientIdField.activeFocus
-                                          ? Theme.accent
-                                          : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: igdbClientIdField.activeFocus }
                         }
                     
                         rightPadding: igdbClientIdFieldClear.visible ? igdbClientIdFieldClear.reservedWidth : 12
@@ -1477,10 +1483,10 @@ import QtQuick.Layouts
                         background: Rectangle {
                             radius: Math.max(5, Theme.cornerRadius)
                             color: host.alpha(Theme.foreground, 0.045)
-                            border.width: igdbSecretField.activeFocus ? 2 : 1
-                            border.color: igdbSecretField.activeFocus
-                                          ? Theme.accent
-                                          : host.alpha(Theme.foreground, 0.15)
+                            border.width: 1
+                            border.color: host.alpha(Theme.foreground, 0.15)
+
+                            FocusRing { shown: igdbSecretField.activeFocus }
                         }
                     
                         rightPadding: igdbSecretFieldClear.visible ? igdbSecretFieldClear.reservedWidth : 12

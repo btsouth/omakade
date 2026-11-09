@@ -154,8 +154,10 @@ ColumnLayout {
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
                         color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.045)
-                        border.width: titleSearch.activeFocus ? 2 : 1
-                        border.color: titleSearch.activeFocus ? Theme.accent : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+
+                        FocusRing { shown: titleSearch.activeFocus }
                     }
                     property bool controllerNavigation: root.couchMode || (Controller !== null && Controller.driving)
                 Accessible.name: "Game title for identification"
@@ -250,8 +252,10 @@ ColumnLayout {
                 background: Rectangle {
                     radius: Math.max(5, Theme.cornerRadius)
                     color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.045)
-                    border.width: coverSearch.activeFocus ? 2 : 1
-                    border.color: coverSearch.activeFocus ? Theme.accent : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+
+                    FocusRing { shown: coverSearch.activeFocus }
                 }
                 property bool controllerNavigation: root.couchMode || (Controller !== null && Controller.driving)
                 Accessible.name: "Cover art search"

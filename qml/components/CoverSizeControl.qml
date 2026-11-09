@@ -52,7 +52,9 @@ ColumnLayout {
             x: sizeSlider.leftPadding + sizeSlider.visualPosition * (sizeSlider.availableWidth - width)
             y: sizeSlider.topPadding + sizeSlider.availableHeight / 2 - height / 2
             implicitWidth: 20 * root.uiScale; implicitHeight: 20 * root.uiScale; radius: width / 2
-            color: Theme.accent; border.color: sizeSlider.activeFocus ? Theme.brightForeground : Theme.accent; border.width: sizeSlider.activeFocus ? 2 : 1
+            color: Theme.accent; border.color: Theme.accent; border.width: 1
+            // Outside the accent handle, since the ring is often the accent too.
+            FocusRing { shown: sizeSlider.activeFocus; thickness: 3 * root.uiScale; offset: 3 * root.uiScale }
         }
     }
     RowLayout {

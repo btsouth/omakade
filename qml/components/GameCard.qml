@@ -89,10 +89,8 @@ FocusScope {
         height: Math.round(width * 1.5)
         radius: Math.max(5, Theme.cornerRadius)
         clip: true
-        // The current card keeps a quiet outline while focus is elsewhere, such as the search
-        // field. Only the card that has focus gets the focus ring.
-        border.width: root.current ? 2 : 1
-        border.color: root.alpha(Theme.foreground, root.current ? 0.55 : 0.15)
+        border.width: 1
+        border.color: root.alpha(Theme.foreground, 0.15)
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
@@ -279,6 +277,19 @@ FocusScope {
             enabled: !Preferences.reducedMotion
             ColorAnimation { duration: 120 }
         }
+    }
+
+    // The current card keeps a quiet outline while focus is elsewhere, such as the search field.
+    // It sits outside the cover like the ring, since artwork paints over the cover's own border.
+    Rectangle {
+        objectName: "currentMarker"
+        anchors.fill: cover
+        anchors.margins: -3
+        radius: cover.radius + 3
+        color: "transparent"
+        border.width: 2
+        border.color: root.alpha(Theme.foreground, 0.55)
+        visible: root.current && !root.activeFocus
     }
 
     FocusRing {

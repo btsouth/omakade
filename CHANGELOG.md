@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Keyboard and controller focus now has its own thicker ring around buttons, fields and
-  library cards, in a color that stands out on every theme. Hover only changes the fill,
+- Keyboard and controller focus now has its own thicker ring around buttons, fields,
+  checkboxes, lists and library cards, in a color that stands out on every theme. Hover only changes the fill,
   and the current card keeps a quieter outline while focus is elsewhere, such as the
   search field.
 - Selected tabs, choices and switched-on settings now have an accent fill and marker

@@ -32,9 +32,11 @@ CheckBox {
         border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g,
                               Theme.foreground.b, 0.16)
 
+        // Outside the box, so it still shows on the accent fill of a checked box.
         FocusRing {
             shown: control.activeFocus
             thickness: 3 * control.uiScale
+            offset: 3 * control.uiScale
         }
 
         Text {

@@ -1,7 +1,8 @@
 import QtQuick
 
 // Copied next to the components by FocusRingUiTests, so they resolve from the same folder.
-// Buttons, a field and two library cards, the first of them the retained current card.
+// Buttons, a field, a checked box and two library cards, the first of them the retained
+// current card with real artwork.
 Rectangle {
     width: 760
     height: 440
@@ -25,6 +26,11 @@ Rectangle {
             objectName: "field"
             width: 240
             placeholderText: "Search"
+        }
+        ThemedCheckBox {
+            objectName: "checkBox"
+            text: "Hidden"
+            checked: true
         }
     }
 
@@ -50,7 +56,7 @@ Rectangle {
                 accentStart: "#17445c"
                 accentEnd: "#253248"
                 coverMark: index === 0 ? "P2" : "C"
-                coverPath: ""
+                coverPath: index === 0 ? fixtureCover : ""
             }
         }
     }
