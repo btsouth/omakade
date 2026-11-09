@@ -76,18 +76,21 @@ QUrl coverUrl(const QTcpServer& server) {
 }
 
 // A ZArchive with a 64 KiB data section, one root directory and the given record table,
-// laid out sparsely: the record table is never written, only claimed by the footer.
-bool writeArchive(const QString& path, quint64 dataSize, quint64 recordBytes) {
+// laid out sparsely: the record table is never written, only claimed by the footer. The name
+// table and node tree default to the root alone; treeBytes, when larger than the tree given,
+// claims a longer tree whose rest is left unwritten.
+bool writeArchive(const QString& path, quint64 dataSize, quint64 recordBytes,
+                  const QByteArray& names = QByteArray(1, '\0'),  // the root's empty name
+                  const QByteArray& tree = be32(0) + be32(1) + be32(0) + be32(0), quint64 treeBytes = 0) {
   constexpr qint64 kFooterBytes = 16 * 6 + 32 + 8 + 4 + 4;
-  const QByteArray names(1, '\0');  // the root's empty name
-  const QByteArray tree = be32(0) + be32(1) + be32(0) + be32(0);
+  treeBytes = qMax<quint64>(treeBytes, tree.size());
   const quint64 recordsOffset = dataSize;
   const quint64 namesOffset = recordsOffset + recordBytes;
   const quint64 treeOffset = namesOffset + names.size();
-  const quint64 footerOffset = treeOffset + tree.size();
+  const quint64 footerOffset = treeOffset + treeBytes;
   const quint64 total = footerOffset + kFooterBytes;
   QByteArray footer = be64(0) + be64(dataSize) + be64(recordsOffset) + be64(recordBytes) + be64(namesOffset) +
-                      be64(names.size()) + be64(treeOffset) + be64(tree.size()) + be64(0) + be64(0) + be64(0) +
+                      be64(names.size()) + be64(treeOffset) + be64(treeBytes) + be64(0) + be64(0) + be64(0) +
                       be64(0) + QByteArray(32, '\0') + be64(total) + be32(0x61bf3a01) + be32(0x169f52d6);
   QFile file(path);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || !file.resize(static_cast<qint64>(total))) {
@@ -190,6 +193,9 @@ private slots:
   void dolphinCoverCachesOnlyRealCovers();
   void zarchiveRejectsOversizedRecordTable_data();
   void zarchiveRejectsOversizedRecordTable();
+  void zarchiveCapsExpandedNames_data();
+  void zarchiveCapsExpandedNames();
+  void zarchiveRejectsTooManyNodes();
   void switchReaderRejectsWrappedEntryOffset();
   void switchReaderRejectsHugePartitionOffset();
   void switchReaderRejectsHugeRomfsOffsets();
@@ -315,6 +321,55 @@ void ParserHardeningTests::zarchiveRejectsOversizedRecordTable() {
     QVERIFY(reader->list(QString{}).isEmpty());
     QVERIFY(reader->readFile(QStringLiteral("meta/meta.xml"), 1024).isEmpty());
   }
+}
+
+void ParserHardeningTests::zarchiveCapsExpandedNames_data() {
+  QTest::addColumn<int>("files");
+  QTest::addColumn<bool>("opens");
+  // The control: a hundred files sharing one name of the longest length a name can have.
+  QTest::newRow("a hundred long names") << 100 << true;
+  // About 128 KB of tree that would expand to 64 million characters of names, 128 MB in memory.
+  QTest::newRow("thousands of long names") << 2048 << false;
+}
+
+// Each node points into the name table, and nothing stops every node pointing at the same long
+// name, so a small tree could make the names it expands to take gigabytes.
+void ParserHardeningTests::zarchiveCapsExpandedNames() {
+  QFETCH(int, files);
+  QFETCH(bool, opens);
+  constexpr int kLength = 0x7FFF;  // the longest a two-byte length prefix can say
+  const QByteArray names = QByteArray(1, char(0x80 | (kLength & 0x7F))) + QByteArray(1, char(kLength >> 7)) +
+                           QByteArray(kLength, 'a');
+  QByteArray tree = be32(0x7FFFFFFF) + be32(1) + be32(static_cast<quint32>(files)) + be32(0);  // root, no name
+  for (int index = 0; index < files; ++index) {
+    tree += be32(0x80000000) + be32(0) + be32(1) + be32(0);  // a one-byte file named by the long name
+  }
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QString path = temp.filePath(QStringLiteral("game.wua"));
+  QVERIFY(writeArchive(path, 64 * 1024, 40, names, tree));
+  const auto reader = ZArchiveReader::open(path);
+  QCOMPARE(reader != nullptr, opens);
+  if (reader) {
+    const QStringList listed = reader->list(QString{});
+    QCOMPARE(listed.size(), files);
+    QCOMPARE(listed.first(), QString(kLength, QLatin1Char('a')));
+  }
+}
+
+// A tree of more nodes than any dump has is refused before it is read or a node allocated.
+void ParserHardeningTests::zarchiveRejectsTooManyNodes() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QString path = temp.filePath(QStringLiteral("game.wua"));
+  const QByteArray root = be32(0) + be32(1) + be32(0) + be32(0);
+  QVERIFY(writeArchive(path, 64 * 1024, 40, QByteArray(1, '\0'), root, quint64(16) * (1024 * 1024 + 1)));
+  QVERIFY(ZArchiveReader::open(path) == nullptr);
+  // The same tree one node shorter is read: the rest are empty directories with no name.
+  QVERIFY(writeArchive(path, 64 * 1024, 40, QByteArray(1, '\0'), root, quint64(16) * 1024 * 1024));
+  const auto reader = ZArchiveReader::open(path);
+  QVERIFY(reader != nullptr);
+  QVERIFY(reader->list(QString{}).isEmpty());
 }
 
 // The PFS0 entry offset is added to the data base. One that wraps around to point back at the

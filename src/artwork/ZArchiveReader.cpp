@@ -16,7 +16,12 @@ constexpr quint64 kRecordBytes = 8 + 2 * kEntriesPerRecord;
 // One record covers 16 blocks, 1 MiB of game data, so this is room for well over a terabyte.
 constexpr quint64 kMaximumRecordBytes = 64 * 1024 * 1024;
 constexpr quint64 kMaximumNameBytes = 64 * 1024 * 1024;
-constexpr quint64 kMaximumTreeBytes = 256 * 1024 * 1024;
+// A whole game with its update and DLC has well under a hundred thousand files and folders.
+constexpr quint64 kMaximumNodes = 1024 * 1024;
+constexpr quint64 kMaximumTreeBytes = kMaximumNodes * 16;
+// Every node can point at the same long name, so the names as read are capped all together, not
+// only the table they come from. This is many times the names of any real dump.
+constexpr qsizetype kMaximumNameCharacters = 16 * 1024 * 1024;
 
 QString nodeName(const QByteArray& names, quint32 offset) {
   if (offset == 0x7FFFFFFF || offset >= static_cast<quint32>(names.size())) {
@@ -100,6 +105,7 @@ std::unique_ptr<ZArchiveReader> ZArchiveReader::open(const QString& path) {
   }
   const int nodeCount = treeBytes.size() / 16;
   reader->m_nodes.reserve(nodeCount);
+  qsizetype nameCharacters = 0;
   for (int index = 0; index < nodeCount; ++index) {
     const char* n = treeBytes.constData() + index * 16;
     const auto flags = qFromBigEndian<quint32>(n);
@@ -108,6 +114,10 @@ std::unique_ptr<ZArchiveReader> ZArchiveReader::open(const QString& path) {
     const auto c = qFromBigEndian<quint32>(n + 12);
     Node node;
     node.name = nodeName(nameBytes, flags & 0x7FFFFFFF);
+    nameCharacters += node.name.size();
+    if (nameCharacters > kMaximumNameCharacters) {
+      return nullptr;
+    }
     node.isFile = (flags & 0x80000000) != 0;
     if (node.isFile) {
       node.offset = a | (static_cast<quint64>(c & 0xFFFF) << 32);
