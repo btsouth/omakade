@@ -16,18 +16,12 @@ QColor colorFor(const QString& id, int offset) {
   return QColor::fromHsl((static_cast<unsigned char>(hash.at(offset)) * 359) / 255, 115,
                          offset == 0 ? 105 : 72);
 }
-
-// Bundled console art, when the build ships some for this system.
-QString coverUrl(const QString& systemId) {
-  for (const QString& extension : {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("svg")}) {
-    const QString resource = QStringLiteral(":/consoles/%1.%2").arg(systemId, extension);
-    if (QFile::exists(resource)) {
-      return QStringLiteral("qrc") + resource;
-    }
-  }
-  return {};
-}
 } // namespace
+
+QString ConsolePortalModel::coverUrl(const QString& systemId) {
+  const QString resource = QStringLiteral(":/consoles/%1.webp").arg(systemId);
+  return QFile::exists(resource) ? QStringLiteral("qrc") + resource : QString{};
+}
 
 ConsolePortalModel::ConsolePortalModel(QObject* parent)
     : QAbstractListModel(parent), m_cardSystems(ConsoleCatalog::defaultCardSystems()) {}
