@@ -6802,10 +6802,8 @@ int main(int argc, char* argv[]) {
               if (sources->property("text").toString() != QStringLiteral("SOURCES (1)")) {
                 fail(QStringLiteral("Emulated counted as %1").arg(sources->property("text").toString())); return;
               }
-              // Chips removed earlier may still wait for deletion, so take the visible one.
-              QQuickItem* emulatedChip = nullptr;
-              for (auto* chip : quickWindow->findChildren<QQuickItem*>("sourceFilterChip"))
-                if (chip->isVisible()) emulatedChip = chip;
+              // Repeater chips are visual children only, so search the item tree.
+              auto* emulatedChip = findVisualItem(quickWindow->contentItem(), QStringLiteral("sourceFilterChip"));
               if (!activate(emulatedChip) || !model->property("sourceFilters").toStringList().isEmpty()) {
                 fail(QStringLiteral("Removing the Emulated chip left filters %1 (chip %2)")
                          .arg(model->property("sourceFilters").toStringList().join(", "),
