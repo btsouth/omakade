@@ -933,14 +933,17 @@ FocusScope {
                     // Opaque accent with a drawn heart, as on the desktop library cards.
                     color: Theme.accent
 
-                    HeartIcon {
+                    Loader {
+                        active: card.favorite
                         anchors.centerIn: parent
-                        filled: true
-                        size: 14 * root.uiScale
-                        color: {
-                            Theme.brightForeground
-                            Theme.darkerBackground
-                            return Theme.readableOn(Theme.accent)
+                        sourceComponent: HeartIcon {
+                            filled: true
+                            size: 14 * root.uiScale
+                            color: {
+                                Theme.brightForeground
+                                Theme.darkerBackground
+                                return Theme.readableOn(Theme.accent)
+                            }
                         }
                     }
                 }
@@ -1183,14 +1186,17 @@ FocusScope {
                     color: Theme.accent
                     border.color: root.alpha(Theme.brightForeground, 0.28)
 
-                    HeartIcon {
+                    Loader {
+                        active: gridCard.favorite
                         anchors.centerIn: parent
-                        filled: true
-                        size: 16 * root.uiScale
-                        color: {
-                            Theme.brightForeground
-                            Theme.darkerBackground
-                            return Theme.readableOn(Theme.accent)
+                        sourceComponent: HeartIcon {
+                            filled: true
+                            size: 16 * root.uiScale
+                            color: {
+                                Theme.brightForeground
+                                Theme.darkerBackground
+                                return Theme.readableOn(Theme.accent)
+                            }
                         }
                     }
                 }

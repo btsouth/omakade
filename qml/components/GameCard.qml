@@ -266,16 +266,20 @@ FocusScope {
             color: Theme.accent
             border.color: root.alpha(Theme.brightForeground, 0.20)
 
-            HeartIcon {
-                objectName: "favoriteHeart"
+            // Only favorites build the heart, so other cards never create or paint a Canvas.
+            Loader {
+                active: root.favorite
                 anchors.centerIn: parent
-                filled: true
-                size: 14
-                // readableOn reads theme colors the binding cannot see, so name them here.
-                color: {
-                    Theme.brightForeground
-                    Theme.darkerBackground
-                    return Theme.readableOn(favoriteBadge.color)
+                sourceComponent: HeartIcon {
+                    objectName: "favoriteHeart"
+                    filled: true
+                    size: 14
+                    // readableOn reads theme colors the binding cannot see, so name them here.
+                    color: {
+                        Theme.brightForeground
+                        Theme.darkerBackground
+                        return Theme.readableOn(favoriteBadge.color)
+                    }
                 }
             }
         }

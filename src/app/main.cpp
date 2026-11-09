@@ -7128,6 +7128,41 @@ int main(int argc, char* argv[]) {
                         if (!details || !detailsContent) {
                           fail("Game details is missing its action content"); return;
                         }
+                        // Favorite is a toggle: checked, FAVORITED and a filled accent heart only
+                        // while the game is a favorite. Toggle it both ways and back.
+                        QObject* theme = qmlContext(quickWindow)
+                                             ->contextProperty(QStringLiteral("Theme"))
+                                             .value<QObject*>();
+                        auto* favoriteHeart = favorite->findChild<QQuickItem*>("favoriteHeart");
+                        if (!theme || !favoriteHeart) {
+                          fail("Favorite action has no drawn heart"); return;
+                        }
+                        const auto favoriteShows = [favorite, favoriteHeart, theme](bool on) {
+                          const QColor heartColor = favoriteHeart->property("color").value<QColor>();
+                          const QColor accent = theme->property("accent").value<QColor>();
+                          return favorite->property("checkable").toBool() &&
+                                 favorite->property("checked").toBool() == on &&
+                                 favorite->property("text").toString() ==
+                                     (on ? QStringLiteral("FAVORITED")
+                                         : QStringLiteral("ADD TO FAVORITES")) &&
+                                 favoriteHeart->property("filled").toBool() == on &&
+                                 (heartColor == accent) == on;
+                        };
+                        const bool wasFavorite = favorite->property("checked").toBool();
+                        for (const bool on : {wasFavorite, !wasFavorite, wasFavorite}) {
+                          if (on != favorite->property("checked").toBool()) {
+                            QMetaObject::invokeMethod(favorite, "clicked");
+                            QCoreApplication::processEvents();
+                            if (quickWindow->findChild<QQuickItem*>("favoriteButton") != favorite) {
+                              fail("Toggling favorite closed game details"); return;
+                            }
+                          }
+                          if (!favoriteShows(on)) {
+                            fail(on ? QStringLiteral("Favorite action does not show a favorite")
+                                    : QStringLiteral("Favorite action shows a favorite that is not one"));
+                            return;
+                          }
+                        }
                         QObject* preferences = qmlContext(quickWindow)
                                                   ->contextProperty(QStringLiteral("Preferences"))
                                                   .value<QObject*>();

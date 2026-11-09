@@ -809,6 +809,7 @@ Item {
                         text: root.game.favorite ? "FAVORITED" : "ADD TO FAVORITES"
                         Accessible.description: root.game.favorite ? "Press to remove from favorites" : ""
                         iconDelegate: HeartIcon {
+                            objectName: "favoriteHeart"
                             filled: favoriteButton.selected
                             color: filled ? Theme.accent : favoriteButton.iconColor
                             size: favoriteButton.iconSize + 2 * favoriteButton.displayScale
