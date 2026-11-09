@@ -1,6 +1,6 @@
-#include "app/CouchNavigationContract.h"
+#include "selftest/CouchNavigationContract.h"
 #include "input/ControllerInput.h"
-#include "app/KeyboardTestInput.h"
+#include "selftest/KeyboardTestInput.h"
 
 #include <QCoreApplication>
 #include <QDebug>

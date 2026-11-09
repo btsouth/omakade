@@ -3,7 +3,6 @@
 #include "achievements/AchievementModel.h"
 #include "app/AppSettings.h"
 #include "app/CommandLine.h"
-#include "app/KeyboardTestInput.h"
 #include "app/SelfTestSupport.h"
 #include "backup/BackupManager.h"
 #include "input/ControllerInput.h"
@@ -18,6 +17,7 @@
 #include "library/UnifiedGameModel.h"
 #include "library/UserDateFormat.h"
 #include "metadata/GameMetadata.h"
+#include "selftest/KeyboardTestInput.h"
 #include "sources/ports/PortCatalog.h"
 
 #include <QColor>

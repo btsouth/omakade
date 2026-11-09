@@ -45,8 +45,14 @@ struct AppHarnessModes {
   bool renderMode = false;
   // A harness self-test drives the run. It starts like --smoke-test, on the demo library.
   bool selfTest = false;
-  // The demo library carries the play history and completion the stats and repair fixtures
-  // check.
+  // A navigation check drives the run, on the demo library with an in-memory library
+  // database and a seeded achievement list.
+  bool navigationTest = false;
+  // The startup navigation check: the controller starts with the first frame and Couch Mode
+  // opens as it would at a normal start.
+  bool startupNavigationTest = false;
+  // The demo library carries the play history and completion the stats and repair fixtures,
+  // and the couch navigation contract and sweep, check.
   bool demoStatsFixture = false;
   // The demo metadata lives in the library database, where the fixture seeded it.
   bool metadataInLibraryDatabase = false;
@@ -139,8 +145,8 @@ public:
   virtual std::optional<int> start(AppContext& app) = 0;
   // Runs the fixtures for one stage. A value ends the run with that exit code.
   virtual std::optional<int> prepare(Stage stage, AppContext& app) = 0;
-  // Sizes app.quickWindow for the run and starts any render path, before its first frame. A
-  // value ends the run with that exit code.
+  // Sizes app.quickWindow for the run and starts any render path or navigation check, before
+  // its first frame. A value ends the run with that exit code.
   virtual std::optional<int> windowReady(AppContext& app) = 0;
   // Starts the selected self-test once the window is up. False when none was asked for and
   // no render path runs, so the app runs its own --smoke-test or stays open.

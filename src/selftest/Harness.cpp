@@ -70,6 +70,12 @@ std::optional<int> Harness::start(AppContext& app) {
     o.*entry.selected = arguments.contains(QString::fromLatin1(entry.flag));
     selfTest = selfTest || o.*entry.selected;
   }
+  o.couchNavigationTest = arguments.contains(QStringLiteral("--couch-navigation-test"));
+  o.couchNavigationContract = arguments.contains(QStringLiteral("--couch-navigation-contract"));
+  o.couchNavigationSweep = arguments.contains(QStringLiteral("--couch-navigation-sweep"));
+  o.startupNavigationTest = arguments.contains(QStringLiteral("--startup-navigation-test"));
+  o.controllerNavigationTest = arguments.contains(QStringLiteral("--controller-navigation-test"));
+  o.ownedLayoutTest = arguments.contains(QStringLiteral("--owned-layout-test"));
   o.gogSettingsFixture = o.gogSettingsTest || o.renderOverlay == "gog-folders";
   o.linkedPreferenceFixture = o.linkedPreferenceTest || o.renderOverlay == "linked-preference" || o.renderOverlay == "linked-preference-missing";
   o.backupFixture = o.backupEditorTest || o.renderOverlay == QStringLiteral("backup-editor");
@@ -78,7 +84,12 @@ std::optional<int> Harness::start(AppContext& app) {
   AppHarnessModes& modes = app.modes;
   modes.renderMode = o.renderMode;
   modes.selfTest = selfTest;
-  modes.demoStatsFixture = o.statsFixture || o.repairNavigationFixture;
+  modes.demoStatsFixture = o.statsFixture || o.repairNavigationFixture ||
+                           o.couchNavigationContract || o.couchNavigationSweep;
+  modes.navigationTest = o.couchNavigationTest || o.couchNavigationContract ||
+                         o.couchNavigationSweep || o.startupNavigationTest ||
+                         o.controllerNavigationTest;
+  modes.startupNavigationTest = o.startupNavigationTest;
   modes.metadataInLibraryDatabase = o.renderOverlay == "library-repair-controls" || o.statsFixture;
   modes.backupFixture = o.backupFixture;
   modes.cardExport = !o.cardExportPath.isEmpty();
@@ -106,7 +117,10 @@ std::optional<int> Harness::windowReady(AppContext& app) {
     app.quickWindow->resize(options.requestedRenderSize);
     app.quickWindow->setProperty("testRenderSize", options.requestedRenderSize);
   }
-  if (options.renderMode) return renderWindow(*this, app);
+  if (options.renderMode) {
+    if (auto exit = renderWindow(*this, app)) return exit;
+  }
+  startNavigation(*this, app);
   return std::nullopt;
 }
 

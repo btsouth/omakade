@@ -1,11 +1,11 @@
 #include "selftest/SelfTest.h"
 
 #include "app/AppSettings.h"
-#include "app/KeyboardTestInput.h"
 #include "app/SelfTestSupport.h"
 #include "gamemode/LaunchHold.h"
 #include "input/ControllerInput.h"
 #include "library/LibraryFilterModel.h"
+#include "selftest/KeyboardTestInput.h"
 
 #include <QDebug>
 #include <QEventLoop>

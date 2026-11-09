@@ -52,6 +52,10 @@ std::optional<int> prepareBeforeSources(Harness& harness, AppContext& app) {
   const bool& sourceRescanFixture = harness.options.sourceRescanFixture;
   std::shared_ptr<std::atomic<int>>& kytyRefreshes = harness.fixtures.kytyRefreshes;
   std::shared_ptr<std::atomic<int>>& portRefreshes = harness.fixtures.portRefreshes;
+  if (harness.options.startupNavigationTest &&
+      app.application->arguments().contains("--startup-grid")) {
+    preferences.setCouchLibraryView(QStringLiteral("grid"));
+  }
   if (sourceRescanFixture) {
     preferences.setKytyEnabled(false);
     preferences.setNativePortsEnabled(false);
@@ -530,6 +534,11 @@ std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app) {
   const bool& renderMode = harness.options.renderMode;
   const bool& heroicOwnedFixture = harness.options.heroicOwnedFixture;
   const bool& gogSettingsFixture = harness.options.gogSettingsFixture;
+  if (harness.options.startupNavigationTest &&
+      (application.arguments().contains("--startup-empty") ||
+       application.arguments().contains("--startup-delayed"))) {
+    app.library->setSearchText(QStringLiteral("no-matching-startup-game"));
+  }
   // The game a launching render shows, and the windows it holds, from
   // --render-game-info-file when one is given.
   QVariantMap launchingPreview;

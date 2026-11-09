@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QPointF>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSet>
@@ -121,4 +122,22 @@ QQuickItem* findVisualItem(QQuickItem* item, const QString& name) {
   if (item->objectName() == name) return item;
   for (auto* child : item->childItems()) if (auto* found = findVisualItem(child, name)) return found;
   return nullptr;
+}
+
+int expectedDetailActionColumns(qreal width, qreal scale, bool running) {
+  if (!running) return width < 300 ? 1 : width < 620 ? 2 : 4;
+  const auto fits = [width, scale](int count) {
+    return count * 220 * scale + (count - 1) * 10 <= width;
+  };
+  return fits(5) ? 5 : fits(3) ? 3 : fits(2) ? 2 : 1;
+}
+
+QString clippedDetailAction(QQuickItem* content, QQuickItem* actions) {
+  const qreal right = content->mapToScene(QPointF(content->width(), 0)).x();
+  for (QQuickItem* action : actions->childItems()) {
+    if (!action->isVisible()) continue;
+    if (action->mapToScene(QPointF(action->width(), 0)).x() > right + 0.5)
+      return action->objectName();
+  }
+  return {};
 }
