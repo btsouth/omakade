@@ -2057,17 +2057,14 @@ int main(int argc, char* argv[]) {
     for (auto& value : sessions) {
       auto session = value.toMap();
       QVariantMap metadata;
-      for (int row = 0; row < unifiedGames.rowCount(); ++row) {
-        for (const auto& installationValue : unifiedGames.installations(row)) {
-          const auto installation = installationValue.toMap();
-          if (installation.value("source") != session.value("source") || installation.value("appId") != session.value("appId")) continue;
-          const auto index = unifiedGames.index(row);
-          for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath, GameRoles::LogoPath, GameRoles::Tags})
-            metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), index.data(role));
-          metadata.insert("appId", installation.value("appId"));
-          break;
-        }
-        if (!metadata.isEmpty()) break;
+      // A hash lookup: this runs every second, so it must not walk the library or inspect
+      // every installation.
+      const int row = unifiedGames.rowForGame(session.value("source").toString(), session.value("appId").toString());
+      if (row >= 0) {
+        const auto index = unifiedGames.index(row);
+        for (const int role : {GameRoles::Title, GameRoles::CoverPath, GameRoles::HeroPath, GameRoles::LogoPath, GameRoles::Tags})
+          metadata.insert(QString::fromUtf8(GameRoles::names().value(role)), index.data(role));
+        metadata.insert("appId", session.value("appId"));
       }
       session.insert("metadata", metadata); value = session;
     }
