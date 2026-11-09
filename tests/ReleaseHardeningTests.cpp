@@ -361,6 +361,7 @@ private slots:
     data.add(start, seconds);
     PlayStats stats(nullptr, data.path);
     stats.setPeriod("all");
+    stats.refresh();
     QCOMPARE(stats.headline().value("recordedSeconds").toLongLong(), qint64(seconds));
     QCOMPARE(hourTotal(stats), qint64(seconds));
     QCOMPARE(stats.headline().value("daysPlayed").toInt(), days);
@@ -371,17 +372,21 @@ private slots:
     data.add(start, 7200);
     PlayStats stats(nullptr, data.path);
     stats.setYear(2025);
+    stats.refresh();
     QCOMPARE(stats.headline().value("recordedSeconds").toLongLong(), qint64(1800));
     QCOMPARE(hourTotal(stats), qint64(1800));
     stats.setYear(2026);
+    stats.refresh();
     QCOMPARE(stats.headline().value("recordedSeconds").toLongLong(), qint64(5400));
     QCOMPARE(hourTotal(stats), qint64(5400));
     data.sql("DELETE FROM play_sessions");
     data.add(start, 3600, "/games/test.nsp", start + 7200);
     stats.setYear(2025);
+    stats.refresh();
     QCOMPARE(hourTotal(stats), qint64(900));
     QVERIFY(stats.windowNote().contains("estimate"));
     stats.setYear(2026);
+    stats.refresh();
     QCOMPARE(hourTotal(stats), qint64(2700));
   }
   void titleTokenDetectsEqualLengthChanges() {
@@ -453,6 +458,7 @@ private slots:
     data.add(timestamp(2026, 3, 1, 12), 600, "/games/copy1.sfc");
     PlayStats stats(&games, data.path);
     stats.setPeriod("all");
+    stats.refresh();
     QCOMPARE(stats.headline().value("gamesPlayed").toInt(), 1);
     QCOMPARE(stats.backlog().value("firstTimeGames").toInt(), 1);
     QCOMPARE(stats.backlog().value("oneAndDone").toInt(), 0);

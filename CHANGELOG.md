@@ -70,6 +70,11 @@
   longer drawn as rich text and can no longer make Omakade fetch an image it names.
 - Removing a library filter by its chip moves focus back to the Filters button, as Clear All
   does, instead of leaving it nowhere.
+- Stats places play by the intervals the recorder keeps, so time a game spent paused no
+  longer shows up in the hour, weekday and day charts. Sessions recorded before intervals
+  were kept are still spread over their start and end, and the note says how many are
+  estimated. Stats and Home also do their work in the background, and Stats no longer
+  computes anything while it is closed.
 
 ## 1.18.0
 
