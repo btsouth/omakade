@@ -44,16 +44,11 @@ class PlayStats final : public QObject {
   Q_PROPERTY(QString windowNote READ windowNote NOTIFY changed)
   Q_PROPERTY(qint64 recordingStartsAt READ recordingStartsAt NOTIFY changed)
   Q_PROPERTY(QVariantMap headline READ headline NOTIFY changed)
-  Q_PROPERTY(QVariantMap kpis READ kpis NOTIFY changed)
   Q_PROPERTY(QVariantList bySource READ bySource NOTIFY changed)
   Q_PROPERTY(QVariantList bySystem READ bySystem NOTIFY changed)
   Q_PROPERTY(QVariantList byHour READ byHour NOTIFY changed)
   Q_PROPERTY(QVariantList byWeekday READ byWeekday NOTIFY changed)
-  Q_PROPERTY(QVariantList byDay READ byDay NOTIFY changed)
   Q_PROPERTY(QVariantList topGames READ topGames NOTIFY changed)
-  Q_PROPERTY(QVariantList mostPlayed READ mostPlayed NOTIFY changed)
-  Q_PROPERTY(QVariantList recentSessions READ recentSessions NOTIFY changed)
-  Q_PROPERTY(QVariantMap timing READ timing NOTIFY changed)
   Q_PROPERTY(QVariantMap sessionShape READ sessionShape NOTIFY changed)
   Q_PROPERTY(QVariantMap streaks READ streaks NOTIFY changed)
   Q_PROPERTY(QVariantMap achievements READ achievements NOTIFY changed)
@@ -67,10 +62,8 @@ public:
   // with the recorder.
   struct LibraryGame {
     QString identity; // source and app id, so a game with several installations is one game
-    QString key;      // the library's own key, the same one Home uses, for looking the game up
     QString title;
     QString source;
-    QString runner;
     QString system;
     QString appId;
     QStringList paths; // every installation path a session for this game can be recorded under
@@ -99,16 +92,11 @@ public:
     QString windowNote;
     qint64 recordingStartsAt = 0;
     QVariantMap headline;
-    QVariantMap kpis;
     QVariantList bySource;
     QVariantList bySystem;
     QVariantList byHour;
     QVariantList byWeekday;
-    QVariantList byDay;
     QVariantList topGames;
-    QVariantList mostPlayed;
-    QVariantList recentSessions;
-    QVariantMap timing;
     QVariantMap sessionShape;
     QVariantMap streaks;
     QVariantMap achievements;
@@ -139,36 +127,16 @@ public:
   // Recorded time, sessions, days, games, the top game with its share of that time, and the
   // library's own reported totals beside them.
   [[nodiscard]] QVariantMap headline() const { return m_figures.headline; }
-  // The dashboard's headline numbers in one place: recordedSeconds, sessions, daysPlayed,
-  // gamesPlayed, averageSessionSeconds, longestSessionSeconds, currentRun, longestRun,
-  // achievementsUnlocked, firstTimeGames.
-  [[nodiscard]] QVariantMap kpis() const { return m_figures.kpis; }
   // Recorded time per source (Ryujinx, Steam, ...): entries of name, seconds, sessions,
   // games, share.
   [[nodiscard]] QVariantList bySource() const { return m_figures.bySource; }
   // The same, grouped by console where the source is a dedicated emulator and by source
   // otherwise: entries of name, seconds, share, console.
   [[nodiscard]] QVariantList bySystem() const { return m_figures.bySystem; }
-  // 24 entries of hour, seconds, estimatedSeconds, fraction; 7 entries of weekday
-  // (0 = Monday) with the same fields. fraction is seconds over the largest hour or weekday,
-  // so both charts can share one scale. estimatedSeconds is the part placed by the even
-  // spread rather than by recorded intervals.
+  // 24 entries of hour, seconds; 7 entries of weekday (0 = Monday), seconds.
   [[nodiscard]] QVariantList byHour() const { return m_figures.byHour; }
   [[nodiscard]] QVariantList byWeekday() const { return m_figures.byWeekday; }
-  // Every day with recorded play in the period, oldest first: date (ISO), seconds.
-  [[nodiscard]] QVariantList byDay() const { return m_figures.byDay; }
-  // The most played games of the period, most first: the first five of mostPlayed.
   [[nodiscard]] QVariantList topGames() const { return m_figures.topGames; }
-  // Up to ten entries of title, seconds, share, fraction (of the first entry), sessions, key,
-  // source, runner, appId and inLibrary. key is empty for a recorded path the library does not
-  // know.
-  [[nodiscard]] QVariantList mostPlayed() const { return m_figures.mostPlayed; }
-  // The five latest sessions of the period: title, key, source, startedAt, seconds, estimated.
-  [[nodiscard]] QVariantList recentSessions() const { return m_figures.recentSessions; }
-  // How the period's play was placed in time: sessions, observedSessions (placed by recorded
-  // intervals), estimatedSessions and estimatedSeconds (spread over a span longer than the
-  // play), and basis: "none", "observed", "mixed" or "estimated".
-  [[nodiscard]] QVariantMap timing() const { return m_figures.timing; }
   // count, totalSeconds, averageSeconds, longestSeconds, longestTitle, longestStartedAt,
   // overTwoHours, buckets (label, count).
   [[nodiscard]] QVariantMap sessionShape() const { return m_figures.sessionShape; }

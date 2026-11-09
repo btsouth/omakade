@@ -9,8 +9,6 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QElapsedTimer>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QSet>
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -61,12 +59,6 @@ QString librarySourceForAchievements(const QString& source) {
   return source;
 }
 
-// The same key HomeModel gives a game, so the dashboard and Home can name a game alike.
-QString libraryKey(const QString& source, const QString& runner, const QString& appId) {
-  return QString::fromUtf8(
-      QJsonDocument(QJsonArray{source, runner, appId}).toJson(QJsonDocument::Compact));
-}
-
 // A stretch of wall time and the play credited across it. A session without recorded intervals
 // is one piece covering its whole span; a session with them has one piece per playing interval,
 // so time it spent paused is credited nowhere.
@@ -83,7 +75,6 @@ struct RecordedSession {
   qint64 spanStart = 0;
   qint64 spanEnd = 0;
   QVector<Piece> pieces;
-  bool observed = false;  // placed by recorded intervals
   bool estimated = false; // some play is spread over wall time longer than the play itself
   QString source;
   QString path;
@@ -308,11 +299,9 @@ QVector<PlayStats::LibraryGame> PlayStats::readLibrary() const {
     game.portal = index.data(GameRoles::IsPortal).toBool();
     game.title = index.data(GameRoles::Title).toString();
     game.source = index.data(GameRoles::Source).toString();
-    game.runner = index.data(GameRoles::Runner).toString();
     game.system = index.data(GameRoles::System).toString();
     game.appId = index.data(GameRoles::AppId).toString();
     game.identity = game.source + kUnitSeparator + game.appId;
-    game.key = libraryKey(game.source, game.runner, game.appId);
     const QString installPath = index.data(GameRoles::InstallPath).toString();
     if (!installPath.isEmpty())
       game.paths.append(installPath);
@@ -430,7 +419,6 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
         const auto intervals = intervalsByKey.constFind(query.value(6).toString());
         if (session.seconds > 0 && intervals != intervalsByKey.cend() && intervals->valid &&
             intervals->billed == session.seconds) {
-          session.observed = true;
           session.pieces = intervals->pieces;
           for (const Piece& piece : std::as_const(session.pieces)) {
             session.spanStart = qMin(session.spanStart, piece.start);
@@ -511,8 +499,6 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
   qint64 recordedSeconds = 0;
   QHash<QString, qint64> secondsByGame;  // keyed by LibraryGame identity
   QHash<QString, QString> titleByGame;
-  QHash<QString, const LibraryGame*> gameByIdentity;
-  QHash<QString, int> sessionsByGame;
   QHash<QString, qint64> secondsBySource;
   QHash<QString, int> sessionsBySource;
   QHash<QString, QSet<QString>> gamesBySource;
@@ -520,10 +506,8 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
   QSet<QString> consoleSystems;
   QHash<QString, qint64> secondsByGenre;
   qint64 hourSeconds[24] = {};
-  qint64 hourEstimated[24] = {};
   qint64 weekdaySeconds[7] = {};
-  qint64 weekdayEstimated[7] = {};
-  QHash<QDate, qint64> secondsByDay;
+  QSet<QDate> playedDays;
   QSet<QString> playedGames;
   qint64 longestSeconds = 0;
   QString longestTitle;
@@ -533,9 +517,7 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
   int bucketToHour = 0;
   int bucketToThree = 0;
   int bucketOverThree = 0;
-  int observedSessions = 0;
   int estimatedSessions = 0;
-  qint64 estimatedSeconds = 0;
 
   for (const RecordedSession& session : std::as_const(sessions)) {
     const qint64 seconds = qMax<qint64>(0, session.seconds);
@@ -544,16 +526,14 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
     ++sessionsBySource[session.source];
     if (seconds > 0) gamesBySource[session.source].insert(identityFor(session));
     const LibraryGame* game = byPath.value(session.path, nullptr);
-    const QString gameKey = game != nullptr ? game->identity : session.path;
-    secondsByGame[gameKey] += seconds;
-    ++sessionsByGame[gameKey];
     if (game != nullptr) {
-      titleByGame.insert(gameKey, game->title);
-      gameByIdentity.insert(gameKey, game);
+      secondsByGame[game->identity] += seconds;
+      titleByGame.insert(game->identity, game->title);
       for (const QString& genre : game->genres)
         secondsByGenre[genre] += seconds;
     } else {
-      titleByGame.insert(gameKey, titleForPath(session.path));
+      secondsByGame[session.path] += seconds;
+      titleByGame.insert(session.path, titleForPath(session.path));
     }
     const auto system = systemFor(session);
     secondsBySystem[system.first] += seconds;
@@ -562,14 +542,10 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
     if (seconds > 0) {
       // Counted by game rather than by path: a linked game played from two of its installations is
       // one game in the ranking above, and the headline must not disagree with the list under it.
-      playedGames.insert(gameKey);
+      playedGames.insert(game != nullptr ? game->identity : session.path);
     }
-    if (session.observed)
-      ++observedSessions;
-    if (session.estimated) {
+    if (session.estimated)
       ++estimatedSessions;
-      estimatedSeconds += seconds;
-    }
     if (seconds > longestSeconds) {
       longestSeconds = seconds;
       longestTitle = titleForPath(session.path);
@@ -593,7 +569,6 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
     for (const Piece& piece : session.pieces) {
       if (piece.seconds <= 0)
         continue;
-      const bool estimatedPiece = piece.end - piece.start > piece.seconds + 2;
       qint64 cursor = qMax(piece.start, from);
       const qint64 pieceEnd = qMin(piece.end, to);
       while (cursor < pieceEnd) {
@@ -602,15 +577,9 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
         const qint64 nextHour = cursor + 3600 - moment.time().minute() * 60 - moment.time().second();
         const qint64 sliceEnd = qMin(pieceEnd, nextHour > cursor ? nextHour : cursor + 3600);
         const qint64 credited = pieceCreditedUntil(piece, sliceEnd) - pieceCreditedUntil(piece, cursor);
-        const int hour = moment.time().hour();
-        const int weekday = moment.date().dayOfWeek() - 1;
-        hourSeconds[hour] += credited;
-        weekdaySeconds[weekday] += credited;
-        if (estimatedPiece) {
-          hourEstimated[hour] += credited;
-          weekdayEstimated[weekday] += credited;
-        }
-        if (credited > 0) secondsByDay[moment.date()] += credited;
+        hourSeconds[moment.time().hour()] += credited;
+        weekdaySeconds[moment.date().dayOfWeek() - 1] += credited;
+        if (credited > 0) playedDays.insert(moment.date());
         cursor = sliceEnd;
       }
     }
@@ -628,46 +597,29 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
 
   // The ranked games, which is what a recap is really made of: the headline carries the first one
   // and the list gives the reader the rest of the shape.
-  struct Ranked {
-    qint64 seconds = 0;
-    QString title;
-    QString identity;
-  };
-  QVector<Ranked> rankedGames;
+  QVector<QPair<qint64, QString>> rankedGames;
   rankedGames.reserve(secondsByGame.size());
   for (auto it = secondsByGame.cbegin(); it != secondsByGame.cend(); ++it)
-    rankedGames.append({it.value(), titleByGame.value(it.key()), it.key()});
-  std::stable_sort(rankedGames.begin(), rankedGames.end(), [](const Ranked& left, const Ranked& right) {
-    if (left.seconds != right.seconds) return left.seconds > right.seconds;
-    if (left.title != right.title) return left.title < right.title;
-    return left.identity < right.identity;
-  });
+    rankedGames.append({it.value(), titleByGame.value(it.key())});
+  std::stable_sort(rankedGames.begin(), rankedGames.end(),
+                   [](const QPair<qint64, QString>& left, const QPair<qint64, QString>& right) {
+                     return left.first != right.first ? left.first > right.first : left.second < right.second;
+                   });
 
-  const qint64 topSeconds = rankedGames.isEmpty() ? 0 : rankedGames.first().seconds;
-  const QString topTitle = rankedGames.isEmpty() ? QString() : rankedGames.first().title;
+  const qint64 topSeconds = rankedGames.isEmpty() ? 0 : rankedGames.first().first;
+  const QString topTitle = rankedGames.isEmpty() ? QString() : rankedGames.first().second;
 
-  for (int index = 0; index < rankedGames.size() && index < 10; ++index) {
-    const Ranked& ranked = rankedGames.at(index);
-    const LibraryGame* game = gameByIdentity.value(ranked.identity, nullptr);
-    QVariantMap entry{{QStringLiteral("title"), ranked.title},
-                      {QStringLiteral("seconds"), ranked.seconds},
-                      {QStringLiteral("share"), shareOf(ranked.seconds, recordedSeconds)},
-                      {QStringLiteral("fraction"), shareOf(ranked.seconds, topSeconds)},
-                      {QStringLiteral("sessions"), sessionsByGame.value(ranked.identity)},
-                      {QStringLiteral("inLibrary"), game != nullptr},
-                      {QStringLiteral("key"), game != nullptr ? game->key : QString()},
-                      {QStringLiteral("source"), game != nullptr ? game->source : QString()},
-                      {QStringLiteral("runner"), game != nullptr ? game->runner : QString()},
-                      {QStringLiteral("appId"), game != nullptr ? game->appId : QString()}};
-    figures.mostPlayed.append(entry);
-    if (index < 5)
-      figures.topGames.append(entry);
+  for (int index = 0; index < rankedGames.size() && index < 5; ++index) {
+    figures.topGames.append(QVariantMap{
+        {QStringLiteral("title"), rankedGames.at(index).second},
+        {QStringLiteral("seconds"), rankedGames.at(index).first},
+        {QStringLiteral("share"), shareOf(rankedGames.at(index).first, recordedSeconds)}});
   }
 
   figures.headline = QVariantMap{
       {QStringLiteral("recordedSeconds"), recordedSeconds},
       {QStringLiteral("recordedSessions"), sessions.size()},
-      {QStringLiteral("daysPlayed"), secondsByDay.size()},
+      {QStringLiteral("daysPlayed"), playedDays.size()},
       {QStringLiteral("gamesPlayed"), playedGames.size()},
       {QStringLiteral("allTimeRecordedSeconds"), allTimeRecordedSeconds},
       {QStringLiteral("librarySeconds"), librarySeconds},
@@ -692,40 +644,12 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
     entry = row;
   }
 
-  // One scale for both charts, so a weekday column and an hour bar of the same height mean the
-  // same amount of play.
-  qint64 patternPeak = 0;
-  for (qint64 seconds : hourSeconds) patternPeak = qMax(patternPeak, seconds);
-  for (qint64 seconds : weekdaySeconds) patternPeak = qMax(patternPeak, seconds);
   for (int hour = 0; hour < 24; ++hour)
     figures.byHour.append(QVariantMap{{QStringLiteral("hour"), hour},
-                                      {QStringLiteral("seconds"), hourSeconds[hour]},
-                                      {QStringLiteral("estimatedSeconds"), hourEstimated[hour]},
-                                      {QStringLiteral("fraction"), shareOf(hourSeconds[hour], patternPeak)}});
+                                      {QStringLiteral("seconds"), hourSeconds[hour]}});
   for (int day = 0; day < 7; ++day)
     figures.byWeekday.append(QVariantMap{{QStringLiteral("weekday"), day},
-                                         {QStringLiteral("seconds"), weekdaySeconds[day]},
-                                         {QStringLiteral("estimatedSeconds"), weekdayEstimated[day]},
-                                         {QStringLiteral("fraction"), shareOf(weekdaySeconds[day], patternPeak)}});
-
-  QList<QDate> days = secondsByDay.keys();
-  std::sort(days.begin(), days.end());
-  for (const QDate& day : std::as_const(days))
-    figures.byDay.append(QVariantMap{{QStringLiteral("date"), day.toString(Qt::ISODate)},
-                                     {QStringLiteral("seconds"), secondsByDay.value(day)}});
-
-  // The latest sessions, for a recent-activity list. Sessions arrive oldest first.
-  for (qsizetype index = sessions.size() - 1; index >= 0 && figures.recentSessions.size() < 5; --index) {
-    const RecordedSession& session = sessions.at(index);
-    const LibraryGame* game = byPath.value(session.path, nullptr);
-    figures.recentSessions.append(
-        QVariantMap{{QStringLiteral("title"), titleForPath(session.path)},
-                    {QStringLiteral("key"), game != nullptr ? game->key : QString()},
-                    {QStringLiteral("source"), session.source},
-                    {QStringLiteral("startedAt"), session.startedAt},
-                    {QStringLiteral("seconds"), qMax<qint64>(0, session.seconds)},
-                    {QStringLiteral("estimated"), session.estimated}});
-  }
+                                         {QStringLiteral("seconds"), weekdaySeconds[day]}});
 
   const int sessionCount = sessions.size();
   figures.sessionShape =
@@ -748,6 +672,8 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
                        QVariantMap{{QStringLiteral("label"), QStringLiteral("Over 3h")},
                                    {QStringLiteral("count"), bucketOverThree}}}}};
 
+  QList<QDate> days = playedDays.values();
+  std::sort(days.begin(), days.end());
   int longestRun = 0;
   int trailingRun = 0;
   int run = 0;
@@ -769,18 +695,16 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
       qMax(byYear ? QDate(year, 1, 1) : recordingStart, recordingStart);
   const QDate windowEnd = qMin(byYear ? QDate(year, 12, 31) : today, today);
   const int windowDays = qMax(0, windowStart.daysTo(windowEnd) + 1);
-  const int daysPlayed = static_cast<int>(secondsByDay.size());
   figures.streaks = QVariantMap{
-      {QStringLiteral("daysPlayed"), daysPlayed},
+      {QStringLiteral("daysPlayed"), playedDays.size()},
       {QStringLiteral("longestRun"), longestRun},
       {QStringLiteral("currentRun"), currentRun},
-      {QStringLiteral("daysOff"), qMax(0, windowDays - daysPlayed)},
+      {QStringLiteral("daysOff"), qMax(0, windowDays - playedDays.size())},
       {QStringLiteral("firstDay"), days.isEmpty() ? QString() : days.first().toString(Qt::ISODate)},
       {QStringLiteral("lastDay"), days.isEmpty() ? QString() : days.last().toString(Qt::ISODate)}};
 
   // Achievements: the only dated record of progress, and they cover Steam and
   // RetroAchievements alike, so emulator play counts here too.
-  qint64 unlockedInPeriod = 0;
   if (tables.contains(QStringLiteral("achievements"))) {
     qint64 known = 0;
     qint64 unlockedTotal = 0;
@@ -796,7 +720,7 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
     inPeriod.addBindValue(from);
     inPeriod.addBindValue(to);
     if (!inPeriod.exec() || !inPeriod.next()) return failRead();
-    unlockedInPeriod = inPeriod.value(0).toLongLong();
+    const qint64 unlockedInPeriod = inPeriod.value(0).toLongLong();
     QVariantList bySourceRows;
     QSqlQuery grouped(database);
     grouped.prepare(QStringLiteral("SELECT source, COUNT(*) FROM achievements WHERE unlocked = 1 "
@@ -865,7 +789,6 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
   }
 
   // Backlog behaviour, judged against the whole history.
-  int firstTimeGames = 0;
   {
     QHash<QString, int> lifetimeSessions;
     QHash<QString, qint64> firstStart;
@@ -920,8 +843,7 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
     for (int index = 0; index < returnGaps.size() && index < 3; ++index)
       returnsList.append(QVariantMap{{QStringLiteral("gapDays"), returnGaps.at(index).first},
                                      {QStringLiteral("title"), returnGaps.at(index).second}});
-    firstTimeGames = static_cast<int>(firstTimeIdentities.size());
-    figures.backlog = QVariantMap{{QStringLiteral("firstTimeGames"), firstTimeGames},
+    figures.backlog = QVariantMap{{QStringLiteral("firstTimeGames"), firstTimeIdentities.size()},
                                   {QStringLiteral("oneAndDone"), oneAndDone},
                                   {QStringLiteral("returns"), returns},
                                   {QStringLiteral("longestGapDays"), longestGapDays},
@@ -972,29 +894,6 @@ PlayStats::Figures PlayStats::compute(const Snapshot& snapshot) {
                     {QStringLiteral("completions"), completionRows},
                     {QStringLiteral("topRated"), topRated}};
   }
-
-  figures.kpis = QVariantMap{
-      {QStringLiteral("recordedSeconds"), recordedSeconds},
-      {QStringLiteral("sessions"), sessionCount},
-      {QStringLiteral("daysPlayed"), daysPlayed},
-      {QStringLiteral("gamesPlayed"), playedGames.size()},
-      {QStringLiteral("averageSessionSeconds"),
-       sessionCount > 0 ? recordedSeconds / sessionCount : qint64(0)},
-      {QStringLiteral("longestSessionSeconds"), longestSeconds},
-      {QStringLiteral("currentRun"), currentRun},
-      {QStringLiteral("longestRun"), longestRun},
-      {QStringLiteral("achievementsUnlocked"), unlockedInPeriod},
-      {QStringLiteral("firstTimeGames"), firstTimeGames}};
-
-  const QString basis = sessionCount == 0            ? QStringLiteral("none")
-                        : estimatedSessions == 0     ? QStringLiteral("observed")
-                        : estimatedSessions == sessionCount ? QStringLiteral("estimated")
-                                                            : QStringLiteral("mixed");
-  figures.timing = QVariantMap{{QStringLiteral("sessions"), sessionCount},
-                               {QStringLiteral("observedSessions"), observedSessions},
-                               {QStringLiteral("estimatedSessions"), estimatedSessions},
-                               {QStringLiteral("estimatedSeconds"), estimatedSeconds},
-                               {QStringLiteral("basis"), basis}};
 
   // What the recorded figures really cover, so neither the screen nor the card can imply the
   // whole period was watched.

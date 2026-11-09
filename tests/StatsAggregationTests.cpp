@@ -6,8 +6,6 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QRandomGenerator>
 #include <QSignalSpy>
 #include <QSqlError>
@@ -191,11 +189,6 @@ private slots:
     QCOMPARE(seconds(figures.byHour, 21), qint64(0));
     QCOMPARE(seconds(figures.byHour, 22), qint64(3600));
     QCOMPARE(total(figures.byHour), qint64(7200));
-    for (const auto& entry : figures.byHour)
-      QCOMPARE(entry.toMap().value("estimatedSeconds").toLongLong(), qint64(0));
-    QCOMPARE(figures.timing.value("observedSessions").toInt(), 1);
-    QCOMPARE(figures.timing.value("estimatedSessions").toInt(), 0);
-    QCOMPARE(figures.timing.value("basis").toString(), QString("observed"));
     QVERIFY(!figures.windowNote.contains("estimate"));
 
     // The same session without intervals is spread over its three hours and says so.
@@ -205,9 +198,6 @@ private slots:
     QCOMPARE(seconds(estimate.byHour, 20), qint64(2400));
     QCOMPARE(seconds(estimate.byHour, 21), qint64(2400));
     QCOMPARE(seconds(estimate.byHour, 22), qint64(2400));
-    QCOMPARE(estimate.byHour.at(21).toMap().value("estimatedSeconds").toLongLong(), qint64(2400));
-    QCOMPARE(estimate.timing.value("basis").toString(), QString("estimated"));
-    QCOMPARE(estimate.timing.value("estimatedSeconds").toLongLong(), qint64(7200));
     QVERIFY(estimate.windowNote.contains("estimated"));
   }
 
@@ -225,9 +215,9 @@ private slots:
     QCOMPARE(total(before.byWeekday), qint64(900));
     QCOMPARE(seconds(before.byWeekday, QDate(2025, 12, 31).dayOfWeek() - 1), qint64(900));
     QCOMPARE(seconds(after.byWeekday, QDate(2026, 1, 1).dayOfWeek() - 1), qint64(1800));
-    QCOMPARE(before.byDay.size(), 1);
-    QCOMPARE(before.byDay.first().toMap().value("date").toString(), QString("2025-12-31"));
-    QCOMPARE(after.byDay.first().toMap().value("date").toString(), QString("2026-01-01"));
+    QCOMPARE(before.headline.value("daysPlayed").toInt(), 1);
+    QCOMPARE(before.streaks.value("firstDay").toString(), QString("2025-12-31"));
+    QCOMPARE(after.streaks.value("firstDay").toString(), QString("2026-01-01"));
     const auto all = figuresFor(data.path, "all", 2026);
     QCOMPARE(all.headline.value("recordedSeconds").toLongLong(), qint64(2700));
     QCOMPARE(all.streaks.value("longestRun").toInt(), 2);
@@ -241,8 +231,7 @@ private slots:
     // session is placed as an older one would be rather than by half its evidence.
     data.sql(QStringLiteral("UPDATE play_sessions SET seconds = 5400 WHERE session_key = '%1'").arg(key));
     const auto figures = figuresFor(data.path, "year", 2026);
-    QCOMPARE(figures.timing.value("observedSessions").toInt(), 0);
-    QCOMPARE(figures.timing.value("basis").toString(), QString("estimated"));
+    QVERIFY(figures.windowNote.contains("estimated"));
     QCOMPARE(total(figures.byHour), qint64(5400));
     QCOMPARE(seconds(figures.byHour, 10), qint64(1800));
     QCOMPARE(seconds(figures.byHour, 12), qint64(1800));
@@ -251,8 +240,6 @@ private slots:
     Database slept;
     slept.observed({playing(at(2026, 5, 2, 10), at(2026, 5, 2, 14), 3600)});
     const auto suspend = figuresFor(slept.path, "year", 2026);
-    QCOMPARE(suspend.timing.value("observedSessions").toInt(), 1);
-    QCOMPARE(suspend.timing.value("estimatedSessions").toInt(), 1);
     QCOMPARE(seconds(suspend.byHour, 10), qint64(900));
     QCOMPARE(seconds(suspend.byHour, 13), qint64(900));
     QVERIFY(suspend.windowNote.contains("estimated"));
@@ -292,51 +279,7 @@ private slots:
       for (int day = 0; day < 7; ++day)
         QCOMPARE(seconds(figures.byWeekday, day), expected.weekdays[day]);
       QCOMPARE(figures.headline.value("daysPlayed").toInt(), expected.days.size());
-      QCOMPARE(figures.byDay.size(), expected.days.size());
-      QCOMPARE(figures.timing.value("observedSessions").toInt(), 0);
     }
-  }
-
-  void dashboardSeriesCarryKeysAndOneScale() {
-    Database data;
-    data.legacy(at(2026, 2, 2, 9), 3600, -1, "/games/a.nsp");
-    data.legacy(at(2026, 2, 3, 9), 1800, -1, "/games/b.nsp");
-    data.legacy(at(2026, 2, 4, 9), 600, -1, "/games/unknown.nsp");
-    PlayStats::LibraryGame a;
-    a.title = "Alpha";
-    a.source = "Ryujinx";
-    a.appId = "a";
-    a.identity = QStringLiteral("Ryujinx") + QChar(0x1f) + "a";
-    a.key = QString::fromUtf8(QJsonDocument(QJsonArray{"Ryujinx", "", "a"}).toJson(QJsonDocument::Compact));
-    a.paths = {"/games/a.nsp"};
-    PlayStats::LibraryGame b = a;
-    b.title = "Bravo";
-    b.appId = "b";
-    b.identity = QStringLiteral("Ryujinx") + QChar(0x1f) + "b";
-    b.key = QString::fromUtf8(QJsonDocument(QJsonArray{"Ryujinx", "", "b"}).toJson(QJsonDocument::Compact));
-    b.paths = {"/games/b.nsp"};
-    const auto figures = figuresFor(data.path, "year", 2026, {a, b});
-    QCOMPARE(figures.mostPlayed.size(), 3);
-    const auto top = figures.mostPlayed.at(0).toMap();
-    QCOMPARE(top.value("title").toString(), QString("Alpha"));
-    QCOMPARE(top.value("key").toString(), a.key);
-    QCOMPARE(top.value("appId").toString(), QString("a"));
-    QCOMPARE(top.value("fraction").toDouble(), 1.0);
-    QCOMPARE(figures.mostPlayed.at(1).toMap().value("fraction").toDouble(), 0.5);
-    const auto unknown = figures.mostPlayed.at(2).toMap();
-    QVERIFY(!unknown.value("inLibrary").toBool());
-    QVERIFY(unknown.value("key").toString().isEmpty());
-    QCOMPARE(figures.topGames, figures.mostPlayed);
-    QCOMPARE(figures.kpis.value("recordedSeconds").toLongLong(), qint64(6000));
-    QCOMPARE(figures.kpis.value("sessions").toInt(), 3);
-    QCOMPARE(figures.kpis.value("gamesPlayed").toInt(), 3);
-    QCOMPARE(figures.kpis.value("longestSessionSeconds").toLongLong(), qint64(3600));
-    QCOMPARE(figures.recentSessions.size(), 3);
-    QCOMPARE(figures.recentSessions.first().toMap().value("startedAt").toLongLong(), at(2026, 2, 4, 9));
-    // The hour bar and the weekday column of the same play share one scale.
-    QCOMPARE(figures.byHour.at(9).toMap().value("fraction").toDouble(), 1.0);
-    QCOMPARE(figures.byWeekday.at(0).toMap().value("fraction").toDouble(), 3600.0 / 6000.0);
-    QCOMPARE(figures.byDay.size(), 3);
   }
 
   void artworkChangesRebuildNoStats() {
@@ -374,7 +317,7 @@ private slots:
     reference.refresh();
     QCOMPARE(stats.headline(), reference.headline());
     QCOMPARE(stats.byHour(), reference.byHour());
-    QCOMPARE(stats.mostPlayed(), reference.mostPlayed());
+    QCOMPARE(stats.topGames(), reference.topGames());
     QCOMPARE(stats.library(), reference.library());
     QCOMPARE(stats.windowNote(), reference.windowNote());
 
