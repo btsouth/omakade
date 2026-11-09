@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes of
+  memory by giving thousands of files the same long name. Such archives are skipped.
 - When an emulator, manual game, native port or GOG game closes within a few seconds of
   starting, Omakade now says it closed right after starting and offers Open Log, on the
   desktop and in Game Mode, instead of only having said it was opening. A game closed with
