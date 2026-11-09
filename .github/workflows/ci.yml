@@ -169,7 +169,7 @@ jobs:
         if: matrix.shard == 1
         run: |
           desktop-file-validate packaging/io.github.tsouth89.Omakade.desktop
-          appstreamcli validate packaging/io.github.tsouth89.Omakade.metainfo.xml
+          appstreamcli validate --no-net packaging/io.github.tsouth89.Omakade.metainfo.xml
       - name: Verify staged install
         if: matrix.shard == 1
         run: |
@@ -188,7 +188,7 @@ jobs:
           test -x stage/usr/share/omakade/skills/omakade-tv-gaming/scripts/omakade-tv-game.py
           stage/usr/share/omakade/skills/omakade-tv-gaming/scripts/omakade-tv-game.py --help
           desktop-file-validate stage/usr/share/applications/io.github.tsouth89.Omakade.desktop
-          appstreamcli validate stage/usr/share/metainfo/io.github.tsouth89.Omakade.metainfo.xml
+          appstreamcli validate --no-net stage/usr/share/metainfo/io.github.tsouth89.Omakade.metainfo.xml
       - name: Compiler cache statistics
         if: always()
         run: ccache --show-stats
