@@ -460,7 +460,8 @@ each emulator.
 ## Stats and Year in Review
 
 Choose **Stats** in the header. Stats is built from recorded sessions, so turn on
-[recording](#track-play-sessions) first; until then it says nothing has been recorded yet.
+[recording](#track-play-sessions) first. While it is off, Stats says so and offers
+**Turn On Recording**; once it is on, Stats says nothing has been recorded until you play.
 
 - **This Year** and **All Time** choose the period, and Omakade remembers your choice.
 - **Overview** shows recorded play, days played, games played and sessions, your most

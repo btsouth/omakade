@@ -1018,12 +1018,61 @@ FocusScope {
                     }
                 }
 
-                // Nothing recorded yet is stated plainly, with what recording does, rather than
-                // a row of zeroes that reads like a fact about the games.
+                // Recording is off on new installations, so an empty Stats says that first and
+                // offers to turn it on, rather than promising figures that will never come.
                 ColumnLayout {
+                    objectName: "statsRecordingOff"
                     Layout.fillWidth: true
                     spacing: 6 * root.scaleFactor
                     visible: root.currentView !== 2 && !root.hasRecordedPlay && Stats.error.length === 0
+                             && !Preferences.trackPlaySessions
+                    SectionTitle { text: "RECORDING IS OFF" }
+                    Text {
+                        textFormat: Text.PlainText
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.body * root.scaleFactor
+                        text: "Stats is built from play sessions Omakade records, and recording is off. "
+                              + "When it is on, Omakade saves when each session started, when it ended and how long it ran."
+                    }
+                    Text {
+                        textFormat: Text.PlainText
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.supporting * root.scaleFactor
+                        text: "Dated sessions come from RetroArch, Dolphin, PCSX2, RPCS3, PPSSPP, Ryujinx, Eden, "
+                              + "Cemu, shadPS4, melonDS, mGBA, xemu, Xenia and Xodus Nexus. Steam and the other "
+                              + "launchers keep their own totals, which have no dates and appear in Library snapshot. "
+                              + "Record Playtime is in Settings > Library & launching."
+                    }
+                    GlassButton {
+                        objectName: "statsTurnOnRecordingButton"
+                        compact: true
+                        primary: true
+                        text: "TURN ON RECORDING"
+                        Accessible.name: "Turn on play session recording"
+                        onClicked: {
+                            Preferences.trackPlaySessions = true
+                            // This button goes away with the state it fixed, so focus moves back
+                            // to the view selector instead of being lost.
+                            root.selectView(root.currentView)
+                        }
+                        onActiveFocusChanged: if (activeFocus) root.revealItem(this)
+                    }
+                }
+
+                // Nothing recorded yet is stated plainly, with what recording does, rather than
+                // a row of zeroes that reads like a fact about the games.
+                ColumnLayout {
+                    objectName: "statsNoRecordedPlay"
+                    Layout.fillWidth: true
+                    spacing: 6 * root.scaleFactor
+                    visible: root.currentView !== 2 && !root.hasRecordedPlay && Stats.error.length === 0
+                             && Preferences.trackPlaySessions
                     SectionTitle { text: "NO RECORDED PLAY YET" }
                     Text {
                         textFormat: Text.PlainText

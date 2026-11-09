@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- An empty Stats now says when play recording is off, which it is on new installations,
+  and offers Turn On Recording with a line on what is recorded and which emulators give
+  dated sessions. With recording on, it still says nothing has been recorded yet.
 - Restoring a save backup is now refused while PPSSPP runs as PPSSPPSDL or PPSSPPQt, as it
   already was for other emulators, so a restore no longer writes under a running game.
 - The restore preview lists every manual game launch command a backup adds or changes,

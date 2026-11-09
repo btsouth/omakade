@@ -5299,6 +5299,41 @@ int main(int argc, char* argv[]) {
             }
           }
         }
+        // Recording is off on a new installation, so an empty Stats says so and turns it on
+        // from there, reachable by controller. Once it is on, the nothing-recorded-yet text
+        // returns.
+        if (renderOverlay == "stats-empty") {
+          QObject* preferences =
+              qmlContext(quickWindow)->contextProperty(QStringLiteral("Preferences")).value<QObject*>();
+          auto* recordingOff = quickWindow->findChild<QQuickItem*>("statsRecordingOff");
+          auto* noRecordedPlay = quickWindow->findChild<QQuickItem*>("statsNoRecordedPlay");
+          auto* turnOn = quickWindow->findChild<QQuickItem*>("statsTurnOnRecordingButton");
+          auto* overview = quickWindow->findChild<QQuickItem*>("statsOverviewButton");
+          if (!preferences || !recordingOff || !noRecordedPlay || !turnOn || !overview ||
+              preferences->property("trackPlaySessions").toBool() || !recordingOff->isVisible() ||
+              noRecordedPlay->isVisible() || !turnOn->isVisible()) {
+            qCritical() << "Empty Stats did not say that recording is off";
+            application.exit(EXIT_FAILURE); return;
+          }
+          overview->forceActiveFocus();
+          controller.focusDirectionRequested(Qt::Key_Down);
+          if (quickWindow->activeFocusItem() != turnOn) {
+            auto* focused = quickWindow->activeFocusItem();
+            qCritical() << "Controller could not reach Turn On Recording from the Stats views"
+                        << (focused ? focused->objectName() : QStringLiteral("nothing"));
+            application.exit(EXIT_FAILURE); return;
+          }
+          deliverKeyboardTestKey(quickWindow, Qt::Key_Return);
+          QCoreApplication::processEvents();
+          if (!preferences->property("trackPlaySessions").toBool() || recordingOff->isVisible() ||
+              !noRecordedPlay->isVisible() || quickWindow->activeFocusItem() != overview) {
+            qCritical() << "Turn On Recording did not turn recording on and keep focus in Stats";
+            application.exit(EXIT_FAILURE); return;
+          }
+          // The screenshot shows the recording-off state.
+          preferences->setProperty("trackPlaySessions", false);
+          QCoreApplication::processEvents();
+        }
         if (renderOverlay.startsWith("library-reflow") &&
             !quickWindow->property("libraryReflowComplete").toBool()) {
           qCritical() << "Library return fixture did not complete every transition";
