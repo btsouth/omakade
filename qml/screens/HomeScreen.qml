@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import "../components"
 import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
+import "../components/GameAccessibility.js" as GameAccessibility
 
 FocusScope {
     id: root
@@ -478,6 +479,13 @@ FocusScope {
             anchors.fill: parent
             focusPolicy: Qt.StrongFocus
             Accessible.name: tile.game.title + (tile.game.available ? "" : ", unavailable")
+            Accessible.description: (tile.suggested && tile.game.suggestionReason
+                                     ? tile.game.suggestionReason + ", " : "")
+                                    + GameAccessibility.cardDescription({
+                source: tile.game.system ? tile.game.subtitle || tile.game.source : tile.game.source,
+                playtime: tile.game.playtimeSeconds > 0 ? tile.game.playtimeText : "",
+                favorite: tile.game.favorite, completionStatus: tile.game.completionStatus
+            })
             onActiveFocusChanged: if (activeFocus) {
                 root.focusedIdentity = root.focusKey(tile.game)
                 root.focusedAction = "tile"

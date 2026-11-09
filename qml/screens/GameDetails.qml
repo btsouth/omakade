@@ -5,6 +5,7 @@ import QtQuick.Window
 import "../components"
 import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
+import "../components/GameAccessibility.js" as GameAccessibility
 
 Item {
     id: root
@@ -1731,6 +1732,7 @@ Item {
                             model: Achievements
 
                             Rectangle {
+                                id: achievementCard
                                 required property int index
                                 required property string title
                                 required property string description
@@ -1741,7 +1743,10 @@ Item {
                                 required property bool hidden
                                 objectName: "achievementCard" + index
                                 activeFocusOnTab: true
-                                Accessible.name: title
+                                Accessible.name: GameAccessibility.achievementName(achievementCard)
+                                Accessible.description: GameAccessibility.achievementDescription(
+                                    achievementCard, unlocked && unlockTime > 0
+                                    ? UserDates.format(new Date(unlockTime * 1000), "day") : "")
                                 Accessible.role: Accessible.ListItem
                                 Accessible.focused: activeFocus
                                 Layout.fillWidth: true

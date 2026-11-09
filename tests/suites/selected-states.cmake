@@ -1,4 +1,5 @@
-# Selected and on/off buttons look selected under focus and report checked to screen readers.
+# Selected and on/off buttons look selected under focus and report checked to screen readers,
+# and game cards announce their state and can be opened from a screen reader.
 omakade_test_executable(omakade_selected_state_ui_tests
   SOURCES SelectedStateUiTests.cpp
   LIBRARIES Qt6::Quick

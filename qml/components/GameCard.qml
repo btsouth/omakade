@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import "GameAccessibility.js" as GameAccessibility
 
 FocusScope {
     id: root
@@ -39,10 +40,13 @@ FocusScope {
 
     activeFocusOnTab: true
     Accessible.name: title
-    Accessible.description: subtitle + ", " + playtimeText + " played"
-                            + (rating >= 0 ? ", rated " + rating + " out of 100" : "")
-                            + (!root.installed ? ", not installed" : "")
+    Accessible.description: GameAccessibility.cardDescription({
+        source: root.subtitle, playtime: root.playtimeText, rating: root.rating,
+        favorite: root.favorite, completionStatus: root.completionStatus, installed: root.installed
+    })
     Accessible.role: Accessible.ListItem
+    // Screen readers open the game the same way Enter does.
+    Accessible.onPressAction: root.activated()
 
     function acceptInput(event) {
         root.activated()
