@@ -65,6 +65,11 @@ public:
   [[nodiscard]] QColor blue() const;
   [[nodiscard]] QColor magenta() const;
 
+  // A text color for labels drawn on an opaque fill, such as status pills. It keeps a theme
+  // color when that reaches WCAG AA (4.5:1) and otherwise uses black or white.
+  Q_INVOKABLE QColor readableOn(const QColor& fill) const;
+  [[nodiscard]] static double contrastRatio(const QColor& first, const QColor& second);
+
   Q_INVOKABLE void reload();
 
 signals:
@@ -82,7 +87,6 @@ private:
   [[nodiscard]] static QColor parsedColor(const Values& values, const QString& key,
                                           const QColor& fallback);
   [[nodiscard]] static QString resolvedMonospaceFamily();
-  [[nodiscard]] static double contrastRatio(const QColor& first, const QColor& second);
   void applyFallback();
   void applyValues(const Values& values);
   void refreshHyprlandMetrics();

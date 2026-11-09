@@ -308,6 +308,20 @@ double OmarchyTheme::contrastRatio(const QColor& first, const QColor& second) {
   return (brightest + 0.05) / (darkest + 0.05);
 }
 
+QColor OmarchyTheme::readableOn(const QColor& fill) const {
+  QColor opaque = fill.toRgb();
+  opaque.setAlpha(255);
+  for (const QColor& candidate : {m_brightForeground, m_darkerBackground}) {
+    if (contrastRatio(candidate, opaque) >= 4.5) {
+      return candidate;
+    }
+  }
+  // One of black and white always clears 4.5:1 against an opaque color.
+  const QColor black(Qt::black);
+  const QColor white(Qt::white);
+  return contrastRatio(black, opaque) >= contrastRatio(white, opaque) ? black : white;
+}
+
 void OmarchyTheme::applyFallback() {
   m_omarchyAvailable = false;
   m_themeName = QStringLiteral("Omakade Dark");

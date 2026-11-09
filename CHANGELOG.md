@@ -7,6 +7,10 @@
 - RomM settings show whether the server connection is encrypted. Plain HTTP works
   without asking for local network and loopback addresses; for any other server,
   Omakade asks before it sends the token unencrypted.
+- Status pills on library cards are larger and readable on every theme. Their label
+  color is picked by contrast against the pill, so Catppuccin Latte and other light
+  themes no longer show dark text on a saturated fill. On the smallest covers the label
+  shrinks so the pill stays clear of the favorite heart.
 
 ## 1.18.0
 

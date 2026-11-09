@@ -201,35 +201,69 @@ FocusScope {
             color: root.alpha(Theme.darkerBackground, root.current ? 0.38 : 0.52)
         }
 
+        // Sized at a fixed font so the width does not depend on the fitted label.
+        TextMetrics {
+            id: statusMetrics
+            text: root.completionStatus.toUpperCase()
+            font.family: Theme.fontFamily
+            font.pixelSize: 11
+            font.weight: Font.Bold
+            font.letterSpacing: 0.5
+        }
+
         Rectangle {
+            id: statusPill
+            objectName: "statusPill"
+            // Space left of the favorite badge, so the two never overlap on small covers.
+            readonly property real availableWidth:
+                cover.width - 18 - (root.favorite ? favoriteBadge.width + 4 : 0)
+            readonly property bool tight: statusMetrics.advanceWidth + 20 > availableWidth
+            readonly property int padding: tight ? 14 : 20
             visible: root.completionStatus.length > 0
             height: 25
-            width: statusText.implicitWidth + 18
+            width: Math.max(0, Math.min(statusMetrics.advanceWidth + padding, availableWidth))
             radius: 13
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.margins: 9
+            // Opaque so the label contrast does not depend on the artwork underneath.
             color: root.completionStatus === "completed"
-                   ? root.alpha(Theme.green, 0.82)
+                   ? Theme.green
                    : root.completionStatus === "playing"
-                     ? root.alpha(Theme.accent, 0.82)
+                     ? Theme.accent
                      : root.completionStatus === "backlog"
-                       ? root.alpha(Theme.yellow, 0.78)
-                       : root.alpha(Theme.darkerBackground, 0.72)
+                       ? Theme.yellow
+                       : Theme.darkerBackground
             border.color: root.alpha(Theme.brightForeground, 0.20)
 
             Text {
                 id: statusText
+                objectName: "statusPillText"
                 anchors.centerIn: parent
+                width: Math.max(0, parent.width - parent.padding)
+                horizontalAlignment: Text.AlignHCenter
                 text: root.completionStatus.toUpperCase()
-                color: Theme.brightForeground
+                // readableOn reads theme colors the binding cannot see, so name them here.
+                color: {
+                    Theme.brightForeground
+                    Theme.darkerBackground
+                    return Theme.readableOn(statusPill.color)
+                }
                 font.family: Theme.fontFamily
-                font.pixelSize: 8
+                font.pixelSize: 11
                 font.weight: Font.Bold
+                font.letterSpacing: statusPill.tight ? 0 : 0.5
+                // Shrinks toward the old 8px label on the narrowest covers instead of
+                // running under the favorite badge.
+                fontSizeMode: statusPill.tight ? Text.HorizontalFit : Text.FixedSize
+                minimumPixelSize: 7
+                elide: statusPill.tight ? Text.ElideRight : Text.ElideNone
             }
         }
 
         Rectangle {
+            id: favoriteBadge
+            objectName: "favoriteBadge"
             visible: root.favorite
             width: 28
             height: 28
