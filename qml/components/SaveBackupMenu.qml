@@ -18,10 +18,12 @@ ActionMenu {
         property bool pendingShared: false
         property bool pendingDelete: false
         property string pendingLabel: ""
+        property bool pendingKeep: false
         onClosed: {
             pendingVersion = ""
             pendingDelete = false
             pendingLabel = ""
+            pendingKeep = false
         }
         Text {
             textFormat: Text.PlainText
@@ -142,7 +144,7 @@ ActionMenu {
         MenuAction {
             objectName: saveBackupsMenu.namePrefix + "createSaveBackup"
             Layout.fillWidth: true
-            visible: saveBackupsMenu.pendingVersion === ""
+            visible: saveBackupsMenu.pendingVersion === "" && !saveBackupsMenu.pendingKeep
                      && typeof SaveBackups !== "undefined" && SaveBackups.canSnapshot
             text: "BACK UP NOW"
             onClicked: {
@@ -152,16 +154,58 @@ ActionMenu {
         }
         MenuAction {
             Layout.fillWidth: true
-            visible: typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
+            visible: saveBackupsMenu.pendingVersion === "" && !saveBackupsMenu.pendingKeep
+                     && typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
             text: "RETRY SAVE RECOVERY"
-            onClicked: SaveBackups.retryRecovery()
+            onClicked: {
+                SaveBackups.retryRecovery()
+                saveBackupsMenu.doneControl.forceActiveFocus()
+            }
         }
         MenuAction {
             objectName: saveBackupsMenu.namePrefix + "keepCurrentSaves"
             Layout.fillWidth: true
-            visible: typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
+            visible: saveBackupsMenu.pendingVersion === "" && !saveBackupsMenu.pendingKeep
+                     && typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
+            text: "KEEP CURRENT SAVES…"
+            onClicked: {
+                saveBackupsMenu.pendingKeep = true
+                Qt.callLater(cancelKeepCurrentSaves.forceActiveFocus)
+            }
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingKeep
+            wrapMode: Text.Wrap
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: 12
+            lineHeight: 1.2
+            text: "Keep the current saves as they are? An unfinished restore may have left a mix of "
+                  + "old and new save files. Recovery will stop, and its copies will be moved to "
+                  + "sets/recovery-archive in the backup destination, not deleted."
+        }
+        MenuAction {
+            id: cancelKeepCurrentSaves
+            objectName: saveBackupsMenu.namePrefix + "cancelKeepCurrentSaves"
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingKeep
+            text: "CANCEL"
+            onClicked: {
+                saveBackupsMenu.pendingKeep = false
+                saveBackupsMenu.doneControl.forceActiveFocus()
+            }
+        }
+        MenuAction {
+            objectName: saveBackupsMenu.namePrefix + "confirmKeepCurrentSaves"
+            Layout.fillWidth: true
+            visible: saveBackupsMenu.pendingKeep
             text: "KEEP CURRENT SAVES"
-            onClicked: SaveBackups.keepCurrentSaves()
+            onClicked: {
+                SaveBackups.keepCurrentSaves()
+                saveBackupsMenu.pendingKeep = false
+                saveBackupsMenu.doneControl.forceActiveFocus()
+            }
         }
         Repeater {
             model: typeof SaveBackups !== "undefined" ? SaveBackups.versions : []
@@ -170,7 +214,7 @@ ActionMenu {
                 required property int index
                 objectName: saveBackupsMenu.namePrefix + "saveBackupVersion_" + index
                 Layout.fillWidth: true
-                visible: saveBackupsMenu.pendingVersion === ""
+                visible: saveBackupsMenu.pendingVersion === "" && !saveBackupsMenu.pendingKeep
                 text: UserDates.format(new Date(modelData.createdAt), "datetime")
                       + "  ·  " + saveBackupsMenu.storageSizeText(modelData.bytes)
                       + (modelData.shared === true ? "  ·  SHARED" : "")

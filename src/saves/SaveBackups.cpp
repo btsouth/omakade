@@ -817,13 +817,16 @@ bool SaveBackups::keepCurrentSaves() {
 bool SaveBackups::protectLaunch(const QString& source, const QString& game, const QString& core,
                                 bool flatpak, const QString& id, const QString& runner,
                                 const QString& target) {
-  if (!m_enabled)
-    return true;
   const QJsonObject context{{"source", source},   {"game", game}, {"core", core},
                             {"flatpak", flatpak}, {"id", id},     {"runner", runner},
                             {"target", target}};
   QString error;
+  // Roll back an interrupted restore even with protection off, but only block when it is on.
   if (!m_sets.recover([this](const QJsonObject& c) { return resolve(c); }, &error)) {
+    if (!m_enabled) {
+      report(error + " Save protection is off, so the game was launched anyway.", true);
+      return true;
+    }
     if (m_sets.pendingAffects(game, resolve(context))) {
       report(error + " Launch is paused for this game. In Save Backups, retry recovery or "
                      "keep the current saves.",
@@ -833,6 +836,8 @@ bool SaveBackups::protectLaunch(const QString& source, const QString& game, cons
     report(error + " This game's saves were not copied.", true);
     return true;
   }
+  if (!m_enabled)
+    return true;
   if (m_running()) {
     report("Save copy skipped while an emulator is running.", true);
     return true;
@@ -935,6 +940,7 @@ bool SaveBackups::snapshot(const QString& game, const QString& core, const QStri
   while (files.hasNext()) {
     files.next();
     if (!m_customPolicy && files.filePath().startsWith(m_root + "/sets/")) continue;
+    if (files.filePath().startsWith(m_root + "/sets/recovery-archive/")) continue;
     used += files.fileInfo().size();
     if (++entries > 20000 || used + bytes.size() > qint64(m_customPolicy ? m_storageLimitMiB : 256)*1024*1024) {
       *error = "The backup storage limit was reached. Existing backups were kept.";

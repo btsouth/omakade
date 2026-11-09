@@ -461,9 +461,16 @@ private slots:
     // Another game with separate save files still launches.
     QVERIFY(backups.protectLaunch("RetroArch", other, "gambatte_libretro.so"));
     QVERIFY(backups.recoveryPending());
-    // Turning save protection off never blocks a launch.
+    // A different game that writes the same save file waits too.
+    const QString sameSaves = f.home + "/roms2/game.gbc";
+    put(sameSaves, "other rom");
+    QVERIFY(!backups.protectLaunch("RetroArch", sameSaves, "gambatte_libretro.so"));
+    QVERIFY(backups.message().contains("Launch is paused"));
+    // Turning save protection off never blocks a launch, but still warns.
     backups.setEnabled(false);
     QVERIFY(backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
+    QVERIFY(backups.message().contains("launched anyway"));
+    QVERIFY(backups.recoveryPending());
     backups.setEnabled(true);
     QVERIFY(!backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
     QVERIFY(backups.message().contains("keep the current saves"));
@@ -477,6 +484,39 @@ private slots:
     QCOMPARE(get(f.home + "/saves/game.srm"), QByteArray("external progress"));
     QVERIFY(backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
     QCOMPARE(get(f.home + "/saves/game.srm"), QByteArray("external progress"));
+  }
+  void protectionOffStillRollsBackInterruptedRestore() {
+    Fixture f;
+    const QString config = f.home + "/retroarch.cfg";
+    put(config, "savefile_directory = \"~/saves\"\n");
+    put(f.home + "/saves/game.srm", "original SRAM");
+    put(f.home + "/saves/game.rtc", "original RTC");
+    const QJsonObject context{
+        {"source", "RetroArch"}, {"game", f.game}, {"core", "gambatte_libretro.so"}};
+    auto resolve = [&](const QJsonObject& c) { return resolveSaveLayout(c, f.home, config); };
+    int checks = 0;
+    bool interrupt = false;
+    SaveSetStore store(f.root + "/sets", [&] { return interrupt && ++checks >= 6; });
+    QVERIFY(store.snapshot(f.game, context, resolve(context), &f.error));
+    const auto version = store.versions(f.game).first().toMap()["id"].toString();
+    put(f.home + "/saves/game.srm", "new SRAM");
+    put(f.home + "/saves/game.rtc", "new RTC");
+    interrupt = true;
+    QVERIFY(!store.restore(f.game, version, resolve, &f.error));
+    QVERIFY(store.pending());
+    SaveBackups backups(f.home, config, f.root, [] { return false; });
+    backups.setEnabled(false);
+    QVERIFY(backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
+    QVERIFY(!backups.recoveryPending());
+    QCOMPARE(get(f.home + "/saves/game.srm"), QByteArray("new SRAM"));
+    QCOMPARE(get(f.home + "/saves/game.rtc"), QByteArray("new RTC"));
+  }
+  void recoveryArchiveDoesNotUseBackupBudget() {
+    Fixture f;
+    put(f.root + "/recovery-archive/20261108-000000-000/before/big",
+        QByteArray(2 * 1024 * 1024, 'x'));
+    f.store.setPolicy(5, 17 * 1024 * 1024);
+    QVERIFY2(f.store.snapshot(f.game, f.context, f.layout, &f.error), qPrintable(f.error));
   }
   void damagedRecoveryJournalBlocksEveryProtectedLaunch() {
     Fixture f;

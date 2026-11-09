@@ -541,11 +541,14 @@ bool SaveSetStore::snapshot(const QString& game, const QJsonObject& context,
   for (const auto& bytes : data)
     size += bytes.size();
   qint64 used = 0;
+  // Kept recovery copies are not backups and must not use up the backup budget.
+  const QString archived = m_root + "/recovery-archive/";
   QDirIterator it(m_budgetRoot.isEmpty()?m_root:m_budgetRoot, QDir::Files | QDir::Hidden | QDir::NoSymLinks,
                   QDirIterator::Subdirectories);
   while (it.hasNext()) {
     it.next();
-    used += it.fileInfo().size();
+    if (!it.filePath().startsWith(archived))
+      used += it.fileInfo().size();
   }
   if (used + size + 16 * 1024 * 1024 > m_storageLimit) {
     *error = "The backup storage limit was reached. Existing backups were kept.";
