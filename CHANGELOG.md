@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The Year in Review card preview now opens on its own panel, like Settings, so its title
+  and Save image and Close buttons no longer draw over the Omakade logo and header buttons.
+- Settings > Backup & Storage now uses the same text sizes and section headings as the
+  other Settings pages, grouped as Save protection, Backup & restore and Downloaded artwork.
 - Screen readers now hear a game card's favorite, completion status and install state in
   the library, Home and Game Mode, and can open the game from the card. Hidden achievements
   no longer reveal their name to screen readers before they are unlocked.

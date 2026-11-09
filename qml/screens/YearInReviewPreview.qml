@@ -74,99 +74,131 @@ FocusScope {
         event.accepted = true
     }
 
+    // The same dimmed backdrop as Settings, taken from the theme so light themes are not buried
+    // under black.
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.78)
+        color: Qt.rgba(Theme.darkerBackground.r, Theme.darkerBackground.g,
+                       Theme.darkerBackground.b, 0.72)
         MouseArea {
             anchors.fill: parent
             onClicked: root.close()
         }
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 24 * root.scaleFactor
-        spacing: 12 * root.scaleFactor
+    // The preview is a panel of its own, like Settings, so its title and buttons sit on their own
+    // surface instead of over the app header's logo and buttons behind it.
+    Rectangle {
+        id: panel
+        objectName: "cardPreviewPanel"
+        readonly property real margin: 24 * root.scaleFactor
+        readonly property real padding: 24 * root.scaleFactor
+        // The scale the card gets from the height it is given, which sets how wide the panel needs
+        // to be. A status line, when shown, only shrinks the card a little inside the same panel.
+        readonly property real cardFit: Math.min(1, Math.max(0,
+            (height - 2 * padding - header.implicitHeight - content.spacing) / card.cardHeight))
+        anchors.centerIn: parent
+        height: Math.max(0, parent.height - 2 * margin)
+        width: Math.max(0, Math.min(parent.width - 2 * margin,
+                                    Math.max(520 * root.scaleFactor,
+                                             card.cardWidth * cardFit + 2 * padding)))
+        radius: Math.max(8 * root.scaleFactor, Theme.cornerRadius)
+        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.98)
+        border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.2)
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 10 * root.scaleFactor
-            Text {
+        // Clicks on the panel stay on it rather than reaching the backdrop and closing the preview.
+        MouseArea { anchors.fill: parent }
+
+        ColumnLayout {
+            id: content
+            anchors.fill: parent
+            anchors.margins: panel.padding
+            spacing: 12 * root.scaleFactor
+
+            RowLayout {
+                id: header
                 Layout.fillWidth: true
-                text: "YOUR CARD"
-                color: Theme.brightForeground
-                font.family: Theme.fontFamily
-                font.pixelSize: UiMetrics.section * root.scaleFactor
-                font.letterSpacing: 1.4 * root.scaleFactor
-                font.weight: Font.DemiBold
-            }
-            GlassButton {
-                id: saveButton
-                objectName: "cardSaveButton"
-                text: "SAVE IMAGE"
-                compact: true
-                onClicked: root.saveTo("")
-                // The folder button only exists after a save, so the chain steps over it until it
-                // does: a controller should never be left pressing right into nothing.
-                KeyNavigation.right: cardFolderButton.visible ? cardFolderButton : cardCloseButton
-            }
-            GlassButton {
-                id: cardFolderButton
-                objectName: "cardFolderButton"
-                text: "OPEN FOLDER"
-                compact: true
-                visible: root.savedPath.length > 0
-                onClicked: CardExport.reveal(root.savedPath)
-                KeyNavigation.left: saveButton
-                KeyNavigation.right: cardCloseButton
-            }
-            GlassButton {
-                id: cardCloseButton
-                objectName: "cardCloseButton"
-                text: "CLOSE"
-                compact: true
-                onClicked: root.close()
-                KeyNavigation.left: cardFolderButton.visible ? cardFolderButton : saveButton
-            }
-        }
-
-        Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Item {
-                id: cardHost
-                width: card.cardWidth
-                height: card.cardHeight
-                anchors.centerIn: parent
-                visible: root.readable
-                scale: Math.min(1, parent.width / width, parent.height / height)
-                transformOrigin: Item.Center
-                YearInReviewCard {
-                    id: card
-                    anchors.fill: parent
+                spacing: 10 * root.scaleFactor
+                Text {
+                    objectName: "cardPreviewTitle"
+                    Layout.fillWidth: true
+                    text: "YOUR CARD"
+                    color: Theme.brightForeground
+                    font.family: Theme.fontFamily
+                    font.pixelSize: UiMetrics.section * root.scaleFactor
+                    font.letterSpacing: 1.4 * root.scaleFactor
+                    font.weight: Font.DemiBold
+                }
+                GlassButton {
+                    id: saveButton
+                    objectName: "cardSaveButton"
+                    text: "SAVE IMAGE"
+                    compact: true
+                    onClicked: root.saveTo("")
+                    // The folder button only exists after a save, so the chain steps over it
+                    // until it does: a controller should never be left pressing right into
+                    // nothing.
+                    KeyNavigation.right: cardFolderButton.visible ? cardFolderButton
+                                                                  : cardCloseButton
+                }
+                GlassButton {
+                    id: cardFolderButton
+                    objectName: "cardFolderButton"
+                    text: "OPEN FOLDER"
+                    compact: true
+                    visible: root.savedPath.length > 0
+                    onClicked: CardExport.reveal(root.savedPath)
+                    KeyNavigation.left: saveButton
+                    KeyNavigation.right: cardCloseButton
+                }
+                GlassButton {
+                    id: cardCloseButton
+                    objectName: "cardCloseButton"
+                    text: "CLOSE"
+                    compact: true
+                    onClicked: root.close()
+                    KeyNavigation.left: cardFolderButton.visible ? cardFolderButton : saveButton
                 }
             }
-            Text {
-                anchors.centerIn: parent
-                width: parent.width * 0.8
-                visible: !root.readable
-                wrapMode: Text.Wrap
-                horizontalAlignment: Text.AlignHCenter
-                text: Stats.error
-                color: Theme.red
-                font.family: Theme.fontFamily
-                font.pixelSize: 13 * root.scaleFactor
-            }
-        }
 
-        Text {
-            Layout.fillWidth: true
-            visible: root.status.length > 0 || root.failure.length > 0
-            wrapMode: Text.Wrap
-            text: root.failure.length > 0 ? root.failure : root.status
-            color: root.failure.length > 0 ? Theme.red : Theme.mutedText
-            font.family: Theme.fontFamily
-            font.pixelSize: UiMetrics.body * root.scaleFactor
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Item {
+                    id: cardHost
+                    width: card.cardWidth
+                    height: card.cardHeight
+                    anchors.centerIn: parent
+                    visible: root.readable
+                    scale: Math.min(1, parent.width / width, parent.height / height)
+                    transformOrigin: Item.Center
+                    YearInReviewCard {
+                        id: card
+                        anchors.fill: parent
+                    }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.8
+                    visible: !root.readable
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    text: Stats.error
+                    color: Theme.red
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 13 * root.scaleFactor
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.status.length > 0 || root.failure.length > 0
+                wrapMode: Text.Wrap
+                text: root.failure.length > 0 ? root.failure : root.status
+                color: root.failure.length > 0 ? Theme.red : Theme.mutedText
+                font.family: Theme.fontFamily
+                font.pixelSize: UiMetrics.body * root.scaleFactor
+            }
         }
     }
 }

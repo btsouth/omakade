@@ -2183,54 +2183,99 @@ import "Counts.js" as Counts
                 }
                 }
                 ColumnLayout {
+                    objectName: "backupStorageSettings"
                     Layout.fillWidth: true
                     spacing: 14
                     visible: settingsOverlay.section === 4
-                Text {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Omakade backup archives contain organization and preferences, not emulator saves. Save protection keeps separate local copies. Clearing downloaded artwork does not remove game files."
-                    color: Theme.mutedText; font.family: Theme.fontFamily
-                }
-                SaveProtectionPanel { Layout.fillWidth: true; host: settingsOverlay.host }
-                GlassButton {
-                    objectName: "saveProtectionSettingsButton"
-                    compact: true
-                    text: "SAVE PROTECTION: " + (Preferences.protectRetroArchSaves ? "ON" : "OFF")
-                    selectable: true
-                    selected: Preferences.protectRetroArchSaves
-                    onClicked: Preferences.protectRetroArchSaves = !Preferences.protectRetroArchSaves
-                }
-                Text {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap
-                    text: "Keeps previous in-game saves before emulator launches. Restore from Manage Game > Save Backups. Shared memory-card restores also affect other games on that card. Save states and cloud sync are not included."
-                    color: Theme.mutedText; font.family: Theme.fontFamily
-                }
-                GlassButton { compact: true; text: "CLEAR DOWNLOADED PORTRAITS"; enabled: Metadata && !Metadata.busy; onClicked: Metadata.clearPortraitCache() }
-                GlassButton {
-                    objectName: "backupSettingsButton"
-                    compact: true
-                    text: "BACKUP & RESTORE"
-                    enabled: Backups.available
-                    onClicked: host.openBackupEditor()
-                }
-
-                Flow { Layout.fillWidth: true; spacing: 8
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "SAVE PROTECTION"
+                        color: Theme.brightForeground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.section * settingsPanel.uiScale
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        text: "Keeps previous in-game saves before emulator launches. Restore from Manage Game > Save Backups. Shared memory-card restores also affect other games on that card. Save states and cloud sync are not included."
+                        color: Theme.mutedText; font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.body * settingsPanel.uiScale
+                    }
                     GlassButton {
-                        Layout.fillWidth: true
+                        objectName: "saveProtectionSettingsButton"
                         compact: true
-                        text: "CACHE -"
-                        onClicked: Preferences.artworkCacheLimitMb -= 128
-                    }                    GlassButton {
+                        text: "SAVE PROTECTION: " + (Preferences.protectRetroArchSaves ? "ON" : "OFF")
+                        selectable: true
+                        selected: Preferences.protectRetroArchSaves
+                        onClicked: Preferences.protectRetroArchSaves = !Preferences.protectRetroArchSaves
+                    }
+                    SaveProtectionPanel {
                         Layout.fillWidth: true
+                        host: settingsOverlay.host
+                        uiScale: settingsPanel.uiScale
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "BACKUP & RESTORE"
+                        color: Theme.brightForeground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.section * settingsPanel.uiScale
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        text: "Omakade backup archives contain organization and preferences, not emulator saves. Save protection keeps separate local copies."
+                        color: Theme.mutedText; font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.body * settingsPanel.uiScale
+                    }
+                    GlassButton {
+                        objectName: "backupSettingsButton"
                         compact: true
-                        text: "CACHE +"
-                        onClicked: Preferences.artworkCacheLimitMb += 128
-                    }                    GlassButton {
-                        Layout.fillWidth: true
-                        compact: true
-                        text: "CLEAR ACHIEVEMENT ART"
-                        onClicked: Achievements.clearCache()
-                    }                }
+                        text: "BACKUP & RESTORE"
+                        enabled: Backups.available
+                        onClicked: host.openBackupEditor()
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: "DOWNLOADED ARTWORK"
+                        color: Theme.brightForeground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.section * settingsPanel.uiScale
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true; wrapMode: Text.Wrap
+                        text: "Clearing downloaded artwork does not remove game files."
+                        color: Theme.mutedText; font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.body * settingsPanel.uiScale
+                    }
+                    Flow { Layout.fillWidth: true; spacing: 8
+                        GlassButton { compact: true; text: "CLEAR DOWNLOADED PORTRAITS"; enabled: Metadata && !Metadata.busy; onClicked: Metadata.clearPortraitCache() }
+                        GlassButton {
+                            Layout.fillWidth: true
+                            compact: true
+                            text: "CACHE -"
+                            onClicked: Preferences.artworkCacheLimitMb -= 128
+                        }                    GlassButton {
+                            Layout.fillWidth: true
+                            compact: true
+                            text: "CACHE +"
+                            onClicked: Preferences.artworkCacheLimitMb += 128
+                        }                    GlassButton {
+                            Layout.fillWidth: true
+                            compact: true
+                            text: "CLEAR ACHIEVEMENT ART"
+                            onClicked: Achievements.clearCache()
+                        }                }
+                }
 
                 }
             }
