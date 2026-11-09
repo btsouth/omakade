@@ -118,7 +118,9 @@ class PackageLayoutTests(unittest.TestCase):
                    "--backup-editor-test", "--bulk-editor-test", "--saved-filter-test",
                    "--random-selection-test", "--launching-navigation-test", "--stale-selection-test",
                    "--game-mode-test", "--filter-back-test", "--artwork-editor-test",
-                   "--manual-editor-test"]
+                   "--manual-editor-test", "--couch-navigation-test", "--couch-navigation-contract",
+                   "--couch-navigation-sweep", "--controller-navigation-test", "--startup-navigation-test",
+                   "--startup-grid", "--startup-empty", "--startup-delayed", "--startup-controller"]
         self.assertEqual([option for option in harness if mentions(option)], [])
 
     def test_installed_documentation_names_no_private_machines(self) -> None:
