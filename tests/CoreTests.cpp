@@ -1047,6 +1047,7 @@ private slots:
   void themeLoadsSemanticColors();
   void themeFallsBackWithoutOmarchy();
   void themePicksReadableTextOnStatusFills();
+  void themeFocusRingStandsOutOnEverySurface();
   void themeReloadsWhenActiveFileChanges();
   void themeFollowsShellLauncherTransparency();
   void themeResolvesCompactTerminalPalette();
@@ -1435,6 +1436,51 @@ void CoreTests::themePicksReadableTextOnStatusFills() {
   QColor translucent = tokyo.accent();
   translucent.setAlphaF(0.5);
   QCOMPARE(tokyo.readableOn(translucent), tokyo.darkerBackground());
+}
+
+void CoreTests::themeFocusRingStandsOutOnEverySurface() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString configHome = directory.path() + QStringLiteral("/config");
+  const QString tokyoState = directory.path() + QStringLiteral("/tokyo");
+  writeFile(tokyoState + QStringLiteral("/omarchy/current/theme/colors.toml"), sampleTheme());
+  const QString latteState = directory.path() + QStringLiteral("/latte");
+  writeFile(latteState + QStringLiteral("/omarchy/current/theme/colors.toml"),
+            "mode = \"light\"\naccent = \"#1e66f5\"\n"
+            "background = \"#eff1f5\"\ndark_background = \"#e3e4e8\"\n"
+            "darker_background = \"#d7d8dc\"\nlighter_background = \"#dce0e8\"\n"
+            "foreground = \"#4c4f69\"\ndark_foreground = \"#9ca0b0\"\n"
+            "light_foreground = \"#5c5f77\"\nbright_foreground = \"#4c4f69\"\n");
+  // A muted accent that sits close to its own surfaces, as some themes ship.
+  const QString dimState = directory.path() + QStringLiteral("/dim");
+  writeFile(dimState + QStringLiteral("/omarchy/current/theme/colors.toml"),
+            "accent = \"#3b4252\"\nbackground = \"#2e3440\"\n"
+            "dark_background = \"#272c36\"\ndarker_background = \"#20242c\"\n"
+            "foreground = \"#d8dee9\"\nbright_foreground = \"#eceff4\"\n");
+
+  OmarchyTheme fallback(directory.path() + QStringLiteral("/none"), configHome);
+  OmarchyTheme tokyo(tokyoState, configHome);
+  OmarchyTheme latte(latteState, configHome);
+  OmarchyTheme dim(dimState, configHome);
+  OmarchyTheme light(QStringLiteral(OMAKADE_FIXTURE_DIR) + QStringLiteral("/light-state"),
+                     configHome);
+  QVERIFY(dim.omarchyAvailable());
+
+  for (const OmarchyTheme* theme : {&fallback, &tokyo, &latte, &dim, &light}) {
+    const QColor ring = theme->focusRing();
+    QCOMPARE(theme->property("focusRing").value<QColor>(), ring);
+    for (const QColor& surface :
+         {theme->background(), theme->darkBackground(), theme->darkerBackground()}) {
+      QVERIFY2(OmarchyTheme::contrastRatio(ring, surface) >= 3.0,
+               qPrintable(theme->themeName() + QStringLiteral(" ") + ring.name() +
+                          QStringLiteral(" on ") + surface.name()));
+    }
+  }
+  // A readable accent stays the ring color; a dim one gives way to the theme's bright text.
+  QCOMPARE(tokyo.focusRing(), tokyo.accent());
+  QCOMPARE(latte.focusRing(), latte.accent());
+  QVERIFY(OmarchyTheme::contrastRatio(dim.accent(), dim.background()) < 3.0);
+  QCOMPARE(dim.focusRing(), dim.brightForeground());
 }
 
 void CoreTests::themeReloadsWhenActiveFileChanges() {

@@ -46,7 +46,8 @@ private slots:
     QVERIFY(dir.isValid());
     const QString components = dir.filePath("components");
     QVERIFY(QDir().mkpath(components));
-    for (const QString& file : {QStringLiteral("GlassButton.qml"), QStringLiteral("UiMetrics.qml")})
+    for (const QString& file : {QStringLiteral("GlassButton.qml"), QStringLiteral("FocusRing.qml"),
+                                QStringLiteral("UiMetrics.qml")})
       QVERIFY(QFile::copy(QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/") + file,
                           components + "/" + file));
     QVERIFY(QFile::copy(
@@ -54,7 +55,8 @@ private slots:
         components + "/Buttons.qml"));
     QFile qmldir(components + "/qmldir");
     QVERIFY(qmldir.open(QIODevice::WriteOnly));
-    qmldir.write("singleton UiMetrics 1.0 UiMetrics.qml\nGlassButton 1.0 GlassButton.qml\n");
+    qmldir.write("singleton UiMetrics 1.0 UiMetrics.qml\nGlassButton 1.0 GlassButton.qml\n"
+                 "FocusRing 1.0 FocusRing.qml\n");
     qmldir.close();
 
     AppSettings preferences(dir.filePath("config"));

@@ -28,11 +28,16 @@ CheckBox {
                ? Theme.accent
                : Qt.rgba(Theme.foreground.r, Theme.foreground.g,
                          Theme.foreground.b, 0.045)
-        border.width: control.activeFocus ? 2 : 1
-        border.color: control.activeFocus
-                      ? Theme.accent
-                      : Qt.rgba(Theme.foreground.r, Theme.foreground.g,
-                                Theme.foreground.b, 0.16)
+        border.width: 1
+        border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g,
+                              Theme.foreground.b, 0.16)
+
+        // Outside the box, so it still shows on the accent fill of a checked box.
+        FocusRing {
+            shown: control.activeFocus
+            thickness: 3 * control.uiScale
+            offset: 3 * control.uiScale
+        }
 
         Text {
             anchors.centerIn: parent

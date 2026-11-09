@@ -73,15 +73,6 @@ FocusScope {
 
     Rectangle {
         anchors.fill: cover
-        anchors.margins: root.current ? -5 : 0
-        radius: cover.radius + 4
-        color: root.current ? root.alpha(Theme.accent, 0.16) : "transparent"
-        border.width: root.current ? 2 : 0
-        border.color: Theme.accent
-    }
-
-    Rectangle {
-        anchors.fill: cover
         anchors.topMargin: 6
         anchors.leftMargin: 5
         anchors.rightMargin: -5
@@ -98,8 +89,8 @@ FocusScope {
         height: Math.round(width * 1.5)
         radius: Math.max(5, Theme.cornerRadius)
         clip: true
-        border.width: root.current ? 3 : 1
-        border.color: root.current ? Theme.accent : root.alpha(Theme.foreground, 0.15)
+        border.width: 1
+        border.color: root.alpha(Theme.foreground, 0.15)
 
         gradient: Gradient {
             orientation: Gradient.Horizontal
@@ -286,6 +277,26 @@ FocusScope {
             enabled: !Preferences.reducedMotion
             ColorAnimation { duration: 120 }
         }
+    }
+
+    // The current card keeps a quiet outline while focus is elsewhere, such as the search field.
+    // It sits outside the cover like the ring, since artwork paints over the cover's own border.
+    Rectangle {
+        objectName: "currentMarker"
+        anchors.fill: cover
+        anchors.margins: -3
+        radius: cover.radius + 3
+        color: "transparent"
+        border.width: 2
+        border.color: root.alpha(Theme.foreground, 0.55)
+        visible: root.current && !root.activeFocus
+    }
+
+    FocusRing {
+        target: cover
+        shown: root.activeFocus
+        // Outside the cover, so artwork never hides it; the grid leaves room around each card.
+        offset: 5
     }
 
     Column {

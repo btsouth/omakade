@@ -78,23 +78,27 @@ Button {
     ToolTip.delay: 500
 
     background: Rectangle {
-        // Selected keeps its accent fill and bar while hovered, pressed or focused.
+        // Selected keeps its accent fill and bar while hovered, pressed or focused. Hover only
+        // changes the fill; focus adds the thick ring, so the two never look alike.
         readonly property bool marked: root.selected && !root.primary
         readonly property color tint: root.primary || marked ? Theme.accent : Theme.foreground
         radius: Math.max(4, Theme.cornerRadius)
         color: root.down
                ? root.alpha(tint, marked ? 0.42 : 0.24)
-               : root.hovered || root.activeFocus
+               : root.hovered
                  ? root.alpha(tint, marked ? 0.34 : 0.14)
                  : root.alpha(tint, marked ? 0.26 : root.primary ? 0.18 : 0.045)
-        border.width: root.activeFocus ? 2 : 1
-        border.color: root.activeFocus
-                      ? Theme.accent
-                      : marked
-                        ? root.alpha(Theme.accent, 0.8)
-                        : root.primary
-                          ? root.alpha(Theme.accent, 0.58)
-                          : root.alpha(Theme.foreground, root.hovered ? 0.5 : 0.35)
+        border.width: 1
+        border.color: marked
+                      ? root.alpha(Theme.accent, 0.8)
+                      : root.primary
+                        ? root.alpha(Theme.accent, 0.58)
+                        : root.alpha(Theme.foreground, root.hovered ? 0.5 : 0.35)
+
+        FocusRing {
+            shown: root.activeFocus
+            thickness: 3 * root.displayScale
+        }
 
         Rectangle {
             objectName: "selectedIndicator"

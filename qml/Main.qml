@@ -2410,10 +2410,10 @@ ApplicationWindow {
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
                         color: root.alpha(Theme.foreground, searchField.activeFocus ? 0.075 : 0.045)
-                        border.width: searchField.activeFocus ? 2 : 1
-                        border.color: searchField.activeFocus
-                                      ? Theme.accent
-                                      : root.alpha(Theme.foreground, 0.15)
+                        border.width: 1
+                        border.color: root.alpha(Theme.foreground, 0.15)
+
+                        FocusRing { shown: searchField.activeFocus }
                     }
 
                     Text {
@@ -3028,9 +3028,10 @@ ApplicationWindow {
                 background: Rectangle {
                     radius: Math.max(5, Theme.cornerRadius)
                     color: root.alpha(Theme.foreground, 0.05)
-                    border.width: linkSearch.activeFocus ? 2 : 1
-                    border.color: linkSearch.activeFocus
-                                  ? Theme.accent : root.alpha(Theme.foreground, 0.18)
+                    border.width: 1
+                    border.color: root.alpha(Theme.foreground, 0.18)
+
+                    FocusRing { shown: linkSearch.activeFocus }
                 }
             }
             ListView {
@@ -3096,13 +3097,12 @@ ApplicationWindow {
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
                         color: candidateDelegate.down || candidateDelegate.hovered
-                               || candidateDelegate.activeFocus
                                ? root.alpha(Theme.foreground, 0.09)
                                : root.alpha(Theme.foreground, 0.04)
-                        border.width: candidateDelegate.activeFocus ? 2 : 1
-                        border.color: candidateDelegate.activeFocus
-                                      ? Theme.accent
-                                      : root.alpha(Theme.foreground, 0.14)
+                        border.width: 1
+                        border.color: root.alpha(Theme.foreground, 0.14)
+
+                        FocusRing { shown: candidateDelegate.activeFocus }
                     }
                 }
 
