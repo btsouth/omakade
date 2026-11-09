@@ -25,6 +25,7 @@ private slots:
   void missingServiceHomeFallback();
   void recordingFailureKeepsGuide();
   void upgradeAndMergedRequests();
+  void enablesServiceOnce();
   void reconnectRefreshesEnvironment();
   void preparingDeadlineOwnsDecision();
   void failedProvisionRetries();
@@ -408,6 +409,27 @@ void ResidentGuideTests::upgradeAndMergedRequests() {
   QCOMPARE(merged, QString("handled")); QTRY_COMPARE(first, QString("unavailable"));
 }
 
+void ResidentGuideTests::enablesServiceOnce() {
+  Fixture fixture;
+  const auto state = fixture.root.filePath("state"), marker = state + "/omakade/sessiond-enabled";
+  const auto oldRuntime = qgetenv("XDG_RUNTIME_DIR"), oldPath = qgetenv("PATH"), oldConfig = qgetenv("XDG_CONFIG_HOME"), oldState = qgetenv("XDG_STATE_HOME");
+  qputenv("XDG_RUNTIME_DIR", fixture.runtime.toUtf8()); qputenv("PATH", fixture.environment.value("PATH").toUtf8());
+  qputenv("XDG_CONFIG_HOME", fixture.config.toUtf8()); qputenv("XDG_STATE_HOME", state.toUtf8());
+  const auto cleanup = qScopeGuard([&] { qputenv("XDG_RUNTIME_DIR", oldRuntime); qputenv("PATH", oldPath); qputenv("XDG_CONFIG_HOME", oldConfig); qputenv("XDG_STATE_HOME", oldState); });
+  const auto log = fixture.root.filePath("systemctl.log");
+  const auto calls = [&] { QFile file(log); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); };
+  // A failed enable, such as on a masked unit, leaves no marker, so the next run tries again.
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\nexit 1\n", true));
+  GuideClient::ensureResident(this); QTRY_VERIFY(!property("guideStarting").toBool());
+  QVERIFY(calls().contains("--user enable omakade-sessiond.service")); QVERIFY(!QFileInfo::exists(marker));
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\nexit 0\n", true));
+  QFile::remove(log); GuideClient::ensureResident(this); QTRY_VERIFY(!property("guideStarting").toBool());
+  QVERIFY(calls().contains("--user enable omakade-sessiond.service")); QVERIFY(QFileInfo::exists(marker));
+  // Once enabled, a later `systemctl --user disable` stays in force.
+  QFile::remove(log); GuideClient::ensureResident(this); QTRY_VERIFY(!property("guideStarting").toBool());
+  QVERIFY(calls().contains("is-active")); QVERIFY(!calls().contains("enable"));
+}
+
 void ResidentGuideTests::reconnectRefreshesEnvironment() {
   Fixture fixture;
   QVERIFY(QDir().mkpath(fixture.runtime + "/hypr/new-test"));
@@ -592,6 +614,11 @@ void ResidentGuideTests::parkedGameOutOfViewKeepsResume() {
 
 int main(int argc, char** argv) {
   QCoreApplication application(argc, argv);
+  // GuideClient records that it enabled the service under XDG_STATE_HOME; keep that out
+  // of the real home.
+  QTemporaryDir state;
+  if (!state.isValid()) return 1;
+  qputenv("XDG_STATE_HOME", QFile::encodeName(state.path()));
   ResidentGuideTests tests;
   // Several cases start the resident service and wait out its real deadlines. CTest runs
   // them in shards so each stays well inside its timeout without dropping a case.

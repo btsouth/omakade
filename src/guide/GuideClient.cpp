@@ -8,6 +8,8 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QProcess>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLockFile>
 #include <unistd.h>
@@ -53,11 +55,21 @@ void GuideClient::ensureResident(QObject* owner) {
         });
       });
     };
+    // The package does not start the service for every account. Enable it once for the
+    // user who runs Omakade, so it starts with their desktop from then on. The marker
+    // keeps a later `systemctl --user disable` in force.
+    const auto marker = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) +
+                        "/omakade/sessiond-enabled";
+    const auto enabled = [start, marker](bool ok, const QByteArray&) {
+      if (ok && QDir().mkpath(QFileInfo(marker).path())) { QFile file(marker); if (file.open(QIODevice::WriteOnly)) file.close(); }
+      start();
+    };
     // Reenable only a previously enabled 1.15 unit. Do not enable a unit the
     // user disabled or migrate unrelated user-unit links.
     const auto oldLink = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                          "/systemd/user/default.target.wants/omakade-sessiond.service";
-    if (QFileInfo(oldLink).isSymLink()) run({"reenable", "omakade-sessiond.service"}, [start](bool, const QByteArray&) { start(); });
+    if (QFileInfo(oldLink).isSymLink()) run({"reenable", "omakade-sessiond.service"}, enabled);
+    else if (!QFileInfo::exists(marker)) run({"enable", "omakade-sessiond.service"}, enabled);
     else start();
   });
 }

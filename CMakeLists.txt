@@ -63,9 +63,8 @@ install(FILES resources/sessiond-profiles.json
 install(FILES packaging/omakade-sessiond.service packaging/omakade-guide-button.service
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user
 )
-# Start the resident service with the desktop even before the library is opened.
-install(CODE "file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/systemd/user/graphical-session.target.wants\")
-file(CREATE_LINK \"../omakade-sessiond.service\" \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/systemd/user/graphical-session.target.wants/omakade-sessiond.service\" SYMBOLIC)")
+# No .wants link here: that would start the service for every account on the machine.
+# On Omarchy, Omakade enables it for each user the first time they open it.
 install(FILES packaging/io.github.tsouth89.Omakade.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
@@ -87,12 +86,21 @@ install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md SECURITY.md RELEAS
 )
 # The in-game guide shell plugin. Omakade links it into each user's Omarchy plugin folder
 # on first run, so package upgrades update it in place.
+# Its manifest carries the package version.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS omarchy-plugin/manifest.json)
+file(READ omarchy-plugin/manifest.json omakade_plugin_manifest)
+string(JSON omakade_plugin_manifest SET "${omakade_plugin_manifest}" version "\"${PROJECT_VERSION}\"")
+file(CONFIGURE OUTPUT omarchy-plugin/manifest.json CONTENT "${omakade_plugin_manifest}\n" @ONLY)
 install(DIRECTORY omarchy-plugin/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/omarchy-plugin
   PATTERN "__pycache__" EXCLUDE
   PATTERN "README.md" EXCLUDE
+  PATTERN "manifest.json" EXCLUDE
   PATTERN "*.py" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
     GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/omarchy-plugin/manifest.json"
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/omarchy-plugin
 )
 install(DIRECTORY skills/omakade-tv-gaming
   DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/skills
