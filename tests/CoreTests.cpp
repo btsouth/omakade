@@ -14762,10 +14762,8 @@ void CoreTests::singleGameEventsDoNotWalkTheLibrary() {
 
   // A source change to one game, such as a finished cover download, is forwarded to its card.
   updates.clear();
-  source.reads = 0;
   emit source.dataChanged(source.index(target, 0), source.index(target, 0), {GameRoles::CoverPath});
   QCOMPARE(updatedRows(), QList<int>{target});
-  QVERIFY2(source.reads < 50, qPrintable(QStringLiteral("%1 reads").arg(source.reads)));
 
   // A source status change, which Steam sends after every cover, does not reread the library.
   source.reads = 0;
@@ -14788,9 +14786,12 @@ void CoreTests::singleGameEventsDoNotWalkTheLibrary() {
   QCOMPARE(games.rowForGame(gameSource, source.index(0, 0).data(GameRoles::AppId).toString()),
            linkedRow);
   QCOMPARE(games.rowForGame(gameSource, appId), target - 1);
+  // A linked game's change used to read every game's key to find its group's card.
   updates.clear();
+  source.reads = 0;
   emit source.dataChanged(source.index(5, 0), source.index(5, 0), {GameRoles::CoverPath});
   QCOMPARE(updatedRows(), QList<int>{linkedRow});
+  QVERIFY2(source.reads < 50, qPrintable(QStringLiteral("%1 reads").arg(source.reads)));
   updates.clear();
   emit source.dataChanged(source.index(target, 0), source.index(target, 0), {GameRoles::CoverPath});
   QCOMPARE(updatedRows(), QList<int>{target - 1});
