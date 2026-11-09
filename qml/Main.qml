@@ -1733,6 +1733,34 @@ ApplicationWindow {
         }
     }
 
+    // Titles of games launched from here, by source and id, for messages about them later.
+    property var launchTitles: ({})
+    function launchTitleKey(source, appId) {
+        return String(source || "") + "\n" + String(appId || "")
+    }
+
+    Connections {
+        target: Launcher
+        function onGameClosedEarly(game) {
+            root.showLaunchClosed(root.launchTitles[root.launchTitleKey(game.source, game.appId)] || "",
+                                  game.logPath || "")
+        }
+    }
+
+    // Says a game closed right after it started, with its log. A Starting screen still
+    // waiting for that game would wait for nothing, so it ends.
+    function showLaunchClosed(title, logPath) {
+        if (LaunchHold.active && LaunchHold.title === title) LaunchHold.cancel()
+        if (LaunchWatch.active && LaunchWatch.title === title) LaunchWatch.cancel()
+        const current = root.activeFocusItem
+        launchClosedNotice.anchorItem = current && !root.isWithin(current, launchClosedNotice.contentItem)
+            ? current : libraryMoreButton
+        launchClosedNotice.gameTitle = title
+        launchClosedNotice.logPath = logPath
+        if (launchClosedNotice.opened) launchClosedNotice.close()
+        launchClosedNotice.open()
+    }
+
     Connections {
         target: LaunchWatch
         function onChanged() { if (!LaunchWatch.active) launchFeedback.done() }
@@ -1787,6 +1815,7 @@ ApplicationWindow {
         if (holding) launchingGame = Object.assign({title: request.title}, request.art || {})
         GameMode.endSteamHold(!holding)
         if (!DemoMode) {
+            root.launchTitles[root.launchTitleKey(choice.source, choice.appId)] = request.title
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
@@ -4111,6 +4140,57 @@ ApplicationWindow {
         namePrefix: "all"
         host: root
         anchorItem: libraryMoreButton
+    }
+
+    // A game Omakade started itself closed within seconds. Its log usually says why.
+    ActionMenu {
+        id: launchClosedNotice
+        objectName: "launchClosedNotice"
+        property string gameTitle: ""
+        property string logPath: ""
+        readonly property real textScale: root.couchMode ? Math.max(1, Math.min(2, root.height / 900)) : 1
+        host: root
+        anchorItem: libraryMoreButton
+        title: "GAME CLOSED"
+        fixedHeader: true
+        showHeaderCloseButton: false
+        headerTextScale: textScale
+        preferredWidth: 420
+        initialFocus: launchClosedOpenLog.visible ? launchClosedOpenLog : null
+        onClosed: if (!anchorItem.visible || !anchorItem.enabled) Qt.callLater(root.focusCurrentSurface)
+        Text {
+            objectName: "launchClosedText"
+            textFormat: Text.PlainText
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            text: (launchClosedNotice.gameTitle || "The game") + " closed right after starting."
+            color: Theme.foreground
+            font.family: Theme.fontFamily
+            font.pixelSize: 13 * launchClosedNotice.textScale
+            font.weight: Font.DemiBold
+        }
+        Text {
+            textFormat: Text.PlainText
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            text: launchClosedNotice.logPath
+                  ? "Its log has what it printed before it closed."
+                  : "Omakade could not keep a log for it."
+            color: Theme.mutedText
+            font.family: Theme.fontFamily
+            font.pixelSize: UiMetrics.body * launchClosedNotice.textScale
+        }
+        MenuAction {
+            id: launchClosedOpenLog
+            objectName: "launchClosedOpenLog"
+            visible: launchClosedNotice.logPath.length > 0
+            text: "OPEN LOG"
+            onClicked: {
+                const path = launchClosedNotice.logPath
+                launchClosedNotice.close()
+                if (!Launcher.openLaunchLog(path)) root.showToast("Could not open the log. It is at " + path)
+            }
+        }
     }
 
     property bool returnToViewMenu: false

@@ -957,6 +957,13 @@ foreach(launch_mode IN ITEMS desktop couch)
   set_tests_properties(omakade_launch_feedback_${launch_mode} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 20)
+  # A game that closed right after starting is named, with its log offered first.
+  add_test(NAME omakade_launch_closed_${launch_mode} COMMAND omakade ${launch_args}
+    --render-overlay=launch-closed
+    --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/launch-closed-${launch_mode}.png)
+  set_tests_properties(omakade_launch_closed_${launch_mode} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 20)
 endforeach()
 
 foreach(queue_mode IN ITEMS desktop couch)

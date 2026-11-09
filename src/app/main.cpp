@@ -88,6 +88,7 @@
 #include <QEventLoop>
 #include <QProcess>
 #include <QThread>
+#include <QThreadPool>
 #include <cstdio>
 #include <QGuiApplication>
 #include <QIcon>
@@ -1867,6 +1868,8 @@ int main(int argc, char* argv[]) {
     saveBackups.setEnabled(preferences.protectRetroArchSaves());
   });
   GameLauncher launcher;
+  // MangoHud settings that games from an earlier run left behind once they closed.
+  if (!isolatedTest) QThreadPool::globalInstance()->start([] { GameLauncher::sweepStaleMangoConfigs(); });
   launcher.setRommLibraryRoot(preferences.rommLibraryRoot());
   unifiedGames.setReviewPlanContext(preferences.rommLibraryRoot(),
                                    preferences.preferStandaloneEmulators());
@@ -3309,6 +3312,49 @@ int main(int argc, char* argv[]) {
               qCritical() << "Launch failure lost feedback or retry focus";
               application.exit(EXIT_FAILURE); return;
             }
+          });
+        });
+      }
+      if (renderOverlay == QStringLiteral("launch-closed")) {
+        // A game Omakade started closed at once: the notice names it from the launch, offers
+        // its log first, and gives focus back to Play when it closes.
+        QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
+        // After the details page has put focus on Play itself.
+        QTimer::singleShot(200, quickWindow, [quickWindow, &application, &launcher] {
+          auto* play = quickWindow->findChild<QQuickItem*>("playButton");
+          if (!play || quickWindow->activeFocusItem() != play) {
+            qCritical() << "Details did not focus Play before the closed game notice";
+            application.exit(EXIT_FAILURE); return;
+          }
+          const QString appId = QStringLiteral("fixture-closed");
+          const QString title = quickWindow->property("selectedGame").toMap().value("title").toString();
+          quickWindow->setProperty("launchTitles",
+                                   QVariantMap{{QStringLiteral("Manual\n") + appId, title}});
+          const QVariantMap game{{QStringLiteral("source"), QStringLiteral("Manual")},
+                                 {QStringLiteral("appId"), appId},
+                                 {QStringLiteral("logPath"), GameLauncher::launchLogPath(QStringLiteral("Manual"), appId)}};
+          emit launcher.gameClosedEarly(game);
+          QTimer::singleShot(200, quickWindow, [quickWindow, play, title, &application] {
+            auto* notice = quickWindow->findChild<QObject*>("launchClosedNotice");
+            auto* text = quickWindow->findChild<QQuickItem*>("launchClosedText");
+            auto* openLog = quickWindow->findChild<QQuickItem*>("launchClosedOpenLog");
+            if (title.isEmpty() || !notice || !notice->property("opened").toBool() || !text ||
+                text->property("text").toString() != title + QStringLiteral(" closed right after starting.") ||
+                !openLog || !openLog->isVisible() || quickWindow->activeFocusItem() != openLog) {
+              qCritical() << "Closed game notice did not name the game or focus Open log"
+                          << (notice ? notice->property("opened") : QVariant())
+                          << (text ? text->property("text") : QVariant())
+                          << (openLog ? openLog->isVisible() : false) << quickWindow->activeFocusItem();
+              application.exit(EXIT_FAILURE); return;
+            }
+            QMetaObject::invokeMethod(notice, "close");
+            QTimer::singleShot(200, quickWindow, [quickWindow, notice, play, &application] {
+              if (quickWindow->activeFocusItem() != play) {
+                qCritical() << "Closing the closed game notice did not return focus to Play";
+                application.exit(EXIT_FAILURE); return;
+              }
+              QMetaObject::invokeMethod(notice, "open");
+            });
           });
         });
       }
