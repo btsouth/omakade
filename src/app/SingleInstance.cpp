@@ -1,17 +1,30 @@
 #include "app/SingleInstance.h"
 
+#include "tracking/SessionDatabase.h"
+
 #include <QCoreApplication>
 #include <QDebug>
 #include <QLocalSocket>
 
-#include <unistd.h>
-
-QString SingleInstance::defaultServerName() {
-  return QStringLiteral("omakade-%1").arg(getuid());
+namespace {
+bool deliver(const QString& serverName, const QByteArray& command) {
+  QLocalSocket socket;
+  socket.connectToServer(serverName, QIODevice::WriteOnly);
+  if (!socket.waitForConnected(120)) {
+    return false;
+  }
+  socket.write(command);
+  socket.flush();
+  socket.waitForBytesWritten(120);
+  return true;
 }
+} // namespace
+
+QString SingleInstance::defaultServerName() { return SessionDatabase::appServerName(); }
 
 SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
     : QObject(parent), m_serverName(serverName.isEmpty() ? defaultServerName() : serverName) {
+  m_server.setSocketOptions(QLocalServer::UserAccessOption);
   connect(&m_server, &QLocalServer::newConnection, this, [this] {
     while (QLocalSocket* socket = m_server.nextPendingConnection()) {
       // The client writes one command and closes, so act once the whole message is in.
@@ -60,19 +73,24 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
 }
 
 bool SingleInstance::sendCommand(const QString& serverName, const QByteArray& command) {
-  QLocalSocket socket;
-  socket.connectToServer(serverName.isEmpty() ? defaultServerName() : serverName,
-                         QIODevice::WriteOnly);
-  if (!socket.waitForConnected(120)) {
-    return false;
+  if (!serverName.isEmpty()) {
+    return deliver(serverName, command);
   }
-  socket.write(command);
-  socket.flush();
-  socket.waitForBytesWritten(120);
-  return true;
+  if (deliver(defaultServerName(), command)) {
+    return true;
+  }
+  const QString legacy = SessionDatabase::legacyAppServerName();
+  return !legacy.isEmpty() && deliver(legacy, command);
 }
 
 bool SingleInstance::claimOrNotify(const QByteArray& command) {
+  // An Omakade started before an upgrade still owns the window on the old temp dir socket.
+  if (m_serverName == defaultServerName()) {
+    const QString legacy = SessionDatabase::legacyAppServerName();
+    if (!legacy.isEmpty() && deliver(legacy, command)) {
+      return false;
+    }
+  }
   if (m_server.listen(m_serverName)) {
     return true;
   }

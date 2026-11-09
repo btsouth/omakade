@@ -41,6 +41,8 @@ struct SessionInterval {
 [[nodiscard]] QString defaultDatabasePath();
 [[nodiscard]] QString defaultConfigPath();
 [[nodiscard]] QString appServerName();
+// The pre-1.19 temp dir socket, only when this user owns it; empty otherwise.
+[[nodiscard]] QString legacyAppServerName();
 
 // Opens (or reuses) a tuned connection to the library database and creates the
 // session tables. Returns false when opening or preparing the schema fails.
