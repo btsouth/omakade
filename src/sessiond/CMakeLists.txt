@@ -1,0 +1,1 @@
+omakade_add_directory_sources(omakade-sessiond)

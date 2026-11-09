@@ -1324,23 +1324,14 @@ foreach(shard RANGE 0 2)
     COMMAND omakade_resident_guide_tests --test-shard=${shard})
   set_tests_properties(omakade_resident_guide_tests_${shard} PROPERTIES TIMEOUT 30)
 endforeach()
-qt_add_executable(omakade_highlight_tests HighlightTests.cpp)
-target_link_libraries(omakade_highlight_tests PRIVATE omakade_core omakade_tracking Qt6::Test)
-target_compile_definitions(omakade_highlight_tests PRIVATE
-  OMAKADE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
-add_test(NAME omakade_highlight_tests COMMAND omakade_highlight_tests)
-set_tests_properties(omakade_highlight_tests PROPERTIES TIMEOUT 90)
-
-# The guide's clip and a screen recording started from Omarchy never take each other's place.
-add_test(NAME omakade_guide_recorder COMMAND ${Python3_EXECUTABLE}
-  ${CMAKE_CURRENT_SOURCE_DIR}/GuideRecorderTests.py ${PROJECT_SOURCE_DIR}/omarchy-plugin/guide-files.py)
-
-add_test(NAME omakade_source_rescan_enablement COMMAND omakade
-  --render-overlay=source-rescan --render-size=900x720
-  --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/source-rescan.png)
-set_tests_properties(omakade_source_rescan_enablement PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
-  TIMEOUT 20)
+# Each tests/suites/<name>.cmake registers one area's tests and is picked up without an edit
+# here; see tests/suites/README.md. Suites run in this directory's scope, before the slot
+# assignment below.
+include(${CMAKE_CURRENT_SOURCE_DIR}/OmakadeTests.cmake)
+file(GLOB omakade_test_suites CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/suites/*.cmake")
+foreach(omakade_test_suite IN LISTS omakade_test_suites)
+  include(${omakade_test_suite})
+endforeach()
 
 # CI runs ctest with 8 slots on 4 vCPU runners. Navigation sweeps and contracts are
 # nearly all fixed settling time (93 s of wall time for 4 s of CPU), so they take one
