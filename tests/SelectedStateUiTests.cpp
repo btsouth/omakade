@@ -47,7 +47,7 @@ private slots:
     const QString components = dir.filePath("components");
     QVERIFY(QDir().mkpath(components));
     for (const QString& file : {QStringLiteral("GlassButton.qml"), QStringLiteral("FocusRing.qml"),
-                                QStringLiteral("UiMetrics.qml")})
+                                QStringLiteral("UiMetrics.qml"), QStringLiteral("HeartIcon.qml")})
       QVERIFY(QFile::copy(QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/") + file,
                           components + "/" + file));
     QVERIFY(QFile::copy(
@@ -56,7 +56,7 @@ private slots:
     QFile qmldir(components + "/qmldir");
     QVERIFY(qmldir.open(QIODevice::WriteOnly));
     qmldir.write("singleton UiMetrics 1.0 UiMetrics.qml\nGlassButton 1.0 GlassButton.qml\n"
-                 "FocusRing 1.0 FocusRing.qml\n");
+                 "FocusRing 1.0 FocusRing.qml\nHeartIcon 1.0 HeartIcon.qml\n");
     qmldir.close();
 
     AppSettings preferences(dir.filePath("config"));
@@ -77,7 +77,8 @@ private slots:
     QQuickItem* toggle = find(root, "toggle");
     QQuickItem* plain = find(root, "plain");
     QQuickItem* highlight = find(root, "highlight");
-    QVERIFY(first && second && toggle && plain && highlight);
+    QQuickItem* favorite = find(root, "favoriteToggle");
+    QVERIFY(first && second && toggle && plain && highlight && favorite);
 
     // Tabs and toggles announce checked; ordinary buttons are not checkable at all.
     QVERIFY(state(first).checkable);
@@ -135,6 +136,28 @@ private slots:
     QTest::keyClick(&view, Qt::Key_Space);
     QTRY_VERIFY(!state(toggle).checked);
     QCOMPARE(toggle->property("text").toString(), QStringLiteral("OFF"));
+
+    // The favorite toggle reads as checked, and its drawn heart is filled with the accent
+    // only while it is a favorite. A font heart looked the same both ways in the theme fonts.
+    QQuickItem* heart = find(favorite, "favoriteHeart");
+    QVERIFY(heart);
+    const auto heartCentre = [&] {
+      const QPointF centre = heart->mapToScene(QPointF(heart->width() / 2, heart->height() / 2));
+      return view.grabWindow().pixelColor(centre.toPoint());
+    };
+    QVERIFY(state(favorite).checkable);
+    QVERIFY(!state(favorite).checked);
+    QVERIFY(!heart->property("filled").toBool());
+    QVERIFY(distance(heartCentre(), accent) > 0.3);
+    click(favorite);
+    QTRY_VERIFY(state(favorite).checked);
+    QCOMPARE(favorite->property("text").toString(), QStringLiteral("FAVORITED"));
+    QVERIFY(heart->property("filled").toBool());
+    QVERIFY(find(favorite, "selectedIndicator")->isVisible());
+    QTRY_VERIFY(distance(heartCentre(), accent) < 0.1);
+    click(favorite);
+    QTRY_VERIFY(!state(favorite).checked);
+    QVERIFY(!heart->property("filled").toBool());
 
     QVERIFY(view.grabWindow().save("selected-states.png"));
   }

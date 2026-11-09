@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A favorite now looks like one: the game details and Game Mode favorite button shows a
+  filled accent heart with the selected fill and says FAVORITED, and screen readers hear it
+  as checked. Library and Game Mode cards mark favorites with a filled heart on an accent
+  badge. The theme fonts drew both hearts as outlines before.
 - Counts read correctly for a single item, such as "1 GAME" in the library toolbar
   instead of "1 GAMES", and the same on Home, Settings, game details and save panels.
 - An empty Stats now says when play recording is off, which it is on new installations,

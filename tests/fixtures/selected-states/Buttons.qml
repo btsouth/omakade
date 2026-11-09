@@ -4,11 +4,12 @@ import QtQuick
 // same folder.
 Rectangle {
     id: page
-    width: 800
+    width: 1000
     height: 120
     color: Theme.darkerBackground
     property string current: "first"
     property bool toggleOn: false
+    property bool favorite: false
 
     Row {
         x: 16
@@ -34,6 +35,20 @@ Rectangle {
             selectable: true
             selected: page.toggleOn
             onClicked: page.toggleOn = !page.toggleOn
+        }
+        GlassButton {
+            id: favoriteToggle
+            objectName: "favoriteToggle"
+            text: page.favorite ? "FAVORITED" : "ADD TO FAVORITES"
+            selectable: true
+            selected: page.favorite
+            iconDelegate: HeartIcon {
+                objectName: "favoriteHeart"
+                filled: favoriteToggle.selected
+                color: filled ? Theme.accent : favoriteToggle.iconColor
+                size: 24
+            }
+            onClicked: page.favorite = !page.favorite
         }
         GlassButton {
             objectName: "plain"
