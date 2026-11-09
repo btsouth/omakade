@@ -333,6 +333,67 @@ private slots:
     QTRY_VERIFY(!stats.pending());
   }
 
+  void achievementSyncsAndReopeningRefreshStats() {
+    Database data;
+    data.sql("CREATE TABLE achievements (app_id TEXT NOT NULL, api_name TEXT NOT NULL, title TEXT "
+             "NOT NULL, description TEXT, icon_url TEXT, icon_path TEXT, unlocked INTEGER NOT NULL, "
+             "unlock_time INTEGER NOT NULL, rarity REAL NOT NULL, hidden INTEGER NOT NULL, "
+             "current_progress REAL NOT NULL, maximum_progress REAL NOT NULL, source TEXT NOT "
+             "NULL, PRIMARY KEY(app_id, api_name))");
+    const auto unlock = [&](const QString& name) {
+      data.sql(QStringLiteral("INSERT INTO achievements VALUES('a', '%1', '%1', '', '', '', 1, %2, "
+                              "0, 0, 0, 0, 'Ryujinx')")
+                   .arg(name)
+                   .arg(at(2026, 4, 1, 12)));
+    };
+    unlock("first");
+    FixtureSource source;
+    source.add("a", "/games/a.nsp", at(2026, 4, 1, 12));
+    UnifiedGameModel games(data.path);
+    games.addSourceModel(&source);
+    PlayStats stats(&games, data.path);
+    stats.setPeriod("all");
+    stats.setActive(true);
+    QCOMPARE(stats.achievements().value("unlockedTotal").toLongLong(), qint64(1));
+
+    // A sync while the screen is open reports only the achievement roles.
+    unlock("second");
+    source.set(0, GameRoles::AchievementsUnlocked, 2);
+    QTRY_COMPARE(stats.achievements().value("unlockedTotal").toLongLong(), qint64(2));
+    QTRY_VERIFY(!stats.pending());
+
+    // Reopening recomputes even when the library model said nothing.
+    stats.setActive(false);
+    unlock("third");
+    stats.setActive(true);
+    QTRY_COMPARE(stats.achievements().value("unlockedTotal").toLongLong(), qint64(3));
+    QTRY_VERIFY(!stats.pending());
+  }
+
+  void periodChangeDropsAStaleRun() {
+    Database data;
+    data.legacy(at(2025, 6, 1, 12), 600);
+    data.legacy(at(2026, 6, 1, 12), 300);
+    PlayStats stats(nullptr, data.path);
+    stats.setYear(2025);
+    stats.setActive(true);
+    QCOMPARE(stats.periodLabel(), QString("2025"));
+    // Start a background run for 2025, then change the period with the screen closed.
+    stats.setActive(false);
+    stats.setActive(true);
+    QCoreApplication::sendPostedEvents(&stats, QEvent::MetaCall);
+    QVERIFY(stats.pending());
+    stats.setActive(false);
+    stats.setPeriod("all");
+    settle([&] { return !stats.pending(); });
+    // The 2025 run was dropped, so opening computes the new period in place.
+    const int before = stats.computations();
+    stats.setActive(true);
+    QCOMPARE(stats.computations(), before + 1);
+    QCOMPARE(stats.periodLabel(), QString("All time"));
+    QCOMPARE(stats.headline().value("recordedSeconds").toLongLong(), qint64(900));
+  }
+
   void periodChangesWaitForTheScreen() {
     Database data;
     data.legacy(at(2025, 6, 1, 12), 600);

@@ -173,7 +173,11 @@ bool PlayStats::affectsFigures(const QList<int>& roles) {
                                   GameRoles::Hours,           GameRoles::LastPlayed,
                                   GameRoles::CompletionStatus, GameRoles::Rating,
                                   GameRoles::RatingCount,     GameRoles::Linked,
-                                  GameRoles::LinkedSources,   GameRoles::IsPortal};
+                                  GameRoles::LinkedSources,   GameRoles::IsPortal,
+                                  // An achievement sync rewrites the achievements table and
+                                  // reports it through these.
+                                  GameRoles::Progress,        GameRoles::AchievementsUnlocked,
+                                  GameRoles::AchievementsTotal};
   return std::any_of(roles.cbegin(), roles.cend(),
                      [](int role) { return relevant.contains(role); });
 }
@@ -185,13 +189,17 @@ void PlayStats::setActive(bool value) {
   // Nothing is computed while the view is closed: the library model changes often, and these
   // figures cost a walk over every row plus every recorded session. The first opening computes
   // in place so the screen and a one-shot card export never see empty figures; after that the
-  // previous figures stay on screen while fresh ones are computed in the background.
+  // previous figures stay on screen while fresh ones are computed in the background. Every
+  // opening recomputes, because some figures come from the database or today's date rather
+  // than from the library model.
   if (!value)
     return;
-  if (!m_hasFigures)
+  if (!m_hasFigures) {
     refresh();
-  else if (m_dirty)
-    scheduleRefresh();
+    return;
+  }
+  m_dirty = true;
+  scheduleRefresh();
 }
 
 void PlayStats::setPeriod(const QString& value) {
@@ -202,6 +210,8 @@ void PlayStats::setPeriod(const QString& value) {
   m_period = wanted;
   m_hasFigures = false;
   m_dirty = true;
+  // A run already in flight describes the old window; drop it rather than apply it.
+  ++m_generation;
   emit changed();
   scheduleRefresh();
 }
@@ -212,6 +222,8 @@ void PlayStats::setYear(int value) {
   m_year = value;
   m_hasFigures = false;
   m_dirty = true;
+  // A run already in flight describes the old window; drop it rather than apply it.
+  ++m_generation;
   emit changed();
   scheduleRefresh();
 }
