@@ -80,6 +80,7 @@ echo ok
   env.remove("HYPRLAND_INSTANCE_SIGNATURE"); env.remove("WAYLAND_DISPLAY");
   env.insert("PATH", bin + ':' + env.value("PATH")); env.insert("XDG_RUNTIME_DIR", runtime); env.insert("TMPDIR", runtime);
   env.insert("XDG_CONFIG_HOME", config); env.insert("XDG_DATA_HOME", data); env.insert("XDG_STATE_HOME", root.path() + "/state");
+  env.insert("XDG_CACHE_HOME", root.path() + "/cache");
   // Any accidental QGuiApplication path fails. The shortcut must use Qt Core alone.
   env.insert("QT_QPA_PLATFORM", "invalid-platform-for-resident-test");
   env.insert("QT_FORCE_STDERR_LOGGING", "1");
@@ -303,6 +304,7 @@ struct Fixture {
     environment.insert("XDG_RUNTIME_DIR", runtime); environment.insert("TMPDIR", runtime);
     environment.insert("QT_FORCE_STDERR_LOGGING", "1"); environment.insert("XDG_CONFIG_HOME", config);
     environment.insert("XDG_DATA_HOME", data); environment.insert("XDG_STATE_HOME", root.filePath("state"));
+    environment.insert("XDG_CACHE_HOME", root.filePath("cache"));
     environment.insert("PATH", bin + ':' + environment.value("PATH"));
     environment.insert("HYPRLAND_INSTANCE_SIGNATURE", "test"); environment.insert("WAYLAND_DISPLAY", "test");
     QDir().mkpath(runtime + "/hypr/test");

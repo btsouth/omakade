@@ -21,8 +21,9 @@ void restrictFile(const QString& path);
 // Restricts a SQLite database and its -wal, -shm and -journal files to 0600.
 void restrictDatabase(const QString& path);
 
-// Creates the Omakade data, config, state and cache directories owner-only, and tightens
-// directories and files an earlier version left readable by other users.
+// Creates the Omakade data, config, state and cache directories, and Qt's per-application
+// Omakade folders, owner-only, and tightens directories and files an earlier version left
+// readable by other users.
 void secureDefaults();
 
 } // namespace PrivateStorage

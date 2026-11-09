@@ -69,11 +69,12 @@ void secureDefaults() {
     if (!base.isEmpty())
       makeDirectory(base + QStringLiteral("/omakade"));
   }
-  // Qt's own per-application folders, used for the ProtonDB cache and in-game overlay
-  // settings. Tightened when present, never created.
+  // Qt's own per-application folders, used for the ProtonDB cache, in-game overlay and
+  // guide settings. Created here too, so the plain mkpath or QSettings that later fills
+  // them on a fresh install lands inside an owner-only folder.
   for (const QString& base : {data, config, cache}) {
     if (!base.isEmpty())
-      restrictDirectory(base + QStringLiteral("/Omakade"));
+      makeDirectory(base + QStringLiteral("/Omakade"));
   }
   if (!data.isEmpty()) {
     restrictDatabase(data + QStringLiteral("/omakade/library.sqlite3"));

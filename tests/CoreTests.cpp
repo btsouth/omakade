@@ -14345,7 +14345,10 @@ void CoreTests::privateStorageTightensExistingFolders() {
   PrivateStorage::secureDefaults();
 
   for (const auto& folder : {data, config, temp.filePath("xdg_state_home/omakade"),
-                             temp.filePath("xdg_cache_home/omakade"), qtCache})
+                             temp.filePath("xdg_cache_home/omakade"), qtCache,
+                             // Qt's folders are created private before anything fills them.
+                             temp.filePath("xdg_data_home/Omakade"),
+                             temp.filePath("xdg_config_home/Omakade")})
     QCOMPARE(modeOf(folder), kPrivateFolder);
   for (const auto& path : files)
     QCOMPARE(modeOf(path), kPrivateFile);
@@ -14470,6 +14473,8 @@ void CoreTests::sessionDaemonRetriesUnavailableStorage() {
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   env.insert("XDG_CONFIG_HOME", config);
   env.insert("XDG_DATA_HOME", data);
+  env.insert("XDG_STATE_HOME", temp.filePath("state"));
+  env.insert("XDG_CACHE_HOME", temp.filePath("cache"));
   env.insert("XDG_RUNTIME_DIR", runtime);
   env.insert("QT_FORCE_STDERR_LOGGING", "1");
   QProcess daemon;
