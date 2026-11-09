@@ -3,8 +3,10 @@
 #include "backup/BackupSnapshot.h"
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QSet>
 #include <QUrl>
 #include <QtConcurrentRun>
@@ -33,6 +35,55 @@ QString recordKey(const QString& table, const QJsonObject& row) {
       parts.append(row.value(field));
   }
   return QString::fromUtf8(QJsonDocument(parts).toJson(QJsonDocument::Compact));
+}
+// A shell or interpreter told to run code from its own arguments needs no file on
+// disk, so a backup can carry the whole program. The preview flags these commands.
+bool runsInlineCode(const QString& executable, const QStringList& arguments, int depth = 0) {
+  static const QRegularExpression interpreter(
+      QStringLiteral("^(sh|bash|zsh|dash|ksh|fish|env|python[0-9.]*|perl[0-9.]*|ruby[0-9.]*|"
+                     "node|nodejs|lua[0-9.]*|luajit)$"));
+  const QString name = QFileInfo(executable).fileName();
+  if (!interpreter.match(name).hasMatch())
+    return false;
+  if (name == "env") {
+    for (int i = 0; i < arguments.size(); ++i) {
+      const QString& arg = arguments.at(i);
+      if (arg == "-S" || arg.startsWith("--split-string") ||
+          (arg.startsWith('-') && !arg.startsWith("--") && arg.contains('S')))
+        return true;
+      if (arg == "-u" || arg == "-C" || arg == "--unset" || arg == "--chdir")
+        ++i;
+      if (arg.startsWith('-') || arg.contains('='))
+        continue;
+      return depth < 4 && runsInlineCode(arg, arguments.mid(i + 1), depth + 1);
+    }
+    return false;
+  }
+  for (const auto& arg : arguments) {
+    if (arg.startsWith("--")) {
+      for (const auto* option : {"--command", "--eval", "--print", "--init-command"})
+        if (arg == option || arg.startsWith(QString::fromLatin1(option) + '='))
+          return true;
+    } else if (arg.size() > 1 && arg.startsWith('-') &&
+               (arg.contains('c') || arg.contains('e') || arg.contains('E') || arg == "-p")) {
+      return true;
+    }
+  }
+  return false;
+}
+struct LaunchCommand {
+  QString executable;
+  QStringList arguments;
+  QString directory;
+};
+LaunchCommand launchCommand(const QJsonObject& row, QString* title = nullptr) {
+  const auto entry = QJsonDocument::fromJson(row.value("entry").toString().toUtf8()).object();
+  if (title)
+    *title = entry.value("title").toString();
+  QStringList arguments;
+  for (const auto& value : entry.value("arguments").toArray())
+    arguments.append(value.toString());
+  return {entry.value("executable").toString(), arguments, entry.value("directory").toString()};
 }
 bool within(const QString& file, const QString& folder) {
   return file == folder || file.startsWith(folder + '/');
@@ -245,6 +296,45 @@ QVariantMap BackupManager::describe(const BackupPayload& incoming, const BackupP
     if (!directory.isEmpty() && !QFileInfo(directory).isDir())
       noteMissing(directory);
   }
+  // Every manual entry that is new or runs differently becomes runnable from Play
+  // after the restore, so the preview lists each command in full.
+  QHash<QString, LaunchCommand> currentCommands;
+  for (const auto& value : current.library.value("manual_games").toArray())
+    currentCommands.insert(value.toObject().value("id").toString(),
+                           launchCommand(value.toObject()));
+  QVariantList launchCommands;
+  int inlineCodeCount = 0;
+  for (const auto& value : incoming.library.value("manual_games").toArray()) {
+    const auto row = value.toObject();
+    QString title;
+    const auto command = launchCommand(row, &title);
+    const auto existing = currentCommands.constFind(row.value("id").toString());
+    if (existing != currentCommands.constEnd() && existing->executable == command.executable &&
+        existing->arguments == command.arguments && existing->directory == command.directory)
+      continue;
+    const bool inlineCode = runsInlineCode(command.executable, command.arguments);
+    inlineCodeCount += inlineCode;
+    launchCommands.append(QVariantMap{{"title", title},
+                                      {"executable", command.executable},
+                                      {"arguments", command.arguments},
+                                      {"directory", command.directory},
+                                      {"isNew", existing == currentCommands.constEnd()},
+                                      {"inlineCode", inlineCode}});
+  }
+  QString launchCommandWarning;
+  if (!launchCommands.isEmpty()) {
+    launchCommandWarning =
+        QString::number(launchCommands.size()) +
+        (launchCommands.size() == 1 ? " manual game launch command"
+                                    : " manual game launch commands") +
+        " from this backup, listed in the preview, will be able to run when you choose Play. "
+        "Restore only backups you made or trust.";
+    if (inlineCodeCount)
+      launchCommandWarning +=
+          " " + QString::number(inlineCodeCount) +
+          (inlineCodeCount == 1 ? " of them runs code written into its arguments."
+                                : " of them run code written into their arguments.");
+  }
   for (const auto& value : incoming.settings.value("gog_library_paths").toArray()) {
     if (!QFileInfo(value.toString()).isDir())
       noteMissing(value.toString());
@@ -280,6 +370,8 @@ QVariantMap BackupManager::describe(const BackupPayload& incoming, const BackupP
       {"missingPaths", missingPaths},
       {"settings", settingChanges},
       {"savedFilterNameConflicts", renamedFilters},
+      {"launchCommands", launchCommands},
+      {"launchCommandWarning", launchCommandWarning},
       {"mergeExplanation",
        "Merge keeps unrelated personal data. Imported values take precedence for matching games. "
        "Collections gain memberships; imported link groups take precedence for their members. "

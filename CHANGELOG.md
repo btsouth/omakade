@@ -4,6 +4,10 @@
 
 - Restoring a save backup is now refused while PPSSPP runs as PPSSPPSDL or PPSSPPQt, as it
   already was for other emulators, so a restore no longer writes under a running game.
+- The restore preview lists every manual game launch command a backup adds or changes,
+  with its program, full arguments and working folder, and warns when a shell or
+  interpreter is told to run code from its arguments. Merge and Replace confirmations
+  say these commands will be able to run when you choose Play.
 - Settings > Connections explains that a connected IGDB or SteamGridDB looks up the
   whole library in the background, and a new Identify Library Automatically switch
   turns that off. Privacy now describes these lookups as they really happen.

@@ -79,7 +79,10 @@ own it and that no other user can write to it.
 It treats network responses, ROM and disc image contents, and backup archives
 as untrusted. A crash, file write or code execution from a crafted one is in
 scope. A backup archive is checked in memory against fixed limits before
-anything from it is restored.
+anything from it is restored. A restored manual game runs its command when you
+choose Play, so the restore preview and confirmation list every manual launch
+command the backup adds or changes, in full, and flag a shell or interpreter
+told to run code written into its arguments. Restore only backups you trust.
 
 Optional credentials (Steam, RetroAchievements, IGDB, SteamGridDB and RomM)
 are kept in the desktop Secret Service, not in Omakade's settings or database.

