@@ -117,7 +117,8 @@ Builds and CTest run on devbox. Run graphical checks in an owned omabox with the
 matching binaries and plugin. `tools/guide-i1/` seeds a private library and a
 fullscreen test game; `tools/guide-i2/latency.py` sends synthetic controller events
 through the native translator. Fixtures in `tools/guide-overlay-preview/` cover
-layout and unavailable states.
+layout and unavailable states. These preview tools are only in a git checkout;
+the release source tarball leaves them out.
 
 Unit tests cover pause ownership and recovery, parked identities, payload deltas,
 real-reading validation, input arbitration, process termination and plugin setup.
