@@ -6781,9 +6781,34 @@ int main(int argc, char* argv[]) {
               if (model->property("sourceFilters").toStringList() != QStringList{"RetroArch"}) {
                 fail("Controller favorite did not remove a source"); return;
               }
+              // Emulated filters by every emulator but reads as one chip.
+              if (!activate(item("emulatedSourcesButton")) ||
+                  model->property("sourceFilters").toStringList().size() < 2) {
+                fail("Emulated did not select the emulator sources"); return;
+              }
+              QStringList sourceChips;
+              for (const QVariant& chip : quickWindow->property("visibleLibraryFilters").toList()) {
+                if (chip.toMap().value("key").toString() == "sourceFilters")
+                  sourceChips.append(chip.toMap().value("label").toString());
+              }
+              if (sourceChips != QStringList{"Source: Emulated"}) {
+                fail(QStringLiteral("Emulated showed source chips %1").arg(sourceChips.join(", "))); return;
+              }
               activate(allSources);
               controller.backRequested(); settle();
               if (opened("librarySources") || !sources->hasActiveFocus()) { fail("Sources did not restore focus"); return; }
+              // The Emulated chip counts once, and removing it clears every emulator.
+              model->setProperty("sourceFilters", LibraryFilterModel::emulatorSources()); settle();
+              if (sources->property("text").toString() != QStringLiteral("SOURCES (1)")) {
+                fail(QStringLiteral("Emulated counted as %1").arg(sources->property("text").toString())); return;
+              }
+              // Repeater chips are visual children only, so search the item tree.
+              auto* emulatedChip = findVisualItem(quickWindow->contentItem(), QStringLiteral("sourceFilterChip"));
+              if (!activate(emulatedChip) || !model->property("sourceFilters").toStringList().isEmpty()) {
+                fail(QStringLiteral("Removing the Emulated chip left filters %1 (chip %2)")
+                         .arg(model->property("sourceFilters").toStringList().join(", "),
+                              emulatedChip ? QStringLiteral("found") : QStringLiteral("missing"))); return;
+              }
               if (!activate(filters) || !opened("libraryFilters")) { fail("Filters menu did not open"); return; }
               auto* repairInFilters = item("libraryRepairButton");
               if (repairInFilters && repairInFilters->isVisible()) {

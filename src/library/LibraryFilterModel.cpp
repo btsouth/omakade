@@ -86,6 +86,8 @@ void LibraryFilterModel::setSourceModel(QAbstractItemModel* source) {
                 recountSystems();
                 endFilterChange(Direction::Rows);
                 emit metadataOptionsChanged();
+                if (roles.contains(GameRoles::Hidden))
+                  refreshLibrarySources();
                 if (hadConsoleCards != hasConsoleCards())
                   emit consoleNavigationChanged();
               }
@@ -318,6 +320,7 @@ bool LibraryFilterModel::applyFilterState(const QVariantMap& state) {
   recountSystems();
   invalidate();
   sort(0);
+  refreshLibrarySources();
   emit searchTextChanged();
   emit modeChanged();
   emit sortModeChanged();
@@ -423,6 +426,7 @@ void LibraryFilterModel::setShowHidden(bool value) {
   beginFilterChange();
   recountSystems();
   endFilterChange(Direction::Rows);
+  refreshLibrarySources();
   emit showHiddenChanged();
 }
 
@@ -588,6 +592,27 @@ QStringList LibraryFilterModel::metadataOptions(int role) const {
 QStringList LibraryFilterModel::genreNames() const { return metadataOptions(GameRoles::Genres); }
 QStringList LibraryFilterModel::decadeNames() const { return metadataOptions(GameRoles::Year); }
 QStringList LibraryFilterModel::platformNames() const { return metadataOptions(GameRoles::System); }
+QStringList LibraryFilterModel::librarySources() const { return m_librarySources; }
+void LibraryFilterModel::refreshLibrarySources() {
+  // Hidden games count only where they show, so a source whose games are all
+  // hidden does not offer an empty grid.
+  const bool withHidden = m_mode == Mode::Hidden || m_showHidden;
+  QStringList values;
+  for (int row = 0; sourceModel() && row < sourceModel()->rowCount(); ++row) {
+    const auto index = sourceModel()->index(row, 0);
+    if (index.data(GameRoles::IsPortal).toBool() || (!withHidden && index.data(GameRoles::Hidden).toBool()))
+      continue;
+    values.append(index.data(GameRoles::Source).toString());
+    values.append(index.data(GameRoles::LinkedSources).toString().split(QStringLiteral(" + ")));
+  }
+  values.removeAll(QString());
+  values.removeDuplicates();
+  values.sort(Qt::CaseInsensitive);
+  if (values == m_librarySources)
+    return;
+  m_librarySources = values;
+  emit librarySourcesChanged();
+}
 void LibraryFilterModel::setGenreFilter(const QString& value) {
   const QString normalized = value.trimmed();
   if (m_genreFilter == normalized)
@@ -763,6 +788,7 @@ void LibraryFilterModel::setConsoleFilter(const QString& value) {
 }
 
 void LibraryFilterModel::rebuildProxy() {
+  refreshLibrarySources();
   if (sourceModel() == nullptr) {
     return;
   }
@@ -814,6 +840,7 @@ void LibraryFilterModel::setMode(Mode value) {
   beginFilterChange();
   recountSystems();
   endFilterChange(Direction::Rows);
+  refreshLibrarySources();
   emit modeChanged();
 }
 

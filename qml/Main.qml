@@ -129,9 +129,22 @@ ApplicationWindow {
     readonly property var visibleLibraryFilters: {
         const result = []
         if (Library.searchText) result.push({key: "searchText", label: "Search: " + Library.searchText})
-        for (const source of Library.sourceFilters)
-            result.push({key: "sourceFilters", label: "Source: " + source, source: source})
+        // The whole emulator group reads as one Emulated chip instead of one chip per emulator.
+        const emulators = Library.emulatorSources
+        const emulated = emulators.every(source => Library.sourceFilters.indexOf(source) >= 0)
+        if (emulated) result.push({key: "sourceFilters", label: "Source: Emulated", sources: emulators})
+        for (const source of Library.sourceFilters) {
+            if (!emulated || emulators.indexOf(source) < 0)
+                result.push({key: "sourceFilters", label: "Source: " + source, sources: [source]})
+        }
         return result.concat(root.activeLibraryFilters)
+    }
+    // Sources with games in the library. The picker lists only these, and Settings > Sources
+    // still shows every source. Demo and test libraries have no scanner objects, so there
+    // the picker keeps every enabled source.
+    readonly property var listedSources: Library.librarySources
+    function sourceListed(source, enabled, scanner) {
+        return enabled && (!scanner || root.listedSources.indexOf(source) >= 0)
     }
     function clearContextFilters() {
         if (Library.mode === 3) Library.mode = 0
@@ -2433,7 +2446,8 @@ ApplicationWindow {
                 spacing: 8
                 GlassButton {
                     id: sourcesMenuButton; objectName: "sourcesMenuButton"
-                    compact: true; text: Library.sourceFilters.length ? "SOURCES (" + Library.sourceFilters.length + ")" : "SOURCES"
+                    readonly property int chipCount: root.visibleLibraryFilters.filter(chip => chip.key === "sourceFilters").length
+                    compact: true; text: chipCount ? "SOURCES (" + chipCount + ")" : "SOURCES"
                     selected: Library.sourceFilters.length > 0
                     onClicked: librarySources.open()
                 }
@@ -2485,7 +2499,8 @@ ApplicationWindow {
                     model: root.visibleLibraryFilters
                     GlassButton {
                         required property var modelData
-                        objectName: modelData.key === "searchText" ? "librarySearchFilterChip" : ""
+                        objectName: modelData.key === "searchText" ? "librarySearchFilterChip"
+                                    : modelData.key === "sourceFilters" ? "sourceFilterChip" : ""
                         compact: true
                         maximumLabelWidth: Math.max(80, librarySurface.width - 100)
                         text: modelData.label + " ×"
@@ -2493,7 +2508,7 @@ ApplicationWindow {
                         onClicked: {
                             if (modelData.key === "searchText") { searchField.clear(); Library.searchText = "" }
                             else if (modelData.key === "sourceFilters")
-                                Library.sourceFilters = Library.sourceFilters.filter(source => source !== modelData.source)
+                                Library.sourceFilters = Library.sourceFilters.filter(source => modelData.sources.indexOf(source) < 0)
                             else Library[modelData.key] = modelData.empty
                             Qt.callLater(filtersMenuButton.forceActiveFocus)
                         }
@@ -3307,6 +3322,7 @@ ApplicationWindow {
                 objectName: "emulatedSourcesButton"
                 text: "EMULATED"
                 compact: true
+                visible: !SteamLibrary || Library.emulatorSources.some(source => root.listedSources.indexOf(source) >= 0)
                 property string sourceName: "Emulated"
                 selectable: true
                 selected: Library.emulatorSources.every(source => Library.sourceFilters.indexOf(source) >= 0)
@@ -3324,7 +3340,7 @@ ApplicationWindow {
                 objectName: "steamSourceButton"
                 text: "STEAM"
                 compact: true
-                visible: Preferences.steamEnabled
+                visible: root.sourceListed("Steam", Preferences.steamEnabled, SteamLibrary)
                 property string sourceName: "Steam"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Steam") >= 0
@@ -3342,7 +3358,7 @@ ApplicationWindow {
                 objectName: "battleNetSourceButton"
                 text: "BATTLE.NET"
                 compact: true
-                visible: Preferences.battleNetEnabled
+                visible: root.sourceListed("Battle.net", Preferences.battleNetEnabled, BattleNetLibrary)
                 property string sourceName: "Battle.net"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Battle.net") >= 0
@@ -3361,6 +3377,7 @@ ApplicationWindow {
                 text: "XODUS NEXUS"
                 compact: true
                 visible: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected
+                         && root.listedSources.indexOf("Xodus Nexus") >= 0
                 property string sourceName: "Xodus Nexus"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Xodus Nexus") >= 0
@@ -3378,7 +3395,7 @@ ApplicationWindow {
                 objectName: "lutrisSourceButton"
                 text: "LUTRIS"
                 compact: true
-                visible: Preferences.lutrisEnabled
+                visible: root.sourceListed("Lutris", Preferences.lutrisEnabled, LutrisLibrary)
                 property string sourceName: "Lutris"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Lutris") >= 0
@@ -3396,7 +3413,7 @@ ApplicationWindow {
                 objectName: "heroicSourceButton"
                 text: "HEROIC"
                 compact: true
-                visible: Preferences.heroicEnabled
+                visible: root.sourceListed("Heroic", Preferences.heroicEnabled, HeroicLibrary)
                 property string sourceName: "Heroic"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Heroic") >= 0
@@ -3414,7 +3431,7 @@ ApplicationWindow {
                 objectName: "gogSourceButton"
                 text: "GOG"
                 compact: true
-                visible: Preferences.gogEnabled
+                visible: root.sourceListed("GOG", Preferences.gogEnabled, HeroicLibrary)
                 property string sourceName: "GOG"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("GOG") >= 0
@@ -3432,7 +3449,7 @@ ApplicationWindow {
                 objectName: "faugusSourceButton"
                 text: "FAUGUS"
                 compact: true
-                visible: Preferences.faugusEnabled
+                visible: root.sourceListed("Faugus", Preferences.faugusEnabled, FaugusLibrary)
                 property string sourceName: "Faugus"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Faugus") >= 0
@@ -3447,7 +3464,7 @@ ApplicationWindow {
             }
             GlassButton {
                 objectName: "rommSourceButton"
-                text: "ROMM"; compact: true; visible: Preferences.rommEnabled
+                text: "ROMM"; compact: true; visible: root.sourceListed("RomM", Preferences.rommEnabled, RommLibrary)
                 property string sourceName: "RomM"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("RomM") >= 0
@@ -3459,7 +3476,7 @@ ApplicationWindow {
                 objectName: "retroArchSourceButton"
                 text: "RETROARCH"
                 compact: true
-                visible: Preferences.retroArchEnabled
+                visible: root.sourceListed("RetroArch", Preferences.retroArchEnabled, RetroArchLibrary)
                 property string sourceName: "RetroArch"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("RetroArch") >= 0
@@ -3477,7 +3494,7 @@ ApplicationWindow {
                 objectName: "pcsx2SourceButton"
                 text: "PCSX2"
                 compact: true
-                visible: Preferences.pcsx2Enabled
+                visible: root.sourceListed("PCSX2", Preferences.pcsx2Enabled, Pcsx2Library)
                 property string sourceName: "PCSX2"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("PCSX2") >= 0
@@ -3495,7 +3512,7 @@ ApplicationWindow {
                 objectName: "rpcs3SourceButton"
                 text: "RPCS3"
                 compact: true
-                visible: Preferences.rpcs3Enabled
+                visible: root.sourceListed("RPCS3", Preferences.rpcs3Enabled, Rpcs3Library)
                 property string sourceName: "RPCS3"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("RPCS3") >= 0
@@ -3515,7 +3532,7 @@ ApplicationWindow {
                 objectName: "ppssppSourceButton"
                 text: "PPSSPP"
                 compact: true
-                visible: Preferences.ppssppEnabled
+                visible: root.sourceListed("PPSSPP", Preferences.ppssppEnabled, PpssppLibrary)
                 property string sourceName: "PPSSPP"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("PPSSPP") >= 0
@@ -3535,7 +3552,7 @@ ApplicationWindow {
                 objectName: "ryujinxSourceButton"
                 text: "RYUJINX"
                 compact: true
-                visible: Preferences.ryujinxEnabled
+                visible: root.sourceListed("Ryujinx", Preferences.ryujinxEnabled, RyujinxLibrary)
                 property string sourceName: "Ryujinx"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Ryujinx") >= 0
@@ -3553,7 +3570,7 @@ ApplicationWindow {
                 objectName: "shadps4SourceButton"
                 text: "SHADPS4"
                 compact: true
-                visible: Preferences.shadps4Enabled
+                visible: root.sourceListed("shadPS4", Preferences.shadps4Enabled, Shadps4Library)
                 property string sourceName: "shadPS4"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("shadPS4") >= 0
@@ -3571,7 +3588,7 @@ ApplicationWindow {
                 objectName: "cemuSourceButton"
                 text: "CEMU"
                 compact: true
-                visible: Preferences.cemuEnabled
+                visible: root.sourceListed("Cemu", Preferences.cemuEnabled, CemuLibrary)
                 property string sourceName: "Cemu"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Cemu") >= 0
@@ -3589,7 +3606,7 @@ ApplicationWindow {
                 objectName: "melondsSourceButton"
                 text: "MELONDS"
                 compact: true
-                visible: Preferences.melondsEnabled
+                visible: root.sourceListed("melonDS", Preferences.melondsEnabled, MelondsLibrary)
                 property string sourceName: "melonDS"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("melonDS") >= 0
@@ -3609,7 +3626,7 @@ ApplicationWindow {
                 objectName: "xeniaSourceButton"
                 text: "XENIA"
                 compact: true
-                visible: Preferences.xeniaEnabled
+                visible: root.sourceListed("Xenia", Preferences.xeniaEnabled, XeniaLibrary)
                 property string sourceName: "Xenia"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Xenia") >= 0
@@ -3627,7 +3644,7 @@ ApplicationWindow {
                 objectName: "kytySourceButton"
                 text: "KYTY"
                 compact: true
-                visible: Preferences.kytyEnabled
+                visible: root.sourceListed("Kyty", Preferences.kytyEnabled, KytyLibrary)
                 property string sourceName: "Kyty"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Kyty") >= 0
@@ -3645,7 +3662,7 @@ ApplicationWindow {
                 objectName: "portsSourceButton"
                 text: "PORTS"
                 compact: true
-                visible: Preferences.nativePortsEnabled
+                visible: root.sourceListed("Ports", Preferences.nativePortsEnabled, NativePortLibrary)
                 property string sourceName: "Ports"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Ports") >= 0
@@ -3663,7 +3680,7 @@ ApplicationWindow {
                 objectName: "dolphinSourceButton"
                 text: "DOLPHIN"
                 compact: true
-                visible: Preferences.dolphinEnabled
+                visible: root.sourceListed("Dolphin", Preferences.dolphinEnabled, DolphinLibrary)
                 property string sourceName: "Dolphin"
                 selectable: true
                 selected: Library.sourceFilters.indexOf("Dolphin") >= 0

@@ -153,6 +153,8 @@ private:
   // Rebuilt with m_rows so linked-game lookups never walk every source model per role.
   QHash<QString, SourceRow> m_rowForKey;
   QHash<QString, QVector<SourceRow>> m_rowsForGroup;
+  // Member game keys per linked group, so a rebuild notices an installation coming or going.
+  QHash<QString, QStringList> m_groupMemberKeys;
   QHash<QString, int> m_unifiedIndexForKey;
   QSqlDatabase m_database;
   QString m_connectionName;

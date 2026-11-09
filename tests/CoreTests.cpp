@@ -3436,13 +3436,18 @@ void CoreTests::explicitLinksPersistAndPreserveInstallations() {
     QVERIFY(QDir().mkpath(installedPath));
     QCOMPARE(games.preferredInstallation(0).value(QStringLiteral("source")).toString(),
              QStringLiteral("Lutris"));
+    const QStringList bothSources{QStringLiteral("Demo"), QStringLiteral("Lutris")};
+    QCOMPARE(preferenceView.librarySources(), bothSources);
     games.setSourceEnabled(QStringLiteral("Lutris"), false);
+    // Lutris only had a linked installation, so it leaves the source list with no row removed.
+    QCOMPARE(preferenceView.librarySources(), QStringList{QStringLiteral("Demo")});
     QVERIFY(games.installations(0)
                 .at(0)
                 .toMap()
                 .value(QStringLiteral("preferredUnavailable"))
                 .toBool());
     games.setSourceEnabled(QStringLiteral("Lutris"), true);
+    QCOMPARE(preferenceView.librarySources(), bothSources);
     QVERIFY(games.installations(0).at(1).toMap().value(QStringLiteral("preferred")).toBool());
     QVERIFY(!games.installations(0)
                  .at(1)
@@ -12523,6 +12528,28 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   QVERIFY(reopened.data(reopened.index(0), GameRoles::Pinned).toBool() ||
           reopened.data(reopened.index(1), GameRoles::Pinned).toBool());
 
+  // The source picker lists only sources that have games, whatever the filters show.
+  const QStringList withGames{QStringLiteral("Demo"), QStringLiteral("Dolphin"), QStringLiteral("RetroArch")};
+  QCOMPARE(library.librarySources(), withGames);
+  // Hiding every Dolphin game drops Dolphin until hidden games show, and the list follows the rows.
+  const auto toggleDolphinHidden = [&games] {
+    for (int row = 0; row < games.rowCount(); ++row) {
+      const QModelIndex game = games.index(row);
+      if (!game.data(GameRoles::IsPortal).toBool() &&
+          game.data(GameRoles::Source).toString() == QStringLiteral("Dolphin"))
+        games.toggleHidden(row);
+    }
+  };
+  QSignalSpy sourcesChanged(&library, &LibraryFilterModel::librarySourcesChanged);
+  toggleDolphinHidden();
+  QCOMPARE(library.librarySources(), (QStringList{QStringLiteral("Demo"), QStringLiteral("RetroArch")}));
+  QVERIFY(!sourcesChanged.isEmpty());
+  library.setShowHidden(true);
+  QCOMPARE(library.librarySources(), withGames);
+  library.setShowHidden(false);
+  toggleDolphinHidden();
+  QCOMPARE(library.librarySources(), withGames);
+
   // Source filters combine, and the console card follows its games' source.
   library.setFixedCardSystems({QStringLiteral("gamecube")});
   library.setSourceFilters({QStringLiteral("Dolphin")});
@@ -12537,6 +12564,7 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   QVERIFY(library.sourcesSelected(LibraryFilterModel::emulatorSources()));
   QCOMPARE(count("Demo"), 0);
   QCOMPARE(portalCount(), 3);
+  QCOMPARE(library.librarySources(), withGames);
   library.toggleSources(LibraryFilterModel::emulatorSources());
   QVERIFY(library.sourceFilters().isEmpty());
 

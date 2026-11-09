@@ -343,6 +343,8 @@ import QtQuick.Layouts
                         { name: "GOG", enabled: Preferences.gogEnabled,
                           status: HeroicLibrary ? HeroicLibrary.statusText : "Unavailable",
                           error: HeroicLibrary ? HeroicLibrary.errorText : "",
+                          // The paths are Heroic's, so they do not mean GOG was found.
+                          found: HeroicLibrary ? HeroicLibrary.gogDetected : false,
                           paths: HeroicLibrary ? HeroicLibrary.detectedPaths : [],
                           lastScan: HeroicLibrary ? HeroicLibrary.lastScan : 0 },
                         { name: "FAUGUS", enabled: Preferences.faugusEnabled,
@@ -418,8 +420,16 @@ import QtQuick.Layouts
                         readonly property bool detail: settingsOverlay.sourceDetail === modelData.name
                         readonly property string displayStatus: modelData.enabled
                             && modelData.status === "Unavailable" ? "Not detected" : modelData.status
+                        // In use means switched on and found, by a scan or by games in the library.
+                        // A source that is on but was not found is listed under Available. Without a
+                        // scanner (demo and test libraries) the status reads Unavailable and only the
+                        // switch counts.
+                        readonly property bool inUse: modelData.enabled
+                            && (modelData.status === "Unavailable"
+                                || (modelData.found !== undefined ? modelData.found : modelData.paths.length > 0)
+                                || host.listedSources.some(source => source.toUpperCase() === (modelData.source || modelData.name).toUpperCase()))
                         visible: settingsOverlay.sourceDetail ? detail
-                                 : (settingsOverlay.sourceSearch === "" ? modelData.enabled !== settingsOverlay.availableSources : true)
+                                 : (settingsOverlay.sourceSearch === "" ? inUse !== settingsOverlay.availableSources : true)
                                    && modelData.name.toLowerCase().includes(settingsOverlay.sourceSearch.toLowerCase())
                         Layout.fillWidth: true
                         spacing: 5
