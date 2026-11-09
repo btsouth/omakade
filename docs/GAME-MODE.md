@@ -18,7 +18,7 @@ works with every source Omakade supports, not only Steam. It starts one of two w
 Either way, leaving puts back everything it changed. The desktop window keeps opening on
 the library.
 
-[Watch the local Game Mode demo](assets/game-mode-demo.mp4) (isolated desktop).
+[Watch the Game Mode demo](https://btsouth.github.io/omakade/assets/game-mode-demo.mp4).
 
 ## Use it
 
@@ -301,10 +301,10 @@ through them waits as described above.
 ## RetroArch picture cropped on a scaled display
 
 If RetroArch's picture is enlarged or cut off, compare a direct launch with Game
-Mode first. On a tested 125% Wayland display, Vulkan cropped the picture even with
-shaders disabled; OpenGL Core (`glcore`) displayed it correctly with CRT-Royale.
-This workaround was verified with Super Mario World using Snes9x. Compatibility
-with other cores has not been established.
+Mode first. On some scaled Wayland displays, such as 125%, RetroArch's Vulkan
+renderer crops the picture even with shaders off. Switching to OpenGL Core
+(`glcore`) shows it correctly. This is known to work with the Snes9x core; other
+cores may behave differently.
 
 To limit the change to one game, use a RetroArch
 [game override](https://docs.libretro.com/guides/overrides/) under
@@ -317,48 +317,7 @@ video_driver = "glcore"
 Preserve any existing settings in that file. Remove the added setting to undo it.
 Omakade does not change RetroArch's renderer automatically.
 
-If GLCore freezes when the game is covered by another window, a separate
-workaround is `video_vsync = "false"` in the same game override. This avoided a
-Wayland/EGL wait in an isolated software-rendered comparison, and the game then
-closed normally through Stop Games and Leave. The same Mario-only override then
-passed a physical DP-2 launch, Cancel and Stop Games and Leave check with CRT-Royale.
-Extended gameplay and tearing were not assessed. Disabling VSync may affect tearing. Remove this setting to
-restore the previous behavior. Omakade does not apply either override automatically.
-
-## Hardware acceptance
-
-The automated acceptance script exercises Hyprland, notifications, and a private
-PipeWire server with virtual displays and null sound outputs. It does not prove
-physical display behavior, audible sound, or real game behavior. The following
-checks can also be driven automatically on a real machine; record physical
-observations separately:
-
-1. One display: start Game Mode with no game, navigate to details and scroll, then
-   toggle to desktop and back three times. The same page, selection, focus and scroll
-   return; the previous desktop workspace and window layout return on each park.
-   End Game Mode explicitly and verify the journal and temporary owner are cleared.
-2. A second display that is normally on: Game Mode opens there, and leaving restores the
-   workspace it was showing and returns focus to the first display.
-3. A display that is disabled in `monitors.lua`: it turns on, and turns off when leaving.
-4. A chosen sound output: game audio plays there, and the previous output returns.
-5. Launch a Steam game, an emulator and one Heroic or Lutris game. Each opens on the
-   Game Mode display. Return and resume with the shortcut, then return and quit the
-   game while parked. The library session remains and resumes without dead game/audio
-   records. Stop Games and Leave still asks for confirmation and ends the session.
-6. Kill Omakade during Game Mode, then start it again. The display, sound and
-   notifications are put back.
-7. Unplug or disable the display during Game Mode. Game Mode ends and sound returns.
-8. Controller Home button, with Steam open and Steam Input on: with no game a short
-   press starts and ends Game Mode in place, and over a game it opens and closes the
-   guide. A long hold starts, returns and resumes Game Mode on the Game Mode display.
-   A Home button chord does nothing, and the game and Steam still receive ordinary input.
-9. With the display powered off, start Game Mode. If Hyprland cannot enable its
-   output, it reports the failure and rolls back. If the display still advertises
-   an active connection, Game Mode may start; verify this separately from the
-   automated timeout test.
-10. With a TV and its sound output chosen, press F11 on the desk display. Game Mode opens
-    on the desk display, the TV stays off, sound and notifications do not change, and
-    LEAVE with no game running returns to the desktop library. Start a game there and
-    let it idle: the screen stays awake. Browse without a game: the screen may sleep.
-11. Start a Moonlight stream of Omakade. Game Mode opens on the streamed display and the
-    stream's sound keeps working. Ending the stream closes Omakade and clears the session.
+If GLCore freezes while another window covers the game, also add
+`video_vsync = "false"` to the same game override. Turning VSync off may cause
+tearing. Remove the setting to undo it. Omakade does not apply either override
+automatically.

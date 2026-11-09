@@ -80,8 +80,10 @@ install(FILES LICENSE COPYRIGHT
 install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
 )
+# The documentation keeps the source tree's layout so relative links between pages work;
+# PackageLayoutTests checks every one.
 install(FILES README.md CONTRIBUTING.md PRIVACY.md SUPPORT.md SECURITY.md RELEASING.md
-  CHANGELOG.md docs/COMPATIBILITY.md
+  CHANGELOG.md COPYRIGHT
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
 )
 # The in-game guide shell plugin. Omakade links it into each user's Omarchy plugin folder
@@ -102,17 +104,28 @@ install(DIRECTORY omarchy-plugin/
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/omarchy-plugin/manifest.json"
   DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/omarchy-plugin
 )
-install(DIRECTORY skills/omakade-tv-gaming
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade/skills
-  FILES_MATCHING PATTERN "*.md"
-  PATTERN "*.py" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
-  PATTERN "__pycache__" EXCLUDE
-)
+# The guides link to the skill, so the documentation carries a copy too.
+foreach(omakade_skill_dir omakade/skills doc/omakade/skills)
+  install(DIRECTORY skills/omakade-tv-gaming
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/${omakade_skill_dir}
+    FILES_MATCHING PATTERN "*.md"
+    PATTERN "*.py" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+      GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+    PATTERN "__pycache__" EXCLUDE
+  )
+endforeach()
 
-install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/HIGHLIGHTS.md docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md
-  docs/CONTROLLER-NAVIGATION.md docs/BACKUP-FORMAT.md docs/SAVE-SETS.md docs/COMPATIBILITY.md
+install(FILES docs/GUIDE.md docs/GAME-MODE.md docs/GAME-GUIDE.md docs/HIGHLIGHTS.md
+  docs/NATIVE-PORTS.md docs/RECORDING-COVERAGE.md docs/CONTROLLER-NAVIGATION.md
+  docs/BACKUP-FORMAT.md docs/SAVE-SETS.md docs/COMPATIBILITY.md docs/TROUBLESHOOTING.md
+  docs/ARCHITECTURE.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
+)
+install(FILES docs/assets/library-preview.webp docs/assets/game-details.webp
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs/assets
+)
+install(FILES omarchy-plugin/README.md
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/omarchy-plugin
 )
 
 include(CTest)

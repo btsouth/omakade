@@ -15,7 +15,7 @@ exact candidate package for each gap that applies:
 
 - Controllers: guide button, rumble, hotplug or new pad mappings on real pads.
 - TV and audio: Game Mode display modes, HDMI audio or a real panel's
-  fullscreen behavior (see the limits at the end of [Game Mode](docs/GAME-MODE.md)).
+  fullscreen behavior (see [Game Mode on real hardware](docs/ARCHITECTURE.md#game-mode-on-real-hardware)).
 - Launchers: launch, playtime or achievement paths that fixtures do not cover,
   such as a new launcher or a change to how a real game is started or tracked.
 - ARM64: aarch64-specific code, dependencies or build flags, on supported ARM64
