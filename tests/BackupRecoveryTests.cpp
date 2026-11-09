@@ -2,6 +2,7 @@
 #include "backup/BackupManager.h"
 #include "backup/BackupRecovery.h"
 #include "backup/BackupSnapshot.h"
+#include "backup/BackupStartup.h"
 #include "tracking/PlaySessionStore.h"
 #include "tracking/SessionDatabase.h"
 #include "library/BattleNetGameModel.h"
@@ -25,6 +26,7 @@
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLockFile>
 #include <QProcess>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -131,6 +133,7 @@ private slots:
   void abruptUndo();
   void changedArchiveAndJournal();
   void missingSettingsAndFreshLibrary();
+  void damagedLibraryIsSetAside();
   void failedSettingsWriteKeepsRecoveryPending();
   void damagedRecoveryBlocksReplay();
   void asynchronousPreviewStagesExactPayload();
@@ -575,6 +578,78 @@ void BackupRecoveryTests::missingSettingsAndFreshLibrary() {
   QVERIFY(!QFileInfo::exists(p.settings));
   QCOMPARE(collections(p.database), QStringList{});
   QCOMPARE(recovery.status(), "reverted");
+}
+
+void BackupRecoveryTests::damagedLibraryIsSetAside() {
+  QTemporaryDir temp;
+  const auto p = paths(temp.path());
+  const QByteArray damaged = QByteArray("not a database ").repeated(600);
+  const QByteArray wal = QByteArray("stale wal ").repeated(100);
+  QVERIFY(write(p.database, damaged));
+  QVERIFY(write(p.database + "-wal", wal));
+  QVERIFY(BackupSnapshot::damaged(p.database));
+  QString error;
+  BackupPayload current;
+  QVERIFY(!BackupSnapshot::capture(p.database, {}, &current, &error));
+
+  // Preview compares against an empty library instead of refusing.
+  AppSettings settings(p.settings);
+  const QString archive = temp.filePath("incoming.omakade-backup");
+  QVERIFY(BackupArchive::write(archive, payload("Imported", true), &error));
+  BackupManager manager(p, &settings, true);
+  manager.previewBackup(archive);
+  QTRY_VERIFY_WITH_TIMEOUT(!manager.busy(), 5000);
+  QVERIFY2(manager.hasPreview(), qPrintable(manager.message()));
+  QVERIFY(manager.preview().value("currentDamaged").toBool());
+
+  BackupRecovery recovery(p);
+  QVERIFY(recovery.stage(payload("Imported", true), BackupDatabase::Mode::Replace, &error));
+  {
+    // A running recorder blocks the restore, and the startup screen offers to stop it.
+    QLockFile recorder(p.database + ".sessiond.lock");
+    QVERIFY(recorder.tryLock(0));
+    QVERIFY(!recovery.resume(&error));
+    QCOMPARE(error, BackupDatabase::RecorderRunning);
+    QCOMPARE(recovery.status(), "queued");
+    BackupStartup startup(p);
+    startup.retry();
+    QTRY_VERIFY_WITH_TIMEOUT(!startup.busy(), 5000);
+    QVERIFY(startup.recorderRunning());
+    QVERIFY(startup.canUndo());
+  }
+  QCOMPARE(read(p.database), damaged);
+
+  // Interrupted after the new database is written, then undone part way.
+  QCOMPARE(child(temp.path(), "settings"), 73);
+  QCOMPARE(collections(p.database), QStringList{"Imported"});
+  QVERIFY(!QFileInfo::exists(p.database + "-wal") || read(p.database + "-wal") != wal);
+  const QString job = QFileInfo(recovery.recoveryArchive()).absolutePath();
+  QCOMPARE(read(job + "/damaged.sqlite3"), damaged);
+  QCOMPARE(read(job + "/damaged.sqlite3-wal"), wal);
+  QCOMPARE(child(temp.path(), "undo-database", true), 73);
+  QCOMPARE(recovery.status(), "undoing");
+  QVERIFY2(recovery.resume(&error), qPrintable(error));
+  QCOMPARE(recovery.status(), "reverted");
+  QCOMPARE(read(p.database), damaged);
+  QCOMPARE(read(p.database + "-wal"), wal);
+
+  // A changed copy blocks both directions.
+  QVERIFY(recovery.stage(payload("Imported", true), BackupDatabase::Mode::Merge, &error));
+  QCOMPARE(child(temp.path(), "prepared"), 73);
+  const QString second = QFileInfo(recovery.recoveryArchive()).absolutePath();
+  QVERIFY(second != job);
+  QVERIFY(write(second + "/damaged.sqlite3", "changed"));
+  QVERIFY(!recovery.resume(&error));
+  QVERIFY(error.contains("changed"));
+  QVERIFY(!recovery.undo(&error));
+  QCOMPARE(read(p.database), damaged);
+  QVERIFY(write(second + "/damaged.sqlite3", damaged));
+  QCOMPARE(child(temp.path(), "database"), 73);
+  QVERIFY2(recovery.resume(&error), qPrintable(error));
+  QCOMPARE(recovery.status(), "complete");
+  QCOMPARE(collections(p.database), QStringList{"Imported"});
+  QVERIFY(!BackupSnapshot::damaged(p.database));
+  QVERIFY(AppSettings(p.settings).couchModeEnabled());
 }
 
 void BackupRecoveryTests::failedSettingsWriteKeepsRecoveryPending() {

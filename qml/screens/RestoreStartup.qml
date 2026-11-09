@@ -97,6 +97,8 @@ ApplicationWindow {
             Layout.fillWidth: true
             text: Recovery.busy
                   ? "Keep Omakade open. Your library will open when the restore finishes."
+                  : Recovery.recorderRunning
+                  ? "The play-session recorder is using your library. Stop it to apply the backup. On Omarchy the library starts it again when it opens."
                   : "Your library will stay closed until recovery finishes. Retry after fixing the problem, or undo the pending restore. The recovery folder contains your saved copies."
             wrapMode: Text.Wrap
             color: Theme.mutedText
@@ -114,9 +116,9 @@ ApplicationWindow {
                 id: retryButton
                 objectName: "restoreRetryButton"
                 Layout.fillWidth: true
-                text: "RETRY"
+                text: Recovery.recorderRunning ? "STOP RECORDER AND RESTORE" : "RETRY"
                 enabled: !Recovery.busy
-                onClicked: Recovery.retry()
+                onClicked: Recovery.recorderRunning ? Recovery.stopRecorderAndRetry() : Recovery.retry()
             }
             RecoveryButton {
                 id: undoButton

@@ -381,7 +381,13 @@ is stopped. Closing Omakade or turning **Record Playtime** off does not stop it,
    run `systemctl --user start omakade-sessiond`.
 
 If the recorder is still running, the restore stops with "Stop the play-session
-recorder before restoring play history, then retry." Stop it and retry.
+recorder before restoring, then retry." Choose **Stop Recorder and Restore** to stop
+`omakade-sessiond` and apply the backup, or stop it yourself and retry.
+
+A backup can also repair a library database that is damaged and cannot be read.
+The preview compares against an empty library, and the restore keeps an exact copy
+of the damaged database in the recovery folder before it builds a new one. Undo
+puts the damaged copy back.
 
 Account-service identifiers and Sunshine publishing choices stay local. Missing
 manual paths remain repairable, and disconnected game identities stay stored.
