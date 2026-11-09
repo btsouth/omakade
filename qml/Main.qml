@@ -2499,7 +2499,8 @@ ApplicationWindow {
                     model: root.visibleLibraryFilters
                     GlassButton {
                         required property var modelData
-                        objectName: modelData.key === "searchText" ? "librarySearchFilterChip" : ""
+                        objectName: modelData.key === "searchText" ? "librarySearchFilterChip"
+                                    : modelData.key === "sourceFilters" ? "sourceFilterChip" : ""
                         compact: true
                         maximumLabelWidth: Math.max(80, librarySurface.width - 100)
                         text: modelData.label + " ×"

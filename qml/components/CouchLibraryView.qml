@@ -37,10 +37,11 @@ FocusScope {
         { label: "KYTY", value: "Kyty", enabled: Preferences.kytyEnabled, scanner: KytyLibrary },
         { label: "PORTS", value: "Ports", enabled: Preferences.nativePortsEnabled, scanner: NativePortLibrary },
         { label: "DOLPHIN", value: "Dolphin", enabled: Preferences.dolphinEnabled, scanner: DolphinLibrary },
-        { label: "MANUAL", value: "Manual", enabled: true, scanner: ManualLibrary }
+        // Manual games always have a model, so this matches the desktop button directly.
+        { label: "MANUAL", value: "Manual", enabled: !!ManualLibrary && ManualLibrary.count > 0 }
     ].filter(function(option) {
         // Only sources with games in the library. Demo and test libraries have no
-        // scanner objects, so every enabled source stays listed there.
+        // scanner objects, so every enabled source except Manual stays listed there.
         if (option.enabled === undefined) return true
         if (!option.enabled) return false
         if (!option.scanner) return true

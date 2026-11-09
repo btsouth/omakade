@@ -6797,6 +6797,14 @@ int main(int argc, char* argv[]) {
               activate(allSources);
               controller.backRequested(); settle();
               if (opened("librarySources") || !sources->hasActiveFocus()) { fail("Sources did not restore focus"); return; }
+              // The Emulated chip counts once, and removing it clears every emulator.
+              model->setProperty("sourceFilters", LibraryFilterModel::emulatorSources()); settle();
+              if (sources->property("text").toString() != QStringLiteral("SOURCES (1)")) {
+                fail(QStringLiteral("Emulated counted as %1").arg(sources->property("text").toString())); return;
+              }
+              if (!activate(item("sourceFilterChip")) || !model->property("sourceFilters").toStringList().isEmpty()) {
+                fail("Removing the Emulated chip left emulator filters"); return;
+              }
               if (!activate(filters) || !opened("libraryFilters")) { fail("Filters menu did not open"); return; }
               auto* repairInFilters = item("libraryRepairButton");
               if (repairInFilters && repairInFilters->isVisible()) {
