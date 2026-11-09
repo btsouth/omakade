@@ -40,6 +40,10 @@ public:
   // a console fills it in rather than waiting for the rest of the library.
   void setVisibleLibrary(QAbstractItemModel* visible);
   void setCacheLimitMb(int megabytes);
+  // Off means the library is looked up only when someone asks: Update Ratings & Portraits, or a
+  // game's details. Turning it off also stops a pass already under way.
+  void setAutomaticPass(bool enabled);
+  bool automaticPass() const { return m_automaticPass; }
   QVariantMap entry(const QString& key) const { return m_entries.value(key); }
   bool reviewWritable() const { return !busy() && m_pendingWrites.isEmpty(); }
   void reloadReviewEntry(const QString& key);
@@ -201,6 +205,7 @@ private:
   // Each provider is paced on its own, so the queue does not need a blanket pause between games.
   QElapsedTimer m_sinceGridRequest;
   bool m_stoppedByHand = false;
+  bool m_automaticPass = true;
   bool m_editing = false;
   QQueue<QVariantMap> m_pausedQueue;
   QAbstractItemModel* m_visible = nullptr;

@@ -195,13 +195,21 @@ credentials. Omakade maps a Steam App ID to an IGDB game, then requests IGDB's
 external critic aggregate and game-length estimates. Responses are cached in
 the local library database for offline use and refreshed after 30 days.
 
-Selecting Update Ratings & Portraits in Settings or searching in game details
-sends game titles and platform IDs to IGDB, or Steam App IDs when available.
+Once IGDB or SteamGridDB is connected, Omakade identifies the library in the
+background: shortly after launch, when games are added, and when the view
+changes, it looks up every game without a fresh answer. Opening a game's
+details looks up that game. Selecting Update Ratings & Portraits in Settings or
+searching in game details does the same on request. These lookups send game
+titles and platform IDs to IGDB, or Steam App IDs when available. Turning off
+Identify Library Automatically in Settings > Connections stops the background
+pass, including one under way, so the library is looked up only when the user
+selects Update Ratings & Portraits or opens or searches in a game's details.
 Library ratings use IGDB's combined `total_rating` field. Popularity uses its
 IGDB-visit metric. Manual identification choices stay in the local database.
 
-SteamGridDB requests occur only after the user supplies an API key and asks
-for a library update or portrait selection. Requests send game titles or
+SteamGridDB requests occur only after the user supplies an API key. They are
+part of the same background pass and the same requests on demand, and they also
+run when the user picks a portrait. Requests send game titles or
 provider game IDs, never ROM files, installation paths, or ROM hashes.
 Portraits are downloaded from SteamGridDB's HTTPS image hosts, decoded, and
 cached locally. The configured artwork limit bounds the portrait cache and

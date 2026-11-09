@@ -335,6 +335,9 @@ artwork and launching work without any of them.
 | RomM Library | Games from a RomM server; see [RomM](#romm) | A RomM Client API Token |
 
 **Update Ratings & Portraits** fills in ratings and covers for the whole library.
+While IGDB or SteamGridDB is connected, Omakade also does this on its own in the
+background. Turn off **Identify Library Automatically** to look games up only when
+you select Update or open a game's details.
 Keys and tokens are stored in Secret Service, never in Omakade's settings file, and
 each connection can be removed from the same page. [Privacy](../PRIVACY.md) lists
 what each one sends.

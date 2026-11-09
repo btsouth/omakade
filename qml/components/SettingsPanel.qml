@@ -1081,6 +1081,23 @@ import QtQuick.Layouts
                     wrapMode: Text.Wrap
                 }
                 GlassButton {
+                    objectName: "metadataAutoIdentifyToggle"
+                    Layout.fillWidth: true
+                    compact: true
+                    text: "IDENTIFY LIBRARY AUTOMATICALLY: " + (Preferences.metadataAutoIdentify ? "ON" : "OFF")
+                    selectable: true
+                    selected: Preferences.metadataAutoIdentify
+                    onClicked: Preferences.metadataAutoIdentify = !Preferences.metadataAutoIdentify
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "With IGDB or SteamGridDB connected, Omakade looks up every game in the background, sending titles, platform IDs and Steam App IDs. Turn this off to look games up only when you select Update or open a game's details."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 11 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                GlassButton {
                     Layout.fillWidth: true; compact: true
                     text: Metadata && Metadata.busy ? "UPDATING · " + Metadata.pending + " REMAINING" : "UPDATE RATINGS & PORTRAITS"
                     enabled: Metadata && !Metadata.busy
@@ -1091,7 +1108,7 @@ import QtQuick.Layouts
                 ConnectionButton { text: settingsOverlay.connectionLabel("STEAMGRIDDB PORTRAIT COVERS", Metadata && Metadata.hasGridKey, ""); selected: settingsOverlay.connection === 3; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 3 ? -1 : 3; settingsOverlay.pageChanged() } }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 10; visible: settingsOverlay.connection === 3
-                    Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Add a SteamGridDB API key for portrait covers. You can choose a different portrait in each game's details."; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale }
+                    Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Add a SteamGridDB API key for portrait covers. You can choose a different portrait in each game's details. Once connected, game titles and IDs are sent to SteamGridDB in the background unless Identify Library Automatically is off."; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale }
                     TextField {
                         id: gridKeyField; Layout.fillWidth: true
                         placeholderText: Metadata && Metadata.hasGridKey ? "API key saved securely" : "SteamGridDB API key"
@@ -1408,6 +1425,14 @@ import QtQuick.Layouts
                 Text {
                     Layout.fillWidth: true
                     text: Insights ? Insights.statusText : "IGDB is unavailable in demo mode."
+                    color: Theme.mutedText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 10 * settingsPanel.uiScale
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Once connected, game titles, platform IDs and Steam App IDs are sent to IGDB in the background unless Identify Library Automatically is off."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: 10 * settingsPanel.uiScale

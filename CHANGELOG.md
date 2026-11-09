@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Settings > Connections explains that a connected IGDB or SteamGridDB looks up the
+  whole library in the background, and a new Identify Library Automatically switch
+  turns that off. Privacy now describes these lookups as they really happen.
 - The Sources picker lists only sources that have games, and choosing Emulated shows one
   Emulated chip instead of one per emulator. Settings > Sources lists a source as In use
   only once it is found; sources that are on but not found move to Available.

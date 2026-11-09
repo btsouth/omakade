@@ -688,6 +688,26 @@ void GameMetadata::setVisibleLibrary(QAbstractItemModel* visible) {
   connect(m_visible, &QAbstractItemModel::layoutChanged, this, viewChanged);
 }
 
+void GameMetadata::setAutomaticPass(bool enabled) {
+  if (m_automaticPass == enabled)
+    return;
+  m_automaticPass = enabled;
+  if (enabled) {
+    if (!m_stoppedByHand && !m_editing)
+      m_settle.start();
+    emit changed();
+    return;
+  }
+  m_settle.stop();
+  const bool stopping = !m_queue.isEmpty() || !m_pausedQueue.isEmpty();
+  m_queue.clear();
+  m_pausedQueue.clear();
+  if (stopping)
+    m_status = m_busy ? QStringLiteral("Stopping after the current request")
+                      : QStringLiteral("Automatic library lookups are off");
+  emit changed();
+}
+
 void GameMetadata::setEditing(bool editing) {
   if (m_editing == editing)
     return;
@@ -715,7 +735,8 @@ void GameMetadata::setEditing(bool editing) {
 
 void GameMetadata::continueLibraryPass() {
   // Stopping by hand means stopped, until the next launch or an explicit update.
-  if (m_stoppedByHand || m_editing || m_library == nullptr)
+  // Turned off in Settings means only lookups someone asks for, not a walk over the library.
+  if (!m_automaticPass || m_stoppedByHand || m_editing || m_library == nullptr)
     return;
   // Reading keys from the keyring is work that finishes on its own, so look again shortly
   // rather than waiting to be told. Wanting credentials is different: that waits for an event.
