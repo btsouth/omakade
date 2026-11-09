@@ -533,7 +533,7 @@ foreach(size_case IN ITEMS small large)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30)
 endforeach()
-foreach(settings_section IN ITEMS sources library connections controls about)
+foreach(settings_section IN ITEMS sources library connections controls storage about)
   add_test(NAME omakade_settings_${settings_section}
     COMMAND omakade --render-overlay=settings-${settings_section}
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/settings-${settings_section}.png

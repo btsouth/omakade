@@ -5127,6 +5127,27 @@ int main(int argc, char* argv[]) {
             qCritical() << "Card preview fixture did not open the card";
             application.exit(EXIT_FAILURE); return;
           }
+          // The preview's title and buttons sit on its own opaque panel inside the window margin,
+          // not straight over the app header's logo and buttons behind the backdrop.
+          auto* panel = findVisualItem(preview, QStringLiteral("cardPreviewPanel"));
+          const QRectF panelRect =
+              panel ? panel->mapRectToScene(panel->boundingRect()) : QRectF{};
+          if (!panel || panel->property("color").value<QColor>().alphaF() < 0.95 ||
+              panelRect.top() < 1 || panelRect.left() < 1) {
+            qCritical() << "Card preview has no opaque panel of its own" << panelRect;
+            application.exit(EXIT_FAILURE); return;
+          }
+          for (const QString& name : {QStringLiteral("cardPreviewTitle"),
+                                      QStringLiteral("cardSaveButton"),
+                                      QStringLiteral("cardCloseButton")}) {
+            auto* item = findVisualItem(preview, name);
+            const QRectF rect = item ? item->mapRectToScene(item->boundingRect()) : QRectF{};
+            if (!item || !panelRect.contains(rect)) {
+              qCritical() << "Card preview control is outside its panel" << name << rect
+                          << panelRect;
+              application.exit(EXIT_FAILURE); return;
+            }
+          }
         }
         if (renderOverlay == QStringLiteral("artwork-editor")) {
           for (const QString& kind : {QStringLiteral("cover"), QStringLiteral("hero")}) {
@@ -5418,6 +5439,37 @@ int main(int argc, char* argv[]) {
             for (auto* child : item->childItems()) self(self, child);
           };
           if (overlay) check(check, overlay);
+          // Backup & Storage draws its own text, so it is held to the same type roles as the
+          // other pages: section headings, body and supporting text, never the default size.
+          if (renderOverlay == QStringLiteral("settings-storage") ||
+              renderOverlay == QStringLiteral("settings-save-overview")) {
+            auto* page = quickWindow->findChild<QQuickItem*>(QStringLiteral("backupStorageSettings"));
+            auto* panel = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsPanel"));
+            const qreal scale = panel ? panel->property("uiScale").toReal() : 0;
+            int checked = 0;
+            const auto checkRoles = [&](auto&& self, QQuickItem* item) -> void {
+              if (!item->isVisible() || item->inherits("QQuickControl") ||
+                  item->inherits("QQuickTextInput") || item->inherits("QQuickTextEdit"))
+                return;
+              if (item->inherits("QQuickText")) {
+                const int size = item->property("font").value<QFont>().pixelSize();
+                bool matches = false;
+                for (const int role : {12, 14, 18}) matches |= qAbs(size - role * scale) <= 1;
+                if (!matches) {
+                  qCritical() << "Backup & Storage text is off the shared type roles"
+                              << item->property("text").toString().left(40) << size << scale;
+                  okay = false;
+                }
+                ++checked;
+              }
+              for (auto* child : item->childItems()) self(self, child);
+            };
+            if (page && page->isVisible() && scale > 0) checkRoles(checkRoles, page);
+            if (checked < 6) {
+              qCritical() << "Backup & Storage page did not render its text" << checked;
+              okay = false;
+            }
+          }
           if (overlay && scroll && scroll->isVisible() &&
               !renderOverlay.startsWith(QStringLiteral("settings-recorder-"))) {
             auto* navigation = quickWindow->findChild<QQuickItem*>(
