@@ -132,8 +132,15 @@ private slots:
       return QVector<ProcessSnapshot>{};
     });
     QSignalSpy finished(&service, &GameStopService::finished);
+    QSignalSpy stopping(&service, &GameStopService::stopping);
     QVERIFY(service.stopListedGames({row("Manual", "gone", "Already closed")}));
     QVERIFY(service.busy());
+    // Said before anything is signalled, so the launcher does not report the game as
+    // having closed by itself.
+    QCOMPARE(stopping.size(), 1);
+    QCOMPARE(stopping.at(0).at(0).toList(),
+             (QVariantList{QVariantMap{{QStringLiteral("source"), QStringLiteral("Manual")},
+                                       {QStringLiteral("appId"), QStringLiteral("gone")}}}));
     QVERIFY(entered->tryAcquire(1, 1000));
     gate->release();
     QTRY_COMPARE(finished.size(), 1);

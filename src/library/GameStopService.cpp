@@ -285,6 +285,10 @@ void GameStopService::beginStop(const QVector<GameStop::GameIdentity>& games) {
   m_lines.clear();
   m_cancel = std::make_shared<std::atomic_bool>(false);
   emit changed();
+  QVariantList targets;
+  for (const GameStop::GameIdentity& game : games)
+    targets.append(QVariantMap{{QStringLiteral("source"), game.source}, {QStringLiteral("appId"), game.appId}});
+  emit stopping(targets);
 
   // Everything the worker needs is copied, so the worker never reads a member
   // while the interface thread could be writing one.

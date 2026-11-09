@@ -399,7 +399,9 @@ bool GameLauncher::trimLaunchLog(const QString& path, qint64 cap) {
   QFile file(path);
   if (cap <= 0 || !file.exists() || file.size() <= cap) return false;
   if (!file.open(QIODevice::ReadWrite)) return false;
-  // The game appends after whatever this leaves, so its newest output stays last.
+  // The game appends after whatever this leaves, so its newest output stays last. Like any
+  // copy and truncate rotation, output the game writes while this runs can be lost or
+  // overwritten near the cut. Only log text is at stake, so that is accepted.
   const qint64 keep = cap / 2;
   if (!file.seek(file.size() - keep)) return false;
   QByteArray tail = file.read(keep);
@@ -407,6 +409,24 @@ bool GameLauncher::trimLaunchLog(const QString& path, qint64 cap) {
   if (lineStart >= 0) tail.remove(0, lineStart + 1);
   tail.prepend("--- Omakade removed older output to keep this log small ---\n");
   return file.resize(0) && file.seek(0) && file.write(tail) == tail.size();
+}
+
+int GameLauncher::trimLaunchLogs() {
+  int trimmed = 0;
+  const QFileInfoList logs =
+      QDir(launchLogDirectory()).entryInfoList({QStringLiteral("*.log")}, QDir::Files);
+  for (const QFileInfo& log : logs) {
+    if (trimLaunchLog(log.absoluteFilePath())) ++trimmed;
+  }
+  return trimmed;
+}
+
+void GameLauncher::forgetEarlyExit(const QString& source, const QString& appId) {
+  for (auto& process : m_trackedProcesses) {
+    if (process.installation.value(QStringLiteral("source")).toString().compare(source, Qt::CaseInsensitive) == 0 &&
+        process.installation.value(QStringLiteral("appId")).toString() == appId)
+      process.watchEarlyExit = false;
+  }
 }
 
 bool GameLauncher::openLaunchLog(const QString& path) const {

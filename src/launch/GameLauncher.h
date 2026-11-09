@@ -75,8 +75,13 @@ public:
   // Keeps the newest half of a log above the cap, from a line start. True when it cut.
   static bool trimLaunchLog(const QString& path, qint64 cap = kLaunchLogCap);
   Q_INVOKABLE bool openLaunchLog(const QString& path) const;
+  // Cuts every game's log above the cap, including logs still written by something a
+  // game left running after Omakade stopped following it. Returns how many it cut.
+  static int trimLaunchLogs();
   // How soon after it starts a game's exit counts as closing right away.
   void setEarlyExitWindow(int milliseconds) { m_earlyExitWindowMs = milliseconds; }
+  // The user is stopping this game, so its closing is not reported as closing right away.
+  void forgetEarlyExit(const QString& source, const QString& appId);
   // Removes MangoHud settings left by games that are no longer running, such as after
   // Omakade was closed during a game. Returns how many were removed.
   static int sweepStaleMangoConfigs();
@@ -153,6 +158,7 @@ signals:
   void gameClosedEarly(const QVariantMap& game);
 
 private:
+  friend class CoreTests;
   struct EmulatorPlan {
     LaunchCommand command;
     QString source, path, core, error, errorCategory;

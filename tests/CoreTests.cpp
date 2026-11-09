@@ -3788,7 +3788,7 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
   QTest::qWait(100);
   QCOMPARE(closed.count(), 1);
 
-  // A game that is gone before Omakade can follow it is reported too.
+  // A game that exits at once is reported, whether Omakade saw it running or not.
   const QString instant = directory.filePath("exits.sh");
   writeFile(instant, "#!/bin/sh\nexit 1\n");
   QVERIFY(QFile::setPermissions(instant, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
@@ -3796,6 +3796,47 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
                           manualLaunchTarget(QStringLiteral("exits"), instant, directory.path())));
   QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 2, 5000);
   QCOMPARE(closed.last().first().toMap().value("appId").toString(), QStringLiteral("exits"));
+
+  // A game already gone when Omakade goes to follow it is reported once, without ever
+  // counting as running. No process can have the kernel's pid limit as its id.
+  constexpr qint64 neverAPid = 4 * 1024 * 1024;
+  QSignalSpy running(&launcher, &GameLauncher::gameRunningChanged);
+  launcher.m_launchIdentity = {{QStringLiteral("source"), QStringLiteral("Manual")},
+                               {QStringLiteral("appId"), QStringLiteral("vanished")}};
+  launcher.trackProcess(neverAPid, true, log);
+  launcher.trackProcess(neverAPid, false, {});
+  launcher.m_launchIdentity.clear();
+  QVERIFY(launcher.trackedGames().isEmpty());
+  QCOMPARE(closed.count(), 2);
+  QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 3, 1000);
+  QCOMPARE(closed.last().first().toMap().value("appId").toString(), QStringLiteral("vanished"));
+  QCOMPARE(closed.last().first().toMap().value("logPath").toString(), log);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 3);
+  QCOMPARE(running.count(), 0);
+
+  // A game the user stops is not reported as having closed by itself.
+  const QString waits = directory.filePath("waits.sh");
+  writeFile(waits, "#!/bin/sh\nexec sleep 3\n");
+  QVERIFY(QFile::setPermissions(waits, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const QString waitsTarget = manualLaunchTarget(QStringLiteral("waits"), waits, directory.path());
+  const auto stopLaunched = [&launcher] {
+    QVERIFY(launcher.lastLaunchedPid() > 0);
+    QCOMPARE(::kill(static_cast<pid_t>(launcher.lastLaunchedPid()), SIGTERM), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  };
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("waits"), false, {}, {}, waitsTarget));
+  QVERIFY(launcher.gameRunning());
+  launcher.forgetEarlyExit(QStringLiteral("manual"), QStringLiteral("waits"));
+  stopLaunched();
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 3);
+  // Stopping another game leaves this one's report alone.
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("waits"), false, {}, {}, waitsTarget));
+  launcher.forgetEarlyExit(QStringLiteral("Manual"), QStringLiteral("other"));
+  stopLaunched();
+  QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 4, 1000);
+  QCOMPARE(closed.last().first().toMap().value("appId").toString(), QStringLiteral("waits"));
 }
 
 void CoreTests::launchLogKeepsNewestOutputUnderCap() {
@@ -3848,6 +3889,17 @@ void CoreTests::launchLogKeepsNewestOutputUnderCap() {
                           manualLaunchTarget(id, quiet, directory.path())));
   QVERIFY(QFileInfo(log).size() <= GameLauncher::kLaunchLogCap);
   QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+
+  // At startup Omakade cuts every log, such as one something a game left running kept
+  // writing to after Omakade stopped following it.
+  const QString orphan = GameLauncher::launchLogPath(QStringLiteral("Manual"), QStringLiteral("orphan"));
+  writeFile(orphan, large);
+  const QString other = GameLauncher::launchLogDirectory() + QStringLiteral("/notes.txt");
+  writeFile(other, large);
+  QCOMPARE(GameLauncher::trimLaunchLogs(), 1);
+  QVERIFY(QFileInfo(orphan).size() <= GameLauncher::kLaunchLogCap);
+  QVERIFY(readAll(orphan).startsWith("--- Omakade removed older output"));
+  QCOMPARE(QFileInfo(other).size(), large.size());
 }
 
 void CoreTests::staleMangoConfigsAreSweptOnlyWhenUnused() {

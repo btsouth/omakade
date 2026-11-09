@@ -1868,8 +1868,12 @@ int main(int argc, char* argv[]) {
     saveBackups.setEnabled(preferences.protectRetroArchSaves());
   });
   GameLauncher launcher;
-  // MangoHud settings that games from an earlier run left behind once they closed.
-  if (!isolatedTest) QThreadPool::globalInstance()->start([] { GameLauncher::sweepStaleMangoConfigs(); });
+  // MangoHud settings that games from an earlier run left behind once they closed, and logs
+  // that something a game left running kept writing to after Omakade stopped following it.
+  if (!isolatedTest) QThreadPool::globalInstance()->start([] {
+    GameLauncher::sweepStaleMangoConfigs();
+    GameLauncher::trimLaunchLogs();
+  });
   launcher.setRommLibraryRoot(preferences.rommLibraryRoot());
   unifiedGames.setReviewPlanContext(preferences.rommLibraryRoot(),
                                    preferences.preferStandaloneEmulators());
@@ -1932,6 +1936,12 @@ int main(int argc, char* argv[]) {
     }
     gameStop.setGuards(stopGuards);
   }
+  // A game the user stops did not close on its own, however soon after starting.
+  QObject::connect(&gameStop, &GameStopService::stopping, &launcher, [&launcher](const QVariantList& games) {
+    for (const QVariant& game : games)
+      launcher.forgetEarlyExit(game.toMap().value(QStringLiteral("source")).toString(),
+                               game.toMap().value(QStringLiteral("appId")).toString());
+  });
   if (!demoMode && !stressMode && !navigationTest && !detailsDirectionTest) launcher.setSaveBackups(&saveBackups);
   launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
   unifiedGames.setReviewPlanContext(preferences.rommLibraryRoot(),
