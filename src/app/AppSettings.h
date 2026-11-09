@@ -15,6 +15,8 @@ class AppSettings final : public QObject {
                  artworkCacheLimitMbChanged)
   Q_PROPERTY(bool protonDbEnabled READ protonDbEnabled WRITE setProtonDbEnabled NOTIFY protonDbEnabledChanged)
   Q_PROPERTY(bool protonDbBadges READ protonDbBadges WRITE setProtonDbBadges NOTIFY protonDbBadgesChanged)
+  Q_PROPERTY(bool metadataAutoIdentify READ metadataAutoIdentify WRITE setMetadataAutoIdentify NOTIFY
+                 metadataAutoIdentifyChanged)
   Q_PROPERTY(QString steamId READ steamId WRITE setSteamId NOTIFY steamIdChanged)
   Q_PROPERTY(
       QString igdbClientId READ igdbClientId WRITE setIgdbClientId NOTIFY igdbClientIdChanged)
@@ -113,6 +115,8 @@ public:
   void setProtonDbEnabled(bool value);
   bool protonDbBadges() const { return m_protonDbBadges; }
   void setProtonDbBadges(bool value);
+  bool metadataAutoIdentify() const { return m_metadataAutoIdentify; }
+  void setMetadataAutoIdentify(bool value);
   [[nodiscard]] QString steamId() const;
   void setSteamId(const QString& value);
   [[nodiscard]] QString igdbClientId() const;
@@ -280,6 +284,7 @@ signals:
   void artworkCacheLimitMbChanged();
   void protonDbEnabledChanged();
   void protonDbBadgesChanged();
+  void metadataAutoIdentifyChanged();
   void steamIdChanged();
   void igdbClientIdChanged();
   void discordClientIdChanged();
@@ -317,6 +322,7 @@ private:
   QStringList m_gogLibraryPaths;
   bool m_protonDbEnabled = false;
   bool m_protonDbBadges = false;
+  bool m_metadataAutoIdentify = true;
   bool m_reducedMotion = false;
   int m_artworkCacheLimitMb = 1024;
   QString m_steamId;

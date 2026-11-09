@@ -1289,6 +1289,7 @@ private slots:
   void controllerNavigationFollowsWindowFocus();
   void metadataPersistsRatingsAndPreservesCustomArt();
   void portraitBatchContinuesAndKeepsRatingTimestamp();
+  void automaticLibraryPassCanBeTurnedOff();
   void artworkAliasesAndSharedIdentityRecoverMissingCovers();
   void portraitSelectionCompletesOnlyAfterSuccessfulSave();
   void unconfirmedGridSelectionIsDroppedOnARulesChange();
@@ -13282,6 +13283,87 @@ void CoreTests::portraitBatchContinuesAndKeepsRatingTimestamp() {
   metadata.next();
   QCOMPARE(metadata.status(), QString("Metadata update stopped"));
   QCOMPARE(network.requests.size(), 4);
+}
+
+void CoreTests::automaticLibraryPassCanBeTurnedOff() {
+  // Connecting IGDB or SteamGridDB starts a background pass over the whole library. The switch
+  // in Settings stops it, so titles are sent only when someone asks.
+  QTemporaryDir temp;
+  {
+    AppSettings settings(temp.filePath("config.toml"));
+    QVERIFY(settings.metadataAutoIdentify());
+    settings.setMetadataAutoIdentify(false);
+  }
+  {
+    AppSettings restored(temp.filePath("config.toml"));
+    QVERIFY(!restored.metadataAutoIdentify());
+  }
+
+  PortraitFixtureNetwork network;
+  QImage image(600, 900, QImage::Format_RGB32);
+  image.fill(Qt::blue);
+  QBuffer buffer(&network.png);
+  QVERIFY(buffer.open(QIODevice::WriteOnly));
+  QVERIFY(image.save(&buffer, "PNG"));
+  MockGameModel source(nullptr, 2);
+  UnifiedGameModel games;
+  games.addSourceModel(&source);
+  GameMetadata metadata(temp.filePath("metadata.sqlite3"), nullptr, nullptr, &network);
+  metadata.setLibrary(&games);
+  metadata.m_gridKey = "offline-fixture-key";
+  QStringList keys;
+  for (int row = 0; row < games.rowCount(); ++row) {
+    const QString key = games.data(games.index(row), GameRoles::MetadataKey).toString();
+    keys.append(key);
+    metadata.persist(key, {{"igdbId", row + 1}, {"gridId", row + 11},
+                           {"coverRules", GameMetadata::kCoverRulesVersion}});
+  }
+  QCOMPARE(keys.size(), 2);
+
+  metadata.setAutomaticPass(false);
+  QVERIFY(!metadata.m_settle.isActive());
+  metadata.continueLibraryPass();
+  QVERIFY(!metadata.busy());
+  QCOMPARE(metadata.pending(), 0);
+  QVERIFY(network.requests.isEmpty());
+
+  // Turned back on, the pass resumes by itself. Turning it off again mid-pass stops the rest.
+  metadata.setAutomaticPass(true);
+  QVERIFY(metadata.m_settle.isActive());
+  metadata.m_settle.stop();
+  metadata.continueLibraryPass();
+  QCOMPARE(metadata.pending(), 2);
+  metadata.setAutomaticPass(false);
+  QCOMPARE(metadata.pending(), 1);
+  QCOMPARE(metadata.status(), QString("Stopping after the current request"));
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy(), 5000);
+  QCOMPARE(network.requests.size(), 2);
+  const int fetched = QFileInfo::exists(metadata.entry(keys[0]).value("portrait").toString()) +
+                      QFileInfo::exists(metadata.entry(keys[1]).value("portrait").toString());
+  QCOMPARE(fetched, 1);
+  // Most of the library was skipped, so it must not read as up to date.
+  QCOMPARE(metadata.status(), QString("Automatic library lookups are off"));
+
+  // Asking still works with the switch off.
+  metadata.refreshLibrary();
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy() && metadata.pending() == 0, 5000);
+  QCOMPARE(network.requests.size(), 4);
+  for (const auto& key : keys)
+    QVERIFY(QFileInfo::exists(metadata.entry(key).value("portrait").toString()));
+
+  // Flipping the switch while an asked-for update runs leaves that update alone.
+  for (int row = 0; row < keys.size(); ++row)
+    metadata.persist(keys[row], {{"igdbId", row + 1}, {"gridId", row + 11},
+                                 {"coverRules", GameMetadata::kCoverRulesVersion}});
+  metadata.refreshLibrary();
+  QCOMPARE(metadata.pending(), 2);
+  metadata.setAutomaticPass(true);
+  metadata.m_settle.stop();
+  metadata.setAutomaticPass(false);
+  QCOMPARE(metadata.pending(), 2);
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy() && metadata.pending() == 0, 5000);
+  QCOMPARE(network.requests.size(), 8);
+  QVERIFY(metadata.status() != QString("Automatic library lookups are off"));
 }
 
 void CoreTests::portraitSelectionCompletesOnlyAfterSuccessfulSave() {

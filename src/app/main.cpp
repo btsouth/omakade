@@ -1734,6 +1734,8 @@ int main(int argc, char* argv[]) {
     gameMetadata->setVisibleLibrary(&library);
     gameMetadata->setCacheLimitMb(preferences.artworkCacheLimitMb());
     QObject::connect(&preferences, &AppSettings::artworkCacheLimitMbChanged, gameMetadata.get(), [&preferences, metadata = gameMetadata.get()] { metadata->setCacheLimitMb(preferences.artworkCacheLimitMb()); });
+    gameMetadata->setAutomaticPass(preferences.metadataAutoIdentify());
+    QObject::connect(&preferences, &AppSettings::metadataAutoIdentifyChanged, gameMetadata.get(), [&preferences, metadata = gameMetadata.get()] { metadata->setAutomaticPass(preferences.metadataAutoIdentify()); });
     unifiedGames.setMetadata(gameMetadata.get());
   } else if (demoMode || stressMode || navigationTest || detailsDirectionTest) {
     // The rating and cover art section only exists when there is a metadata service behind it.
