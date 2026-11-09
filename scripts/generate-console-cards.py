@@ -39,7 +39,8 @@ def main():
     CARDS.mkdir(exist_ok=True)
     written = set()
     missing = []
-    for system in catalog_ids():
+    ids = catalog_ids()
+    for system in ids:
         master = MASTERS / f"{MASTER_NAMES.get(system, system)}.png"
         if not master.is_file():
             missing.append(system)
@@ -50,8 +51,10 @@ def main():
         card.save(target, "WEBP", quality=QUALITY, method=6)
         written.add(target.name)
 
+    # Keep a card whose master is missing; drop only cards for IDs outside the catalog.
+    known = {f"{system}.webp" for system in ids}
     for stale in CARDS.glob("*.webp"):
-        if stale.name not in written:
+        if stale.name not in known:
             stale.unlink()
 
     total = sum((CARDS / name).stat().st_size for name in written)
