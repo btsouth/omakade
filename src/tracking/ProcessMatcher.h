@@ -105,6 +105,25 @@ using AttributionResolver =
 [[nodiscard]] QVector<SessionMatch> matchWinePrefixes(const QVector<ProcessSnapshot>& processes,
                                                       const QHash<QString, QString>& games,
                                                       const QString& source);
+
+// Steam starts every game under its reaper, which lives as long as the game:
+// `reaper SteamLaunch AppId=<id> -- <the game's command>`. Returns the app id from the
+// reaper's own options, before the `--`, or an empty string for any other process and for
+// the setup Steam runs before a first launch (`Install=1`).
+[[nodiscard]] QString steamLaunchAppId(const QStringList& arguments);
+
+// One match per running Steam game, recorded against its install folder: `installs` maps
+// an app id to the folder the library knows the game by. A launch whose app id has no
+// install folder, such as a non-Steam shortcut, is not recorded. When the reaper or any
+// process it started runs an emulator from `profiles`, the emulator's own recording owns
+// that play, so Steam does not record it a second time. The match is the reaper itself,
+// the oldest one when Steam runs the same app id twice.
+[[nodiscard]] QVector<SessionMatch> matchSteamLaunches(const QVector<ProcessSnapshot>& processes,
+                                                       const QHash<QString, QString>& installs,
+                                                       const ProcessProfileSet& profiles);
+// The source name Steam sessions are recorded under, the same name the library gives Steam.
+inline const QString kSteamSource = QStringLiteral("Steam");
+
 // The profile file to read: a user copy under the config directory overrides the
 // packaged one, which is the same order the recorder uses.
 [[nodiscard]] QString profilesPath();

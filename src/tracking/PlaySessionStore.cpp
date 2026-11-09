@@ -1,6 +1,7 @@
 #include "tracking/PlaySessionStore.h"
 
 #include "tracking/ProcFs.h"
+#include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionDisplay.h"
 #include "tracking/SessionJournal.h"
@@ -233,9 +234,12 @@ void PlaySessionStore::refreshNowPlaying() {
           {QStringLiteral("elapsedSeconds"), session.seconds + sinceFlush},
           {QStringLiteral("stopping"), stopping},
           // An Xodus Nexus session records one process of the game's prefix, which can
-          // be a bootstrap the game outlives. The library and the guide stop it whole.
+          // be a bootstrap the game outlives, and a Steam session records Steam's reaper
+          // rather than the game under it. The library and the guide stop those whole.
           {QStringLiteral("stoppable"),
-           !titled && session.source != QStringLiteral("Xodus Nexus")},
+           !titled && session.source != QStringLiteral("Xodus Nexus") &&
+               session.source != ProcessMatcher::kSteamSource},
+          {QStringLiteral("fromWindowTitle"), titled},
           {QStringLiteral("forceReady"),
            stopping && pending->deadline > 0 && m_stopClock.elapsed() >= pending->deadline},
       });

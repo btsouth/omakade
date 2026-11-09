@@ -11,6 +11,7 @@
 #include "tracking/SessionDisplay.h"
 #include "tracking/SessionRecorder.h"
 #include "tracking/SessionTitleIndex.h"
+#include "tracking/SteamInstalls.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -252,6 +253,16 @@ int main(int argc, char* argv[]) {
     return ProcessMatcher::matchWinePrefixes(processes, xodusGames(),
                                              QStringLiteral("Xodus Nexus"));
   };
+  // Steam games are recognized by the reaper Steam starts each one under, and recorded
+  // against the install folder the library knows them by. The table is read fresh each poll
+  // like Xodus Nexus's, so a game installed after the daemon started is recorded too.
+  const auto steamMatches = [&](const QVector<ProcessSnapshot>& processes) {
+    return ProcessMatcher::matchSteamLaunches(processes, SteamInstalls::read(database), profiles);
+  };
+  // Matches found from a launcher's own process markers rather than the emulator profiles.
+  const auto launcherMatches = [&](const QVector<ProcessSnapshot>& processes) {
+    return xodusMatches(processes) + steamMatches(processes);
+  };
   const auto pollOnce = [&] {
     Poll result;
     // The index the adapter resolves identities through has to stay current whether or not a
@@ -294,7 +305,7 @@ int main(int argc, char* argv[]) {
     if (!indexed || !compositor) {
       result.matches =
           ProcessMatcher::matchWithAttribution(processes, profiles, {}, {}, attribute);
-      result.matches += xodusMatches(processes);
+      result.matches += launcherMatches(processes);
       return result;
     }
     result.matches = ProcessMatcher::matchWithAttribution(
@@ -304,18 +315,20 @@ int main(int argc, char* argv[]) {
           return titleIndex.pathForWindowTitle(title, emulator);
         },
         attribute);
-    result.matches += xodusMatches(processes);
+    result.matches += launcherMatches(processes);
     // The snapshot is copied into the predicate, so the answer describes the poll
-    // that produced these matches rather than a later moment.
-    result.unfocused = [windows](qint64 pid) {
-      return HyprlandWindows::isUnfocused(windows, pid);
+    // that produced these matches rather than a later moment. A session's process can
+    // start the one that owns the window, as Steam's reaper does, so the whole tree is
+    // asked about.
+    result.unfocused = [windows, processes](qint64 pid) {
+      return HyprlandWindows::isUnfocused(windows, ProcFs::processTree(processes, pid));
     };
     return result;
   };
   const qint64 nowWall = QDateTime::currentSecsSinceEpoch();
   if (toggle.load()) {
     const QVector<ProcessSnapshot> processes = ProcFs::listProcesses();
-    recorder.recover(processes, profiles, nowWall, xodusMatches(processes));
+    recorder.recover(processes, profiles, nowWall, launcherMatches(processes));
   } else {
     recorder.endAll(nowWall);
   }

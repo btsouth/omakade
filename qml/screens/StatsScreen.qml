@@ -1045,8 +1045,9 @@ FocusScope {
                         font.family: Theme.fontFamily
                         font.pixelSize: UiMetrics.supporting * root.scaleFactor
                         text: "Dated sessions come from RetroArch, Dolphin, PCSX2, RPCS3, PPSSPP, Ryujinx, Eden, "
-                              + "Cemu, shadPS4, melonDS, mGBA, xemu, Xenia and Xodus Nexus. Steam and the other "
-                              + "launchers keep their own totals, which have no dates and appear in Library snapshot. "
+                              + "Cemu, shadPS4, melonDS, mGBA, xemu, Xenia, Xodus Nexus and installed Steam games. "
+                              + "Heroic, Lutris and the other launchers keep their own totals, which have no dates "
+                              + "and appear in Library snapshot. "
                               + "Record Playtime is in Settings > Library & launching."
                     }
                     GlassButton {
