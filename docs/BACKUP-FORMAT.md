@@ -221,7 +221,12 @@ on a worker thread. UI state exposes busy, result messages, and a validated
 preview. Preview reports imported/current/matching record counts, artwork count,
 core settings values, saved-filter name conflicts, and missing manual executable,
 working-directory, and configured GOG paths. Path details are capped at 100 while
-the total count remains available. Matching counts describe stable record IDs;
+the total count remains available. Every active incoming manual entry that is
+new, or whose executable, arguments, or working directory differ from the current
+library, is listed in full with no cap, and one whose executable is a shell or
+interpreter given inline code (such as `sh -c` or `python3 -c`) is flagged, also
+when a wrapper or terminal such as `gamemoderun`, `busybox` or `xterm -e` starts it. Both
+restore confirmations say these commands will be able to run. Matching counts describe stable record IDs;
 the merge explanation separately covers incoming linked-group precedence.
 
 Confirmation stages the immutable in-memory payload that produced the preview.

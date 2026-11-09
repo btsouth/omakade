@@ -2012,6 +2012,15 @@ int main(int argc, char* argv[]) {
       qCritical().noquote() << error; return EXIT_FAILURE;
     }
     sample.settings.insert("gog_library_paths", QJsonArray{artworkFixture.filePath("Offline/GOG Games")});
+    // A command the library does not have yet, so the preview must list and flag it.
+    const QJsonObject shellEntry{{"id", "restored-shell"}, {"title", "Restored shell game"},
+        {"executable", "/bin/sh"}, {"directory", artworkFixture.path()},
+        {"arguments", QJsonArray{"-c", "echo restored"}}};
+    auto manualRows = sample.library.value("manual_games").toArray();
+    manualRows.append(QJsonObject{{"id", "restored-shell"},
+        {"entry", QString::fromUtf8(QJsonDocument(shellEntry).toJson(QJsonDocument::Compact))},
+        {"favorite", false}, {"hidden", false}, {"active", true}});
+    sample.library.insert("manual_games", manualRows);
     backupFixturePath = artworkFixture.filePath("sample.omakade-backup");
     if (!BackupArchive::write(backupFixturePath, sample, &error)) {
       qCritical().noquote() << error; return EXIT_FAILURE;
@@ -8136,6 +8145,11 @@ int main(int argc, char* argv[]) {
         auto* text = rootWindow->findChild<QQuickItem*>("backupPreviewText");
         auto* scroll = rootWindow->findChild<QQuickItem*>("backupPreviewScroll");
         if (!text || !scroll) { fail("Backup preview content is missing"); return; }
+        const QString previewText = text->property("text").toString();
+        if (!previewText.contains("NEW OR CHANGED LAUNCH COMMANDS (1)") || !previewText.contains("\"Restored shell game\" (new)") ||
+            !previewText.contains("WARNING: runs code written into its arguments") || !previewText.contains("Arguments: \"-c\" \"echo restored\"")) {
+          fail("Backup preview does not list the incoming launch command"); return;
+        }
         auto* flickable = scroll->property("contentItem").value<QObject*>();
         if (!flickable) { fail("Backup preview viewport is missing"); return; }
         // Preview data can arrive before the ScrollView has laid out its text.
@@ -8157,8 +8171,12 @@ int main(int argc, char* argv[]) {
         if (editor->property("pendingMode").toString() != "merge" || BackupRecovery(managerPaths).status() != "none") { fail("Merge must await explicit confirmation"); return; }
         ++*step;
       } else if (*step == 5) {
+        auto* mergeText = rootWindow->findChild<QQuickItem*>("backupConfirmText");
+        if (!mergeText || !mergeText->property("text").toString().contains("will be able to run when you choose Play")) { fail("Merge confirmation does not warn about launch commands"); return; }
         if (!press("backupCancelButton") || !editor->property("pendingMode").toString().isEmpty()) { fail("Restore confirmation could not cancel"); return; }
         if (!press("backupReplaceButton") || editor->property("pendingMode").toString() != "replace") { fail("Replace confirmation is missing"); return; }
+        auto* confirmText = rootWindow->findChild<QQuickItem*>("backupConfirmText");
+        if (!confirmText || !confirmText->property("text").toString().contains("will be able to run when you choose Play")) { fail("Replace confirmation does not warn about launch commands"); return; }
         ++*step;
       } else if (*step == 6) {
         if (!press("backupConfirmButton")) { fail("Replacement could not be confirmed"); return; }

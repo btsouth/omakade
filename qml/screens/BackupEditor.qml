@@ -37,7 +37,20 @@ Rectangle {
     function summary() {
         const p = Backups.preview
         if (!Backups.hasPreview) return ""
-        let text = "File: " + p.path + "\nCreated " + UserDates.format(new Date(p.createdAt), "datetime") + "\n\nBACKUP / CURRENT / MATCHING\n"
+        let text = "File: " + p.path + "\nCreated " + UserDates.format(new Date(p.createdAt), "datetime") + "\n"
+        if (p.launchCommands.length) {
+            text += "\nNEW OR CHANGED LAUNCH COMMANDS (" + p.launchCommands.length + ")\n" + p.launchCommandWarning + "\n"
+            // Quoting keeps line breaks and spaces inside a value visible.
+            const quote = value => JSON.stringify(String(value))
+            for (const command of p.launchCommands) {
+                text += "\n" + quote(command.title) + (command.isNew ? " (new)" : " (changed)") + "\n"
+                if (command.inlineCode) text += "  WARNING: runs code written into its arguments\n"
+                text += "  Program: " + quote(command.executable) + "\n  Arguments: "
+                    + (command.arguments.length ? Array.from(command.arguments, quote).join(" ") : "None")
+                    + "\n  Working folder: " + quote(command.directory) + "\n"
+            }
+        }
+        text += "\nBACKUP / CURRENT / MATCHING\n"
         for (const row of p.counts) text += row.label + ": " + row.incoming + " / " + row.current + " / " + row.matching + "\n"
         text += "\n" + p.artworkCount + " artwork files · " + p.settingsCount + " preferences\n"
         if (p.missingPathCount) text += "\nUNAVAILABLE PATHS (" + p.missingPathCount + ")\n" + p.missingPaths.join("\n") + "\nThese entries remain stored for repair or reconnection.\n"
@@ -175,10 +188,12 @@ Rectangle {
             GlassButton { objectName: "backupReplaceButton"; text: "REPLACE…"; displayScale: editor.uiScale; onClicked: editor.chooseMode("replace") }
         }
         Text {
+            objectName: "backupConfirmText"
             Layout.fillWidth: true
             visible: editor.pendingMode !== ""
             text: editor.pendingMode === "export" ? "Save a backup to " + editor.pendingPath + "? An existing file at this path will be replaced."
                   : "Restore " + Backups.preview.path + "?\n\n" + (editor.pendingMode === "replace" ? Backups.preview.replaceExplanation + " Core preferences absent from the backup return to defaults." : Backups.preview.mergeExplanation)
+                    + (Backups.preview.launchCommandWarning ? "\n\n" + Backups.preview.launchCommandWarning : "")
                     + "\n\nOmakade will keep a recovery copy and apply this restore after you close and reopen the app."
             textFormat: Text.PlainText; wrapMode: Text.Wrap
             color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 15 * editor.uiScale
