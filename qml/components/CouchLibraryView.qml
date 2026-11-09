@@ -481,7 +481,6 @@ FocusScope {
                 visible: root.libraryModel.consoleTitle.length > 0
                 text: "\u2190 " + root.libraryModel.consoleTitle.toUpperCase()
                 compact: true
-                primary: true
                 displayScale: Math.max(1, root.uiScale * 1.18)
                 onClicked: {
                     root.libraryModel.consoleFilter = ""

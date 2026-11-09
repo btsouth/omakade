@@ -90,7 +90,7 @@ ColumnLayout {
             Text {Layout.fillWidth:true;wrapMode:Text.Wrap;text:Counts.text(SaveProtection.cleanup.length, "older backup")+" selected. Deletion cannot be undone; live saves are unchanged.";color:Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.body * root.uiScale }
             Text { textFormat: Text.PlainText;Layout.fillWidth:true;wrapMode:Text.Wrap;text:SaveProtection.cleanup.map(item=>item.title+" · "+item.createdAt+" · "+(item.bytes/1024).toFixed(1)+" KiB").join("\n");color:Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting * root.uiScale }
             Flow {Layout.fillWidth:true;spacing:8
-                GlassButton { compact: true;text:"DELETE LISTED BACKUPS";enabled:SaveProtection.cleanup.length>0;onClicked:{SaveProtection.applyCleanup();root.confirmCleanup=false}}
+                GlassButton { compact: true;text:"DELETE LISTED BACKUPS";destructive:true;enabled:SaveProtection.cleanup.length>0;onClicked:{SaveProtection.applyCleanup();root.confirmCleanup=false}}
                 GlassButton { compact: true;text:"CANCEL";onClicked:root.confirmCleanup=false}
             }
         }

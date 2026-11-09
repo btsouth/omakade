@@ -4313,7 +4313,7 @@ ApplicationWindow {
                     }
                     GlassButton {
                         text: "DELETE"
-                        primary: true
+                        destructive: true
                         onClicked: root.confirmCollectionDelete()
                     }
                 }

@@ -10,9 +10,23 @@ Button {
     // iconSize and iconColor so it matches a text icon.
     property Component iconDelegate: null
     readonly property real iconSize: (compact ? 12 : 14) * displayScale
-    readonly property color iconColor: root.enabled ? (root.primary ? Theme.brightForeground : Theme.foreground)
-                                                    : root.alpha(Theme.foreground, 0.35)
+    readonly property color iconColor: root.labelColor
+    // The screen's main action, such as Play, drawn as a solid accent fill.
     property bool primary: false
+    // Confirms something that cannot be undone, such as a delete, drawn as a solid red fill.
+    property bool destructive: false
+    // Labels sit in the middle of the button. Menu rows set Qt.AlignLeft to keep a label column.
+    property int labelAlignment: Qt.AlignHCenter
+    readonly property bool filled: root.primary || root.destructive
+    readonly property color fillColor: root.destructive ? Theme.red : Theme.accent
+    readonly property color labelColor: {
+        if (!root.enabled) return root.alpha(Theme.foreground, 0.35)
+        if (!root.filled) return root.selected ? Theme.brightForeground : Theme.foreground
+        // readableOn reads theme colors the binding cannot see, so name them here.
+        Theme.brightForeground
+        Theme.darkerBackground
+        return Theme.readableOn(root.fillColor)
+    }
     property bool selected: false
     // Set on tabs, choices and on/off toggles so screen readers hear selected as checked.
     // The call site's handler owns the state, so a click never flips it here.
@@ -33,7 +47,7 @@ Button {
 
     implicitHeight: (compact ? 36 : UiMetrics.controlHeight) * displayScale
     implicitWidth: Math.max((compact ? 76 : 104) * displayScale,
-                            contentRow.implicitWidth + (compact ? 22 : 30) * displayScale)
+                            contentHolder.implicitWidth + (compact ? 22 : 30) * displayScale)
     leftPadding: (compact ? 11 : 15) * displayScale
     rightPadding: leftPadding
     spacing: 8 * displayScale
@@ -86,24 +100,32 @@ Button {
     background: Rectangle {
         // Selected keeps its accent fill and bar while hovered, pressed or focused. Hover only
         // changes the fill; focus adds the thick ring, so the two never look alike.
-        readonly property bool marked: root.selected && !root.primary
-        readonly property color tint: root.primary || marked ? Theme.accent : Theme.foreground
+        // Primary and destructive buttons are solid, so they outrank the selected tint.
+        readonly property bool marked: root.selected && !root.filled
+        readonly property color tint: marked ? Theme.accent : Theme.foreground
         radius: Math.max(4, Theme.cornerRadius)
-        color: root.down
-               ? root.alpha(tint, marked ? 0.42 : 0.24)
-               : root.hovered
-                 ? root.alpha(tint, marked ? 0.34 : 0.14)
-                 : root.alpha(tint, marked ? 0.26 : root.primary ? 0.18 : 0.045)
+        color: root.filled
+               ? (!root.enabled ? root.alpha(root.fillColor, 0.3)
+                  : root.down ? Qt.tint(root.fillColor, root.alpha(root.labelColor, 0.24))
+                  : root.hovered ? Qt.tint(root.fillColor, root.alpha(root.labelColor, 0.12))
+                  : root.fillColor)
+               : root.down
+                 ? root.alpha(tint, marked ? 0.42 : 0.24)
+                 : root.hovered
+                   ? root.alpha(tint, marked ? 0.34 : 0.14)
+                   : root.alpha(tint, marked ? 0.26 : 0.045)
         border.width: 1
-        border.color: marked
-                      ? root.alpha(Theme.accent, 0.8)
-                      : root.primary
-                        ? root.alpha(Theme.accent, 0.58)
+        border.color: root.filled
+                      ? root.alpha(root.fillColor, root.enabled ? 1 : 0.5)
+                      : marked
+                        ? root.alpha(Theme.accent, 0.8)
                         : root.alpha(Theme.foreground, root.hovered ? 0.5 : 0.35)
 
         FocusRing {
             shown: root.activeFocus
             thickness: 3 * root.displayScale
+            // The theme ring is often the accent, which would vanish on a solid accent fill.
+            border.color: root.filled && root.enabled ? root.labelColor : Theme.focusRing
         }
 
         Rectangle {
@@ -127,40 +149,58 @@ Button {
         }
     }
 
-    contentItem: Row {
-        id: contentRow
-        spacing: root.spacing
-        anchors.centerIn: parent
+    // Button sizes contentItem to the padded area, so the row sits in a holder that places it
+    // by labelAlignment instead of starting every label at the left edge.
+    contentItem: Item {
+        id: contentHolder
+        // Sized from the label's own width, so a narrow button can elide it without a loop.
+        readonly property real iconWidth: iconLoader.visible ? iconLoader.width + root.spacing
+                                          : iconLabel.visible ? iconLabel.implicitWidth + root.spacing
+                                          : 0
+        implicitWidth: iconWidth + Math.min(buttonLabel.implicitWidth, root.maximumLabelWidth)
+        implicitHeight: contentRow.implicitHeight
 
-        Loader {
-            active: root.iconDelegate !== null
-            visible: active
-            sourceComponent: root.iconDelegate
+        Row {
+            id: contentRow
+            objectName: "buttonContent"
+            spacing: root.spacing
             anchors.verticalCenter: parent.verticalCenter
-        }
+            x: root.labelAlignment === Qt.AlignHCenter ? Math.max(0, (parent.width - width) / 2)
+               : root.labelAlignment === Qt.AlignRight ? Math.max(0, parent.width - width) : 0
 
-        Text {
-            textFormat: Text.PlainText
-            visible: root.iconDelegate === null && root.iconText.length > 0
-            text: root.iconText
-            color: root.iconColor
-            font.family: Theme.fontFamily
-            font.pixelSize: root.iconSize
-            anchors.verticalCenter: parent.verticalCenter
-        }
+            Loader {
+                id: iconLoader
+                active: root.iconDelegate !== null
+                visible: active
+                sourceComponent: root.iconDelegate
+                anchors.verticalCenter: parent.verticalCenter
+            }
 
-        Text {
-            id: buttonLabel
-            textFormat: Text.PlainText
-            width: Math.min(implicitWidth, root.maximumLabelWidth)
-            elide: Text.ElideRight
-            text: root.text
-            color: root.enabled ? (root.primary || root.selected ? Theme.brightForeground : Theme.foreground)
-                                : root.alpha(Theme.foreground, 0.35)
-            font.family: Theme.fontFamily
-            font.pixelSize: (root.compact ? UiMetrics.label : UiMetrics.body) * root.displayScale
-            font.weight: root.primary || root.selected ? Font.DemiBold : Font.Medium
-            anchors.verticalCenter: parent.verticalCenter
+            Text {
+                id: iconLabel
+                textFormat: Text.PlainText
+                visible: root.iconDelegate === null && root.iconText.length > 0
+                text: root.iconText
+                color: root.iconColor
+                font.family: Theme.fontFamily
+                font.pixelSize: root.iconSize
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                id: buttonLabel
+                objectName: "buttonLabel"
+                textFormat: Text.PlainText
+                width: Math.max(0, Math.min(implicitWidth, root.maximumLabelWidth,
+                                            contentHolder.width - contentHolder.iconWidth))
+                elide: Text.ElideRight
+                text: root.text
+                color: root.labelColor
+                font.family: Theme.fontFamily
+                font.pixelSize: (root.compact ? UiMetrics.label : UiMetrics.body) * root.displayScale
+                font.weight: root.filled || root.selected ? Font.DemiBold : Font.Medium
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 }
