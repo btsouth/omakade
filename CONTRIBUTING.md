@@ -54,21 +54,26 @@ nested Hyprland:
 
 ```bash
 scratch=$(mktemp -d)
+mkdir -m700 "$scratch/run"
 env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME \
   -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY \
-  HOME="$scratch" TMPDIR="$scratch" WAYLAND_DISPLAY=wayland-1 \
+  HOME="$scratch" TMPDIR="$scratch" XDG_RUNTIME_DIR="$scratch/run" \
+  WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/wayland-1" \
   dbus-run-session -- ./build/dev/omakade --demo
 ```
 
-The scratch `TMPDIR` keeps it from handing the command to an Omakade window that is
-already open. `wayland-1` is an example; use the socket name your nested compositor
-prints. Under a nested Hyprland, set `HYPRLAND_INSTANCE_SIGNATURE` to that
-instance's signature instead of unsetting it, or Game Mode cannot drive it.
+Omakade's single-instance and guide sockets live in `XDG_RUNTIME_DIR`, so the scratch
+runtime dir keeps it from handing the command to an Omakade window that is already
+open. Because the Wayland socket is looked up there too, `WAYLAND_DISPLAY` is the full
+path in your real runtime dir. `wayland-1` is an example; use the socket name your
+nested compositor prints. Under a nested Hyprland, set `HYPRLAND_INSTANCE_SIGNATURE`
+to that instance's signature instead of unsetting it, or Game Mode cannot drive it.
 
-This still shares your audio server and your systemd user manager. Game Mode can
-switch the real default audio output, and the controller-button switch in
-Settings enables or disables the real `omakade-guide-button` service, so leave both
-alone here. To try those safely, use an isolated test desktop such as omabox.
+The scratch runtime dir also hides your audio server's socket, so the demo usually
+plays no sound. It does not isolate your systemd user manager: the controller-button
+switch in Settings enables or disables the real `omakade-guide-button` service, so
+leave it alone here. To try audio switching or that service safely, use an isolated
+test desktop such as omabox.
 
 ## Useful references
 

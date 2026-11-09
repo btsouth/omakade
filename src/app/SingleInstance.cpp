@@ -1,14 +1,36 @@
 #include "app/SingleInstance.h"
 
+#include "tracking/SessionDatabase.h"
+
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
 #include <QLocalSocket>
 
-#include <unistd.h>
-
-QString SingleInstance::defaultServerName() {
-  return QStringLiteral("omakade-%1").arg(getuid());
+namespace {
+bool deliver(const QString& serverName, const QByteArray& command) {
+  QLocalSocket socket;
+  socket.connectToServer(serverName, QIODevice::WriteOnly);
+  if (!socket.waitForConnected(120)) {
+    return false;
+  }
+  socket.write(command);
+  socket.flush();
+  socket.waitForBytesWritten(120);
+  return true;
 }
+// Owner-only access. Not QLocalServer::UserAccessOption: it binds elsewhere and renames
+// the socket into place, which replaces a live instance instead of failing to listen.
+bool listenOwnerOnly(QLocalServer& server, const QString& serverName) {
+  if (!server.listen(serverName)) {
+    return false;
+  }
+  QFile::setPermissions(server.fullServerName(), QFile::ReadOwner | QFile::WriteOwner);
+  return true;
+}
+} // namespace
+
+QString SingleInstance::defaultServerName() { return SessionDatabase::appServerName(); }
 
 SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
     : QObject(parent), m_serverName(serverName.isEmpty() ? defaultServerName() : serverName) {
@@ -60,20 +82,30 @@ SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
 }
 
 bool SingleInstance::sendCommand(const QString& serverName, const QByteArray& command) {
-  QLocalSocket socket;
-  socket.connectToServer(serverName.isEmpty() ? defaultServerName() : serverName,
-                         QIODevice::WriteOnly);
-  if (!socket.waitForConnected(120)) {
-    return false;
+  if (!serverName.isEmpty()) {
+    return deliver(serverName, command);
   }
-  socket.write(command);
-  socket.flush();
-  socket.waitForBytesWritten(120);
-  return true;
+  const QString current = defaultServerName();
+  if (!current.isEmpty() && deliver(current, command)) {
+    return true;
+  }
+  const QString legacy = SessionDatabase::legacyAppServerName();
+  return !legacy.isEmpty() && deliver(legacy, command);
 }
 
 bool SingleInstance::claimOrNotify(const QByteArray& command) {
-  if (m_server.listen(m_serverName)) {
+  // An Omakade started before an upgrade still owns the window on the old temp dir socket.
+  if (m_serverName == defaultServerName()) {
+    const QString legacy = SessionDatabase::legacyAppServerName();
+    if (!legacy.isEmpty() && deliver(legacy, command)) {
+      return false;
+    }
+  }
+  if (m_serverName.isEmpty()) {
+    qWarning("Running without single-instance activation: no usable XDG_RUNTIME_DIR.");
+    return true;
+  }
+  if (listenOwnerOnly(m_server, m_serverName)) {
     return true;
   }
   if (sendCommand(m_serverName, command)) {
@@ -85,7 +117,7 @@ bool SingleInstance::claimOrNotify(const QByteArray& command) {
     return true;
   }
   QLocalServer::removeServer(m_serverName);
-  if (!m_server.listen(m_serverName)) {
+  if (!listenOwnerOnly(m_server, m_serverName)) {
     qWarning() << "Running without single-instance activation:" << m_server.errorString();
   }
   return true;

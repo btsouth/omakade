@@ -231,7 +231,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.launch(*([] if warm else ["--game-mode-toggle"]))
         self.fixture_update(owner=self.primary.pid)
         if warm:
-            socket = Path(self.env["TMPDIR"]) / f"omakade-{os.getuid()}"
+            socket = Path(self.env["XDG_RUNTIME_DIR"]) / f"omakade-{os.getuid()}"
             self.wait_for(socket.exists, "Primary did not claim IPC")
             self.command("--game-mode-toggle")
         self.phase("active")
@@ -354,7 +354,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.launch(*(["--game-mode-toggle"] if cold else ["--couch"] if couch else []))
         self.fixture_update(owner=self.primary.pid)
         if not cold:
-            socket = Path(self.env["TMPDIR"]) / f"omakade-{os.getuid()}"
+            socket = Path(self.env["XDG_RUNTIME_DIR"]) / f"omakade-{os.getuid()}"
             self.wait_for(socket.exists, "Primary did not claim IPC")
             # --couch is fullscreen, and fullscreen is Game Mode: it starts the session
             # itself, in place. The desktop window waits for the shortcut.
@@ -450,7 +450,7 @@ class GameModeStartupTests(unittest.TestCase):
         self.configure_television()
         self.launch()
         self.fixture_update(owner=self.primary.pid)
-        socket = Path(self.env["TMPDIR"]) / f"omakade-{os.getuid()}"
+        socket = Path(self.env["XDG_RUNTIME_DIR"]) / f"omakade-{os.getuid()}"
         self.wait_for(socket.exists, "Primary did not claim IPC")
         self.wait_for(lambda: json.loads(self.fixture.read_text()).get("refreshes", 0) >= 1,
                       "Desktop start did not refresh Game Mode devices")

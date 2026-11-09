@@ -33,7 +33,21 @@ QString defaultConfigPath() {
          QStringLiteral("/omakade/config.toml");
 }
 
-QString appServerName() { return QStringLiteral("omakade-%1").arg(getuid()); }
+QString appServerName() {
+  // An absolute path in the owner-only runtime directory. A bare name would resolve into
+  // the shared temp dir, where another user could claim it first. Empty when Qt rejects
+  // the runtime directory, rather than a path at the filesystem root.
+  const QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+  return runtime.isEmpty() ? QString() : runtime + QStringLiteral("/omakade-%1").arg(getuid());
+}
+
+QString legacyAppServerName() {
+  // Omakade 1.18 listened in the temp dir. Trust only a socket this user owns there, so a
+  // name another user squatted is never sent to. Remove after one release.
+  const QString path = QDir::tempPath() + QStringLiteral("/omakade-%1").arg(getuid());
+  const QFileInfo info(path);
+  return info.exists() && !info.isSymLink() && info.ownerId() == getuid() ? path : QString();
+}
 
 bool open(QSqlDatabase& database, const QString& path, const QString& connectionName) {
   if (path != QStringLiteral(":memory:")) {

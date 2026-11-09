@@ -17,6 +17,7 @@
 #include <QStandardItemModel>
 #include <csignal>
 #include <openssl/evp.h>
+#include <pwd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -1241,6 +1242,8 @@ private slots:
   void nativePortsKeepSeparateHistoryForSharedExecutables();
   void launchKeysRoundTripAndResolveInstallations();
   void singleInstanceForwardsPlayAndQuitCommands();
+  void singleInstanceSocketIsOwnerOnly();
+  void singleInstanceRunsAloneWithoutRuntimeDir();
   void homeButtonSettingAndRetroArchMenuOverride();
   void sunshineIntegrationWritesOnlyItsOwnEntries();
   void secondInstanceRequestsActivation();
@@ -6441,6 +6444,102 @@ void CoreTests::singleInstanceForwardsPlayAndQuitCommands() {
   QVERIFY(SingleInstance::sendCommand(name, "quit"));
   QTRY_COMPARE_WITH_TIMEOUT(quits.size(), 1, 1000);
   QCOMPARE(activations.size(), 0);
+}
+
+void CoreTests::singleInstanceSocketIsOwnerOnly() {
+  QTemporaryDir runtime;
+  QTemporaryDir temp;
+  QVERIFY(runtime.isValid() && temp.isValid());
+  const QByteArray previousRuntime = qgetenv("XDG_RUNTIME_DIR");
+  const QByteArray previousTemp = qgetenv("TMPDIR");
+  const auto restore = qScopeGuard([&] {
+    if (previousRuntime.isNull()) qunsetenv("XDG_RUNTIME_DIR");
+    else qputenv("XDG_RUNTIME_DIR", previousRuntime);
+    if (previousTemp.isNull()) qunsetenv("TMPDIR");
+    else qputenv("TMPDIR", previousTemp);
+  });
+  qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
+  qputenv("TMPDIR", temp.path().toUtf8());
+  const QString socketName = QStringLiteral("omakade-%1").arg(getuid());
+
+  // The socket lives in the runtime dir, never in the shared temp dir, and only its owner
+  // can connect to it.
+  QCOMPARE(SingleInstance::defaultServerName(), runtime.filePath(socketName));
+  QCOMPARE(SessionDatabase::appServerName(), runtime.filePath(socketName));
+  {
+    SingleInstance primary;
+    QVERIFY(primary.claimOrNotify());
+    const QFileInfo socket(runtime.filePath(socketName));
+    QVERIFY(socket.exists());
+    QCOMPARE(socket.ownerId(), getuid());
+    const auto others = QFile::ReadGroup | QFile::WriteGroup | QFile::ExeGroup |
+                        QFile::ReadOther | QFile::WriteOther | QFile::ExeOther;
+    QCOMPARE(socket.permissions() & others, QFile::Permissions{});
+    QVERIFY(!QFileInfo::exists(temp.filePath(socketName)));
+    QSignalSpy quits(&primary, &SingleInstance::quitRequested);
+    QVERIFY(SingleInstance::sendCommand({}, "quit"));
+    QTRY_COMPARE_WITH_TIMEOUT(quits.size(), 1, 1000);
+  }
+
+  // An instance still on the old temp dir socket keeps receiving commands until it restarts.
+  QLocalServer legacy;
+  QVERIFY(legacy.listen(temp.filePath(socketName)));
+  QCOMPARE(SessionDatabase::legacyAppServerName(), temp.filePath(socketName));
+  QVERIFY(SingleInstance::sendCommand({}, "quit"));
+  QVERIFY(legacy.waitForNewConnection(1000));
+  delete legacy.nextPendingConnection();
+  SingleInstance secondary;
+  QVERIFY(!secondary.claimOrNotify());
+  QVERIFY(legacy.waitForNewConnection(1000));
+  delete legacy.nextPendingConnection();
+  QVERIFY(!QFileInfo::exists(runtime.filePath(socketName)));
+  legacy.close();
+
+  // A symlink in the temp dir is never trusted as the old socket, even one that leads to a
+  // live server: commands are not sent there and startup claims the private socket.
+  QLocalServer elsewhere;
+  QVERIFY(elsewhere.listen(temp.filePath(QStringLiteral("elsewhere"))));
+  QVERIFY(QFile::link(elsewhere.fullServerName(), temp.filePath(socketName)));
+  QVERIFY(SessionDatabase::legacyAppServerName().isEmpty());
+  QVERIFY(!SingleInstance::sendCommand({}, "quit"));
+  {
+    SingleInstance third;
+    QVERIFY(third.claimOrNotify());
+    QVERIFY(QFileInfo::exists(runtime.filePath(socketName)));
+  }
+  QVERIFY(!elsewhere.waitForNewConnection(100));
+}
+
+void CoreTests::singleInstanceRunsAloneWithoutRuntimeDir() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  // Qt falls back to <temp>/runtime-<user> when XDG_RUNTIME_DIR is unusable, so block both
+  // with plain files.
+  const passwd* user = getpwuid(geteuid());
+  const QString notADir = temp.filePath(QStringLiteral("runtime"));
+  const QString fallback =
+      temp.filePath(QStringLiteral("runtime-") + QString::fromLocal8Bit(user ? user->pw_name : ""));
+  for (const QString& path : {notADir, fallback}) {
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+  }
+  const QByteArray previousRuntime = qgetenv("XDG_RUNTIME_DIR");
+  const QByteArray previousTemp = qgetenv("TMPDIR");
+  const auto restore = qScopeGuard([&] {
+    if (previousRuntime.isNull()) qunsetenv("XDG_RUNTIME_DIR");
+    else qputenv("XDG_RUNTIME_DIR", previousRuntime);
+    if (previousTemp.isNull()) qunsetenv("TMPDIR");
+    else qputenv("TMPDIR", previousTemp);
+  });
+  // With no usable runtime dir the socket name is empty, not a path at the filesystem root,
+  // and the app still opens on its own.
+  qputenv("XDG_RUNTIME_DIR", notADir.toUtf8());
+  qputenv("TMPDIR", temp.path().toUtf8());
+  QVERIFY(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation).isEmpty());
+  QVERIFY(SessionDatabase::appServerName().isEmpty());
+  SingleInstance alone;
+  QVERIFY(alone.claimOrNotify());
+  QVERIFY(!SingleInstance::sendCommand({}, "activate"));
 }
 
 void CoreTests::sunshineIntegrationWritesOnlyItsOwnEntries() {
@@ -13435,10 +13534,11 @@ void CoreTests::startupBenchmarkDoesNotActivateAnotherInstance() {
   QTemporaryDir temp;
   QVERIFY(temp.isValid());
   QLocalServer otherInstance;
-  QVERIFY(otherInstance.listen(temp.filePath(SingleInstance::defaultServerName())));
+  QVERIFY(otherInstance.listen(temp.filePath(QStringLiteral("omakade-%1").arg(getuid()))));
   QProcess benchmark;
   auto environment = QProcessEnvironment::systemEnvironment();
   environment.insert("TMPDIR", temp.path());
+  environment.insert("XDG_RUNTIME_DIR", temp.path());
   environment.insert("XDG_CONFIG_HOME", temp.filePath("config"));
   environment.insert("XDG_DATA_HOME", temp.filePath("data"));
   environment.insert("XDG_CACHE_HOME", temp.filePath("cache"));
