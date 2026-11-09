@@ -693,18 +693,23 @@ void GameMetadata::setAutomaticPass(bool enabled) {
     return;
   m_automaticPass = enabled;
   if (enabled) {
+    m_automaticStopped = false;
     if (!m_stoppedByHand && !m_editing)
       m_settle.start();
     emit changed();
     return;
   }
   m_settle.stop();
-  const bool stopping = !m_queue.isEmpty() || !m_pausedQueue.isEmpty();
-  m_queue.clear();
-  m_pausedQueue.clear();
-  if (stopping)
-    m_status = m_busy ? QStringLiteral("Stopping after the current request")
-                      : QStringLiteral("Automatic library lookups are off");
+  // Only the automatic walk stops. An Update or a game's details someone asked for carries on.
+  const auto automatic = [](const QVariantMap& game) { return game.value("automaticPass").toBool(); };
+  const auto dropped = m_queue.removeIf(automatic) + m_pausedQueue.removeIf(automatic);
+  if (dropped > 0) {
+    // With work still running, the status is set again when it is done.
+    m_automaticStopped = m_busy || !m_queue.isEmpty();
+    if (m_queue.isEmpty())
+      m_status = m_busy ? QStringLiteral("Stopping after the current request")
+                        : QStringLiteral("Automatic library lookups are off");
+  }
   emit changed();
 }
 
@@ -753,6 +758,7 @@ void GameMetadata::continueLibraryPass() {
     for (auto it = roles.cbegin(); it != roles.cend(); ++it)
       game.insert(QString::fromUtf8(it.value()),
                   m_library->data(m_library->index(row), it.key()));
+    game.insert("automaticPass", true);
     enqueue(game);
   }
   if (m_queue.isEmpty())
@@ -1011,6 +1017,7 @@ void GameMetadata::refreshLibrary() {
   }
   m_cancelled = false;
   m_stoppedByHand = false;
+  m_automaticStopped = false;
   m_queue.clear();
   for (int i = 0; i < m_library->rowCount(); ++i) {
     QVariantMap game;
@@ -1027,6 +1034,8 @@ void GameMetadata::next() {
   if (m_busy || m_secrets.isRunning() || m_cancelled)
     return;
   if (m_queue.isEmpty()) {
+    if (stoppedAutomaticPass())
+      return;
     // Say how many games could not be identified confidently, so the exceptions are a known
     // quantity rather than something to discover one game at a time.
     int unidentified = 0;
@@ -1864,9 +1873,22 @@ void GameMetadata::response(const QByteArray& data, const QString& stage) {
 void GameMetadata::finish(const QString& message) {
   m_busy = false;
   m_status = message;
+  if (m_queue.isEmpty() && stoppedAutomaticPass())
+    return;
   emit changed();
   if (!m_queue.isEmpty())
     QTimer::singleShot(kBetweenGamesMs, this, &GameMetadata::next);
+}
+
+bool GameMetadata::stoppedAutomaticPass() {
+  // The rest of the library was skipped, so neither "up to date" nor the last game's result
+  // says where things stand.
+  if (!m_automaticStopped)
+    return false;
+  m_automaticStopped = false;
+  m_status = QStringLiteral("Automatic library lookups are off");
+  emit changed();
+  return true;
 }
 void GameMetadata::storeGridKey(QString key) {
   if (busy())
@@ -1953,6 +1975,7 @@ void GameMetadata::cancel() {
   m_queue.clear();
   m_cancelled = true;
   m_stoppedByHand = true;
+  m_automaticStopped = false;
   m_settle.stop();
   m_status = m_busy ? "Stopping after the current request" : "Metadata update stopped";
   emit changed();

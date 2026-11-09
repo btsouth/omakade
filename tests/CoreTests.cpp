@@ -13341,6 +13341,8 @@ void CoreTests::automaticLibraryPassCanBeTurnedOff() {
   const int fetched = QFileInfo::exists(metadata.entry(keys[0]).value("portrait").toString()) +
                       QFileInfo::exists(metadata.entry(keys[1]).value("portrait").toString());
   QCOMPARE(fetched, 1);
+  // Most of the library was skipped, so it must not read as up to date.
+  QCOMPARE(metadata.status(), QString("Automatic library lookups are off"));
 
   // Asking still works with the switch off.
   metadata.refreshLibrary();
@@ -13348,6 +13350,20 @@ void CoreTests::automaticLibraryPassCanBeTurnedOff() {
   QCOMPARE(network.requests.size(), 4);
   for (const auto& key : keys)
     QVERIFY(QFileInfo::exists(metadata.entry(key).value("portrait").toString()));
+
+  // Flipping the switch while an asked-for update runs leaves that update alone.
+  for (int row = 0; row < keys.size(); ++row)
+    metadata.persist(keys[row], {{"igdbId", row + 1}, {"gridId", row + 11},
+                                 {"coverRules", GameMetadata::kCoverRulesVersion}});
+  metadata.refreshLibrary();
+  QCOMPARE(metadata.pending(), 2);
+  metadata.setAutomaticPass(true);
+  metadata.m_settle.stop();
+  metadata.setAutomaticPass(false);
+  QCOMPARE(metadata.pending(), 2);
+  QTRY_VERIFY_WITH_TIMEOUT(!metadata.busy() && metadata.pending() == 0, 5000);
+  QCOMPARE(network.requests.size(), 8);
+  QVERIFY(metadata.status() != QString("Automatic library lookups are off"));
 }
 
 void CoreTests::portraitSelectionCompletesOnlyAfterSuccessfulSave() {

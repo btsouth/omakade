@@ -41,7 +41,7 @@ public:
   void setVisibleLibrary(QAbstractItemModel* visible);
   void setCacheLimitMb(int megabytes);
   // Off means the library is looked up only when someone asks: Update Ratings & Portraits, or a
-  // game's details. Turning it off also stops a pass already under way.
+  // game's details. Turning it off also stops an automatic pass already under way.
   void setAutomaticPass(bool enabled);
   bool automaticPass() const { return m_automaticPass; }
   QVariantMap entry(const QString& key) const { return m_entries.value(key); }
@@ -179,6 +179,7 @@ private:
   bool m_discoveryRetried = false;
   void next();
   void finish(const QString& message);
+  bool stoppedAutomaticPass();
   void requestIgdb(QByteArray query, QString endpoint, QString stage);
   void matchResult(const QByteArray& data, const QString& error);
   void acceptMatch(const QVariantMap& match);
@@ -206,6 +207,8 @@ private:
   QElapsedTimer m_sinceGridRequest;
   bool m_stoppedByHand = false;
   bool m_automaticPass = true;
+  // The switch went off while automatic lookups were running, so the next idle status says so.
+  bool m_automaticStopped = false;
   bool m_editing = false;
   QQueue<QVariantMap> m_pausedQueue;
   QAbstractItemModel* m_visible = nullptr;

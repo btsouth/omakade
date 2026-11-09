@@ -203,7 +203,8 @@ searching in game details does the same on request. These lookups send game
 titles and platform IDs to IGDB, or Steam App IDs when available. Turning off
 Identify Library Automatically in Settings > Connections stops the background
 pass, including one under way, so the library is looked up only when the user
-selects Update Ratings & Portraits or opens or searches in a game's details.
+selects Update Ratings & Portraits or opens or searches in a game's details. A
+lookup the user asked for keeps running when the switch is turned off.
 Library ratings use IGDB's combined `total_rating` field. Popularity uses its
 IGDB-visit metric. Manual identification choices stay in the local database.
 
