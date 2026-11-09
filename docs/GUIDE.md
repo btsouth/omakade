@@ -422,9 +422,11 @@ and Omakade's recorded time are combined without counting the same session twice
 **Where it goes.** History stays in Omakade's library database on this computer. The
 recorder reads the process list and, on Hyprland, window titles; it does not change
 emulators or games. It keeps running after Omakade closes. Turning **Record Playtime**
-off keeps your history and shows the launchers' own time. To stop the service as well,
-run `systemctl --user disable --now omakade-sessiond`; the in-game guide and
-Highlights also use it.
+off keeps your history and shows the launchers' own time. The
+service itself stays running because the in-game guide and Highlights also use it.
+You can stop it with `systemctl --user disable --now omakade-sessiond`, but on
+Omarchy, Omakade starts it again each time it opens. Turning **Record Playtime** off
+is what stops recording.
 
 A game's details page shows the launcher's time and Omakade's recorded total
 separately. **Play History** pages through sessions, and **Delete All Recorded
