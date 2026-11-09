@@ -383,7 +383,59 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
         fail(QStringLiteral("Removing the last filtered game did not focus Clear Filters"));
         return;
       }
+      // With a search on top of the status filter, the empty state names both, not only the search.
+      auto* libraryView = window->findChild<QQuickItem*>(QStringLiteral("libraryView"));
+      library->setProperty("searchText", QStringLiteral("zz-no-match"));
+      const QString title = libraryView ? libraryView->property("emptyTitle").toString() : QString{};
+      const QString message = libraryView ? libraryView->property("emptyMessage").toString() : QString{};
+      if (title != QStringLiteral("No games match these filters") ||
+          !message.contains(QStringLiteral("Search: zz-no-match")) ||
+          !message.contains(QStringLiteral("Status: backlog"))) {
+        fail(QStringLiteral("Combined filter empty state did not name every filter: %1 / %2")
+                 .arg(title, message));
+        return;
+      }
+      // Sources widen each other, so they are named as one filter, and the full emulator
+      // set by its button.
+      const auto messageFor = [library, libraryView](const QStringList& sources) {
+        library->setProperty("sourceFilters", sources);
+        return libraryView->property("emptyMessage").toString();
+      };
+      const QString twoSources = messageFor({QStringLiteral("Steam"), QStringLiteral("GOG")});
+      const QString emulated = messageFor(library->property("emulatorSources").toStringList());
+      library->setProperty("sourceFilters", QStringList{});
+      library->setProperty("searchText", QString{});
+      if (!twoSources.contains(QStringLiteral("Source: Steam or GOG")) ||
+          twoSources.contains(QStringLiteral("Source: GOG")) ||
+          !emulated.contains(QStringLiteral("Source: Emulated")) ||
+          emulated.contains(QStringLiteral("RetroArch"))) {
+        fail(QStringLiteral("Source filters were not named as one filter: %1 / %2")
+                 .arg(twoSources, emulated));
+        return;
+      }
       library->setProperty("completionFilter", QString{});
+      // A library that has games never asks to set up sources, even when this view is empty.
+      if (window->property("librarySetupAvailable").toBool()) {
+        fail(QStringLiteral("A library with games offered to set up sources"));
+        return;
+      }
+      // Set Up Sources opens Settings on Sources, not on a source page left open before.
+      QMetaObject::invokeMethod(window, "loadSettingsPanel");
+      auto* settings = window->findChild<QQuickItem*>(QStringLiteral("settingsOverlay"));
+      if (settings == nullptr) {
+        fail(QStringLiteral("Navigation test could not load Settings"));
+        return;
+      }
+      settings->setProperty("section", 2);
+      settings->setProperty("sourceDetail", QStringLiteral("Steam"));
+      QMetaObject::invokeMethod(window, "openSourceSettings");
+      if (!window->property("diagnosticsOpen").toBool() ||
+          settings->property("section").toInt() != 0 ||
+          !settings->property("sourceDetail").toString().isEmpty()) {
+        fail(QStringLiteral("Set Up Sources did not open Settings on Sources"));
+        return;
+      }
+      window->setProperty("diagnosticsOpen", false);
       application->quit();
     });
   });

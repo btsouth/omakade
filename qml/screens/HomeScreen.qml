@@ -118,6 +118,8 @@ FocusScope {
     signal gameRequested(var game, string action)
     signal playRequested(var game)
     signal browseRequested(string kind, string value)
+    signal sourcesRequested()
+    signal guideRequested()
     readonly property var featured: Home.recent.length ? Home.recent[0] : ({})
     readonly property var nextGame: Home.queue.length ? Home.queue[0] : Home.suggestions.length ? Home.suggestions[0] : ({})
     // The toolbar sits above the page, so going back to it shows the top of the page too.
@@ -204,6 +206,7 @@ FocusScope {
         if (Home.recent.length) focusIdentity(focusKey(featured))
         else if (Home.queue.length) focusIdentity(focusKey(Home.queue[0]))
         else if (Home.suggestions.length) focusIdentity(focusKey(Home.suggestions[0]))
+        else if (Home.gameCount === 0) setupSources.forceActiveFocus()
         else browseAll.forceActiveFocus()
         return true
     }
@@ -576,7 +579,7 @@ FocusScope {
         objectName: "homeAppHeader"
         objectNamePrefix: "home"
         current: "home"
-        contentFocusTarget: Home.recent.length > 0 ? featuredPlay : browseAll
+        contentFocusTarget: Home.recent.length > 0 ? featuredPlay : Home.gameCount === 0 ? setupSources : browseAll
         visible: !root.couchMode
         anchors.top: parent.top
         anchors.left: parent.left
@@ -886,6 +889,14 @@ FocusScope {
                         }
                     }
                 }
+                SectionTitle { title: "Set up your library"; visible: Home.gameCount === 0 }
+                Text { Layout.fillWidth: true; visible: Home.gameCount === 0; text: "Your Home starts with your games. Omakade finds them in your launchers, emulators and ROM folders. Choose your sources, then play something to make this space yours."; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
+                Flow {
+                    Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; spacing: 8
+                    visible: Home.gameCount === 0
+                    GlassButton { id: setupSources; objectName: "homeSetupSources"; text: "SET UP SOURCES"; primary: true; onClicked: root.sourcesRequested() }
+                    GlassButton { objectName: "homeReadGuide"; text: "READ THE GUIDE"; onClicked: root.guideRequested() }
+                }
                 SectionTitle { title: "Continue playing"; caption: "Recently played"; actionText: "VIEW ALL"; onActionRequested: root.browseRequested("recent", ""); visible: Home.recent.length > 1 }
                 GameShelf {
                     id: recentTiles
@@ -942,7 +953,6 @@ FocusScope {
                     }
                     GlassButton { visible: Home.shortcuts.length > 5 || Library.savedFilters.length > 3; text: root.allPlaces ? "FEWER PLACES" : "ALL PLACES"; onClicked: root.allPlaces = !root.allPlaces }
                 }
-                Text { Layout.fillWidth: true; visible: Home.gameCount === 0; text: "Your Home starts with your games. Add a source or ROM folder in Settings, then play something to make this space yours."; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
             }
         }
     }
