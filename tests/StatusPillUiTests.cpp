@@ -13,6 +13,8 @@ class StatusPillUiTests : public QObject {
   Q_OBJECT
 private slots:
   void pillsAreReadableAndClearOfTheFavoriteBadge() {
+    QTest::failOnWarning(
+        QRegularExpression(QStringLiteral("Binding loop|TypeError|ReferenceError")));
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     // Catppuccin Latte, where dark theme text is unreadable on the blue accent fill.

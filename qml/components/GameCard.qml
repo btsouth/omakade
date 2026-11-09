@@ -240,7 +240,7 @@ FocusScope {
                 id: statusText
                 objectName: "statusPillText"
                 anchors.centerIn: parent
-                width: statusPill.tight ? Math.max(0, parent.width - parent.padding) : implicitWidth
+                width: Math.max(0, parent.width - parent.padding)
                 horizontalAlignment: Text.AlignHCenter
                 text: root.completionStatus.toUpperCase()
                 // readableOn reads theme colors the binding cannot see, so name them here.
