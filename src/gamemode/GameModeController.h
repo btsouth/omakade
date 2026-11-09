@@ -134,7 +134,9 @@ private:
   // session workspace, where restoring the desktop finds it like any other window.
   void endLaunchHold();
   [[nodiscard]] bool save(const GameModeState& state) const;
-  [[nodiscard]] bool load(GameModeState* state) const;
+  // Why a record could not be loaded. Only a damaged one is safe to set aside.
+  enum class LoadFailure { None, Missing, Unopened, Newer, Damaged };
+  [[nodiscard]] bool load(GameModeState* state, LoadFailure* failure) const;
   [[nodiscard]] Result setAsideUnreadable();
   void forget() const;
   // Shared by leaving, by a failed entry, and by recovery. Returns false when something

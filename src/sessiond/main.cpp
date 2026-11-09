@@ -136,12 +136,17 @@ int main(int argc, char* argv[]) {
   QLockFile owner(databasePath + QStringLiteral(".sessiond.lock"));
   owner.setStaleLockTime(0);
   QSqlDatabase database;
+  // Set when the last try found another recorder holding the database lock.
+  bool lockHeld = false;
   // Returns why recording storage is unavailable, or nothing once it is ready.
   const auto openStorage = [&]() -> QString {
+    lockHeld = false;
     if (!QDir().mkpath(QFileInfo(databasePath).absolutePath()))
       return QStringLiteral("could not create the data directory");
-    if (!owner.tryLock(0))
+    if (!owner.tryLock(0)) {
+      lockHeld = owner.error() == QLockFile::LockFailedError;
       return QStringLiteral("recorder already running or its lock is unavailable");
+    }
     if (SessionDatabase::open(database, databasePath, QStringLiteral("omakade-sessiond")))
       return {};
     // Not recording, so the lock must not tell the app a recorder is running.
@@ -157,12 +162,16 @@ int main(int argc, char* argv[]) {
   QString storageError = openStorage();
   if (!storageError.isEmpty()) {
     qWarning("omakade-sessiond: %s; retrying", qPrintable(storageError));
-    // Another recorder owning the database is still recording, so only real storage
-    // trouble is shown in the app.
-    if (owner.error() != QLockFile::LockFailedError) AppNotify::send("tracking-storage-error");
     int delayMs = kStorageRetryFirstMs;
     int waitedMs = 0;
+    bool warned = false;
     while (!storageError.isEmpty()) {
+      // Another recorder owning the database is still recording, so only real storage
+      // trouble is shown in the app, once, whichever try first runs into it.
+      if (!lockHeld && !warned) {
+        AppNotify::send("tracking-storage-error");
+        warned = true;
+      }
       if (waitedMs >= kStorageRetryLimitMs) {
         qWarning("omakade-sessiond: recording is unavailable for this session: %s",
                  qPrintable(storageError));

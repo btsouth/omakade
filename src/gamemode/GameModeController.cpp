@@ -215,15 +215,26 @@ bool GameModeController::save(const GameModeState& state) const {
   return file.commit();
 }
 
-bool GameModeController::load(GameModeState* state) const {
+bool GameModeController::load(GameModeState* state, LoadFailure* failure) const {
+  *failure = LoadFailure::None;
   QFile file(m_statePath);
-  if (m_statePath.isEmpty() || !file.open(QIODevice::ReadOnly)) {
+  if (m_statePath.isEmpty() || !file.exists()) {
+    *failure = LoadFailure::Missing;
+    return false;
+  }
+  // A record that cannot be opened right now may still be good later, so it stays.
+  if (!file.open(QIODevice::ReadOnly)) {
+    *failure = LoadFailure::Unopened;
     return false;
   }
   const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
   file.close();
   if (!document.isObject() || !GameModeState::fromJson(document.object(), state)) {
-    // Preserve an unreadable record: dropping it could strand muted game audio.
+    // A newer Omakade's record stays for that version to undo. Anything else is damage
+    // no build can use, which recovery sets aside.
+    *failure = document.isObject() && document.object().value("version").toInt() > 2
+                   ? LoadFailure::Newer
+                   : LoadFailure::Damaged;
     return false;
   }
   return true;
@@ -1140,9 +1151,18 @@ GameModeController::Result GameModeController::recover() {
   Result result;
   result.ok = true;
   GameModeState state;
-  if (!load(&state)) {
-    if (QFile::exists(m_statePath))
+  LoadFailure failure = LoadFailure::None;
+  if (!load(&state, &failure)) {
+    if (failure == LoadFailure::Damaged)
       return setAsideUnreadable();
+    if (failure == LoadFailure::Newer) {
+      result.ok = false;
+      result.error = QStringLiteral(
+          "Game Mode's recovery record is from a newer Omakade. Run that version to undo it.");
+    } else if (failure == LoadFailure::Unopened) {
+      result.ok = false;
+      result.error = QStringLiteral("Game Mode's recovery record could not be read safely.");
+    }
     return result;
   }
   const qint64 self = QCoreApplication::applicationPid();
@@ -1184,6 +1204,8 @@ GameModeController::Result GameModeController::recover() {
 // for good. Undo what is safe without it, keep the file for inspection and say what may
 // still need a look.
 GameModeController::Result GameModeController::setAsideUnreadable() {
+  // An Omakade that crashed mid-launch leaves the hold on, and lifting it needs no record.
+  endLaunchHold();
   Result result;
   const QString kept =
       m_statePath + QStringLiteral(".damaged-") +

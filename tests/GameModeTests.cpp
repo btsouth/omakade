@@ -2484,10 +2484,19 @@ private slots:
     file.write("{ not json");
     file.close();
     m_notifications.quiet = true;
+    // A crash mid-launch can leave the compositor hold on with the record damaged.
+    m_compositor.canHold = true;
+    m_compositor.held = {{QStringLiteral("0x72"), 72, QStringLiteral("steam"), QStringLiteral("Steam")}};
     GameModeController game = controller();
     const auto recovered = game.recover();
     QVERIFY2(recovered.ok, qPrintable(recovered.error));
     QVERIFY(recovered.setAside);
+    // Lifting the hold is the only compositor change made without the record.
+    QCOMPARE(m_compositor.log,
+             QStringList({QStringLiteral("steam-hold "), QStringLiteral("launch-hold "),
+                          QStringLiteral("release-held 0x72 name:omakade")}));
+    m_compositor.canHold = false;
+    m_compositor.log.clear();
     QVERIFY(recovered.notes.join(' ').contains("set aside"));
     QVERIFY(recovered.notes.join(' ').contains("game audio"));
     QVERIFY(!m_notifications.quiet);
@@ -2503,6 +2512,29 @@ private slots:
     QVERIFY(damaged.remove());
     QVERIFY(m_compositor.log.isEmpty());
     QVERIFY(game.enter(tvSettings(), 100).ok);
+  }
+
+  // A newer Omakade's record is valid there, so an older build keeps it and says why.
+  void newerStateIsKeptForTheVersionThatWroteIt() {
+    deskAndTv(true);
+    const QByteArray newer = R"({"version": 3, "phase": "active"})";
+    QFile file(statePath());
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(newer);
+    file.close();
+    GameModeController game = controller();
+    const auto recovered = game.recover();
+    QVERIFY(!recovered.ok);
+    QVERIFY(!recovered.setAside);
+    QVERIFY2(recovered.error.contains("newer Omakade"), qPrintable(recovered.error));
+    QVERIFY(QFile::exists(statePath()));
+    QVERIFY(QDir(m_directory.path())
+                .entryList({QStringLiteral("game-mode-state.json.damaged-*")})
+                .isEmpty());
+    QVERIFY(m_compositor.log.isEmpty());
+    QVERIFY(!game.enter(tvSettings(), 100).ok);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), newer);
   }
 
   // Startup recovery that fails is reported as a failure and tried again later, rather
