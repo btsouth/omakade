@@ -132,8 +132,10 @@ endif()
 
 target_link_libraries(omakade-sessiond PRIVATE omakade_core)
 
-qt_add_executable(omakade)
-target_link_libraries(omakade PRIVATE Qt6::GuiPrivate)
+# The window: its composition, the QML module and the bundled resources. A library so the
+# shipped omakade binary and the omakade-uitest harness (src/selftest) run the same app.
+add_library(omakade_app STATIC)
+target_link_libraries(omakade_app PUBLIC Qt6::GuiPrivate)
 if(OMAKADE_IDLE_INHIBIT)
   # Custom command outputs only reach targets created in the same directory, so the
   # scanner rules live here rather than next to the protocol lookup in the top-level file.
@@ -149,31 +151,26 @@ if(OMAKADE_IDLE_INHIBIT)
             "${OMAKADE_IDLE_INHIBIT_SOURCE}"
     DEPENDS "${OMAKADE_IDLE_INHIBIT_XML}"
     VERBATIM)
-  target_sources(omakade PRIVATE "${OMAKADE_IDLE_INHIBIT_HEADER}" "${OMAKADE_IDLE_INHIBIT_SOURCE}")
+  target_sources(omakade_app PRIVATE "${OMAKADE_IDLE_INHIBIT_HEADER}" "${OMAKADE_IDLE_INHIBIT_SOURCE}")
   set_source_files_properties("${OMAKADE_IDLE_INHIBIT_SOURCE}" PROPERTIES
     COMPILE_OPTIONS "-w")
-  target_include_directories(omakade PRIVATE "${OMAKADE_PROTOCOL_DIR}")
-  target_compile_definitions(omakade PRIVATE OMAKADE_IDLE_INHIBIT=1)
-  target_link_libraries(omakade PRIVATE PkgConfig::WAYLAND_CLIENT)
+  target_include_directories(omakade_app PRIVATE "${OMAKADE_PROTOCOL_DIR}")
+  target_compile_definitions(omakade_app PRIVATE OMAKADE_IDLE_INHIBIT=1)
+  target_link_libraries(omakade_app PRIVATE PkgConfig::WAYLAND_CLIENT)
 endif()
 
 # Qt builds a QML module or resource bundle correctly only from the directory scope that
 # created its target, so these two files are included here rather than added as
-# subdirectories.
+# subdirectories. The module is a static plugin of omakade_app, OmakadePlugin, which each
+# executable links and imports.
 include(${PROJECT_SOURCE_DIR}/qml/CMakeLists.txt)
 include(${PROJECT_SOURCE_DIR}/resources/CMakeLists.txt)
 
-set_target_properties(omakade PROPERTIES
-  OUTPUT_NAME omakade
-  MACOSX_BUNDLE_GUI_IDENTIFIER io.github.tsouth89.Omakade
-  WIN32_EXECUTABLE TRUE
-)
-
-target_compile_definitions(omakade PRIVATE
+target_compile_definitions(omakade_app PRIVATE
   OMAKADE_VERSION="${PROJECT_VERSION}"
 )
 
-target_link_libraries(omakade PRIVATE
+target_link_libraries(omakade_app PUBLIC
   omakade_core
   Qt6::Core
   Qt6::DBus
@@ -181,6 +178,17 @@ target_link_libraries(omakade PRIVATE
   Qt6::Qml
   Qt6::Quick
   Qt6::QuickControls2
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(omakade_app PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+qt_add_executable(omakade)
+target_link_libraries(omakade PRIVATE omakade_app omakade_appplugin)
+set_target_properties(omakade PROPERTIES
+  OUTPUT_NAME omakade
+  MACOSX_BUNDLE_GUI_IDENTIFIER io.github.tsouth89.Omakade
+  WIN32_EXECUTABLE TRUE
 )
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade PRIVATE -Wall -Wextra -Wpedantic)
