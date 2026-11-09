@@ -37,7 +37,8 @@ Omakade retains:
   sync in the same database
 - Play sessions recorded by `omakade-sessiond` in the same database: game
   paths, start and end times, and accumulated seconds. Recording reads the local
-  process table and, on Hyprland, emulator window titles and focus. History stays
+  process table, including the Steam app id on the command line Steam starts a game
+  with, and, on Hyprland, game window titles and focus. History stays
   local unless you choose to export it. Optional Discord presence is described below.
 - Steam ID, RetroAchievements username, public IGDB client ID, cache limit, and
   reduced-motion preference, console-view overrides, and cover sizes in

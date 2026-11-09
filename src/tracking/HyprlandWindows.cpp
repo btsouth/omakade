@@ -83,9 +83,13 @@ bool isUnfocused(const QVector<Window>& windows, qint64 pid) {
   if (pid <= 0) {
     return false;
   }
+  return isUnfocused(windows, QSet<qint64>{pid});
+}
+
+bool isUnfocused(const QVector<Window>& windows, const QSet<qint64>& pids) {
   bool ownsWindow = false;
   for (const Window& window : windows) {
-    if (window.pid != pid) {
+    if (window.pid <= 0 || !pids.contains(window.pid)) {
       continue;
     }
     ownsWindow = true;

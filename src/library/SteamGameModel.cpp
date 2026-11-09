@@ -5,6 +5,7 @@
 #include "app/AppSettings.h"
 #include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
+#include "tracking/SteamInstalls.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -315,8 +316,8 @@ QVariant SteamGameModel::valueForRole(const Game& game, int role) const {
     if (!game.installed) {
       return QString{};
     }
-    return QDir(game.steam.libraryPath + QStringLiteral("/steamapps/common"))
-        .absoluteFilePath(game.steam.installDirectory);
+    // The recorder resolves a Steam launch to the same string, so its sessions link here.
+    return SteamInstalls::installPath(game.steam.libraryPath, game.steam.installDirectory);
   case GameRoles::Source:
     return QStringLiteral("Steam");
   case GameRoles::Runner:

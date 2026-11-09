@@ -4,11 +4,13 @@
 #include "tracking/ProcFs.h"
 
 #include <QHash>
+#include <QPair>
 #include <QSet>
 #include <QString>
 #include <QVector>
 
 #include <functional>
+#include <limits>
 
 // Emulator launch profiles drive session attribution. A profile names the
 // binaries an emulator runs under; the matcher then looks for a command line
@@ -105,6 +107,44 @@ using AttributionResolver =
 [[nodiscard]] QVector<SessionMatch> matchWinePrefixes(const QVector<ProcessSnapshot>& processes,
                                                       const QHash<QString, QString>& games,
                                                       const QString& source);
+
+// Steam starts every game under its reaper, which lives as long as the game:
+// `reaper SteamLaunch AppId=<id> -- <the game's command>`. Returns the app id from the
+// reaper's own options, before the `--`, or an empty string for any other process and for
+// the setup Steam runs before a first launch (`Install=1`).
+[[nodiscard]] QString steamLaunchAppId(const QStringList& arguments);
+
+// How long a reaper runs before it is matched. Steam starts the game through its launch
+// wrapper and often the Steam Linux Runtime container first, so for a while the reaper's
+// tree does not show the emulator it is about to run. Matching it then would open a short
+// Steam session that ends as soon as the emulator appears.
+inline constexpr qint64 kSteamSettleSeconds = 10;
+
+// What the Steam matcher remembers between polls: the reapers (pid and procfs start time)
+// that have been seen running an emulator. Such a reaper stays the emulator's play, so the
+// seconds it spends cleaning up after the emulator exits are not recorded as Steam.
+struct SteamLaunchState {
+  QSet<QPair<qint64, qint64>> emulatorReapers;
+};
+
+// One match per running Steam game, recorded against its install folder: `installs` maps
+// an app id to the folder the library knows the game by. A launch whose app id has no
+// install folder, such as a non-Steam shortcut, is not recorded. When the reaper or any
+// process it started runs an emulator from `profiles`, the emulator's own recording owns
+// that play, so Steam does not record it a second time. The match is the reaper itself,
+// the oldest one when Steam runs the same app id twice.
+//
+// A reaper that started after `settledBefore`, a procfs start time, is too new to tell
+// whether it is about to run an emulator and is matched on a later poll. `state`, when
+// given, carries the reapers seen running an emulator from one poll to the next.
+[[nodiscard]] QVector<SessionMatch> matchSteamLaunches(
+    const QVector<ProcessSnapshot>& processes, const QHash<QString, QString>& installs,
+    const ProcessProfileSet& profiles,
+    qint64 settledBefore = std::numeric_limits<qint64>::max(),
+    SteamLaunchState* state = nullptr);
+// The source name Steam sessions are recorded under, the same name the library gives Steam.
+inline const QString kSteamSource = QStringLiteral("Steam");
+
 // The profile file to read: a user copy under the config directory overrides the
 // packaged one, which is the same order the recorder uses.
 [[nodiscard]] QString profilesPath();

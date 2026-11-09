@@ -261,6 +261,77 @@ QVector<SessionMatch> matchWinePrefixes(const QVector<ProcessSnapshot>& processe
   return matches;
 }
 
+QString steamLaunchAppId(const QStringList& arguments) {
+  if (arguments.size() < 3 || arguments.at(1) != QStringLiteral("SteamLaunch") ||
+      QFileInfo(arguments.at(0)).fileName() != QStringLiteral("reaper"))
+    return {};
+  const QString key = QStringLiteral("AppId=");
+  QString appId;
+  for (qsizetype index = 2; index < arguments.size() && arguments.at(index) != QStringLiteral("--");
+       ++index) {
+    const QString& argument = arguments.at(index);
+    if (argument == QStringLiteral("Install=1")) return {};
+    if (argument.startsWith(key)) appId = argument.mid(key.size());
+  }
+  bool numeric = false;
+  appId.toULongLong(&numeric);
+  return numeric && appId != QStringLiteral("0") ? appId : QString{};
+}
+
+QVector<SessionMatch> matchSteamLaunches(const QVector<ProcessSnapshot>& processes,
+                                         const QHash<QString, QString>& installs,
+                                         const ProcessProfileSet& profiles, qint64 settledBefore,
+                                         SteamLaunchState* state) {
+  QHash<qint64, const ProcessSnapshot*> byPid;
+  for (const ProcessSnapshot& process : processes) byPid.insert(process.pid, &process);
+  // Reapers that are gone cannot come back under the same identity, so they are forgotten.
+  if (state != nullptr) {
+    for (auto it = state->emulatorReapers.begin(); it != state->emulatorReapers.end();) {
+      const ProcessSnapshot* process = byPid.value(it->first, nullptr);
+      if (process == nullptr || process->procStart != it->second)
+        it = state->emulatorReapers.erase(it);
+      else
+        ++it;
+    }
+  }
+  if (installs.isEmpty()) return {};
+  const auto runsEmulator = [&](const ProcessSnapshot& reaper) {
+    const QPair<qint64, qint64> identity{reaper.pid, reaper.procStart};
+    if (state != nullptr && state->emulatorReapers.contains(identity)) return true;
+    for (const qint64 member : ProcFs::processTree(processes, reaper.pid)) {
+      const ProcessSnapshot* process = byPid.value(member, nullptr);
+      if (process == nullptr) continue;
+      for (const SessionProcessProfile& profile : profiles.emulators) {
+        if (processMatches(*process, profile)) {
+          if (state != nullptr) state->emulatorReapers.insert(identity);
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  QHash<QString, const ProcessSnapshot*> oldest;
+  for (const ProcessSnapshot& process : processes) {
+    if (process.procStart < 0) continue;
+    const QString appId = steamLaunchAppId(process.arguments);
+    if (appId.isEmpty() || installs.value(appId).isEmpty()) continue;
+    const ProcessSnapshot*& current = oldest[appId];
+    if (current == nullptr || process.procStart < current->procStart ||
+        (process.procStart == current->procStart && process.pid < current->pid))
+      current = &process;
+  }
+  QVector<SessionMatch> matches;
+  for (auto it = oldest.cbegin(); it != oldest.cend(); ++it) {
+    // The emulator check runs first, so a reaper that is still settling is remembered as
+    // the emulator's as soon as the emulator shows.
+    if (runsEmulator(*it.value()) || it.value()->procStart > settledBefore) continue;
+    matches.append({.pid = it.value()->pid, .procStart = it.value()->procStart,
+                    .emulator = kSteamSource, .rescanSource = {},
+                    .gamePath = installs.value(it.key()), .handsOver = false});
+  }
+  return matches;
+}
+
 QString profilesPath() {
   const QString userPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                            QStringLiteral("/omakade/sessiond-profiles.json");

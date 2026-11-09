@@ -794,7 +794,7 @@ FocusScope {
                                         text: (modelData.source ? modelData.source + " · " : "")
                                               + root.elapsedText(modelData.elapsedSeconds)
                                               + (modelData.stopping ? " · closing" : "")
-                                              + (modelData.stoppable === false ? " · from window title" : "")
+                                              + (modelData.fromWindowTitle === true ? " · from window title" : "")
                                         color: Theme.mutedText
                                         font.family: Theme.fontFamily
                                         font.pixelSize: (root.couchMode ? 17 : 11) * root.panelScale

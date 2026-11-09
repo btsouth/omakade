@@ -8,7 +8,7 @@ x86_64 and ARM64.
 
 | Source | Installs found | Launches through | Artwork | Play time | Save protection |
 | --- | --- | --- | --- | --- | --- |
-| Steam | Native, Flatpak | Steam | Steam's library cache, then Steam's image hosts | Steam's own | No |
+| Steam | Native, Flatpak | Steam | Steam's library cache, then Steam's image hosts | Steam's own, dated by recorder | No |
 | Heroic (Epic, GOG, Amazon) | Native, Flatpak | Heroic | Heroic's artwork cache | Heroic's own | No |
 | Lutris | Native, Flatpak | Lutris | Lutris covers | Lutris's own | No |
 | Faugus | Native, Flatpak | Faugus | Faugus covers and banners | Faugus's own | No |
@@ -31,7 +31,9 @@ x86_64 and ARM64.
 | Manual games | Executables and desktop entries you add | The executable | Your custom images | None | No |
 
 - **Play time.** "Own" means the launcher's or emulator's counter, which Omakade
-  reads. "Recorder" needs [recording](GUIDE.md#track-play-sessions) turned on.
+  reads. "Recorder" needs [recording](GUIDE.md#track-play-sessions) turned on. For
+  Steam, the recorder adds dated sessions for Stats and play history while the total
+  stays Steam's own.
 - **Artwork.** "Connections only" means covers come from IGDB or SteamGridDB once
   connected. Every source can use those and [custom images](GUIDE.md#customize-game-artwork).
 - **Save protection.** Copies in-game saves before an emulator launch; see

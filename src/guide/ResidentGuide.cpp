@@ -5,7 +5,7 @@
 #include "guide/GuideEnvironment.h"
 #include "gamemode/GameModeDesktop.h"
 #include "tracking/SessionDatabase.h"
-#include "tracking/SessionDisplay.h"
+#include "tracking/SteamInstalls.h"
 #include "tracking/ProcFs.h"
 #include <QCoreApplication>
 #include <QDateTime>
@@ -88,7 +88,7 @@ Snapshot snapshot(const QJsonObject& active, const QJsonArray& clients, const QJ
       for (const auto& row : SessionDatabase::openSessions(database)) {
         if (!ProcFs::processAlive(row.pid, row.procStart)) continue;
         candidates.append(QVariantMap{{"pid", row.pid}, {"procStart", row.procStart}, {"path", row.gamePath},
-          {"source", row.source}, {"name", SessionDisplay::titleForGamePath(row.gamePath)},
+          {"source", row.source}, {"name", SteamInstalls::sessionTitle(database, row.source, row.gamePath)},
           {"elapsedSeconds", row.seconds + qMax<qint64>(0, QDateTime::currentSecsSinceEpoch() - (row.heartbeatAt > 0 ? row.heartbeatAt : row.startedAt))}});
       }
       const auto focused = active.value("pid").toInteger();

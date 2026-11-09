@@ -421,26 +421,32 @@ The same page shows whether the recorder is running, separately from whether
 recording is on.
 
 **What is recorded.** While a game runs in RetroArch, Dolphin, PCSX2, RPCS3, PPSSPP,
-Ryujinx, Eden, Cemu, shadPS4, melonDS, mGBA, xemu or Xenia, or from Xodus Nexus, the
-recorder saves when it started, when it ended and how long it ran. It knows which
-game is running from the file the emulator was started with, so games started from
-Omakade, another launcher or a terminal all count. On Hyprland it also recognizes a
+Ryujinx, Eden, Cemu, shadPS4, melonDS, mGBA, xemu or Xenia, from Xodus Nexus, or from
+Steam, the recorder saves when it started, when it ended and how long it ran. It knows
+which game is running from the file the emulator was started with, so games started
+from Omakade, another launcher or a terminal all count. On Hyprland it also recognizes a
 game you load from inside the emulator when the window title names a game in your
 library. Dolphin reports the game it is running, and so does PCSX2 with file logging on.
+A Steam game counts from about ten seconds after Steam starts it, whether you start it
+from Omakade or from Steam, as long as the Steam source is on and lists it as installed.
 
 **What is not recorded.** A game loaded from inside an emulator that none of those
-checks can identify. Steam, Heroic, Lutris, Faugus, Battle.net, direct GOG and manual
+checks can identify, non-Steam shortcuts you added to Steam, and Steam games Omakade
+does not list as installed, or any Steam game while the Steam source is off. Heroic, Lutris, Faugus, Battle.net, direct GOG and manual
 games are not recorded; their time comes from the launcher, where it keeps one.
 
 **How time is counted.** Time keeps counting while the emulator is open, including on
 its own pause screen. On Hyprland, **Pause When Unfocused** stops counting while the
-emulator window is behind other windows; it is off by default. A launcher's own total
+game window is behind other windows; it is off by default. A launcher's own total
 and Omakade's recorded time are combined without counting the same session twice.
+A Steam game's total stays Steam's own; its recorded sessions add the dates that Stats
+and Play History use.
 
 **Where it goes.** History stays in Omakade's library database on this computer. The
 recorder reads the process list and, on Hyprland, window titles; it does not change
-emulators or games. It keeps running after Omakade closes. Turning **Record Playtime**
-off keeps your history and shows the launchers' own time. The
+emulators or games. For Steam it reads the command line Steam starts each game with,
+which names the game's app id. It keeps running after Omakade closes. Turning
+**Record Playtime** off keeps your history and shows the launchers' own time. The
 service itself stays running because the in-game guide and Highlights also use it.
 You can stop it with `systemctl --user disable --now omakade-sessiond`, but on
 Omarchy, Omakade starts it again each time it opens. Turning **Record Playtime** off
@@ -451,11 +457,12 @@ separately. **Play History** pages through sessions, and **Delete All Recorded
 Sessions…** clears them after confirmation.
 
 **Discord Status** on the same Settings page shows the game you are playing in
-Discord. It is off by default and sends only the game name and source; see
+Discord, including Steam games. It is off by default and sends only the game name and
+source; see
 [Privacy](../PRIVACY.md#statistics-and-discord-presence).
 
 The [recording coverage notes](RECORDING-COVERAGE.md) list what has been tested for
-each emulator.
+each emulator and for Steam.
 
 ## Stats and Year in Review
 
