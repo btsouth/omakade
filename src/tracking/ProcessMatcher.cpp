@@ -280,16 +280,33 @@ QString steamLaunchAppId(const QStringList& arguments) {
 
 QVector<SessionMatch> matchSteamLaunches(const QVector<ProcessSnapshot>& processes,
                                          const QHash<QString, QString>& installs,
-                                         const ProcessProfileSet& profiles) {
-  if (installs.isEmpty()) return {};
+                                         const ProcessProfileSet& profiles, qint64 settledBefore,
+                                         SteamLaunchState* state) {
   QHash<qint64, const ProcessSnapshot*> byPid;
   for (const ProcessSnapshot& process : processes) byPid.insert(process.pid, &process);
-  const auto runsEmulator = [&](qint64 pid) {
-    for (const qint64 member : ProcFs::processTree(processes, pid)) {
+  // Reapers that are gone cannot come back under the same identity, so they are forgotten.
+  if (state != nullptr) {
+    for (auto it = state->emulatorReapers.begin(); it != state->emulatorReapers.end();) {
+      const ProcessSnapshot* process = byPid.value(it->first, nullptr);
+      if (process == nullptr || process->procStart != it->second)
+        it = state->emulatorReapers.erase(it);
+      else
+        ++it;
+    }
+  }
+  if (installs.isEmpty()) return {};
+  const auto runsEmulator = [&](const ProcessSnapshot& reaper) {
+    const QPair<qint64, qint64> identity{reaper.pid, reaper.procStart};
+    if (state != nullptr && state->emulatorReapers.contains(identity)) return true;
+    for (const qint64 member : ProcFs::processTree(processes, reaper.pid)) {
       const ProcessSnapshot* process = byPid.value(member, nullptr);
       if (process == nullptr) continue;
-      for (const SessionProcessProfile& profile : profiles.emulators)
-        if (processMatches(*process, profile)) return true;
+      for (const SessionProcessProfile& profile : profiles.emulators) {
+        if (processMatches(*process, profile)) {
+          if (state != nullptr) state->emulatorReapers.insert(identity);
+          return true;
+        }
+      }
     }
     return false;
   };
@@ -305,7 +322,9 @@ QVector<SessionMatch> matchSteamLaunches(const QVector<ProcessSnapshot>& process
   }
   QVector<SessionMatch> matches;
   for (auto it = oldest.cbegin(); it != oldest.cend(); ++it) {
-    if (runsEmulator(it.value()->pid)) continue;
+    // The emulator check runs first, so a reaper that is still settling is remembered as
+    // the emulator's as soon as the emulator shows.
+    if (runsEmulator(*it.value()) || it.value()->procStart > settledBefore) continue;
     matches.append({.pid = it.value()->pid, .procStart = it.value()->procStart,
                     .emulator = kSteamSource, .rescanSource = {},
                     .gamePath = installs.value(it.key()), .handsOver = false});

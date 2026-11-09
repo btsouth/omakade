@@ -3,9 +3,9 @@
 #include "tracking/ProcFs.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
-#include "tracking/SessionDisplay.h"
 #include "tracking/SessionJournal.h"
 #include "tracking/SessionStopper.h"
+#include "tracking/SteamInstalls.h"
 #include "library/GameRoles.h"
 
 #include <QDateTime>
@@ -226,7 +226,8 @@ void PlaySessionStore::refreshNowPlaying() {
                                   : qMax<qint64>(0, now - session.startedAt);
       rows.append(QVariantMap{
           {QStringLiteral("path"), session.gamePath},
-          {QStringLiteral("name"), SessionDisplay::titleForGamePath(session.gamePath)},
+          {QStringLiteral("name"),
+           SteamInstalls::sessionTitle(m_database, session.source, session.gamePath)},
           {QStringLiteral("source"), session.source},
           {QStringLiteral("pid"), session.pid},
           {QStringLiteral("procStart"), session.procStart},

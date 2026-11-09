@@ -40,6 +40,10 @@ namespace ProcFs {
 
 [[nodiscard]] bool processAlive(qint64 pid, qint64 procStart);
 
+// The time since boot in the clock ticks procStart is counted in, so a process's age can be
+// told from its snapshot. -1 when /proc/uptime cannot be read.
+[[nodiscard]] qint64 uptimeTicks();
+
 // The pid and every descendant of it in one snapshot, followed through parentPid. A pid that
 // is not in the snapshot still gives itself, so a caller can ask about it either way.
 [[nodiscard]] QSet<qint64> processTree(const QVector<ProcessSnapshot>& processes, qint64 pid);

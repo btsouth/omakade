@@ -171,6 +171,121 @@ private slots:
     QVERIFY(ProcessMatcher::matchSteamLaunches(unverified, installs, profiles).isEmpty());
   }
 
+  // Steam starts an emulator such as its own RetroArch through the launch wrapper and the
+  // runtime container, so the reaper runs for a while before the emulator shows in its tree,
+  // and it can outlive the emulator while the container is cleaned up. Neither gap is
+  // recorded as Steam play.
+  void emulatorFromSteamIsNeverRecordedAsSteam() {
+    const QString retroArch = QStringLiteral("/games/steam/steamapps/common/RetroArch");
+    const QString portal = QStringLiteral("/games/steam/steamapps/common/Portal 2");
+    const QHash<QString, QString> installs{{QStringLiteral("1118310"), retroArch},
+                                           {QStringLiteral("620"), portal}};
+    const ProcessProfileSet profiles = retroArchProfile();
+    const ProcessSnapshot steam =
+        process(100, 1, 10, {"/home/player/.local/share/Steam/ubuntu12_32/steam"});
+    const ProcessSnapshot reaperProcess = process(500, 100, 1000, reaper("1118310"));
+    const ProcessSnapshot wrapper =
+        process(501, 500, 1001, {"steam-launch-wrapper", "--", "pressure-vessel-wrap"});
+    const ProcessSnapshot emulator =
+        process(502, 501, 1150, {"/games/steam/steamapps/common/RetroArch/retroarch"});
+    // Clock ticks: the reaper started at 1000 and is matched once it is older than 1000.
+    const qint64 young = 999;
+    const qint64 settled = 2000;
+    ProcessMatcher::SteamLaunchState state;
+
+    // The first poll lands before the container has started RetroArch.
+    QVERIFY(ProcessMatcher::matchSteamLaunches({steam, reaperProcess, wrapper}, installs,
+                                               profiles, young, &state)
+                .isEmpty());
+    // The next one sees it, and the reaper is remembered as the emulator's.
+    QVERIFY(ProcessMatcher::matchSteamLaunches({steam, reaperProcess, wrapper, emulator},
+                                               installs, profiles, settled, &state)
+                .isEmpty());
+    QCOMPARE(state.emulatorReapers.size(), 1);
+    // RetroArch exits while the reaper waits on the container: still not Steam play.
+    QVERIFY(ProcessMatcher::matchSteamLaunches({steam, reaperProcess, wrapper}, installs,
+                                               profiles, settled, &state)
+                .isEmpty());
+    // Once the reaper is gone it is forgotten, so a reused pid starts fresh.
+    QVERIFY(ProcessMatcher::matchSteamLaunches({steam}, installs, profiles, settled, &state)
+                .isEmpty());
+    QVERIFY(state.emulatorReapers.isEmpty());
+
+    // A game that runs no emulator waits out the same delay, then is recorded from its reaper.
+    const ProcessSnapshot portalReaper = process(600, 100, 1000, reaper("620"));
+    const ProcessSnapshot portalGame = process(601, 600, 1005, {"/games/portal2_linux"});
+    QVERIFY(ProcessMatcher::matchSteamLaunches({steam, portalReaper, portalGame}, installs,
+                                               profiles, young, &state)
+                .isEmpty());
+    const QVector<SessionMatch> matches = ProcessMatcher::matchSteamLaunches(
+        {steam, portalReaper, portalGame}, installs, profiles, settled, &state);
+    QCOMPARE(matches.size(), 1);
+    QCOMPARE(matches.first().pid, qint64(600));
+    QCOMPARE(matches.first().gamePath, portal);
+    QVERIFY(state.emulatorReapers.isEmpty());
+  }
+
+  void installsReadTellsFailureFromNoGames() {
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+    const QString connection = QUuid::createUuid().toString();
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, path, connection));
+      // No Steam tables yet: the read fails, which the recorder must not take as no games.
+      QVERIFY(!SteamInstalls::read(database).has_value());
+      database.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    { SteamGameModel schema(path); }
+    const QString again = QUuid::createUuid().toString();
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, path, again));
+      const std::optional<QHash<QString, QString>> installs = SteamInstalls::read(database);
+      QVERIFY(installs.has_value());
+      QVERIFY(installs->isEmpty());
+      database.close();
+    }
+    QSqlDatabase::removeDatabase(again);
+  }
+
+  void steamSessionsAreNamedByTheLibrary() {
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("library.sqlite3"));
+    const QString library = directory.filePath(QStringLiteral("SteamLibrary"));
+    { SteamGameModel schema(path); }
+    addSteamGame(path, QStringLiteral("1643320"), QStringLiteral("S.T.A.L.K.E.R. 2: Heart of Chornobyl"),
+                 library, QStringLiteral("S.T.A.L.K.E.R. 2"));
+    const QString connection = QUuid::createUuid().toString();
+    {
+      QSqlDatabase database;
+      QVERIFY(SessionDatabase::open(database, path, connection));
+      const QString installed =
+          SteamInstalls::installPath(library, QStringLiteral("S.T.A.L.K.E.R. 2"));
+      QCOMPARE(SteamInstalls::sessionTitle(database, QStringLiteral("Steam"), installed),
+               QStringLiteral("S.T.A.L.K.E.R. 2: Heart of Chornobyl"));
+      // A folder the library no longer lists keeps its whole name, dots and all.
+      QCOMPARE(SteamInstalls::sessionTitle(database, QStringLiteral("Steam"),
+                                           library + QStringLiteral("/steamapps/common/S.T.A.L.K.E.R. 3")),
+               QStringLiteral("S.T.A.L.K.E.R. 3"));
+      // Other sessions are named from their game path as before.
+      QCOMPARE(SteamInstalls::sessionTitle(database, QStringLiteral("RetroArch"),
+                                           QStringLiteral("/roms/Chrono_Trigger.sfc")),
+               QStringLiteral("Chrono Trigger"));
+      database.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+  }
+
+  void steamSourceSwitchControlsRecording() {
+    QVERIFY(SteamInstalls::sourceEnabled(QString{}));
+    QVERIFY(SteamInstalls::sourceEnabled(QStringLiteral("steam_enabled = true\n")));
+    QVERIFY(!SteamInstalls::sourceEnabled(QStringLiteral("lutris_enabled = true\nsteam_enabled = false\n")));
+    // Only the whole key counts.
+    QVERIFY(SteamInstalls::sourceEnabled(QStringLiteral("not_steam_enabled = false\n")));
+  }
+
   void focusFollowsTheReaperTree() {
     const QVector<ProcessSnapshot> processes{
         process(200, 100, 50, reaper(kEldenRing)),
@@ -209,6 +324,8 @@ private slots:
     for (const ProcessSnapshot& snapshot : ProcFs::listProcesses()) {
       if (snapshot.pid != self) continue;
       QCOMPARE(snapshot.parentPid, qint64(getppid()));
+      // Start times and uptime count the same ticks, which is how a reaper's age is told.
+      QVERIFY(snapshot.procStart > 0 && snapshot.procStart <= ProcFs::uptimeTicks());
       return;
     }
     QFAIL("the test process was not listed");
@@ -238,7 +355,9 @@ private slots:
     {
       QSqlDatabase database;
       QVERIFY(SessionDatabase::open(database, path, connection));
-      const QHash<QString, QString> installs = SteamInstalls::read(database);
+      const std::optional<QHash<QString, QString>> read = SteamInstalls::read(database);
+      QVERIFY(read.has_value());
+      const QHash<QString, QString> installs = *read;
       QCOMPARE(installs.size(), 2);
       const QVector<SessionMatch> matches =
           ProcessMatcher::matchSteamLaunches(processes, installs, ProcessProfileSet{});
@@ -273,6 +392,8 @@ private slots:
         QCOMPARE(row.value(QStringLiteral("path")).toString(), recordedPath);
         QVERIFY(!row.value(QStringLiteral("stoppable")).toBool());
         QVERIFY(!row.value(QStringLiteral("fromWindowTitle")).toBool());
+        // Named by the library's title, not the install folder.
+        QCOMPARE(row.value(QStringLiteral("name")).toString(), QStringLiteral("ELDEN RING"));
       }
 
       clock += 1200000;

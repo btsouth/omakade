@@ -8,7 +8,6 @@
 #include "tracking/ProcFs.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
-#include "tracking/SessionDisplay.h"
 #include "tracking/SessionRecorder.h"
 #include "tracking/SessionTitleIndex.h"
 #include "tracking/SteamInstalls.h"
@@ -26,7 +25,10 @@
 #include <QSqlQuery>
 #include <QStandardPaths>
 #include <QTimer>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -79,6 +81,7 @@ public:
     const QRegularExpressionMatch presenceMatch = presencePattern.match(contents);
     m_discordPresence =
         presenceMatch.hasMatch() && presenceMatch.captured(1) == QStringLiteral("true");
+    m_steamEnabled = SteamInstalls::sourceEnabled(contents);
     // The Discord application id the presence is published under. Discord shows the
     // application's own name, so this only selects which one it is. The environment
     // variable read at the top of this method wins over the config file.
@@ -93,6 +96,7 @@ public:
 
   [[nodiscard]] bool pauseUnfocused() const { return m_pauseUnfocused; }
   [[nodiscard]] bool discordPresence() const { return m_discordPresence; }
+  [[nodiscard]] bool steamEnabled() const { return m_steamEnabled; }
   [[nodiscard]] QString discordClientId() const { return m_discordClientId; }
 
 private:
@@ -100,6 +104,7 @@ private:
   bool m_enabled = true;
   bool m_pauseUnfocused = false;
   bool m_discordPresence = false;
+  bool m_steamEnabled = true;
   QString m_discordClientId;
 };
 
@@ -255,9 +260,22 @@ int main(int argc, char* argv[]) {
   };
   // Steam games are recognized by the reaper Steam starts each one under, and recorded
   // against the install folder the library knows them by. The table is read fresh each poll
-  // like Xodus Nexus's, so a game installed after the daemon started is recorded too.
+  // like Xodus Nexus's, so a game installed after the daemon started is recorded too. A read
+  // that fails, such as while the database is busy, keeps the last good table rather than
+  // ending the running Steam session and opening a new one on the next poll.
+  QHash<QString, QString> steamInstalls;
+  ProcessMatcher::SteamLaunchState steamState;
   const auto steamMatches = [&](const QVector<ProcessSnapshot>& processes) {
-    return ProcessMatcher::matchSteamLaunches(processes, SteamInstalls::read(database), profiles);
+    if (!toggle.steamEnabled()) return QVector<SessionMatch>{};
+    if (std::optional<QHash<QString, QString>> fresh = SteamInstalls::read(database))
+      steamInstalls = std::move(*fresh);
+    // A reaper is matched once it has run long enough to show whether it starts an emulator.
+    const qint64 uptime = ProcFs::uptimeTicks();
+    const qint64 settledBefore =
+        uptime < 0 ? std::numeric_limits<qint64>::max()
+                   : uptime - ProcessMatcher::kSteamSettleSeconds * ::sysconf(_SC_CLK_TCK);
+    return ProcessMatcher::matchSteamLaunches(processes, steamInstalls, profiles, settledBefore,
+                                              &steamState);
   };
   // Matches found from a launcher's own process markers rather than the emulator profiles.
   const auto launcherMatches = [&](const QVector<ProcessSnapshot>& processes) {
@@ -357,7 +375,8 @@ int main(int argc, char* argv[]) {
     QJsonObject activity;
     if (!active.isEmpty()) {
       activity = DiscordPresence::sessionActivity(
-          SessionDisplay::titleForGamePath(active.first().gamePath), active.first().emulator,
+          SteamInstalls::sessionTitle(database, active.first().emulator, active.first().gamePath),
+          active.first().emulator,
           active.first().startedAt, static_cast<int>(active.size()));
     }
     presence->publishActivity(activity);

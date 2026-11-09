@@ -122,6 +122,16 @@ bool processAlive(qint64 pid, qint64 procStart) {
   return current == procStart && state != 'Z' && state != 'X';
 }
 
+qint64 uptimeTicks() {
+  QFile uptime(QStringLiteral("/proc/uptime"));
+  if (!uptime.open(QIODevice::ReadOnly)) return -1;
+  bool okay = false;
+  const double seconds = uptime.read(64).split(' ').value(0).toDouble(&okay);
+  const long ticksPerSecond = ::sysconf(_SC_CLK_TCK);
+  if (!okay || seconds < 0 || ticksPerSecond <= 0) return -1;
+  return static_cast<qint64>(seconds * static_cast<double>(ticksPerSecond));
+}
+
 QSet<qint64> processTree(const QVector<ProcessSnapshot>& processes, qint64 pid) {
   QHash<qint64, QVector<qint64>> children;
   for (const ProcessSnapshot& process : processes)
