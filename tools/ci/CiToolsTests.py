@@ -97,6 +97,35 @@ class PreviousReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def test_a_hotfix_upgrades_from_the_release_below_it(self) -> None:
+        result, calls = self.run_lookup({
+            "list": ok([{"tagName": "v1.19.0"}, {"tagName": "v1.18.0"}, {"tagName": "v1.17.0"}]),
+            "view v1.18.0": assets("omakade-1.18.0-1-x86_64.pkg.tar.zst"),
+        }, current_tag="v1.18.1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "v1.18.0\tomakade-1.18.0-1-x86_64.pkg.tar.zst\n")
+        self.assertEqual(calls[1][:3], ["release", "view", "v1.18.0"])
+
+        result, _ = self.run_lookup({"list": ok([{"tagName": "v1.19.0"}])}, current_tag="v1.18.1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_versions_compare_numerically(self) -> None:
+        result, _ = self.run_lookup({
+            "list": ok([{"tagName": "v1.9.0"}, {"tagName": "v1.10.0"}, {"tagName": "v1.11.0"}]),
+            "view v1.10.0": assets("omakade-1.10.0-1-x86_64.pkg.tar.zst"),
+        }, current_tag="v1.11.0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "v1.10.0\tomakade-1.10.0-1-x86_64.pkg.tar.zst\n")
+
+    def test_a_manual_run_on_a_branch_uses_the_newest_release(self) -> None:
+        result, _ = self.run_lookup({
+            "list": ok([{"tagName": "v1.19.0"}, {"tagName": "v1.18.0"}]),
+            "view v1.19.0": assets("omakade-1.19.0-1-x86_64.pkg.tar.zst"),
+        }, current_tag="main")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "v1.19.0\tomakade-1.19.0-1-x86_64.pkg.tar.zst\n")
+
     def test_a_release_without_this_architecture_is_an_allowed_miss(self) -> None:
         result, _ = self.run_lookup({
             "list": ok([{"tagName": "v1.18.0"}]),

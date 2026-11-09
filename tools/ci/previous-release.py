@@ -5,12 +5,25 @@ Prints one line, "<tag>\\t<asset>", or nothing when there is no baseline. Only t
 misses are allowed: no earlier published release, or an earlier release without a
 package for this architecture. Any gh or API error fails, so an auth or network
 problem can't quietly turn the upgrade test into a clean install.
+
+When the tag being built is a version (v1.18.1), the baseline is the highest
+release below it, so a hotfix for an older line upgrades from that line instead of
+downgrading from a newer release. Any other ref, such as a manual run on a branch,
+uses the newest release.
 """
 
 import argparse
 import json
+import re
 import subprocess
 import sys
+
+VERSION_TAG = re.compile(r"v?(\d+(?:\.\d+)*)")
+
+
+def tag_version(tag: str) -> tuple[int, ...] | None:
+    match = VERSION_TAG.fullmatch(tag)
+    return tuple(int(part) for part in match.group(1).split(".")) if match else None
 
 
 def log(message: str) -> None:
@@ -41,6 +54,11 @@ def find_baseline(repo: str, arch: str, current_tag: str) -> tuple[str, str] | N
     # Newest first. A rerun after publishing would otherwise upgrade from itself.
     tags = [release.get("tagName") for release in releases if isinstance(release, dict)]
     tags = [tag for tag in tags if isinstance(tag, str) and tag and tag != current_tag]
+    current = tag_version(current_tag)
+    if current is not None:
+        older = [(tag_version(tag), tag) for tag in tags]
+        older = [(version, tag) for version, tag in older if version is not None and version < current]
+        tags = [tag for _, tag in sorted(older, reverse=True)]
     if not tags:
         log("Upgrade baseline: none, the repository has no earlier published release.")
         return None
