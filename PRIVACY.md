@@ -58,6 +58,10 @@ Omakade retains:
 - Versioned emulator save copies, manifests, and interrupted-restore journals in
   `$XDG_DATA_HOME/omakade/save-backups/`
 
+The `omakade` data, config, state and cache folders are owner-only (0700), and the
+databases and `config.toml` are owner-only files (0600), so other accounts on the
+computer cannot read them.
+
 The Steam ID is an account identifier, not a credential. A Steam Web API key
 is stored only through the desktop Secret Service under
 `io.github.tsouth89.Omakade.Steam`. Older preview keys stored as

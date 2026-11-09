@@ -1,4 +1,5 @@
 #include "sources/romm/RommCatalog.h"
+#include "tracking/PrivateStorage.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
@@ -94,6 +95,7 @@ RommCatalog::RommCatalog(const QString& path, QObject* parent, QNetworkAccessMan
   m_database.setDatabaseName(path);
   m_database.setConnectOptions("QSQLITE_BUSY_TIMEOUT=1000");
   if (m_database.open()) {
+    PrivateStorage::restrictDatabase(path);
     QSqlQuery query(m_database);
     m_valid = query.exec("CREATE TABLE IF NOT EXISTS romm_catalog (scope TEXT NOT NULL, "
                          "id TEXT NOT NULL, record BLOB NOT NULL, PRIMARY KEY(scope,id))");

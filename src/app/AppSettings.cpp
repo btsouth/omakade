@@ -6,6 +6,7 @@
 #include <QDateTime>
 
 #include "library/ConsoleCatalog.h"
+#include "tracking/PrivateStorage.h"
 
 #include <QDir>
 #include <QFile>
@@ -1255,7 +1256,10 @@ bool AppSettings::save() {
     emit saveFailed(QStringLiteral("Settings could not be saved. Recent changes may be lost when Omakade closes."));
     return false;
   };
-  QDir().mkpath(QFileInfo(m_path).absolutePath());
+  // Only a folder created here is made private; a test path may sit in the shared temp dir.
+  const QString folder = QFileInfo(m_path).absolutePath();
+  if (!QFileInfo::exists(folder))
+    PrivateStorage::makeDirectory(folder);
   QSaveFile file(m_path);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
     return failed();
@@ -1385,6 +1389,7 @@ bool AppSettings::save() {
   const QByteArray encoded = contents.toUtf8();
   if (file.write(encoded) != encoded.size() || !file.commit())
     return failed();
+  PrivateStorage::restrictFile(m_path);
   return true;
 }
 

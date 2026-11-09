@@ -6,6 +6,7 @@
 #include "tracking/DiscordPresence.h"
 #include "tracking/HyprlandWindows.h"
 #include "tracking/ProcFs.h"
+#include "tracking/PrivateStorage.h"
 #include "tracking/ProcessMatcher.h"
 #include "tracking/SessionDatabase.h"
 #include "tracking/SessionRecorder.h"
@@ -113,6 +114,8 @@ private:
 int main(int argc, char* argv[]) {
   QCoreApplication app(argc, argv);
   QCoreApplication::setApplicationName(QStringLiteral("omakade-sessiond"));
+  // The daemon starts at login, often before the app, so it secures the folders too.
+  PrivateStorage::secureDefaults();
 
   // Own the control endpoint before any thread can listen or unlink it. This also
   // protects guide-only startup and survives unavailable recording storage.
@@ -147,7 +150,7 @@ int main(int argc, char* argv[]) {
   // Returns why recording storage is unavailable, or nothing once it is ready.
   const auto openStorage = [&]() -> QString {
     lockHeld = false;
-    if (!QDir().mkpath(QFileInfo(databasePath).absolutePath()))
+    if (!PrivateStorage::makeDirectory(QFileInfo(databasePath).absolutePath()))
       return QStringLiteral("could not create the data directory");
     if (!owner.tryLock(0)) {
       lockHeld = owner.error() == QLockFile::LockFailedError;
