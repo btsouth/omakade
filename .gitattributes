@@ -1,0 +1,11 @@
+# Keep the release source tarball (git archive) to what a build, its tests and
+# the installed docs need. The website, demo media and desktop preview tools
+# stay in the repository only.
+/.gitattributes export-ignore
+/docs/assets/ export-ignore
+/docs/index.html export-ignore
+/docs/styles.css export-ignore
+/tools/game-mode-acceptance.sh export-ignore
+/tools/guide-i1/ export-ignore
+/tools/guide-i2/ export-ignore
+/tools/guide-overlay-preview/ export-ignore
