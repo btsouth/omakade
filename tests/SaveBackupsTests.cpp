@@ -1,6 +1,7 @@
 #include "saves/SaveBackups.h"
 #include "launch/GameLauncher.h"
 #include "app/AppSettings.h"
+#include "tracking/ProcFs.h"
 #include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
@@ -9,7 +10,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QProcess>
 #include <QScopeGuard>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -64,6 +67,55 @@ private slots:
     AppSettings reloaded(path);
     QVERIFY(!reloaded.protectRetroArchSaves());
     QVERIFY(!reloaded.backupSettings().contains("protect_retroarch_saves"));
+  }
+  void runningGuardMatchesEmulatorProcessNames_data() {
+    QTest::addColumn<QString>("comm");
+    QTest::addColumn<QString>("argv0");
+    QTest::newRow("PPSSPPSDL comm") << "PPSSPPSDL" << "";
+    QTest::newRow("PPSSPPSDL path") << "" << "/usr/bin/PPSSPPSDL";
+    QTest::newRow("PPSSPPQt") << "PPSSPPQt" << "/usr/bin/PPSSPPQt";
+    QTest::newRow("ppsspp-qt") << "ppsspp-qt" << "/usr/bin/ppsspp-qt";
+    QTest::newRow("ppsspp") << "ppsspp" << "ppsspp";
+    QTest::newRow("PPSSPP") << "PPSSPP" << "";
+    QTest::newRow("RetroArch") << "RetroArch" << "/usr/bin/RetroArch";
+    QTest::newRow("dolphin argv0 fallback") << "dolphin-emu-nog" << "/usr/bin/dolphin-emu-nogui";
+  }
+  void runningGuardMatchesEmulatorProcessNames() {
+    QFETCH(QString, comm); QFETCH(QString, argv0);
+    QVERIFY(SaveBackups::isEmulatorProcess(comm, argv0));
+  }
+  void runningGuardIgnoresUnrelatedProcesses() {
+    QVERIFY(!SaveBackups::isEmulatorProcess("bash", "/usr/bin/bash"));
+    QVERIFY(!SaveBackups::isEmulatorProcess("ppsspp-launcher", "/opt/ppsspp-launcher"));
+    QVERIFY(!SaveBackups::isEmulatorProcess({}, {}));
+  }
+  void runningGuardSeesTheNativePpssppLaunchCommand() {
+    // The exact binary GameLauncher starts must be what the restore guard looks for.
+    const QString program = GameLauncher::ppssppCommand("/roms/Game.iso", false).program;
+    QCOMPARE(program, QStringLiteral("PPSSPPSDL"));
+    const QString sleep = QStandardPaths::findExecutable("sleep");
+    if (sleep.isEmpty()) QSKIP("sleep is not available");
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    const QString fake = bin.path() + '/' + program;
+    QVERIFY(QFile::copy(sleep, fake));
+    QVERIFY(QFile::setPermissions(fake, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    QProcess process;
+    process.start(fake, {"30"});
+    QVERIFY(process.waitForStarted());
+    const auto stop = qScopeGuard([&] { process.kill(); process.waitForFinished(); });
+    const qint64 pid = process.processId();
+    bool seen = false;
+    for (int attempt = 0; attempt < 50 && !seen; ++attempt) {
+      for (const auto& snapshot : ProcFs::listProcesses()) {
+        if (snapshot.pid != pid || snapshot.arguments.value(0) != fake) continue;
+        QCOMPARE(snapshot.comm, program);
+        QVERIFY(SaveBackups::isEmulatorProcess(snapshot.comm, snapshot.arguments.value(0)));
+        seen = true;
+      }
+      if (!seen) QTest::qWait(20);
+    }
+    QVERIFY(seen);
   }
   void discoversOnlySupportedLayouts() {
     Fixture f;

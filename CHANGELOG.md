@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restoring a save backup is now refused while PPSSPP runs as PPSSPPSDL or PPSSPPQt, as it
+  already was for other emulators, so a restore no longer writes under a running game.
 - Settings > Connections explains that a connected IGDB or SteamGridDB looks up the
   whole library in the background, and a new Identify Library Automatically switch
   turns that off. Privacy now describes these lookups as they really happen.
