@@ -12,7 +12,8 @@ env:
   # Compiler output is validated against source/dependencies and compiler
   # content by ccache; package builds stay clean and all tests still run.
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  CCACHE_BASEDIR: ${{ github.workspace }}
+  # CCACHE_BASEDIR stays unset, as in CI, so the outputs CI saves on main are hits
+  # here and the source-inspection tests keep their absolute __FILE__ paths.
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 500M
   CMAKE_C_COMPILER_LAUNCHER: ccache
@@ -22,6 +23,9 @@ env:
     jq layer-shell-qt libsecret libzip ninja pacman-contrib pkgconf python qt6-base
     qt6-declarative qt6-imageformats qt6-svg qt6-wayland sdl3 ttf-dejavu
     wayland wayland-protocols
+  # The package release. Raise it to rebuild the same version; README.md and
+  # omastore.toml name the package file, and the package job checks they match.
+  PKGREL: "1"
 
 # Tests and packaging run as separate jobs so neither waits on the other.
 # Publishing still needs both to pass on both architectures.
@@ -35,20 +39,25 @@ concurrency:
 jobs:
   test:
     timeout-minutes: 60
-    name: Test (${{ matrix.arch }})
-    env:
-      # Match CI so the compiler outputs it saves on main are hits here. It also
-      # keeps the absolute __FILE__ paths the source-inspection tests read.
-      CCACHE_BASEDIR: ""
+    name: Test (${{ matrix.check }})
+    # As in CI, current Arch only warns about newer Qt, so it can't block a release.
+    continue-on-error: ${{ matrix.check == 'x86_64 current Arch' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
+          - check: x86_64
+            arch: x86_64
             packages: omarchy-stable
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
-          - arch: aarch64
+          - check: x86_64 current Arch
+            arch: x86_64
+            packages: arch
+            runner: ubuntu-24.04
+            container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
+          - check: aarch64
+            arch: aarch64
             packages: arch
             runner: ubuntu-24.04-arm
             container: menci/archlinuxarm:base-devel@sha256:5dda87d4b360dff28fe5ce27a20041949aa770a785c52daf82fc9956b2534c39
@@ -58,9 +67,13 @@ jobs:
     steps:
       - name: Use Omarchy stable packages
         if: matrix.packages == 'omarchy-stable'
-        run: echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
+        run: |
+          # shellcheck disable=SC2016 # $repo and $arch are for pacman, not the shell.
+          echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
       - name: Install dependencies
-        run: pacman -Syyuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # The package list splits into words on purpose.
+          pacman -Syyuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -74,12 +87,25 @@ jobs:
 
       - name: Verify architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
-      - name: Build and test
+      - name: Build
         run: |
           cmake --preset release
           cmake --build --preset release
-          ctest --preset release --parallel 8 --output-junit test-results.xml
+      - name: Add an unprivileged test user
+        # As root, the cases that check unreadable files and device nodes would skip.
+        run: |
+          useradd --create-home tester
+          chown -R tester:tester "$GITHUB_WORKSPACE"
+      - name: Test
+        run: |
+          runuser -u tester -- ctest --preset release --parallel 8 --output-junit test-results.xml
+          # ctest counts a QSKIP as a pass, so check that these really ran.
+          runuser -u tester -- python tools/ci/require-qt-cases.py \
+            build/release/tests/omakade_guide_button_tests listenerRetriesAControllerItCannotOpenYet
+          runuser -u tester -- python tools/ci/require-qt-cases.py \
+            build/release/tests/omakade_save_set_tests unreadableFoldersRefuseSnapshotAndRestore
           python tests/SbomGeneratorTests.py
+          python tools/ci/CiToolsTests.py
           desktop-file-validate packaging/io.github.tsouth89.Omakade.desktop
           appstreamcli validate packaging/io.github.tsouth89.Omakade.metainfo.xml
       - name: Compiler cache statistics
@@ -89,7 +115,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: tests-${{ github.job }}-${{ runner.arch }}
+          name: tests-${{ github.job }}-${{ matrix.packages }}-${{ runner.arch }}
           path: '**/test-results.xml'
           if-no-files-found: ignore
           retention-days: 7
@@ -121,9 +147,13 @@ jobs:
     steps:
       - name: Use Omarchy stable packages
         if: matrix.packages == 'omarchy-stable'
-        run: echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
+        run: |
+          # shellcheck disable=SC2016 # $repo and $arch are for pacman, not the shell.
+          echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
       - name: Install dependencies
-        run: pacman -Syyuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
+        run: |
+          # shellcheck disable=SC2086 # The package list splits into words on purpose.
+          pacman -Syyuu --disable-sandbox --noconfirm --needed $ARCH_PACKAGES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -132,8 +162,10 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ccache
-          key: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: ccache-v1-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
+          # makepkg's flags and paths differ from the test builds, so its outputs
+          # are kept apart from the ones CI saves.
+          key: ccache-v2-package-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: ccache-v2-package-${{ matrix.packages }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Check release version and architecture
         run: |
@@ -145,7 +177,11 @@ jobs:
           test "$(uname -m)" = "$PACKAGE_ARCH"
           grep -q "<release version=\"$version\"" packaging/io.github.tsouth89.Omakade.metainfo.xml
           grep -q "^## $version$" CHANGELOG.md
-          grep -q "omakade-$version-1-x86_64.pkg.tar.zst" README.md
+          grep -q "omakade-$version-$PKGREL-x86_64.pkg.tar.zst" README.md
+          # OmaStore fills in only {version}, so its patterns carry the pkgrel.
+          for arch in x86_64 aarch64; do
+            grep -qxF "asset = \"omakade-{version}-$PKGREL-$arch.pkg.tar.zst\"" omastore.toml
+          done
           echo "VERSION=$version" >> "$GITHUB_ENV"
       - name: Create source and package
         env:
@@ -156,7 +192,8 @@ jobs:
             --output="omakade-$VERSION.tar" "$GITHUB_SHA"
           gzip -n "omakade-$VERSION.tar"
           source_sha="$(sha256sum "omakade-$VERSION.tar.gz" | cut -d ' ' -f 1)"
-          sed -e "s/@VERSION@/$VERSION/g" -e "s/@SOURCE_SHA256@/$source_sha/g" \
+          sed -e "s/@VERSION@/$VERSION/g" -e "s/@PKGREL@/$PKGREL/g" \
+            -e "s/@SOURCE_SHA256@/$source_sha/g" \
             packaging/arch/PKGBUILD.in > packaging/arch/PKGBUILD
           cp "omakade-$VERSION.tar.gz" packaging/arch/
           useradd --create-home builder
@@ -164,10 +201,19 @@ jobs:
           cp /etc/makepkg.conf /tmp/omakade-makepkg.conf
           sed -i "s/^PKGEXT=.*/PKGEXT='.pkg.tar.zst'/" /tmp/omakade-makepkg.conf
           runuser -u builder -- bash -lc "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg --config /tmp/omakade-makepkg.conf --cleanbuild --noconfirm"
-          package_file="$(find packaging/arch -maxdepth 1 \
-            -name "omakade-[0-9]*-$PACKAGE_ARCH.pkg.tar.zst" -print -quit)"
-          test -n "$package_file"
+          package_file="packaging/arch/omakade-$VERSION-$PKGREL-$PACKAGE_ARCH.pkg.tar.zst"
+          test -f "$package_file"
           echo "PACKAGE_FILE=$package_file" >> "$GITHUB_ENV"
+      - name: Record the oldest glibc and Qt the package runs on
+        run: |
+          abi="$(tools/ci/package-abi.sh "$PACKAGE_FILE")"
+          needed_glibc="$(sed -n 's/^glibc=//p' <<<"$abi")"
+          needed_qt="$(sed -n 's/^qt=//p' <<<"$abi")"
+          echo "NEEDED_GLIBC=$needed_glibc" >> "$GITHUB_ENV"
+          echo "NEEDED_QT=$needed_qt" >> "$GITHUB_ENV"
+          needs="glibc $needed_glibc or newer and qt6-base $needed_qt or newer"
+          echo "- $PACKAGE_ARCH: $needs" > "requirements-$PACKAGE_ARCH.md"
+          echo "The $PACKAGE_ARCH package needs $needs." | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check the package runs on Omarchy stable
         if: matrix.arch == 'x86_64'
         run: |
@@ -180,28 +226,19 @@ jobs:
           stable_qt="$(stable_version extra qt6-base)"
           stable_glibc="$(stable_version core glibc)"
           test -n "$stable_qt" && test -n "$stable_glibc"
-          unpacked="$(mktemp -d)"
-          bsdtar -xf "$PACKAGE_FILE" -C "$unpacked" usr
-          symbols="$(find "$unpacked" -type f -exec objdump -T {} + 2>/dev/null || true)"
-          needed_qt="$(grep -oE 'Qt_6\.[0-9]+' <<<"$symbols" | sed 's/^Qt_//' | newest)"
-          needed_glibc="$(grep -oE 'GLIBC_2\.[0-9]+' <<<"$symbols" | sed 's/^GLIBC_//' | newest)"
-          echo "Omarchy stable has Qt $stable_qt and glibc $stable_glibc; the package needs Qt $needed_qt and glibc $needed_glibc."
-          test -n "$needed_qt" && test -n "$needed_glibc"
-          test "$(printf '%s\n' "$needed_qt" "$stable_qt" | newest)" = "$stable_qt"
-          test "$(printf '%s\n' "$needed_glibc" "$stable_glibc" | newest)" = "$stable_glibc"
+          echo "Omarchy stable has Qt $stable_qt and glibc $stable_glibc; the package needs Qt $NEEDED_QT and glibc $NEEDED_GLIBC."
+          test "$(printf '%s\n' "$NEEDED_QT" "$stable_qt" | newest)" = "$stable_qt"
+          test "$(printf '%s\n' "$NEEDED_GLIBC" "$stable_glibc" | newest)" = "$stable_glibc"
       - name: Test install, upgrade, removal, and reinstall
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          previous_tag="$(gh release view --repo "$GITHUB_REPOSITORY" \
-            --json tagName --jq .tagName 2>/dev/null || true)"
-          previous_name=""
-          if test -n "$previous_tag"; then
-            previous_name="$(gh release view "$previous_tag" --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq ".assets[].name | select(endswith(\"-$PACKAGE_ARCH.pkg.tar.zst\"))" \
-              | head -n 1)"
-          fi
-          if test -n "$previous_name"; then
+          # Fails on any gh error; only a missing release or package means a clean install.
+          baseline="$(python tools/ci/previous-release.py --repo "$GITHUB_REPOSITORY" \
+            --arch "$PACKAGE_ARCH" --current-tag "$GITHUB_REF_NAME")"
+          if test -n "$baseline"; then
+            IFS=$'\t' read -r previous_tag previous_name <<<"$baseline"
+            echo "Upgrade test from $previous_name ($previous_tag)." >> "$GITHUB_STEP_SUMMARY"
             mkdir previous-release
             gh release download "$previous_tag" --repo "$GITHUB_REPOSITORY" \
               --pattern "$previous_name" --dir previous-release
@@ -209,7 +246,8 @@ jobs:
             pacman -U --noconfirm "$previous_package"
             QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software omakade --smoke-test
           else
-            echo "No previous $PACKAGE_ARCH package exists; testing a clean install."
+            echo "No previous $PACKAGE_ARCH package exists; testing a clean install." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           pacman -U --noconfirm "$PACKAGE_FILE"
           QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software omakade --smoke-test
@@ -260,6 +298,7 @@ jobs:
           mkdir dist
           cp "$PACKAGE_FILE" dist/
           cp "omakade-$VERSION-$PACKAGE_ARCH.spdx.json" dist/
+          cp "requirements-$PACKAGE_ARCH.md" dist/
           cd dist
           sha256sum "$(basename "$PACKAGE_FILE")" \
             "omakade-$VERSION-$PACKAGE_ARCH.spdx.json" > "SHA256SUMS-$PACKAGE_ARCH"
@@ -304,8 +343,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           cd dist
-          test -f "omakade-$version-1-x86_64.pkg.tar.zst"
-          test -f "omakade-$version-1-aarch64.pkg.tar.zst"
+          test -f "omakade-$version-$PKGREL-x86_64.pkg.tar.zst"
+          test -f "omakade-$version-$PKGREL-aarch64.pkg.tar.zst"
           test -f "omakade-$version-x86_64.spdx.json"
           test -f "omakade-$version-aarch64.spdx.json"
           test -f "omakade-$version.tar.gz"
@@ -317,6 +356,12 @@ jobs:
           awk -v heading="## $version" '$0 == heading {copy=1; next} /^## /{copy=0} copy' \
             ../CHANGELOG.md > RELEASE_NOTES.md
           test -s RELEASE_NOTES.md
+          test -s requirements-x86_64.md
+          test -s requirements-aarch64.md
+          {
+            printf '\n### Requirements\n\n'
+            cat requirements-x86_64.md requirements-aarch64.md
+          } >> RELEASE_NOTES.md
       - name: Attest complete release
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

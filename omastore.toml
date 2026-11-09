@@ -2,6 +2,7 @@ kind = "app"
 categories = ["Game"]
 icon = "resources/icons/io.github.tsouth89.Omakade.svg"
 
+# The -1- in each asset is the pkgrel (PKGREL in release.yml); the release checks they match.
 [linux.x86_64]
 asset = "omakade-{version}-1-x86_64.pkg.tar.zst"
 exec = "usr/bin/omakade"
