@@ -143,15 +143,28 @@ void BackupManager::previewBackup(const QString& input) {
     auto incoming = std::make_shared<BackupPayload>();
     BackupPayload current;
     QString error;
-    if (!BackupArchive::read(path, incoming.get(), &error) ||
-        !BackupSnapshot::capture(paths.database, settings, &current, &error)) {
+    if (!BackupArchive::read(path, incoming.get(), &error)) {
       result.message = error;
       return result;
     }
+    bool damaged = false;
+    if (!BackupSnapshot::capture(paths.database, settings, &current, &error)) {
+      // Restore sets an unreadable library aside, so compare against nothing.
+      damaged = BackupSnapshot::damaged(paths.database);
+      if (!damaged) {
+        result.message = error;
+        return result;
+      }
+      current.settings = settings;
+    }
     result.preview = describe(*incoming, current);
     result.preview.insert("path", path);
+    result.preview.insert("currentDamaged", damaged);
     result.payload = std::move(incoming);
-    result.message = "Review the contents and choose how to restore them.";
+    result.message =
+        damaged ? "Your library database is damaged and cannot be read. Restoring keeps an exact "
+                  "copy of it in the recovery folder and rebuilds the library from this backup."
+                : "Review the contents and choose how to restore them.";
     return result;
   });
 }

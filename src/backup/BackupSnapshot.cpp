@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
 
@@ -269,4 +270,32 @@ bool BackupSnapshot::capture(const QString& path, const QJsonObject& settings,
   }
   QSqlDatabase::removeDatabase(connection);
   return okay;
+}
+
+bool BackupSnapshot::damaged(const QString& path) {
+  if (!QFileInfo(path).isFile() || QFileInfo(path).isSymLink())
+    return false;
+  const QString connection = "omakade-check-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+  bool result = false;
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", connection);
+    database.setConnectOptions("QSQLITE_OPEN_READONLY;QSQLITE_BUSY_TIMEOUT=5000");
+    database.setDatabaseName(path);
+    if (!database.open()) {
+      result = true;
+    } else {
+      QSqlQuery query(database);
+      if (!query.exec("PRAGMA quick_check")) {
+        const int code = query.lastError().nativeErrorCode().toInt() & 0xff;
+        // SQLITE_READONLY here means a hot rollback journal that only a writer can
+        // roll back, which Omakade does when it opens the library.
+        result = code != 5 && code != 6 && code != 8; // BUSY, LOCKED, READONLY
+      } else {
+        result = !query.next() || query.value(0).toString() != "ok";
+      }
+    }
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+  return result;
 }

@@ -431,7 +431,7 @@ bool BackupDatabase::restore(const QString& path, const BackupPayload& payload, 
   recorder.setStaleLockTime(0);
   if (payload.library.contains("play_sessions") && !recorder.tryLock(0)) {
     if (error)
-      *error = "Stop the play-session recorder before restoring play history, then retry.";
+      *error = RecorderRunning;
     return false;
   }
   const QString artwork = file.absolutePath() + "/artwork";

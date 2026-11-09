@@ -73,9 +73,19 @@ Both history tables are required together. Validation rejects duplicate session 
 sessions, unsupported baseline versions, inconsistent timestamps, and combined durations beyond
 the exact JSON integer range. Restore runs in a database
 transaction and checks the recorder's ownership lock before touching history. A running recorder
-blocks restore with a retry message. For the packaged service, stop `omakade-sessiond.service`
-before applying the queued restore and start it again afterward. Turning tracking off alone does
-not stop that service.
+blocks restore with a retry message, and the startup screen then offers Stop Recorder and
+Restore, which runs `systemctl --user stop omakade-sessiond.service` and retries. Nothing starts
+the service again from that screen. Turning tracking off alone does not stop that service.
+
+When the current database cannot be captured because SQLite cannot read it or it fails
+`PRAGMA quick_check`, preparation copies `library.sqlite3` and any `-wal`, `-shm` and `-journal`
+files byte for byte into the job folder as `damaged.sqlite3*` and records their SHA-256 digests
+in the journal. It copies the recorder's `.journal` and `.journal.owner` the same way, since they
+hold sessions the recorder could not write to the damaged database. A hot rollback journal that
+a read-only check cannot roll back does not count as damage. The apply step removes the live
+SQLite files and restores into a new database, leaving the recorder journal for the restore to
+handle as usual; undo puts all the copies back. Both directions check the digests first and hold the recorder lock. Other capture
+failures still block the restore.
 
 The recovery archive includes history and identifications. Isolated subprocess tests interrupt
 restore and undo at their checkpoints, then verify recovery, including the recorded game paths.

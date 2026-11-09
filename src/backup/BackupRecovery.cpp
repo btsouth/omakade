@@ -54,6 +54,67 @@ QString fileDigest(const QString& path) {
     return {};
   return QString::fromLatin1(hash.result().toHex());
 }
+// A library SQLite cannot read is kept byte for byte in the job folder, with its
+// SQLite sidecars and the recorder's journal of sessions it could not flush. The
+// WAL, shared memory and rollback journal go first so a stale one never sits
+// beside a new database.
+const QString damagedName = QStringLiteral("damaged.sqlite3");
+const QStringList damagedSuffixes{"-wal", "-shm", "-journal", ".journal", ".journal.owner", ""};
+// The restore compacts and rebinds the recorder journal in place, so only undo
+// replaces it with the kept copy.
+bool recorderFile(const QString& suffix) { return suffix.startsWith('.'); }
+bool holdRecorder(QLockFile& recorder, QString* error) {
+  recorder.setStaleLockTime(0);
+  return recorder.tryLock(0) || fail(error, BackupDatabase::RecorderRunning);
+}
+bool setAside(const QString& database, const QString& job, QJsonObject* copies, QString* error) {
+  QLockFile recorder(database + ".sessiond.lock");
+  if (!holdRecorder(recorder, error))
+    return false;
+  for (const auto& suffix : damagedSuffixes) {
+    const QString source = database + suffix;
+    const QString target = job + "/" + damagedName + suffix;
+    if (!regular(source))
+      return fail(error, "The library database is not a regular file.");
+    if (!QFileInfo::exists(source))
+      continue;
+    if ((QFileInfo::exists(target) && !QFile::remove(target)) || !QFile::copy(source, target) ||
+        !QFile::setPermissions(target, QFile::ReadOwner | QFile::WriteOwner))
+      return fail(error, "Could not keep a copy of the damaged library database.");
+    const QString copied = fileDigest(target);
+    if (copied.isEmpty() || copied != fileDigest(source))
+      return fail(error, "Could not verify the copy of the damaged library database.");
+    copies->insert(damagedName + suffix, copied);
+  }
+  return true;
+}
+bool copiesIntact(const QString& job, const QJsonObject& copies, QString* error) {
+  for (auto copy = copies.begin(); copy != copies.end(); ++copy)
+    if (fileDigest(job + "/" + copy.key()) != copy.value().toString())
+      return fail(error,
+                  "The damaged library copy has changed. Keep the recovery folder for repair.");
+  return true;
+}
+// Removes the live database files, and on undo puts the kept copies back.
+bool replaceDamaged(const QString& database, const QString& job, const QJsonObject& copies,
+                    bool putBack, QString* error) {
+  QLockFile recorder(database + ".sessiond.lock");
+  if (!holdRecorder(recorder, error))
+    return false;
+  for (const auto& suffix : damagedSuffixes) {
+    const QString live = database + suffix;
+    if (!putBack && recorderFile(suffix))
+      continue;
+    if (!regular(live) ||(QFileInfo::exists(live) && !QFile::remove(live)))
+      return fail(error, "Could not set the damaged library database aside.");
+  }
+  for (const auto& suffix : putBack ? damagedSuffixes : QStringList{}) {
+    const QString copy = job + "/" + damagedName + suffix;
+    if (copies.contains(damagedName + suffix) && !QFile::copy(copy, database + suffix))
+      return fail(error, "Could not put the original library database back.");
+  }
+  return true;
+}
 } // namespace
 
 BackupRecovery::BackupRecovery(Paths paths, Checkpoint checkpoint)
@@ -112,6 +173,16 @@ bool BackupRecovery::readJournal(QJsonObject* journal, QString* error) const {
             .match(object.value("beforeDigest").toString())
             .hasMatch()))
     return fail(error, "The original settings recovery record is invalid.");
+  if (object.contains("damaged")) {
+    const auto copies = object.value("damaged").toObject();
+    bool valid = object.value("damaged").isObject() && copies.contains(damagedName);
+    for (auto copy = copies.begin(); copy != copies.end(); ++copy)
+      valid = valid && damagedSuffixes.contains(copy.key().mid(damagedName.size())) &&
+              copy.key().startsWith(damagedName) &&
+              QRegularExpression("^[0-9a-f]{64}$").match(copy.value().toString()).hasMatch();
+    if (!valid)
+      return fail(error, "The damaged library recovery record is invalid.");
+  }
   *journal = object;
   return true;
 }
@@ -187,6 +258,7 @@ bool BackupRecovery::restore(bool undoRequested, QString* error) {
   if (!readJournal(&journal, error))
     return false;
   QString phase = journal.value("phase").toString();
+  const QString job = m_paths.state + "/" + journal.value("id").toString();
   if (journal.isEmpty() || phase == "reverted" || (phase == "complete" && !undoRequested))
     return true;
   if (phase == "complete")
@@ -221,8 +293,17 @@ bool BackupRecovery::restore(bool undoRequested, QString* error) {
     before.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     before.settings = settings.backupSettings();
     if (QFileInfo::exists(m_paths.database) &&
-        !BackupSnapshot::capture(m_paths.database, before.settings, &before, error))
-      return false;
+        !BackupSnapshot::capture(m_paths.database, before.settings, &before, error)) {
+      // An unreadable library would otherwise block the restore that repairs it.
+      // Keep its exact bytes for undo and rebuild it from the backup instead.
+      QJsonObject copies;
+      if (!BackupSnapshot::damaged(m_paths.database) ||
+          !setAside(m_paths.database, job, &copies, error))
+        return false;
+      journal.insert("damaged", copies);
+      if (error)
+        error->clear();
+    }
     if (!BackupArchive::write(jobPath(journal, "before.omakade-backup"), before, error) ||
         !saveBytes(jobPath(journal, "settings.before"), settingsBytes, error))
       return false;
@@ -248,11 +329,17 @@ bool BackupRecovery::restore(bool undoRequested, QString* error) {
     return false;
   if (digest(settingsBytes) != journal.value("settingsDigest").toString())
     return fail(error, "The original settings recovery copy has changed.");
+  const bool damaged = journal.contains("damaged");
+  const auto copies = journal.value("damaged").toObject();
+  if (damaged && !copiesIntact(job, copies, error))
+    return false;
   if (undoRequested || phase == "undoing") {
     journal.insert("phase", "undoing");
     if (!writeJournal(journal, error))
       return false;
-    if (!BackupDatabase::restore(m_paths.database, before, BackupDatabase::Mode::Replace, error))
+    if (damaged ? !replaceDamaged(m_paths.database, job, copies, true, error)
+                : !BackupDatabase::restore(m_paths.database, before, BackupDatabase::Mode::Replace,
+                                           error))
       return false;
     checkpoint("undo-database");
     if (journal.value("settingsExisted").toBool()) {
@@ -266,7 +353,8 @@ bool BackupRecovery::restore(bool undoRequested, QString* error) {
   } else {
     const auto mode = journal.value("mode").toString() == "merge" ? BackupDatabase::Mode::Merge
                                                                   : BackupDatabase::Mode::Replace;
-    if (!BackupDatabase::restore(m_paths.database, incoming, mode, error))
+    if ((damaged && !replaceDamaged(m_paths.database, job, copies, false, error)) ||
+        !BackupDatabase::restore(m_paths.database, incoming, mode, error))
       return false;
     checkpoint("database");
     AppSettings settings(m_paths.settings);
