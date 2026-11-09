@@ -287,7 +287,9 @@ bool BackupSnapshot::damaged(const QString& path) {
       QSqlQuery query(database);
       if (!query.exec("PRAGMA quick_check")) {
         const int code = query.lastError().nativeErrorCode().toInt() & 0xff;
-        result = code != 5 && code != 6; // SQLITE_BUSY, SQLITE_LOCKED
+        // SQLITE_READONLY here means a hot rollback journal that only a writer can
+        // roll back, which Omakade does when it opens the library.
+        result = code != 5 && code != 6 && code != 8; // BUSY, LOCKED, READONLY
       } else {
         result = !query.next() || query.value(0).toString() != "ok";
       }

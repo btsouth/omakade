@@ -78,10 +78,13 @@ Restore, which runs `systemctl --user stop omakade-sessiond.service` and retries
 the service again from that screen. Turning tracking off alone does not stop that service.
 
 When the current database cannot be captured because SQLite cannot read it or it fails
-`PRAGMA quick_check`, preparation copies `library.sqlite3` and any `-wal` and `-shm` files byte
-for byte into the job folder as `damaged.sqlite3*` and records their SHA-256 digests in the
-journal. The apply step removes the live files and restores into a new database; undo puts the
-copies back. Both directions check the digests first and hold the recorder lock. Other capture
+`PRAGMA quick_check`, preparation copies `library.sqlite3` and any `-wal`, `-shm` and `-journal`
+files byte for byte into the job folder as `damaged.sqlite3*` and records their SHA-256 digests
+in the journal. It copies the recorder's `.journal` and `.journal.owner` the same way, since they
+hold sessions the recorder could not write to the damaged database. A hot rollback journal that
+a read-only check cannot roll back does not count as damage. The apply step removes the live
+SQLite files and restores into a new database, leaving the recorder journal for the restore to
+handle as usual; undo puts all the copies back. Both directions check the digests first and hold the recorder lock. Other capture
 failures still block the restore.
 
 The recovery archive includes history and identifications. Isolated subprocess tests interrupt

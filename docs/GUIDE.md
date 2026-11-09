@@ -387,7 +387,8 @@ recorder before restoring, then retry." Choose **Stop Recorder and Restore** to 
 A backup can also repair a library database that is damaged and cannot be read.
 The preview compares against an empty library, and the restore keeps an exact copy
 of the damaged database in the recovery folder before it builds a new one. Undo
-puts the damaged copy back.
+puts the damaged copy back, along with any play sessions the recorder was still
+holding for it.
 
 Account-service identifiers and Sunshine publishing choices stay local. Missing
 manual paths remain repairable, and disconnected game identities stay stored.

@@ -55,10 +55,14 @@ QString fileDigest(const QString& path) {
   return QString::fromLatin1(hash.result().toHex());
 }
 // A library SQLite cannot read is kept byte for byte in the job folder, with its
-// sidecars. The WAL and shared memory files go first so a stale WAL never sits
+// SQLite sidecars and the recorder's journal of sessions it could not flush. The
+// WAL, shared memory and rollback journal go first so a stale one never sits
 // beside a new database.
 const QString damagedName = QStringLiteral("damaged.sqlite3");
-const QStringList damagedSuffixes{"-wal", "-shm", ""};
+const QStringList damagedSuffixes{"-wal", "-shm", "-journal", ".journal", ".journal.owner", ""};
+// The restore compacts and rebinds the recorder journal in place, so only undo
+// replaces it with the kept copy.
+bool recorderFile(const QString& suffix) { return suffix.startsWith('.'); }
 bool holdRecorder(QLockFile& recorder, QString* error) {
   recorder.setStaleLockTime(0);
   return recorder.tryLock(0) || fail(error, BackupDatabase::RecorderRunning);
@@ -99,7 +103,9 @@ bool replaceDamaged(const QString& database, const QString& job, const QJsonObje
     return false;
   for (const auto& suffix : damagedSuffixes) {
     const QString live = database + suffix;
-    if (!regular(live) || (QFileInfo::exists(live) && !QFile::remove(live)))
+    if (!putBack && recorderFile(suffix))
+      continue;
+    if (!regular(live) ||(QFileInfo::exists(live) && !QFile::remove(live)))
       return fail(error, "Could not set the damaged library database aside.");
   }
   for (const auto& suffix : putBack ? damagedSuffixes : QStringList{}) {

@@ -5,6 +5,7 @@
 #include "backup/BackupStartup.h"
 #include "tracking/PlaySessionStore.h"
 #include "tracking/SessionDatabase.h"
+#include "tracking/SessionJournal.h"
 #include "library/BattleNetGameModel.h"
 #include "library/FaugusGameModel.h"
 #include "library/GameRoles.h"
@@ -134,6 +135,7 @@ private slots:
   void changedArchiveAndJournal();
   void missingSettingsAndFreshLibrary();
   void damagedLibraryIsSetAside();
+  void hotRollbackJournalIsNotDamage();
   void failedSettingsWriteKeepsRecoveryPending();
   void damagedRecoveryBlocksReplay();
   void asynchronousPreviewStagesExactPayload();
@@ -587,6 +589,25 @@ void BackupRecoveryTests::damagedLibraryIsSetAside() {
   const QByteArray wal = QByteArray("stale wal ").repeated(100);
   QVERIFY(write(p.database, damaged));
   QVERIFY(write(p.database + "-wal", wal));
+  // A cold rollback journal, and sessions the recorder could not flush.
+  const QByteArray rollback = QByteArray(1, '\0') + QByteArray("old rollback ").repeated(50);
+  QVERIFY(write(p.database + "-journal", rollback));
+  {
+    SessionJournal sessions(p.database + ".journal");
+    QVERIFY(sessions.open());
+    SessionJournal::Operation operation;
+    operation.key = "unflushed";
+    operation.gamePath = "/games/Unflushed.nes";
+    operation.source = "Example";
+    operation.startedAt = 1000;
+    operation.endedAt = 1060;
+    operation.seconds = 60;
+    operation.observedAt = 1060;
+    QVERIFY(sessions.append(operation));
+  }
+  const QByteArray pending = read(p.database + ".journal");
+  const QByteArray owner = read(p.database + ".journal.owner");
+  QVERIFY(!pending.isEmpty() && !owner.isEmpty());
   QVERIFY(BackupSnapshot::damaged(p.database));
   QString error;
   BackupPayload current;
@@ -603,7 +624,7 @@ void BackupRecoveryTests::damagedLibraryIsSetAside() {
   QVERIFY(manager.preview().value("currentDamaged").toBool());
 
   BackupRecovery recovery(p);
-  QVERIFY(recovery.stage(payload("Imported", true), BackupDatabase::Mode::Replace, &error));
+  QVERIFY(recovery.stage(historyPayload("Imported", true), BackupDatabase::Mode::Replace, &error));
   {
     // A running recorder blocks the restore, and the startup screen offers to stop it.
     QLockFile recorder(p.database + ".sessiond.lock");
@@ -626,12 +647,21 @@ void BackupRecoveryTests::damagedLibraryIsSetAside() {
   const QString job = QFileInfo(recovery.recoveryArchive()).absolutePath();
   QCOMPARE(read(job + "/damaged.sqlite3"), damaged);
   QCOMPARE(read(job + "/damaged.sqlite3-wal"), wal);
+  QCOMPARE(read(job + "/damaged.sqlite3-journal"), rollback);
+  QCOMPARE(read(job + "/damaged.sqlite3.journal"), pending);
+  QCOMPARE(read(job + "/damaged.sqlite3.journal.owner"), owner);
+  // The restore compacted the recorder journal and bound it to the new library.
+  QVERIFY(!QFileInfo::exists(p.database + "-journal"));
+  QVERIFY(read(p.database + ".journal.owner") != owner);
   QCOMPARE(child(temp.path(), "undo-database", true), 73);
   QCOMPARE(recovery.status(), "undoing");
   QVERIFY2(recovery.resume(&error), qPrintable(error));
   QCOMPARE(recovery.status(), "reverted");
   QCOMPARE(read(p.database), damaged);
   QCOMPARE(read(p.database + "-wal"), wal);
+  QCOMPARE(read(p.database + "-journal"), rollback);
+  QCOMPARE(read(p.database + ".journal"), pending);
+  QCOMPARE(read(p.database + ".journal.owner"), owner);
 
   // A changed copy blocks both directions.
   QVERIFY(recovery.stage(payload("Imported", true), BackupDatabase::Mode::Merge, &error));
@@ -650,6 +680,37 @@ void BackupRecoveryTests::damagedLibraryIsSetAside() {
   QCOMPARE(collections(p.database), QStringList{"Imported"});
   QVERIFY(!BackupSnapshot::damaged(p.database));
   QVERIFY(AppSettings(p.settings).couchModeEnabled());
+}
+
+void BackupRecoveryTests::hotRollbackJournalIsNotDamage() {
+  // A crash mid-transaction in rollback journal mode leaves a hot journal that a
+  // read-only check cannot roll back. The library is still healthy.
+  QTemporaryDir temp;
+  const QString live = temp.filePath("live.sqlite3");
+  const QString hot = temp.filePath("hot.sqlite3");
+  const QString connection = "hot-journal-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+  {
+    auto database = QSqlDatabase::addDatabase("QSQLITE", connection);
+    database.setDatabaseName(live);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec("PRAGMA journal_mode=DELETE"));
+    QVERIFY(query.exec("PRAGMA cache_size=1"));
+    QVERIFY(query.exec("CREATE TABLE t(x)"));
+    QVERIFY(query.exec("INSERT INTO t VALUES (zeroblob(4000))"));
+    QVERIFY(database.transaction());
+    for (int i = 0; i < 50; ++i)
+      QVERIFY(query.exec("INSERT INTO t VALUES (zeroblob(4000))"));
+    QVERIFY(query.exec("UPDATE t SET x = zeroblob(100)"));
+    QVERIFY(QFile::copy(live, hot));
+    QVERIFY(QFile::copy(live + "-journal", hot + "-journal"));
+    query.finish();
+    QVERIFY(database.rollback());
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+  QVERIFY(!BackupSnapshot::damaged(hot));
+  QVERIFY(QFileInfo::exists(hot + "-journal"));
 }
 
 void BackupRecoveryTests::failedSettingsWriteKeepsRecoveryPending() {

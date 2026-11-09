@@ -8,6 +8,6 @@ public:
   static bool capture(const QString& databasePath, const QJsonObject& settings,
                       BackupPayload* payload, QString* error = nullptr);
   // True when the file exists but SQLite cannot read it or it fails quick_check.
-  // A busy or locked database is not damaged.
+  // A busy or locked database, or one with a hot rollback journal, is not damaged.
   static bool damaged(const QString& databasePath);
 };
