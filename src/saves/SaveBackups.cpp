@@ -14,6 +14,7 @@
 #include <QLockFile>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUuid>
@@ -77,40 +78,8 @@ QString coreName(const QString& core) {
   return supported.value(QFileInfo(core).fileName());
 }
 bool retroArchRunning() {
-  const QStringList names{"retroarch",
-                          "pcsx2",
-                          "pcsx2-qt",
-                          "rpcs3",
-                          "ppsspp",
-                          "PPSSPPSDL",
-                          "dolphin-emu",
-                          "dolphin-emu-nogui",
-                          "ryujinx",
-                          "ryujinx-wrapper",
-                          "shadps4",
-                          "cemu",
-                          "melonds",
-                          "eden",
-                          "yuzu",
-                          "suyu",
-                          "sudachi",
-                          "snes9x",
-                          "snes9x-gtk",
-                          "nestopia",
-                          "fceux",
-                          "mednafen",
-                          "mgba",
-                          "sameboy",
-                          "bsnes",
-                          "mupen64plus",
-                          "blastem",
-                          "gens",
-                          "duckstation",
-                          "duckstation-qt",
-                          "flycast"};
   for (const auto& process : ProcFs::listProcesses()) {
-    const QString executable = QFileInfo(process.arguments.value(0)).fileName().toLower();
-    if (names.contains(process.comm.toLower()) || names.contains(executable))
+    if (SaveBackups::isEmulatorProcess(process.comm, process.arguments.value(0)))
       return true;
   }
   return false;
@@ -168,6 +137,44 @@ bool copyBackupFile(const QString& source, const QString& destination) {
 }
 } // namespace
 
+bool SaveBackups::isEmulatorProcess(const QString& comm, const QString& argv0) {
+  // Every entry is lowercase; both sides are compared lowercased so mixed-case binaries
+  // such as PPSSPPSDL still match.
+  static const QSet<QString> names{"retroarch",
+                                   "pcsx2",
+                                   "pcsx2-qt",
+                                   "rpcs3",
+                                   "ppsspp",
+                                   "ppssppsdl",
+                                   "ppsspp-qt",
+                                   "ppssppqt",
+                                   "dolphin-emu",
+                                   "dolphin-emu-nogui",
+                                   "ryujinx",
+                                   "ryujinx-wrapper",
+                                   "shadps4",
+                                   "cemu",
+                                   "melonds",
+                                   "eden",
+                                   "yuzu",
+                                   "suyu",
+                                   "sudachi",
+                                   "snes9x",
+                                   "snes9x-gtk",
+                                   "nestopia",
+                                   "fceux",
+                                   "mednafen",
+                                   "mgba",
+                                   "sameboy",
+                                   "bsnes",
+                                   "mupen64plus",
+                                   "blastem",
+                                   "gens",
+                                   "duckstation",
+                                   "duckstation-qt",
+                                   "flycast"};
+  return names.contains(comm.toLower()) || names.contains(QFileInfo(argv0).fileName().toLower());
+}
 SaveBackups::SaveBackups(QObject* parent)
     : SaveBackups(QDir::homePath(),
                   QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +

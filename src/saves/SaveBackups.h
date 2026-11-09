@@ -22,6 +22,8 @@ public:
   explicit SaveBackups(QObject* parent = nullptr);
   SaveBackups(QString home, QString config, QString root, std::function<bool()> emulatorRunning,
               QObject* parent = nullptr);
+  // True when a process name or argv[0] belongs to an emulator whose saves restore must not touch.
+  static bool isEmulatorProcess(const QString& comm, const QString& argv0);
   void setEnabled(bool enabled) { m_enabled = enabled; }
   int retention() const { return m_retention; }
   int storageLimitMiB() const { return m_storageLimitMiB; }
