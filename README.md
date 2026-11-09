@@ -14,7 +14,7 @@ with a keyboard, mouse, or controller.
 
 [Watch the demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4) ·
 [Homepage](https://btsouth.github.io/omakade/) · [Guide](docs/GUIDE.md) ·
-[Support](SUPPORT.md)
+[Compatibility](docs/COMPATIBILITY.md) · [Support](SUPPORT.md)
 
 ## Features
 
@@ -41,7 +41,7 @@ Omakade is an independent community project, not an official Omarchy application
 
 ## Install
 
-On Omarchy:
+On Omarchy, install it from the Omarchy Package Repository (OPR):
 
 ```bash
 sudo pacman -S omarchy/omakade
@@ -73,6 +73,15 @@ For ARM64, replace `x86_64` with `aarch64`. Packages are also available under
 [release assets](https://github.com/btsouth/omakade/releases/latest).
 Upgrading preserves your library and settings.
 
+`SHA256SUMS` comes from the same place as the package, so it only catches a damaged
+download. To check that a package was built by this repository's release workflow,
+verify its GitHub build attestation with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify omakade-1.18.0-1-x86_64.pkg.tar.zst -R btsouth/omakade
+gh attestation verify omakade-1.18.0-1-aarch64.pkg.tar.zst -R btsouth/omakade
+```
+
 Omakade is also listed in [OmaStore](https://github.com/KitsuneForgering/OmaStore),
 a community app store that installs it into your home directory. OmaStore 0.4
 and newer also set up the `omakade-sessiond` service, so playtime recording works
@@ -89,8 +98,8 @@ appear automatically. Use `omakade --demo` to try a fictional library.
 | Arrow keys / Enter | Navigate / open details |
 | Escape | Go back |
 | F11 / controller Start | Start or leave Game Mode on this display |
-| `Super+Ctrl+G` | In-game guide over a game; otherwise return to the desktop / resume Game Mode (add in Settings) |
-| Controller Home button | In-game guide over a game; otherwise same as Start; hold it to switch Game Mode and the desktop (turn on in Settings) |
+| `Super+Ctrl+G` | Start Game Mode on your chosen display; over a game, open the in-game guide; in Game Mode, return to the desktop or resume (add it in **Settings → Controls**) |
+| Controller Home button | In-game guide over a game; otherwise same as Start; hold it to switch Game Mode and the desktop (turn it on in **Settings → Controls**) |
 | `Ctrl+D` | Settings and source diagnostics |
 | `Ctrl+M` | Toggle reduced motion |
 
@@ -99,8 +108,18 @@ you are using and leave sound and notifications alone. Use **Settings → Contro
 Game Mode**, `Super+Ctrl+G` or `omakade --game-mode` for a dedicated gaming display and
 sound output.
 
-The [guide](docs/GUIDE.md) covers sources, owned libraries, organization, recording,
-backups, and streaming. See the [Game Mode guide](docs/GAME-MODE.md) for setup and recovery.
+The [guide](docs/GUIDE.md) covers sources, Home, owned libraries, organization,
+connections, recording, stats, backups, streaming, and the command line.
+
+## User guides
+
+- [Guide](docs/GUIDE.md): sources and everyday features
+- [Game Mode](docs/GAME-MODE.md): fullscreen play, a dedicated gaming display, and recovery
+- [In-game guide](docs/GAME-GUIDE.md): the overlay that opens over a running game
+- [Highlights](docs/HIGHLIGHTS.md): save clips of the last moments of a game
+- [Emulator save protection](docs/SAVE-SETS.md): automatic save copies and restores
+- [Native ports](docs/NATIVE-PORTS.md): native PC ports of console games
+- [Compatibility](docs/COMPATIBILITY.md): what each source supports, and test reports
 
 ## Build
 
@@ -110,10 +129,11 @@ See [Contributing](CONTRIBUTING.md) for dependencies and build/test commands.
 
 Your library and custom artwork live in `~/.local/share/omakade/`, settings in
 `~/.config/omakade/config.toml`, and downloaded artwork in `~/.cache/omakade/`.
-Optional Steam and IGDB credentials use Secret Service.
+Optional Steam, RetroAchievements, IGDB, SteamGridDB, and RomM credentials are
+stored in Secret Service, never in the settings file.
 
 [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md) ·
-[Compatibility reports](docs/COMPATIBILITY.md) · [Security](SECURITY.md)
+[Compatibility](docs/COMPATIBILITY.md) · [Security](SECURITY.md)
 
 ## More for Omarchy
 

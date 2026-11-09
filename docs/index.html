@@ -38,7 +38,7 @@
       <section class="hero wrap">
         <div class="eyebrow"><span></span> Built for Omarchy</div>
         <h1>Your games,<br><em>beautifully together.</em></h1>
-        <p class="lede">A fast, local-first home for Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2, Ryujinx, Battle.net, Game Pass, Epic, GOG, and Amazon games. Built for Linux and styled to match Omarchy.</p>
+        <p class="lede">A fast, local-first home for games from Steam, Heroic (Epic, GOG, and Amazon), Lutris, Faugus, GOG, Battle.net, Microsoft Store and PC Game Pass, RetroArch, and ten standalone console emulators. Built for Linux and styled to match Omarchy.</p>
         <p class="lede">Available for x86_64 and ARM64 on Omarchy and Arch Linux.</p>
         <div class="actions">
           <a class="button primary" href="#install">Install Omakade</a>
@@ -55,12 +55,14 @@
       </section>
 
       <section class="installation wrap" id="install" aria-labelledby="install-title">
-        <h2 id="install-title">Install from the signed repository</h2>
-        <p>Add the repository once, then install Omakade:</p>
-        <pre tabindex="0" aria-label="Installation commands"><code>curl -fsSL https://pkgs.btso.dev/install.sh | bash
+        <h2 id="install-title">Install on Omarchy</h2>
+        <p>Omakade is in the Omarchy Package Repository (OPR). Install it with:</p>
+        <pre tabindex="0" aria-label="Omarchy installation command"><code>sudo pacman -S omarchy/omakade</code></pre>
+        <p>It then updates with <code>omarchy update</code>. OPR may carry an older release.</p>
+        <p>On plain Arch, or for the newest release on Omarchy, add the signed package repository once and install from it. It provides x86_64 and ARM64 packages:</p>
+        <pre tabindex="0" aria-label="Signed repository installation commands"><code>curl -fsSL https://pkgs.btso.dev/install.sh | bash
 sudo pacman -S btsouth/omakade</code></pre>
-        <p>Updates arrive with your normal system update (<code>omarchy update</code> on Omarchy, <code>sudo pacman -Syu</code> on plain Arch). If you installed a release download, run these commands once to add the repository.</p>
-        <p>On Omarchy, its repository takes priority during system updates, so newer Omakade versions arrive when OPR updates. The commands above explicitly install the signed repository's version. To take a newer version from it early, run <code>omarchy update</code> and then <code>sudo pacman -S btsouth/omakade</code>.</p>
+        <p>Updates then arrive with your normal system update (<code>sudo pacman -Syu</code> on plain Arch). On Omarchy, OPR's copy takes priority during system updates; to take a newer version from the signed repository early, run <code>omarchy update</code> and then <code>sudo pacman -S btsouth/omakade</code>.</p>
         <div class="actions">
           <a class="button secondary" href="https://pkgs.btso.dev/">About the signed repository</a>
           <a class="button secondary" href="https://github.com/btsouth/omakade#install">Other install options</a>
@@ -85,6 +87,24 @@ sudo pacman -S btsouth/omakade</code></pre>
         </article>
       </section>
 
+      <section class="principles wrap" aria-label="More features">
+        <article>
+          <span class="number">04</span>
+          <h2>Game Mode</h2>
+          <p>Controller-first fullscreen play on this display, or on a TV with its own sound output, with an in-game guide over your games.</p>
+        </article>
+        <article>
+          <span class="number">05</span>
+          <h2>Consoles and emulators</h2>
+          <p>RetroArch, Dolphin, PCSX2, RPCS3, PPSSPP, Ryujinx, Cemu, melonDS, shadPS4, Xenia, and Kyty games, grouped by console, with saves copied before each launch.</p>
+        </article>
+        <article>
+          <span class="number">06</span>
+          <h2>Highlights</h2>
+          <p>Save the last moments of a game from the guide, a key, or a controller's capture button, and clip Steam achievements as they unlock.</p>
+        </article>
+      </section>
+
       <section class="details-showcase wrap">
         <div class="eyebrow"><span></span> More than covers</div>
         <h2>Everything that matters,<br>without the launcher clutter.</h2>
@@ -98,9 +118,10 @@ sudo pacman -S btsouth/omakade</code></pre>
         <div>
           <div class="eyebrow"><span></span> One library</div>
           <h2>Bring the launchers.<br>Lose the clutter.</h2>
+          <p>Heroic brings its Epic, GOG, and Amazon libraries. Microsoft Store and PC Game Pass games come through Xodus Nexus. Add native ports, a RomM server, or any game you install yourself.</p>
         </div>
         <div class="source-list">
-          <span>STEAM</span><span>LUTRIS</span><span>HEROIC</span><span>FAUGUS</span><span>RETROARCH</span><span>BATTLE.NET</span><span>GAME PASS</span><span>EPIC</span><span>GOG</span><span>AMAZON</span>
+          <span>STEAM</span><span>HEROIC</span><span>LUTRIS</span><span>FAUGUS</span><span>GOG</span><span>BATTLE.NET</span><span>GAME PASS</span><span>RETROARCH</span><span>DOLPHIN</span><span>PCSX2</span><span>RYUJINX</span><span>+ 7 EMULATORS</span>
         </div>
       </section>
 

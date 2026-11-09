@@ -70,6 +70,7 @@ h1 em { color: var(--cream); font-style: normal; }
 
 .sources { display: grid; grid-template-columns: 1fr 1.2fr; align-items: end; gap: 80px; padding-block: 130px; }
 .sources .eyebrow { justify-content: flex-start; }
+.sources p { max-width: 460px; margin: 22px 0 0; color: var(--muted); font-family: Inter, system-ui, sans-serif; line-height: 1.7; }
 .sources h2, .closing h2 { margin: 22px 0 0; color: var(--cream); font-size: clamp(34px, 4vw, 56px); line-height: 1.08; letter-spacing: -.05em; }
 .source-list { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .source-list span { padding: 28px 20px; color: var(--muted); font-weight: 800; letter-spacing: .08em; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; }

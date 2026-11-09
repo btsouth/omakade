@@ -26,7 +26,13 @@ For a manual game, include whether it was added as an executable or desktop
 entry and the error shown. Review paths and arguments before sharing them.
 Windows runner setup belongs to the launcher that owns the game.
 
-For restore failures, include the Omakade version, merge or replace choice,
+If a restore says to stop the play-session recorder, close Omakade, run
+`systemctl --user stop omakade-sessiond`, open Omakade to apply the restore, then
+start the recorder again with `systemctl --user start omakade-sessiond` (on Omarchy,
+opening Omakade starts it). Closing Omakade or turning recording off does not stop
+the recorder. See [Back up your library](docs/GUIDE.md#back-up-your-library).
+
+For other restore failures, include the Omakade version, merge or replace choice,
 and the error shown. Keep the recovery folder while diagnosing the problem.
 Do not attach the archive, database, settings file, or recovery folder to a
 public report; they contain personal library data and may contain private paths
