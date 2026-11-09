@@ -89,7 +89,8 @@ UI behaviour is tested by running the app with a test flag. Most UI tests run
 `omakade-uitest --render-overlay=settings --render-screenshot=settings.png` or
 `omakade-uitest --backup-editor-test`. A few still run `omakade` itself, such as
 `omakade --startup-navigation-test`, and `omakade --smoke-test` checks the shipped
-binary. The test registrations set `QT_QPA_PLATFORM=offscreen` and the software Qt
+binary. Only `omakade-uitest` reads `--render-size`, so a render run at a set
+window size needs it rather than `omakade`. The test registrations set `QT_QPA_PLATFORM=offscreen` and the software Qt
 Quick backend, so the suite runs without a display, as it does in CI. Python tests cover Game Mode start-up, the guide recorder, the TV launcher
 helper, the native ports catalog and the SBOM generator.
 
