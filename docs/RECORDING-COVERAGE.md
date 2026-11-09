@@ -2,8 +2,9 @@
 
 Profiles recognize emulator processes and game paths in command-line arguments, and
 on Hyprland also match an emulator's window title against titles Omakade already
-knows. A listed profile is not evidence that every launcher, wrapper, or internal
-game change works. Recording does not inject code, control emulators, or detect pauses.
+knows. Steam games are recognized by the reaper process Steam starts each one under,
+and Xodus Nexus games by their Wine prefix. A listed profile is not evidence that every
+launcher, wrapper, or internal game change works. Recording does not inject code, control emulators, or detect pauses.
 
 | Area | Automated evidence | Remaining acceptance |
 | --- | --- | --- |
@@ -12,6 +13,7 @@ game change works. Recording does not inject code, control emulators, or detect 
 | RPCS3 | Direct ISO/ELF argument, installed and external PARAM.SFO discovery, category rejection, AUR `AppRun.wrapped` process matching, cache-to-unified-library filtering, argv tests, and a native RPCS3 0.0.42 run of the GPL-2.0 iPSX3 homebrew under supplied firmware 4.93 that closed as one 79-second attributed session | The Flatpak route, whose isolated profile lacks firmware and previously hit a distribution font lookup failure |
 | PPSSPP | PARAM.SFO parsing from PBP/ISO, `DISC_ID` identity, homebrew ELF fallback, Recent/PinnedPaths discovery, one-positional argv, cache-to-unified-library filtering, a native PPSSPP 1.20.4 launch of the MIT-licensed 2048PSP homebrew that closed as one 59-second session over a 60-second wall span, and a real `God of War: Ghost of Sparta` run that closed as one 79-second attributed session | Flatpak host-path launch and compressed CSO/CHD PARAM.SFO parsing |
 | Other shipped profiles | Shared matcher and profile parsing | Real launch arguments for RetroArch, Dolphin, Cemu, shadPS4 and other listed binaries |
+| Steam | The reaper's `SteamLaunch AppId=` options, setup runs (`Install=1`) and arguments after `--` refused, the app id resolved to the install folder the Steam source reports so Stats and play history link the session to its game, non-Steam shortcuts and games with no install folder left unrecorded, an emulator under the reaper recorded once by its own profile, pause on unfocus following the reaper's process tree, and restart recovery with a real process shaped like the reaper | A real Steam launch of a native game and of a Proton game on a supported host, including pause on unfocus |
 | Window-title attribution | Cache reading, exact and whole-name matching, ambiguity and short-name refusal, decorated titles, malformed compositor answers, and a live Hyprland run that recorded and closed a session for a process naming no game path | The same run against a real emulator and a real ROM on each supported compositor |
 | Dolphin attribution record | Reading a heartbeat the running emulator rewrites, refusing a record that has not advanced, following a game change inside one process, refusing an unknown disc id and an ambiguous pair, and a stopped heartbeat keeping the game already confirmed | A real Dolphin session that loads a second game from Dolphin's own file picker, on a native and on a Flatpak install |
 | PCSX2 log attribution | Bounded append tracking of `emulog.txt`, per-boot Serial parsing, disc changes, truncation, unknown-serial withdrawal and stale-log retention, plus a real `Black (USA)` run under PCSX2 2.9.34 that closed as one 75-second attributed session | A real PCSX2 session that changes discs inside its own UI, with file logging enabled |
@@ -47,6 +49,19 @@ an end and a total, so their play is spread evenly over that span. When that spa
 longer than the play, or a playing interval holds more wall time than play (a suspend),
 the split is an estimate, and Stats says how many sessions it covers. A session that
 crosses the new year is divided between the two years the same way.
+
+A Steam session runs from the moment Steam's reaper starts the game to the moment it
+exits, so time on a game's own launcher or menu counts. The session is recorded against
+the game's install folder, `steamapps/common/<folder>` in its Steam library, which is how
+the Steam source names the game too. A launch is recorded only when Omakade's Steam source lists the
+game as installed: a non-Steam shortcut, or a game Omakade has not scanned yet, is not
+recorded. When the reaper runs an emulator from the profiles, such as RetroArch from
+Steam, the emulator's own recording owns that play and Steam does not record it again.
+Steam's own total stays the game's library total: recorded Steam sessions add dated
+play to Stats and play history, and never raise or lower Steam's figure. Pause on
+unfocus checks every window of the reaper's process tree, since the reaper itself
+owns none. Heroic, Lutris, Faugus, Battle.net, direct GOG, Kyty, native ports and
+manual games are not recorded.
 
 Paused emulator time counts while its process remains matched. Imported and
 recorded totals are reconciled per game: recorded time never lowers a total, and
