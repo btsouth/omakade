@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
 #include <QLocalSocket>
 
 namespace {
@@ -18,13 +19,21 @@ bool deliver(const QString& serverName, const QByteArray& command) {
   socket.waitForBytesWritten(120);
   return true;
 }
+// Owner-only access. Not QLocalServer::UserAccessOption: it binds elsewhere and renames
+// the socket into place, which replaces a live instance instead of failing to listen.
+bool listenOwnerOnly(QLocalServer& server, const QString& serverName) {
+  if (!server.listen(serverName)) {
+    return false;
+  }
+  QFile::setPermissions(server.fullServerName(), QFile::ReadOwner | QFile::WriteOwner);
+  return true;
+}
 } // namespace
 
 QString SingleInstance::defaultServerName() { return SessionDatabase::appServerName(); }
 
 SingleInstance::SingleInstance(const QString& serverName, QObject* parent)
     : QObject(parent), m_serverName(serverName.isEmpty() ? defaultServerName() : serverName) {
-  m_server.setSocketOptions(QLocalServer::UserAccessOption);
   connect(&m_server, &QLocalServer::newConnection, this, [this] {
     while (QLocalSocket* socket = m_server.nextPendingConnection()) {
       // The client writes one command and closes, so act once the whole message is in.
@@ -91,7 +100,7 @@ bool SingleInstance::claimOrNotify(const QByteArray& command) {
       return false;
     }
   }
-  if (m_server.listen(m_serverName)) {
+  if (listenOwnerOnly(m_server, m_serverName)) {
     return true;
   }
   if (sendCommand(m_serverName, command)) {
@@ -103,7 +112,7 @@ bool SingleInstance::claimOrNotify(const QByteArray& command) {
     return true;
   }
   QLocalServer::removeServer(m_serverName);
-  if (!m_server.listen(m_serverName)) {
+  if (!listenOwnerOnly(m_server, m_serverName)) {
     qWarning() << "Running without single-instance activation:" << m_server.errorString();
   }
   return true;
