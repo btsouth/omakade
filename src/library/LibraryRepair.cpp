@@ -253,9 +253,10 @@ void LibraryRepair::recheck() {
       break;
     }
   }
-  const QStringList keys = storageRoot.isEmpty()
-                               ? QStringList{m_key}
-                               : m_games->reviewKeysUnderPath(storageRoot);
+  QStringList keys = storageRoot.isEmpty() ? QStringList{m_key}
+                                           : m_games->reviewKeysUnderPath(storageRoot);
+  if (!keys.contains(m_key))
+    keys.append(m_key);
   m_games->recheckAvailability(keys);
   m_message = storageRoot.isEmpty() ? "Rechecking this game's availability."
                                     : "Rechecking games under the missing folder.";

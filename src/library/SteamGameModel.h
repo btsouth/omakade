@@ -80,6 +80,7 @@ private:
   [[nodiscard]] QVariant valueForRole(const Game& game, int role) const;
   bool openDatabase(const QString& path);
   bool ensureSchema();
+  void loadUnavailableLibraries();
   void loadDatabase();
   void loadSourceState();
   void applyScan(const SteamScanResult& result);

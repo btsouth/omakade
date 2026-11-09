@@ -89,6 +89,7 @@ SteamGameModel::SteamGameModel(const QString& databasePath, AppSettings* setting
 
   const QString path = databasePath.isEmpty() ? defaultDatabasePath() : databasePath;
   if (openDatabase(path) && ensureSchema()) {
+    loadUnavailableLibraries();
     loadDatabase();
     loadSourceState();
     QTimer::singleShot(800, this, [this] { requestMissingCovers(); });
@@ -480,6 +481,22 @@ void SteamGameModel::loadSourceState() {
   m_steamDetected = !m_detectedPaths.isEmpty();
   if (m_lastScan > 0) {
     m_statusText = QStringLiteral("Loaded cached Steam library");
+  }
+}
+
+void SteamGameModel::loadUnavailableLibraries() {
+  // Until the first scan finishes, a cached library counts as unavailable when its steamapps
+  // folder is missing or unreadable, so Play never opens a game on an unplugged drive.
+  QSqlQuery query(m_database);
+  if (!query.exec(QStringLiteral("SELECT DISTINCT library_path FROM installations"))) {
+    return;
+  }
+  while (query.next()) {
+    const QString library = query.value(0).toString();
+    const QFileInfo steamapps(library + QStringLiteral("/steamapps"));
+    if (!library.isEmpty() && (!steamapps.isDir() || !steamapps.isReadable())) {
+      m_unavailableLibraries.append(library);
+    }
   }
 }
 

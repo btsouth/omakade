@@ -245,6 +245,20 @@ QStringList UnifiedGameModel::reviewKeysUnderPath(const QString& path) const {
   return keys;
 }
 void UnifiedGameModel::recheckAvailability(const QStringList& keys) {
+  // A source that reports a game's library drive as disconnected only sees it come back when
+  // it rescans, so ask that source to rescan.
+  QSet<QAbstractItemModel*> rescan;
+  for (const QString& key : keys) {
+    const SourceRow source = sourceForKey(key);
+    if (source.model == nullptr)
+      continue;
+    for (const SourceRow& member : groupRows(source)) {
+      if (member.model->index(member.row, 0).data(GameRoles::StorageUnavailable).toBool())
+        rescan.insert(member.model);
+    }
+  }
+  for (QAbstractItemModel* model : std::as_const(rescan))
+    QMetaObject::invokeMethod(model, "refresh");
   scheduleReviewAvailability(keys.isEmpty(), keys);
 }
 void UnifiedGameModel::setSourceEnabled(const QString& source, bool enabled) {
