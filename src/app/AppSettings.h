@@ -11,6 +11,9 @@ class AppSettings final : public QObject {
   Q_PROPERTY(QString statsPeriod READ statsPeriod WRITE setStatsPeriod NOTIFY statsPeriodChanged)
   Q_PROPERTY(
       bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
+  Q_PROPERTY(QString motionPreference READ motionPreference WRITE setMotionPreference NOTIFY
+                 reducedMotionChanged)
+  Q_PROPERTY(bool systemReducedMotion READ systemReducedMotion NOTIFY reducedMotionChanged)
   Q_PROPERTY(int artworkCacheLimitMb READ artworkCacheLimitMb WRITE setArtworkCacheLimitMb NOTIFY
                  artworkCacheLimitMbChanged)
   Q_PROPERTY(bool protonDbEnabled READ protonDbEnabled WRITE setProtonDbEnabled NOTIFY protonDbEnabledChanged)
@@ -107,8 +110,21 @@ public:
 
   [[nodiscard]] QJsonObject backupSettings() const;
   bool applyBackupSettings(const QJsonObject& settings, bool replace);
+  // Whether motion is reduced: an explicit choice, or the desktop's setting by default.
   [[nodiscard]] bool reducedMotion() const;
+  // Sets an explicit "reduced" or "full" choice.
   void setReducedMotion(bool value);
+  // "system" follows the desktop; "reduced" and "full" override it.
+  [[nodiscard]] QString motionPreference() const { return m_motionPreference; }
+  void setMotionPreference(const QString& value);
+  [[nodiscard]] bool systemReducedMotion() const { return m_systemReducedMotion; }
+  void setSystemReducedMotion(bool value);
+  // Asks Hyprland and GTK whether animations are off. The answers arrive asynchronously.
+  void detectSystemReducedMotion();
+  // Reads `hyprctl getoption animations:enabled -j`.
+  [[nodiscard]] static bool hyprlandAnimationsDisabled(const QByteArray& json);
+  // Reads `gsettings get org.gnome.desktop.interface enable-animations`.
+  [[nodiscard]] static bool gtkAnimationsDisabled(const QByteArray& output);
   [[nodiscard]] int artworkCacheLimitMb() const;
   void setArtworkCacheLimitMb(int value);
   bool protonDbEnabled() const { return m_protonDbEnabled; }
@@ -323,7 +339,8 @@ private:
   bool m_protonDbEnabled = false;
   bool m_protonDbBadges = false;
   bool m_metadataAutoIdentify = true;
-  bool m_reducedMotion = false;
+  QString m_motionPreference = QStringLiteral("system");
+  bool m_systemReducedMotion = false;
   int m_artworkCacheLimitMb = 1024;
   QString m_steamId;
   QString m_igdbClientId;

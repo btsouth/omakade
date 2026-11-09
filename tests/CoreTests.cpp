@@ -1243,6 +1243,7 @@ private slots:
   void retroAchievementsServiceBlocksAccountSwitchWhileBusy();
   void stressLibraryContainsOneThousandGames();
   void settingsPersistReducedMotionAndCacheLimit();
+  void motionFollowsSystemUnlessChosen();
   void settingsReportWriteFailuresAndRecover();
   void invalidMetadataResponseKeepsDataAndReportsFailure();
   void gogFoldersPersistAndHandleDisconnectedRoots();
@@ -6222,6 +6223,110 @@ void CoreTests::gogFoldersPersistAndHandleDisconnectedRoots() {
   AppSettings unwritable(directory.path());
   QVERIFY(!unwritable.addGogLibraryPath(first));
   QVERIFY(unwritable.gogLibraryPaths().isEmpty());
+}
+
+void CoreTests::motionFollowsSystemUnlessChosen() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/config.toml");
+  const auto readConfig = [&path] {
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly | QIODevice::Text) ? QString::fromUtf8(file.readAll())
+                                                            : QString();
+  };
+  {
+    AppSettings settings(path);
+    QCOMPARE(settings.motionPreference(), QStringLiteral("system"));
+    QVERIFY(!settings.reducedMotion());
+    QSignalSpy changed(&settings, &AppSettings::reducedMotionChanged);
+    settings.setSystemReducedMotion(true);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(settings.reducedMotion());
+    // An explicit choice wins over the desktop, and an unknown one is ignored.
+    settings.setMotionPreference(QStringLiteral("full"));
+    QVERIFY(!settings.reducedMotion());
+    settings.setMotionPreference(QStringLiteral("fast"));
+    QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+  }
+  QVERIFY(readConfig().contains(QStringLiteral("motion = \"full\"")));
+  QCOMPARE(AppSettings(path).motionPreference(), QStringLiteral("full"));
+
+  // Older versions wrote reduced_motion = false on every save, so it means the default.
+  writeFile(path, "reduced_motion = false\n");
+  QCOMPARE(AppSettings(path).motionPreference(), QStringLiteral("system"));
+  writeFile(path, "reduced_motion = true\n");
+  QCOMPARE(AppSettings(path).motionPreference(), QStringLiteral("reduced"));
+  {
+    AppSettings settings(path);
+    settings.setReducedMotion(false);
+    QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+  }
+  // An older version reading the file still sees the explicit choice.
+  QVERIFY(readConfig().contains(QStringLiteral("reduced_motion = false")));
+
+  // Backups carry the choice, and old backups migrate the same way as old config files.
+  AppSettings settings(path);
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", false}}, true));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("system"));
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}}, false));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("reduced"));
+  QVERIFY(settings.applyBackupSettings({{"motion", "full"}}, false));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+  QVERIFY(!settings.applyBackupSettings({{"motion", "fast"}}, false));
+  QCOMPARE(settings.backupSettings().value("motion").toString(), QStringLiteral("full"));
+  // A partial merge without either motion key keeps the current choice.
+  QVERIFY(settings.applyBackupSettings({{"library_sort_mode", "installed"}}, false));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+
+  // Detection asks the desktop tools on PATH, and only asks hyprctl inside Hyprland.
+  {
+    const QString bin = directory.path() + QStringLiteral("/bin");
+    QVERIFY(QDir().mkpath(bin));
+    const QString hyprctlRan = directory.path() + QStringLiteral("/hyprctl-ran");
+    const auto writeTool = [&bin](const QString& name, const QByteArray& script) {
+      writeFile(bin + QLatin1Char('/') + name, script);
+      return QFile::setPermissions(bin + QLatin1Char('/') + name,
+                                   QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+    };
+    QVERIFY(writeTool(QStringLiteral("hyprctl"),
+                      "#!/bin/sh\n: > '" + hyprctlRan.toUtf8() + "'\necho '{\"int\":0}'\n"));
+    // gsettings says animations are off but fails, so its answer does not count.
+    QVERIFY(writeTool(QStringLiteral("gsettings"), "#!/bin/sh\necho false\nexit 1\n"));
+    const auto restorePath = redirectPath(bin);
+    const bool signatureWasSet = qEnvironmentVariableIsSet("HYPRLAND_INSTANCE_SIGNATURE");
+    const QByteArray previousSignature = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    const auto restoreSignature = qScopeGuard([signatureWasSet, previousSignature] {
+      if (signatureWasSet) {
+        qputenv("HYPRLAND_INSTANCE_SIGNATURE", previousSignature);
+      } else {
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+      }
+    });
+    qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    AppSettings detecting(directory.path() + QStringLiteral("/detect.toml"));
+    detecting.detectSystemReducedMotion();
+    QVERIFY(!detecting.findChildren<QProcess*>().isEmpty());
+    QTRY_VERIFY(detecting.findChildren<QProcess*>().isEmpty());
+    QVERIFY(!detecting.reducedMotion());
+    QVERIFY(!QFile::exists(hyprctlRan));
+
+    qputenv("HYPRLAND_INSTANCE_SIGNATURE", "motion-test");
+    QSignalSpy changed(&detecting, &AppSettings::reducedMotionChanged);
+    detecting.detectSystemReducedMotion();
+    QVERIFY(changed.wait());
+    QVERIFY(QFile::exists(hyprctlRan));
+    QVERIFY(detecting.reducedMotion());
+  }
+
+  QVERIFY(AppSettings::hyprlandAnimationsDisabled(
+      R"({"option":"animations:enabled","int":0,"set":true})"));
+  QVERIFY(!AppSettings::hyprlandAnimationsDisabled(
+      R"({"option":"animations:enabled","int":1,"set":false})"));
+  QVERIFY(AppSettings::hyprlandAnimationsDisabled(R"({"option":"animations:enabled","bool":false})"));
+  QVERIFY(!AppSettings::hyprlandAnimationsDisabled("no such option"));
+  QVERIFY(AppSettings::gtkAnimationsDisabled("false\n"));
+  QVERIFY(!AppSettings::gtkAnimationsDisabled("true\n"));
+  QVERIFY(!AppSettings::gtkAnimationsDisabled(""));
 }
 
 void CoreTests::settingsPersistReducedMotionAndCacheLimit() {

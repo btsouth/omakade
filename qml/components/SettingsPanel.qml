@@ -1897,13 +1897,20 @@ import "Counts.js" as Counts
                         font.pixelSize: 11 * settingsPanel.uiScale
                         Layout.fillWidth: true
                     }
-                    GlassButton {
-                        compact: true
-                        text: Preferences.reducedMotion ? "REDUCED" : "FULL"
-                        Accessible.name: "Reduced motion"
-                        selectable: true
-                        selected: Preferences.reducedMotion
-                        onClicked: Preferences.reducedMotion = !Preferences.reducedMotion
+                    Repeater {
+                        model: ["system", "reduced", "full"]
+                        GlassButton {
+                            required property string modelData
+                            objectName: "motion_" + modelData
+                            compact: true
+                            text: modelData === "system"
+                                  ? "SYSTEM (" + (Preferences.systemReducedMotion ? "REDUCED" : "FULL") + ")"
+                                  : modelData.toUpperCase()
+                            Accessible.name: "Motion: " + text.toLowerCase()
+                            selectable: true
+                            selected: Preferences.motionPreference === modelData
+                            onClicked: Preferences.motionPreference = modelData
+                        }
                     }
                 }
                 }

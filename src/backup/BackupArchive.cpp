@@ -147,6 +147,7 @@ QStringList BackupArchive::settingNames() {
           "rom_folders",
           "console_layouts",
           "reduced_motion",
+          "motion",
           "artwork_cache_limit_mb",
           "steam_enabled",
           "lutris_enabled",
@@ -422,6 +423,9 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
             return fail(error, "A console layout is invalid.");
         }
       }
+    } else if (setting.key() == "motion") {
+      if (!QStringList{"system", "reduced", "full"}.contains(setting.value().toString()))
+        return fail(error, "The motion preference is invalid.");
     } else if (setting.key() == "stats_period") {
       if (!QStringList{"year", "all"}.contains(setting.value().toString()))
         return fail(error, "The statistics period is invalid.");
