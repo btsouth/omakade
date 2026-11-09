@@ -736,8 +736,15 @@ FocusScope {
             NavigationButton {
                 id: favoriteButton
                 objectName: "couchFavoriteButton"
-                text: root.currentGame.favorite ? "FAVORITED" : "FAVORITE"
-                iconText: root.currentGame.favorite ? "♥" : "♡"
+                selectable: true
+                selected: !!root.currentGame.favorite
+                text: root.currentGame.favorite ? "FAVORITED" : "ADD TO FAVORITES"
+                Accessible.description: root.currentGame.favorite ? "Press to remove from favorites" : ""
+                iconDelegate: HeartIcon {
+                    filled: favoriteButton.selected
+                    color: filled ? Theme.accent : favoriteButton.iconColor
+                    size: favoriteButton.iconSize + 2 * favoriteButton.displayScale
+                }
                 displayScale: Math.max(1, root.uiScale * 1.2)
                 enabled: root.currentIndex >= 0
                 onClicked: root.favoriteToggled(root.currentIndex)
@@ -923,13 +930,18 @@ FocusScope {
                     width: 28 * root.uiScale
                     height: width
                     radius: width / 2
-                    color: root.alpha(Theme.darkerBackground, 0.72)
+                    // Opaque accent with a drawn heart, as on the desktop library cards.
+                    color: Theme.accent
 
-                    Text {
+                    HeartIcon {
                         anchors.centerIn: parent
-                        text: "♥"
-                        color: Theme.brightForeground
-                        font.pixelSize: 12 * root.uiScale
+                        filled: true
+                        size: 14 * root.uiScale
+                        color: {
+                            Theme.brightForeground
+                            Theme.darkerBackground
+                            return Theme.readableOn(Theme.accent)
+                        }
                     }
                 }
 
@@ -1168,14 +1180,18 @@ FocusScope {
                     width: 32 * root.uiScale
                     height: width
                     radius: width / 2
-                    color: root.alpha(Theme.darkerBackground, 0.82)
+                    color: Theme.accent
                     border.color: root.alpha(Theme.brightForeground, 0.28)
 
-                    Text {
+                    HeartIcon {
                         anchors.centerIn: parent
-                        text: "♥"
-                        color: Theme.brightForeground
-                        font.pixelSize: 14 * root.uiScale
+                        filled: true
+                        size: 16 * root.uiScale
+                        color: {
+                            Theme.brightForeground
+                            Theme.darkerBackground
+                            return Theme.readableOn(Theme.accent)
+                        }
                     }
                 }
 

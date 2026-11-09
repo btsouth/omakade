@@ -803,8 +803,16 @@ Item {
                                 ? (root.stopGameAvailable ? stopButton : detailManageButton) : null
                         property Item controllerUpTarget:
                             gameActions.columns === 1 ? playButton : null
-                        text: root.game.favorite ? "FAVORITE" : "ADD FAVORITE"
-                        iconText: root.game.favorite ? "♥" : "♡"
+                        // A toggle: favorites get the selected fill and read as checked.
+                        selectable: true
+                        selected: !!root.game.favorite
+                        text: root.game.favorite ? "FAVORITED" : "ADD TO FAVORITES"
+                        Accessible.description: root.game.favorite ? "Press to remove from favorites" : ""
+                        iconDelegate: HeartIcon {
+                            filled: favoriteButton.selected
+                            color: filled ? Theme.accent : favoriteButton.iconColor
+                            size: favoriteButton.iconSize + 2 * favoriteButton.displayScale
+                        }
                         onClicked: root.favoriteRequested()
                     }
 

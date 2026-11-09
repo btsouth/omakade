@@ -262,14 +262,21 @@ FocusScope {
             anchors.top: parent.top
             anchors.right: parent.right
             anchors.margins: 9
-            color: root.alpha(Theme.darkerBackground, 0.66)
-            border.color: root.alpha(Theme.brightForeground, 0.22)
+            // Opaque accent, like the Playing pill, so the heart reads on any artwork and theme.
+            color: Theme.accent
+            border.color: root.alpha(Theme.brightForeground, 0.20)
 
-            Text {
+            HeartIcon {
+                objectName: "favoriteHeart"
                 anchors.centerIn: parent
-                text: "♥"
-                color: Theme.brightForeground
-                font.pixelSize: 12
+                filled: true
+                size: 14
+                // readableOn reads theme colors the binding cannot see, so name them here.
+                color: {
+                    Theme.brightForeground
+                    Theme.darkerBackground
+                    return Theme.readableOn(favoriteBadge.color)
+                }
             }
         }
 

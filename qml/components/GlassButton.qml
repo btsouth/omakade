@@ -6,6 +6,12 @@ Button {
 
     property real maximumLabelWidth: Infinity
     property string iconText: ""
+    // Drawn icon in place of iconText, such as HeartIcon. It can size and color itself from
+    // iconSize and iconColor so it matches a text icon.
+    property Component iconDelegate: null
+    readonly property real iconSize: (compact ? 12 : 14) * displayScale
+    readonly property color iconColor: root.enabled ? (root.primary ? Theme.brightForeground : Theme.foreground)
+                                                    : root.alpha(Theme.foreground, 0.35)
     property bool primary: false
     property bool selected: false
     // Set on tabs, choices and on/off toggles so screen readers hear selected as checked.
@@ -126,14 +132,20 @@ Button {
         spacing: root.spacing
         anchors.centerIn: parent
 
+        Loader {
+            active: root.iconDelegate !== null
+            visible: active
+            sourceComponent: root.iconDelegate
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
         Text {
             textFormat: Text.PlainText
-            visible: root.iconText.length > 0
+            visible: root.iconDelegate === null && root.iconText.length > 0
             text: root.iconText
-            color: root.enabled ? (root.primary ? Theme.brightForeground : Theme.foreground)
-                                : root.alpha(Theme.foreground, 0.35)
+            color: root.iconColor
             font.family: Theme.fontFamily
-            font.pixelSize: (root.compact ? 12 : 14) * root.displayScale
+            font.pixelSize: root.iconSize
             anchors.verticalCenter: parent.verticalCenter
         }
 

@@ -79,8 +79,16 @@ private slots:
       QVERIFY2(text->property("contentWidth").toReal() <= pill->width(), qPrintable(label));
       const qreal pillRight = pill->x() + pill->width();
       QVERIFY2(pillRight <= cover->width() - 9, qPrintable(label));
-      if (badge->isVisible())
+      if (badge->isVisible()) {
         QVERIFY2(pillRight < badge->x(), qPrintable(label));
+        // The favorite badge is opaque and its heart is a filled shape that stands out on it.
+        auto* heart = child(badge, QStringLiteral("favoriteHeart"));
+        QVERIFY2(heart && heart->property("filled").toBool(), qPrintable(label));
+        const QColor badgeFill = badge->property("color").value<QColor>();
+        QVERIFY2(badgeFill.alpha() == 255, qPrintable(label));
+        QVERIFY2(OmarchyTheme::contrastRatio(heart->property("color").value<QColor>(), badgeFill) >= 4.5,
+                 qPrintable(label));
+      }
 
       // Wide cards keep the full size label; only the narrow favorite cards shrink it.
       if (cover->width() >= 200) {
