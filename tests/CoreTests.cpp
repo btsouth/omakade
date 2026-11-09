@@ -6436,6 +6436,21 @@ void CoreTests::singleInstanceSocketIsOwnerOnly() {
   QVERIFY(legacy.waitForNewConnection(1000));
   delete legacy.nextPendingConnection();
   QVERIFY(!QFileInfo::exists(runtime.filePath(socketName)));
+  legacy.close();
+
+  // A symlink in the temp dir is never trusted as the old socket, even one that leads to a
+  // live server: commands are not sent there and startup claims the private socket.
+  QLocalServer elsewhere;
+  QVERIFY(elsewhere.listen(temp.filePath(QStringLiteral("elsewhere"))));
+  QVERIFY(QFile::link(elsewhere.fullServerName(), temp.filePath(socketName)));
+  QVERIFY(SessionDatabase::legacyAppServerName().isEmpty());
+  QVERIFY(!SingleInstance::sendCommand({}, "quit"));
+  {
+    SingleInstance third;
+    QVERIFY(third.claimOrNotify());
+    QVERIFY(QFileInfo::exists(runtime.filePath(socketName)));
+  }
+  QVERIFY(!elsewhere.waitForNewConnection(100));
 }
 
 void CoreTests::singleInstanceRunsAloneWithoutRuntimeDir() {
