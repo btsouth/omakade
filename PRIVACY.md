@@ -205,6 +205,49 @@ locally. It sends the matched game identifier and configured username to
 RetroAchievements to retrieve progress. Responses are cached in the local
 library database for offline use.
 
+## Xbox achievements
+
+Xbox achievements for Xodus Nexus games come from Nexus itself. Omakade asks
+for them when you open an Xodus game's page, or switch a page to its Xodus
+installation, and no cached list exists or it is more than 15 minutes old.
+Selecting Refresh Xbox on the page asks again at once. Demo mode never asks.
+
+Omakade reads the game's Xbox title ID from `MicrosoftGame.config` in its
+install folder; a game without one is skipped. It then runs Nexus's own backend
+helper as `xodus-cli achievements <title ID> --json`. It runs only the helper
+that Nexus's `xodus-backends/current.json` points to inside its releases
+folder, and only if your user owns it and no other user can write to it. If
+Nexus has no backend, Omakade runs nothing and asks you to open Nexus and sign
+in.
+
+Omakade does not sign in to Microsoft, read Nexus's sign-in tokens, or unlock
+anything. The helper uses the Microsoft account Nexus is already signed in to,
+and Nexus makes the request to Xbox services. The title ID is the only thing
+Omakade passes to it. A helper that runs longer than 35 seconds or prints more
+than 4 MB is stopped and its output ignored.
+
+The reply lists each achievement's name, description, state (unlocked, in
+progress or locked), unlock time, progress, whether it is secret, and an image
+URL. Omakade keeps these in the `achievements` and `achievement_summary` tables
+of `$XDG_DATA_HOME/omakade/library.sqlite3`, under the key `xodus:<game id>`.
+The game page, its library card and the in-game guide read that cache; the
+guide does not run the helper.
+
+Achievement images are downloaded over HTTPS only from
+`images-eds-ssl.xboxlive.com` and `images-eds.xboxlive.com`; image URLs for any
+other host are dropped. The request asks the image service for a 480x270 JPEG
+and carries no account information. Downloads are limited to 2 MB and 10
+seconds, do not follow redirects, and are kept only if they decode as an image.
+Wide art is cropped to a square icon. Images are stored under
+`$XDG_CACHE_HOME/omakade/achievements/xodus:<game id>/`, and the artwork cache
+limit bounds them with the other achievement images. Achievement caches are
+not included in personal-library backups.
+
+To stop these requests, turn off Xodus Nexus in Settings → Sources, which hides
+its games. Clear Achievement Art in Settings → Backup & storage deletes the
+downloaded images. Turning the source off keeps the cached achievement list in
+the library database.
+
 ## Removal
 
 The settings panel can clear downloaded achievement art and remove Steam,
