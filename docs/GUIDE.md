@@ -482,7 +482,7 @@ Commands that open Omakade reuse the running window when there is one.
 | `omakade` | Open Omakade |
 | `omakade --demo` | Open a fictional library to try Omakade |
 | `omakade --couch` | Open fullscreen in Game Mode on the current display |
-| `omakade --reduced-motion` | Open with reduced motion turned on, as `Ctrl+M` does |
+| `omakade --reduced-motion` | Open with reduced motion turned on and saved, as `Ctrl+M` does |
 | `omakade --play <key>` | Launch one game, for example `--play Steam::620` |
 | `omakade --quit` | Close the running Omakade window |
 | `omakade --game-mode` | Start Game Mode on the display and sound chosen in **Settings → Controls** |
