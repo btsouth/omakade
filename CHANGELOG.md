@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The controller favorite button no longer favorites the game behind an open editor or
+  dialog, such as the artwork editor opened from the game details.
 - The app and package are about 80 MB smaller. Console cards are now bundled as 768x1152
   WebP, only for consoles Omakade supports, instead of every full-size PNG master, and they
   decode faster. The Nintendo DS card now shows its console art instead of a plain gradient.
