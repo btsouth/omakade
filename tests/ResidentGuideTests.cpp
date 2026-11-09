@@ -366,7 +366,7 @@ void ResidentGuideTests::missingServiceHomeFallback() {
   QTRY_VERIFY_WITH_TIMEOUT(([&] { QFile output(log); return output.open(QIODevice::ReadOnly) && output.readAll().contains("--game-mode-fallback --guide-device"); })(), 5000);
   QTest::qWait(500);
   QFile fallbackLog(log); QVERIFY(fallbackLog.open(QIODevice::ReadOnly)); QCOMPARE(fallbackLog.readAll().count("--game-mode-fallback --guide-device"), 1);
-  QFile unit(QStringLiteral(OMAKADE_SOURCE_DIR "/packaging/omakade-guide-button.service")); QVERIFY(unit.open(QIODevice::ReadOnly));
+  QFile unit(QStringLiteral(OMAKADE_SOURCE_DIR "/packaging/omakade-guide-button.service.in")); QVERIFY(unit.open(QIODevice::ReadOnly));
   const auto text = unit.readAll(); QVERIFY(text.contains("Wants=omakade-sessiond.service")); QVERIFY(!text.contains("Requires="));
 }
 
