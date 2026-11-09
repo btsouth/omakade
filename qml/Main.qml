@@ -2410,10 +2410,10 @@ ApplicationWindow {
                     background: Rectangle {
                         radius: Math.max(5, Theme.cornerRadius)
                         color: root.alpha(Theme.foreground, searchField.activeFocus ? 0.075 : 0.045)
-                        border.width: searchField.activeFocus ? 2 : 1
-                        border.color: searchField.activeFocus
-                                      ? Theme.accent
-                                      : root.alpha(Theme.foreground, 0.15)
+                        border.width: 1
+                        border.color: root.alpha(Theme.foreground, 0.15)
+
+                        FocusRing { shown: searchField.activeFocus }
                     }
 
                     Text {

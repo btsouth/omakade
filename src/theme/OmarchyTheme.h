@@ -26,6 +26,7 @@ class OmarchyTheme final : public QObject {
   Q_PROPERTY(QColor lightForeground READ lightForeground NOTIFY themeChanged)
   Q_PROPERTY(QColor brightForeground READ brightForeground NOTIFY themeChanged)
   Q_PROPERTY(QColor mutedText READ mutedText NOTIFY themeChanged)
+  Q_PROPERTY(QColor focusRing READ focusRing NOTIFY themeChanged)
   Q_PROPERTY(QColor red READ red NOTIFY themeChanged)
   Q_PROPERTY(QColor yellow READ yellow NOTIFY themeChanged)
   Q_PROPERTY(QColor green READ green NOTIFY themeChanged)
@@ -58,6 +59,9 @@ public:
   [[nodiscard]] QColor lightForeground() const;
   [[nodiscard]] QColor brightForeground() const;
   [[nodiscard]] QColor mutedText() const;
+  // The keyboard and controller focus ring. It keeps the accent when that stands out at 3:1
+  // against every app surface and otherwise falls back to a theme or black/white color that does.
+  [[nodiscard]] QColor focusRing() const;
   [[nodiscard]] QColor red() const;
   [[nodiscard]] QColor yellow() const;
   [[nodiscard]] QColor green() const;

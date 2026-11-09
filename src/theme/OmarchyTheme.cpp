@@ -308,6 +308,24 @@ double OmarchyTheme::contrastRatio(const QColor& first, const QColor& second) {
   return (brightest + 0.05) / (darkest + 0.05);
 }
 
+QColor OmarchyTheme::focusRing() const {
+  const auto floorContrast = [this](const QColor& color) {
+    return std::min({contrastRatio(color, m_background), contrastRatio(color, m_darkBackground),
+                     contrastRatio(color, m_darkerBackground)});
+  };
+  QColor best = m_accent;
+  for (const QColor& candidate : {m_accent, m_brightForeground, m_foreground,
+                                  QColor(Qt::white), QColor(Qt::black)}) {
+    if (floorContrast(candidate) >= 3.0) {
+      return candidate;
+    }
+    if (floorContrast(candidate) > floorContrast(best)) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 QColor OmarchyTheme::readableOn(const QColor& fill) const {
   QColor opaque = fill.toRgb();
   opaque.setAlpha(255);

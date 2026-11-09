@@ -75,11 +75,14 @@ ComboBox {
     background: Rectangle {
         radius: Math.max(5, Theme.cornerRadius)
         color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.045)
-        border.width: control.activeFocus ? 2 : 1
-        border.color: control.activeFocus
-                      ? Theme.accent
-                      : Qt.rgba(Theme.foreground.r, Theme.foreground.g,
-                                Theme.foreground.b, 0.12)
+        border.width: 1
+        border.color: Qt.rgba(Theme.foreground.r, Theme.foreground.g,
+                              Theme.foreground.b, 0.12)
+
+        FocusRing {
+            shown: control.activeFocus
+            thickness: 3 * control.uiScale
+        }
     }
 
     delegate: ItemDelegate {
