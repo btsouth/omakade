@@ -86,6 +86,81 @@ UI behaviour is tested by running `omakade` itself with a test flag, for example
 without a display, as it does in CI. Python tests cover Game Mode start-up, the guide recorder, the TV launcher
 helper, the native ports catalog and the SBOM generator.
 
+### In-game guide
+
+Run graphical guide checks in an isolated test desktop such as omabox, with the
+matching binaries and plugin. Link `omarchy-plugin/` into that desktop's plugin
+directory and enable it there. `tools/guide-i1/` seeds a private library and a
+fullscreen test game; `tools/guide-i2/latency.py` sends synthetic controller events
+through the native translator. Fixtures in `tools/guide-overlay-preview/` cover
+layout and unavailable states. These preview tools are only in a git checkout;
+the release source tarball leaves them out.
+
+Unit tests cover pause ownership and recovery, parked identities, payload deltas,
+real-reading validation, input arbitration, process termination and plugin setup.
+A box covers shell IPC, focus, pause signals, capture exclusion and rendering.
+Physical controller delivery, grabs, hidraw/Steam Input, audio, UPower and actual
+recording encoders require their corresponding devices and services.
+
+### Game Mode on real hardware
+
+`tools/game-mode-acceptance.sh` exercises Hyprland, notifications, and a private
+PipeWire server with virtual displays and null sound outputs. It does not prove
+physical display behavior, audible sound, or real game behavior. The following
+checks can also be driven automatically on a real machine; record physical
+observations separately:
+
+1. One display: start Game Mode with no game, navigate to details and scroll, then
+   toggle to desktop and back three times. The same page, selection, focus and scroll
+   return; the previous desktop workspace and window layout return on each park.
+   End Game Mode explicitly and verify the journal and temporary owner are cleared.
+2. A second display that is normally on: Game Mode opens there, and leaving restores the
+   workspace it was showing and returns focus to the first display.
+3. A display that is disabled in `monitors.lua`: it turns on, and turns off when leaving.
+4. A chosen sound output: game audio plays there, and the previous output returns.
+5. Launch a Steam game, an emulator and one Heroic or Lutris game. Each opens on the
+   Game Mode display. Return and resume with the shortcut, then return and quit the
+   game while parked. The library session remains and resumes without dead game/audio
+   records. Stop Games and Leave still asks for confirmation and ends the session.
+6. Kill Omakade during Game Mode, then start it again. The display, sound and
+   notifications are put back.
+7. Unplug or disable the display during Game Mode. Game Mode ends and sound returns.
+8. Controller Home button, with Steam open and Steam Input on: with no game a short
+   press starts and ends Game Mode in place, and over a game it opens and closes the
+   guide. A long hold starts, returns and resumes Game Mode on the Game Mode display.
+   A Home button chord does nothing, and the game and Steam still receive ordinary input.
+9. With the display powered off, start Game Mode. If Hyprland cannot enable its
+   output, it reports the failure and rolls back. If the display still advertises
+   an active connection, Game Mode may start; verify this separately from the
+   automated timeout test.
+10. With a TV and its sound output chosen, press F11 on the desk display. Game Mode opens
+    on the desk display, the TV stays off, sound and notifications do not change, and
+    LEAVE with no game running returns to the desktop library. Start a game there and
+    let it idle: the screen stays awake. Browse without a game: the screen may sleep.
+11. Start a Moonlight stream of Omakade. Game Mode opens on the streamed display and the
+    stream's sound keeps working. Ending the stream closes Omakade and clears the session.
+
+## In-game guide protocol
+
+The initial `omarchy-shell shell summon omakade.guide JSON` payload contains
+version 1, output, pad, scale, backend socket/token and data. Data includes the
+game title, source, pause state, known session time, art, achievements and
+available frame readings. Achievement items contain title, description,
+unlocked, when, icon, rarity and hidden; secret descriptions remain absent until
+unlocked.
+
+After opening, newline-delimited socket messages keep the shape
+`{type: "update", payload: {...}}`. `payload.delta: true` marks changed fields in
+`data`: absent fields retain their previous value, null removes a field, arrays
+replace as a whole. Unchanged payloads send nothing. Static achievements and art
+are sent on open and again only when their content changes. The integrated
+plugin merges a delta before validating the complete version 1 data.
+
+The user-only socket accepts `{version: 1, token, action, value}`. Controller input
+and updates share that ordered connection. Lifecycle commands are serialized;
+an open-only heartbeat closes ownership if the shell disappears. Test event
+injection is available only with `--guide-input-test`.
+
 ## Add a launcher source
 
 Use an existing source of the same kind as the model. Faugus is a small launcher

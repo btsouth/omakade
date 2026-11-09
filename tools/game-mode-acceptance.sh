@@ -6,8 +6,9 @@
 #   tools/game-mode-acceptance.sh [path-to-omakade]
 #
 # The box gets a second, virtual display named TV-1 and a private PipeWire with two null
-# sinks. What this cannot show is listed at the end of docs/GAME-MODE.md: a real panel
-# accepting a mode, real HDMI audio, and a real game's own fullscreen behaviour.
+# sinks. What this cannot show is listed under "Game Mode on real hardware" in
+# docs/ARCHITECTURE.md: a real panel accepting a mode, real HDMI audio, and a real game's
+# own fullscreen behaviour.
 
 set -u
 BIN=${1:-./build/release/omakade}

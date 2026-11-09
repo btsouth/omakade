@@ -40,8 +40,7 @@ existing Game Mode controls. Enable it again with `omarchy plugin enable
 omakade.guide`. Other desktops keep Game Mode.
 
 The resident backend runs in `omakade-sessiond`; Home does not load the library
-GUI. Source builds can link `omarchy-plugin/` into the private test desktop's
-plugin directory and enable it there.
+GUI.
 
 ## Pause and input
 
@@ -89,39 +88,3 @@ by the plugin from available drivers.
 
 Formats: [MangoHud logging](https://github.com/flightlessmango/MangoHud/blob/master/src/logging.cpp)
 and [gamescope stats](https://github.com/ValveSoftware/gamescope/blob/master/src/steamcompmgr.cpp).
-
-## IPC
-
-The initial `omarchy-shell shell summon omakade.guide JSON` payload contains
-version 1, output, pad, scale, backend socket/token and data. Data includes the
-game title, source, pause state, known session time, art, achievements and
-available frame readings. Achievement items contain title, description,
-unlocked, when, icon, rarity and hidden; secret descriptions remain absent until
-unlocked.
-
-After opening, newline-delimited socket messages keep the shape
-`{type: "update", payload: {...}}`. `payload.delta: true` marks changed fields in
-`data`: absent fields retain their previous value, null removes a field, arrays
-replace as a whole. Unchanged payloads send nothing. Static achievements and art
-are sent on open and again only when their content changes. The integrated
-plugin merges a delta before validating the complete version 1 data.
-
-The user-only socket accepts `{version: 1, token, action, value}`. Controller input
-and updates share that ordered connection. Lifecycle commands are serialized;
-an open-only heartbeat closes ownership if the shell disappears. Test event
-injection is available only with `--guide-input-test`.
-
-## Verification
-
-Builds and CTest run on devbox. Run graphical checks in an owned omabox with the
-matching binaries and plugin. `tools/guide-i1/` seeds a private library and a
-fullscreen test game; `tools/guide-i2/latency.py` sends synthetic controller events
-through the native translator. Fixtures in `tools/guide-overlay-preview/` cover
-layout and unavailable states. These preview tools are only in a git checkout;
-the release source tarball leaves them out.
-
-Unit tests cover pause ownership and recovery, parked identities, payload deltas,
-real-reading validation, input arbitration, process termination and plugin setup.
-A box covers shell IPC, focus, pause signals, capture exclusion and rendering.
-Physical controller delivery, grabs, hidraw/Steam Input, audio, UPower and actual
-recording encoders require their corresponding devices and services.

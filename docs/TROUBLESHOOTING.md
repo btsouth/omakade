@@ -35,12 +35,15 @@ Check these in order. The first four hide games that Omakade already knows about
    that are not installed (Steam with a synced library, Heroic) appear under
    **Filters → Availability → All Games** or **Ready to Install**.
 5. **Source turned off.** **Settings → Sources** has two tabs. **In Use** lists the
-   sources that are on; **Available** lists the rest. Turn a source **On** and it scans
-   straight away. Turning a source off also removes it from the library's
-   **Sources** filter.
-6. **Source not found.** If the source's status says it was not found, or **Details**
-   lists no folders, Omakade is not looking where your launcher keeps its data. Compare
-   with [Where Omakade looks for each launcher](#where-omakade-looks-for-each-launcher).
+   sources that are on and were found; **Available** lists the rest, including sources
+   that are on but were not found. Turn a source **On** and it scans straight away.
+   Turning a source off also removes it from the library's **Sources** filter.
+6. **Source not found.** A source that is on but missing from **In Use** was not found.
+   Find it under **Available**: it shows **ON** and its status says it was not found,
+   such as "Lutris was not found".
+   Open its **Details** there. If it lists no folders, Omakade is not looking where your
+   launcher keeps its data. Compare with
+   [Where Omakade looks for each launcher](#where-omakade-looks-for-each-launcher).
 7. **Launcher not refreshed.** Omakade reads what the launcher has already saved. Open
    the launcher once so it records the game, then choose **Rescan Source** in the
    source's **Details** or **Rescan Enabled Sources** at the top of

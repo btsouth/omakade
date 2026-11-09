@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The package now installs Troubleshooting, the in-game guide page, Architecture and the
+  README's screenshots, so every link in the installed docs opens. Troubleshooting now
+  says a source that is on but not found is listed under Available, and the user guides
+  no longer carry test checklists.
 - A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes of
   memory by giving thousands of files the same long name. Such archives are skipped.
 - Omakade's library database, settings and cache folders are now private to your user.
