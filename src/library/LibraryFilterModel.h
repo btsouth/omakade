@@ -47,6 +47,8 @@ class LibraryFilterModel final : public QSortFilterProxyModel {
   Q_PROPERTY(QStringList genreNames READ genreNames NOTIFY metadataOptionsChanged)
   Q_PROPERTY(QStringList decadeNames READ decadeNames NOTIFY metadataOptionsChanged)
   Q_PROPERTY(QStringList platformNames READ platformNames NOTIFY metadataOptionsChanged)
+  // Sources that have at least one game in the library, for the source picker.
+  Q_PROPERTY(QStringList librarySources READ librarySources NOTIFY metadataOptionsChanged)
   Q_PROPERTY(QStringList collectionNames READ collectionNames NOTIFY organizationNamesChanged)
   Q_PROPERTY(QStringList tagNames READ tagNames NOTIFY organizationNamesChanged)
   Q_PROPERTY(bool consolePortalsEnabled READ consolePortalsEnabled WRITE setConsolePortalsEnabled
@@ -117,6 +119,7 @@ public:
   QStringList genreNames() const;
   QStringList decadeNames() const;
   QStringList platformNames() const;
+  QStringList librarySources() const;
   [[nodiscard]] QStringList collectionNames() const;
   [[nodiscard]] QStringList tagNames() const;
   [[nodiscard]] bool consolePortalsEnabled() const;
@@ -224,6 +227,9 @@ private:
   QString m_tagFilter;
   QString m_genreFilter, m_decadeFilter, m_platformFilter, m_reviewFilter;
   QStringList metadataOptions(int role) const;
+  // Filled on first read after each metadataOptionsChanged, so every reader shares one pass.
+  mutable QStringList m_librarySources;
+  mutable bool m_librarySourcesStale = true;
   static QString platformFor(const QModelIndex& index);
   bool m_consolePortalsEnabled = true;
   QString m_consoleFilter;

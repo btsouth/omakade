@@ -18,26 +18,37 @@ FocusScope {
     property bool browseOpen: false
     readonly property var sourceOptions: [
         { label: "ALL SOURCES", value: "" },
-        { label: "EMULATED", value: "Emulated" },
-        { label: "STEAM", value: "Steam", enabled: Preferences.steamEnabled },
-        { label: "BATTLE.NET", value: "Battle.net", enabled: Preferences.battleNetEnabled },
+        { label: "EMULATED", value: "Emulated", enabled: true, scanner: SteamLibrary },
+        { label: "STEAM", value: "Steam", enabled: Preferences.steamEnabled, scanner: SteamLibrary },
+        { label: "BATTLE.NET", value: "Battle.net", enabled: Preferences.battleNetEnabled, scanner: BattleNetLibrary },
         { label: "XODUS NEXUS", value: "Xodus Nexus",
-          enabled: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected },
-        { label: "LUTRIS", value: "Lutris", enabled: Preferences.lutrisEnabled },
-        { label: "HEROIC", value: "Heroic", enabled: Preferences.heroicEnabled },
-        { label: "GOG", value: "GOG", enabled: Preferences.gogEnabled },
-        { label: "FAUGUS", value: "Faugus", enabled: Preferences.faugusEnabled },
-        { label: "RETROARCH", value: "RetroArch", enabled: Preferences.retroArchEnabled },
-        { label: "PCSX2", value: "PCSX2", enabled: Preferences.pcsx2Enabled },
-        { label: "RYUJINX", value: "Ryujinx", enabled: Preferences.ryujinxEnabled },
-        { label: "SHADPS4", value: "shadPS4", enabled: Preferences.shadps4Enabled },
-        { label: "CEMU", value: "Cemu", enabled: Preferences.cemuEnabled },
-        { label: "XENIA", value: "Xenia", enabled: Preferences.xeniaEnabled },
-        { label: "KYTY", value: "Kyty", enabled: Preferences.kytyEnabled },
-        { label: "PORTS", value: "Ports", enabled: Preferences.nativePortsEnabled },
-        { label: "DOLPHIN", value: "Dolphin", enabled: Preferences.dolphinEnabled },
-        { label: "MANUAL", value: "Manual", enabled: true }
-    ].filter(function(option) { return option.enabled === undefined || option.enabled })
+          enabled: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected,
+          scanner: XodusLibrary },
+        { label: "LUTRIS", value: "Lutris", enabled: Preferences.lutrisEnabled, scanner: LutrisLibrary },
+        { label: "HEROIC", value: "Heroic", enabled: Preferences.heroicEnabled, scanner: HeroicLibrary },
+        { label: "GOG", value: "GOG", enabled: Preferences.gogEnabled, scanner: HeroicLibrary },
+        { label: "FAUGUS", value: "Faugus", enabled: Preferences.faugusEnabled, scanner: FaugusLibrary },
+        { label: "RETROARCH", value: "RetroArch", enabled: Preferences.retroArchEnabled, scanner: RetroArchLibrary },
+        { label: "PCSX2", value: "PCSX2", enabled: Preferences.pcsx2Enabled, scanner: Pcsx2Library },
+        { label: "RYUJINX", value: "Ryujinx", enabled: Preferences.ryujinxEnabled, scanner: RyujinxLibrary },
+        { label: "SHADPS4", value: "shadPS4", enabled: Preferences.shadps4Enabled, scanner: Shadps4Library },
+        { label: "CEMU", value: "Cemu", enabled: Preferences.cemuEnabled, scanner: CemuLibrary },
+        { label: "XENIA", value: "Xenia", enabled: Preferences.xeniaEnabled, scanner: XeniaLibrary },
+        { label: "KYTY", value: "Kyty", enabled: Preferences.kytyEnabled, scanner: KytyLibrary },
+        { label: "PORTS", value: "Ports", enabled: Preferences.nativePortsEnabled, scanner: NativePortLibrary },
+        { label: "DOLPHIN", value: "Dolphin", enabled: Preferences.dolphinEnabled, scanner: DolphinLibrary },
+        { label: "MANUAL", value: "Manual", enabled: true, scanner: ManualLibrary }
+    ].filter(function(option) {
+        // Only sources with games in the library. Demo and test libraries have no
+        // scanner objects, so every enabled source stays listed there.
+        if (option.enabled === undefined) return true
+        if (!option.enabled) return false
+        if (!option.scanner) return true
+        const listed = root.libraryModel.librarySources
+        return option.value === "Emulated"
+            ? root.libraryModel.emulatorSources.some(function(source) { return listed.indexOf(source) >= 0 })
+            : listed.indexOf(option.value) >= 0
+    })
     readonly property bool detailView: (viewOverride.length > 0
                                         ? viewOverride : Preferences.couchLibraryView) !== "grid"
     readonly property bool gridFocused: root.activeGameView().activeFocus

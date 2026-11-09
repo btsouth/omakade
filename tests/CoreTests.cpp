@@ -12523,6 +12523,10 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   QVERIFY(reopened.data(reopened.index(0), GameRoles::Pinned).toBool() ||
           reopened.data(reopened.index(1), GameRoles::Pinned).toBool());
 
+  // The source picker lists only sources that have games, whatever the filters show.
+  const QStringList withGames{QStringLiteral("Demo"), QStringLiteral("Dolphin"), QStringLiteral("RetroArch")};
+  QCOMPARE(library.librarySources(), withGames);
+
   // Source filters combine, and the console card follows its games' source.
   library.setFixedCardSystems({QStringLiteral("gamecube")});
   library.setSourceFilters({QStringLiteral("Dolphin")});
@@ -12537,6 +12541,7 @@ void CoreTests::consoleLayoutsPinAndExpand() {
   QVERIFY(library.sourcesSelected(LibraryFilterModel::emulatorSources()));
   QCOMPARE(count("Demo"), 0);
   QCOMPARE(portalCount(), 3);
+  QCOMPARE(library.librarySources(), withGames);
   library.toggleSources(LibraryFilterModel::emulatorSources());
   QVERIFY(library.sourceFilters().isEmpty());
 

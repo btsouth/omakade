@@ -40,6 +40,7 @@ LibraryFilterModel::LibraryFilterModel(QObject* parent)
   setDynamicSortFilter(true);
   setSortRole(sortRoleFor(m_sortMode));
   sort(0);
+  connect(this, &LibraryFilterModel::metadataOptionsChanged, this, [this] { m_librarySourcesStale = true; });
 }
 
 void LibraryFilterModel::setSourceModel(QAbstractItemModel* source) {
@@ -588,6 +589,26 @@ QStringList LibraryFilterModel::metadataOptions(int role) const {
 QStringList LibraryFilterModel::genreNames() const { return metadataOptions(GameRoles::Genres); }
 QStringList LibraryFilterModel::decadeNames() const { return metadataOptions(GameRoles::Year); }
 QStringList LibraryFilterModel::platformNames() const { return metadataOptions(GameRoles::System); }
+QStringList LibraryFilterModel::librarySources() const {
+  if (!m_librarySourcesStale)
+    return m_librarySources;
+  QStringList values;
+  if (!sourceModel())
+    return values;
+  for (int row = 0; row < sourceModel()->rowCount(); ++row) {
+    const auto index = sourceModel()->index(row, 0);
+    if (index.data(GameRoles::IsPortal).toBool())
+      continue;
+    values.append(index.data(GameRoles::Source).toString());
+    values.append(index.data(GameRoles::LinkedSources).toString().split(QStringLiteral(" + ")));
+  }
+  values.removeAll(QString());
+  values.removeDuplicates();
+  values.sort(Qt::CaseInsensitive);
+  m_librarySources = values;
+  m_librarySourcesStale = false;
+  return values;
+}
 void LibraryFilterModel::setGenreFilter(const QString& value) {
   const QString normalized = value.trimmed();
   if (m_genreFilter == normalized)
