@@ -241,8 +241,10 @@ button and the **GAME MODE** button in the header do the same. Game Mode opens
 on Home, with one header for Home and the library, offers detail and grid
 library views, and Omakade remembers whether it was last fullscreen. Its cursor
 hides during controller or keyboard use, returns on mouse movement, and remains
-visible on the desktop. `Ctrl+M` toggles reduced motion and `Ctrl+D` opens
-settings and source diagnostics.
+visible on the desktop. Motion follows the desktop by default: it is reduced when
+Hyprland animations or GTK animations are turned off. Settings > Appearance can
+choose System, Reduced or Full, and `Ctrl+M` switches between Reduced and Full.
+`Ctrl+D` opens settings and source diagnostics.
 
 ## Game Mode
 

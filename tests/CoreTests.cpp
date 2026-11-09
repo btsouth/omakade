@@ -1243,6 +1243,7 @@ private slots:
   void retroAchievementsServiceBlocksAccountSwitchWhileBusy();
   void stressLibraryContainsOneThousandGames();
   void settingsPersistReducedMotionAndCacheLimit();
+  void motionFollowsSystemUnlessChosen();
   void settingsReportWriteFailuresAndRecover();
   void invalidMetadataResponseKeepsDataAndReportsFailure();
   void gogFoldersPersistAndHandleDisconnectedRoots();
@@ -6222,6 +6223,67 @@ void CoreTests::gogFoldersPersistAndHandleDisconnectedRoots() {
   AppSettings unwritable(directory.path());
   QVERIFY(!unwritable.addGogLibraryPath(first));
   QVERIFY(unwritable.gogLibraryPaths().isEmpty());
+}
+
+void CoreTests::motionFollowsSystemUnlessChosen() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/config.toml");
+  const auto readConfig = [&path] {
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly | QIODevice::Text) ? QString::fromUtf8(file.readAll())
+                                                            : QString();
+  };
+  {
+    AppSettings settings(path);
+    QCOMPARE(settings.motionPreference(), QStringLiteral("system"));
+    QVERIFY(!settings.reducedMotion());
+    QSignalSpy changed(&settings, &AppSettings::reducedMotionChanged);
+    settings.setSystemReducedMotion(true);
+    QCOMPARE(changed.count(), 1);
+    QVERIFY(settings.reducedMotion());
+    // An explicit choice wins over the desktop, and an unknown one is ignored.
+    settings.setMotionPreference(QStringLiteral("full"));
+    QVERIFY(!settings.reducedMotion());
+    settings.setMotionPreference(QStringLiteral("fast"));
+    QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+  }
+  QVERIFY(readConfig().contains(QStringLiteral("motion = \"full\"")));
+  QCOMPARE(AppSettings(path).motionPreference(), QStringLiteral("full"));
+
+  // Older versions wrote reduced_motion = false on every save, so it means the default.
+  writeFile(path, "reduced_motion = false\n");
+  QCOMPARE(AppSettings(path).motionPreference(), QStringLiteral("system"));
+  writeFile(path, "reduced_motion = true\n");
+  QCOMPARE(AppSettings(path).motionPreference(), QStringLiteral("reduced"));
+  {
+    AppSettings settings(path);
+    settings.setReducedMotion(false);
+    QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+  }
+  // An older version reading the file still sees the explicit choice.
+  QVERIFY(readConfig().contains(QStringLiteral("reduced_motion = false")));
+
+  // Backups carry the choice, and old backups migrate the same way as old config files.
+  AppSettings settings(path);
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", false}}, true));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("system"));
+  QVERIFY(settings.applyBackupSettings({{"reduced_motion", true}}, false));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("reduced"));
+  QVERIFY(settings.applyBackupSettings({{"motion", "full"}}, false));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+  QVERIFY(!settings.applyBackupSettings({{"motion", "fast"}}, false));
+  QCOMPARE(settings.backupSettings().value("motion").toString(), QStringLiteral("full"));
+
+  QVERIFY(AppSettings::hyprlandAnimationsDisabled(
+      R"({"option":"animations:enabled","int":0,"set":true})"));
+  QVERIFY(!AppSettings::hyprlandAnimationsDisabled(
+      R"({"option":"animations:enabled","int":1,"set":false})"));
+  QVERIFY(AppSettings::hyprlandAnimationsDisabled(R"({"option":"animations:enabled","bool":false})"));
+  QVERIFY(!AppSettings::hyprlandAnimationsDisabled("no such option"));
+  QVERIFY(AppSettings::gtkAnimationsDisabled("false\n"));
+  QVERIFY(!AppSettings::gtkAnimationsDisabled("true\n"));
+  QVERIFY(!AppSettings::gtkAnimationsDisabled(""));
 }
 
 void CoreTests::settingsPersistReducedMotionAndCacheLimit() {

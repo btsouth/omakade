@@ -12,6 +12,8 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
 #include <QUrl>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -96,6 +98,8 @@ namespace {
 const QStringList kSortModeNames = {QStringLiteral("title"), QStringLiteral("recent"),
                                     QStringLiteral("playtime"), QStringLiteral("rating"),
                                     QStringLiteral("popularity"), QStringLiteral("installed")};
+const QStringList kMotionPreferences = {QStringLiteral("system"), QStringLiteral("reduced"),
+                                        QStringLiteral("full")};
 }  // namespace
 
 QJsonObject AppSettings::backupSettings() const {
@@ -123,7 +127,8 @@ QJsonObject AppSettings::backupSettings() const {
           {"console_expand_limit", m_consoleExpandLimit},
           {"rom_folders", QJsonArray::fromStringList(m_romFolders)},
           {"console_layouts", QJsonArray::fromStringList(m_consoleLayouts)},
-          {"reduced_motion", m_reducedMotion},
+          {"reduced_motion", m_motionPreference == QStringLiteral("reduced")},
+          {"motion", m_motionPreference},
           {"artwork_cache_limit_mb", m_artworkCacheLimitMb},
           {"steam_enabled", m_steamEnabled},
           {"lutris_enabled", m_lutrisEnabled},
@@ -177,7 +182,11 @@ void AppSettings::assignBackupSettings(const QJsonObject& settings) {
   for (const auto& value : settings.value("console_layouts").toArray())
     m_consoleLayouts.append(value.toString());
 
-  m_reducedMotion = settings.value("reduced_motion").toBool();
+  // Before "motion" existed, false only meant the default, which now follows the system.
+  const QString motion = settings.value("motion").toString();
+  m_motionPreference = kMotionPreferences.contains(motion) ? motion
+                       : settings.value("reduced_motion").toBool() ? QStringLiteral("reduced")
+                                                                  : QStringLiteral("system");
   m_artworkCacheLimitMb = settings.value("artwork_cache_limit_mb").toInt();
   m_steamEnabled = settings.value("steam_enabled").toBool();
   m_lutrisEnabled = settings.value("lutris_enabled").toBool();
@@ -230,6 +239,7 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
     if (!settings.contains(key))
       merged.insert(key, before.value(key));
   for (auto value = settings.begin(); value != settings.end(); ++value) merged.insert(value.key(), value.value());
+  if (!settings.contains("motion")) merged.remove("motion");
   assignBackupSettings(merged);
   if (!save()) { assignBackupSettings(before); return false; }
   emit reducedMotionChanged(); emit artworkCacheLimitMbChanged(); emit sourcesChanged();
@@ -274,15 +284,72 @@ void AppSettings::setMetadataAutoIdentify(bool value) {
   emit metadataAutoIdentifyChanged();
 }
 
-bool AppSettings::reducedMotion() const { return m_reducedMotion; }
+bool AppSettings::reducedMotion() const {
+  return m_motionPreference == QStringLiteral("reduced") ||
+         (m_motionPreference == QStringLiteral("system") && m_systemReducedMotion);
+}
 
 void AppSettings::setReducedMotion(bool value) {
-  if (m_reducedMotion == value) {
+  setMotionPreference(value ? QStringLiteral("reduced") : QStringLiteral("full"));
+}
+
+void AppSettings::setMotionPreference(const QString& value) {
+  if (!kMotionPreferences.contains(value) || m_motionPreference == value) {
     return;
   }
-  m_reducedMotion = value;
+  m_motionPreference = value;
   save();
   emit reducedMotionChanged();
+}
+
+void AppSettings::setSystemReducedMotion(bool value) {
+  if (m_systemReducedMotion == value) {
+    return;
+  }
+  m_systemReducedMotion = value;
+  emit reducedMotionChanged();
+}
+
+bool AppSettings::hyprlandAnimationsDisabled(const QByteArray& json) {
+  const QJsonObject option = QJsonDocument::fromJson(json).object();
+  if (option.contains(QStringLiteral("int"))) {
+    return option.value(QStringLiteral("int")).toInt(1) == 0;
+  }
+  return option.value(QStringLiteral("bool")).toBool(true) == false;
+}
+
+bool AppSettings::gtkAnimationsDisabled(const QByteArray& output) {
+  return output.trimmed() == "false";
+}
+
+void AppSettings::detectSystemReducedMotion() {
+  const auto ask = [this](const QString& program, const QStringList& arguments,
+                          bool (*disabled)(const QByteArray&)) {
+    const QString executable = QStandardPaths::findExecutable(program);
+    if (executable.isEmpty()) {
+      return;
+    }
+    auto* process = new QProcess(this);
+    connect(process, &QProcess::finished, this,
+            [this, process, disabled](int exitCode, QProcess::ExitStatus status) {
+              process->deleteLater();
+              if (status == QProcess::NormalExit && exitCode == 0 &&
+                  disabled(process->readAllStandardOutput())) {
+                setSystemReducedMotion(true);
+              }
+            });
+    connect(process, &QProcess::errorOccurred, process, &QObject::deleteLater);
+    process->start(executable, arguments);
+  };
+  if (!qEnvironmentVariableIsEmpty("HYPRLAND_INSTANCE_SIGNATURE")) {
+    ask(QStringLiteral("hyprctl"),
+        {QStringLiteral("getoption"), QStringLiteral("animations:enabled"), QStringLiteral("-j")},
+        &hyprlandAnimationsDisabled);
+  }
+  ask(QStringLiteral("gsettings"),
+      {QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"),
+       QStringLiteral("enable-animations")},
+      &gtkAnimationsDisabled);
 }
 
 int AppSettings::artworkCacheLimitMb() const { return m_artworkCacheLimitMb; }
@@ -979,10 +1046,15 @@ void AppSettings::load() {
         m_gogLibraryPaths.append(path);
     }
   }
-  const QRegularExpression motion(QStringLiteral("(?m)^reduced_motion\\s*=\\s*(true|false)\\s*$"));
+  // Older versions wrote reduced_motion = false on every save, so only true is a choice.
+  const QRegularExpression motion(
+      QStringLiteral("(?m)^motion\\s*=\\s*\"(system|reduced|full)\"\\s*$"));
   const QRegularExpressionMatch motionMatch = motion.match(contents);
+  const QRegularExpression legacyMotion(QStringLiteral("(?m)^reduced_motion\\s*=\\s*true\\s*$"));
   if (motionMatch.hasMatch()) {
-    m_reducedMotion = motionMatch.captured(1) == QStringLiteral("true");
+    m_motionPreference = motionMatch.captured(1);
+  } else if (legacyMotion.match(contents).hasMatch()) {
+    m_motionPreference = QStringLiteral("reduced");
   }
   const QRegularExpression limit(QStringLiteral("(?m)^artwork_cache_limit_mb\\s*=\\s*(\\d+)\\s*$"));
   const QRegularExpressionMatch limitMatch = limit.match(contents);
@@ -1196,7 +1268,8 @@ bool AppSettings::save() {
                      "steam_enabled = %6\nlutris_enabled = %7\nheroic_enabled = %8\n"
                      "gog_enabled = %9\nfaugus_enabled = %10\nretroarch_enabled = %11\n"
                      "battlenet_enabled = %12\nxodus_enabled = %13\n")
-          .arg(m_reducedMotion ? QStringLiteral("true") : QStringLiteral("false"))
+          .arg(m_motionPreference == QStringLiteral("reduced") ? QStringLiteral("true")
+                                                                : QStringLiteral("false"))
           .arg(m_artworkCacheLimitMb)
           .arg(m_steamId)
           .arg(m_igdbClientId)
@@ -1284,6 +1357,7 @@ bool AppSettings::save() {
                                                 : QStringLiteral("false"))
                   .arg(m_discordPresence ? QStringLiteral("true") : QStringLiteral("false"));
   contents += QStringLiteral("stats_period = \"%1\"\n").arg(m_statsPeriod);
+  contents += QStringLiteral("motion = \"%1\"\n").arg(m_motionPreference);
   contents += QStringLiteral("cover_size = %1\ncouch_cover_size = %2\n").arg(m_coverSize).arg(m_couchCoverSize);
   contents += QStringLiteral("gog_library_paths = ") +
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))

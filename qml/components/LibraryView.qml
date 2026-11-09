@@ -89,7 +89,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         keyNavigationEnabled: true
         highlightFollowsCurrentItem: true
-        highlightMoveDuration: 110
+        highlightMoveDuration: Preferences.reducedMotion ? 0 : 110
         cacheBuffer: height
         // Reused delegates can retain stale caption positions after hidden
         // Recent updates. Keep normal viewport caching, without the reuse pool.

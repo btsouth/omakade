@@ -1086,6 +1086,8 @@ int main(int argc, char* argv[]) {
   AppSettings preferences(settingsPath);
   if (reducedMotionRequest) {
     preferences.setReducedMotion(true);
+  } else if (!isolatedTest) {
+    preferences.detectSystemReducedMotion();
   }
   if (startupNavigationTest && application.arguments().contains("--startup-grid")) {
     preferences.setCouchLibraryView(QStringLiteral("grid"));

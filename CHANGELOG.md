@@ -4,6 +4,10 @@
 
 - The controller favorite button no longer favorites the game behind an open editor or
   dialog, such as the artwork editor opened from the game details.
+- Reduced motion now follows the desktop by default. Omakade reduces motion when
+  Hyprland animations or GTK animations are off, and Settings > Appearance offers System,
+  Reduced and Full. An earlier Reduced choice is kept. The library grid selection also
+  stops sliding when motion is reduced.
 - The app and package are about 80 MB smaller. Console cards are now bundled as 768x1152
   WebP, only for consoles Omakade supports, instead of every full-size PNG master, and they
   decode faster. The Nintendo DS card now shows its console art instead of a plain gradient.
