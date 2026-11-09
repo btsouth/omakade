@@ -16,10 +16,13 @@ The matrix covers wrapped, 720p, 1080p, ultrawide and 4K layouts. These tests ar
 
 `omakade_startup_navigation_*` checks cold launches in desktop mode and both Game Mode layouts. Unlike the route tests, it never requests window activation or assigns focus. It uses the normal startup activation and first-frame controller initialization, then checks the first arrow and confirm. Separate processes test keyboard and SDL input, populated and empty libraries, and delayed Game Mode results. This catches an active window whose focus stops on the library container instead of an interactive destination.
 
-Run desktop-sensitive tests in isolation:
+These tests render offscreen and need no display. From your own desktop session, run
+them detached from it, as described in
+[Tests without a desktop](../CONTRIBUTING.md#tests-without-a-desktop):
 
 ```sh
-omabox run -- ctest --preset release --output-on-failure -R 'navigation|directions|controls'
+env -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
+  dbus-run-session -- ctest --preset release --output-on-failure -R 'navigation|directions|controls'
 ```
 
 New controls and changed layouts must pass this contract. Routine navigation regression testing belongs in automation. Physical controller checks are still useful for device pairing, button mapping and streaming transport; they are not a substitute for the navigation suite.

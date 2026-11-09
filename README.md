@@ -14,7 +14,8 @@ with a keyboard, mouse, or controller.
 
 [Watch the demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4) ·
 [Homepage](https://btsouth.github.io/omakade/) · [Guide](docs/GUIDE.md) ·
-[Compatibility](docs/COMPATIBILITY.md) · [Support](SUPPORT.md)
+[Compatibility](docs/COMPATIBILITY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) ·
+[Support](SUPPORT.md)
 
 ## Features
 
@@ -120,10 +121,13 @@ connections, recording, stats, backups, streaming, and the command line.
 - [Emulator save protection](docs/SAVE-SETS.md): automatic save copies and restores
 - [Native ports](docs/NATIVE-PORTS.md): native PC ports of console games
 - [Compatibility](docs/COMPATIBILITY.md): what each source supports, and test reports
+- [Troubleshooting](docs/TROUBLESHOOTING.md): missing games, sources that are not
+  found, launch errors, covers, and logs
 
 ## Build
 
-See [Contributing](CONTRIBUTING.md) for dependencies and build/test commands.
+See [Contributing](CONTRIBUTING.md) for dependencies and build/test commands, and
+[Architecture](docs/ARCHITECTURE.md) for a map of the source tree.
 
 ## Local data
 

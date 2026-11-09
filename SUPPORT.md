@@ -1,7 +1,13 @@
 # Support
 
-Open a [GitHub issue](https://github.com/btsouth/omakade/issues/new/choose) with
-these details:
+Start with [Troubleshooting](docs/TROUBLESHOOTING.md). It covers missing games,
+filters, sources that are not found, where each launcher is read from, ROM folders,
+RetroArch cores, Battle.net prefixes, covers, Repair Library, and how to collect
+logs.
+
+If that does not fix it, open a
+[GitHub issue](https://github.com/btsouth/omakade/issues/new/choose) with these
+details:
 
 - Omakade version
 - Omarchy version and active theme
@@ -12,9 +18,10 @@ these details:
 - `umu-launcher` version for a direct Windows GOG game
 - Steps that reproduce the problem
 
-Open diagnostics with `Ctrl+D` to see library and cache status. Do not post a
-Steam or RetroAchievements Web API key, full configuration directory, or
-private account data.
+`Ctrl+D` opens Settings. Under **Sources**, each source's **Details** shows its
+status, the folders it found and any warnings; include those. **About & help** shows
+the version and database path. Do not post a Steam or RetroAchievements Web API key,
+full configuration directory, or private account data.
 
 Omakade can ask Steam to begin installing an owned game. Steam remains
 responsible for installation, updates, moves, and removal. Problems with those

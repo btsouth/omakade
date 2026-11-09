@@ -17,6 +17,8 @@ Saved Filters and Pick a Game.
 - [Emulator save protection](SAVE-SETS.md): automatic save copies and restores
 - [Native ports](NATIVE-PORTS.md): native PC ports of console games
 - [Compatibility](COMPATIBILITY.md): what each source supports, and test reports
+- [Troubleshooting](TROUBLESHOOTING.md): missing games, sources that are not found,
+  launch errors, covers, and logs
 
 ## In this guide
 
