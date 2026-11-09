@@ -140,7 +140,7 @@ set_tests_properties(omakade_qml_smoke PROPERTIES
 )
 
 add_test(NAME omakade_controller_navigation
-  COMMAND omakade --controller-navigation-test --uninstalled-layout-test
+  COMMAND omakade-uitest --controller-navigation-test --uninstalled-layout-test
 )
 set_tests_properties(omakade_controller_navigation PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -231,7 +231,7 @@ foreach(layout IN ITEMS desktop couch-detail couch-grid)
         list(APPEND startup_args --startup-${state})
       endif()
       add_test(NAME omakade_startup_navigation_${layout}_${input}_${state}
-        COMMAND omakade ${startup_args})
+        COMMAND omakade-uitest ${startup_args})
       set_tests_properties(omakade_startup_navigation_${layout}_${input}_${state} PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
         TIMEOUT 15
