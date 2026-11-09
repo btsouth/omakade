@@ -38,6 +38,7 @@ public:
   QString backupRoot() const { return m_root; }
   bool recoveryPending() const { return m_sets.pending(); }
   Q_INVOKABLE bool retryRecovery();
+  Q_INVOKABLE bool keepCurrentSaves();
   // Returns the supported existing save path, or empty without guessing.
   QString discover(const QString& game, const QString& core, bool allowMissing = false) const;
   bool protect(const QString& game, const QString& core, bool flatpak = false);
