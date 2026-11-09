@@ -85,7 +85,8 @@ bool SingleInstance::sendCommand(const QString& serverName, const QByteArray& co
   if (!serverName.isEmpty()) {
     return deliver(serverName, command);
   }
-  if (deliver(defaultServerName(), command)) {
+  const QString current = defaultServerName();
+  if (!current.isEmpty() && deliver(current, command)) {
     return true;
   }
   const QString legacy = SessionDatabase::legacyAppServerName();
@@ -99,6 +100,10 @@ bool SingleInstance::claimOrNotify(const QByteArray& command) {
     if (!legacy.isEmpty() && deliver(legacy, command)) {
       return false;
     }
+  }
+  if (m_serverName.isEmpty()) {
+    qWarning("Running without single-instance activation: no usable XDG_RUNTIME_DIR.");
+    return true;
   }
   if (listenOwnerOnly(m_server, m_serverName)) {
     return true;

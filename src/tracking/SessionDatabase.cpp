@@ -35,9 +35,10 @@ QString defaultConfigPath() {
 
 QString appServerName() {
   // An absolute path in the owner-only runtime directory. A bare name would resolve into
-  // the shared temp dir, where another user could claim it first.
-  return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) +
-         QStringLiteral("/omakade-%1").arg(getuid());
+  // the shared temp dir, where another user could claim it first. Empty when Qt rejects
+  // the runtime directory, rather than a path at the filesystem root.
+  const QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+  return runtime.isEmpty() ? QString() : runtime + QStringLiteral("/omakade-%1").arg(getuid());
 }
 
 QString legacyAppServerName() {

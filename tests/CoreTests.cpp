@@ -1241,6 +1241,7 @@ private slots:
   void launchKeysRoundTripAndResolveInstallations();
   void singleInstanceForwardsPlayAndQuitCommands();
   void singleInstanceSocketIsOwnerOnly();
+  void singleInstanceRunsAloneWithoutRuntimeDir();
   void homeButtonSettingAndRetroArchMenuOverride();
   void sunshineIntegrationWritesOnlyItsOwnEntries();
   void secondInstanceRequestsActivation();
@@ -6434,6 +6435,33 @@ void CoreTests::singleInstanceSocketIsOwnerOnly() {
   QVERIFY(legacy.waitForNewConnection(1000));
   delete legacy.nextPendingConnection();
   QVERIFY(!QFileInfo::exists(runtime.filePath(socketName)));
+}
+
+void CoreTests::singleInstanceRunsAloneWithoutRuntimeDir() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QString notADir = temp.filePath(QStringLiteral("runtime"));
+  {
+    QFile file(notADir);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+  }
+  const QByteArray previousRuntime = qgetenv("XDG_RUNTIME_DIR");
+  const QByteArray previousTemp = qgetenv("TMPDIR");
+  const auto restore = qScopeGuard([&] {
+    if (previousRuntime.isNull()) qunsetenv("XDG_RUNTIME_DIR");
+    else qputenv("XDG_RUNTIME_DIR", previousRuntime);
+    if (previousTemp.isNull()) qunsetenv("TMPDIR");
+    else qputenv("TMPDIR", previousTemp);
+  });
+  // Qt rejects a runtime dir that is not a directory. The socket name must then be empty,
+  // not a path at the filesystem root, and the app still opens on its own.
+  qputenv("XDG_RUNTIME_DIR", notADir.toUtf8());
+  qputenv("TMPDIR", temp.path().toUtf8());
+  QVERIFY(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation).isEmpty());
+  QVERIFY(SessionDatabase::appServerName().isEmpty());
+  SingleInstance alone;
+  QVERIFY(alone.claimOrNotify());
+  QVERIFY(!SingleInstance::sendCommand({}, "activate"));
 }
 
 void CoreTests::sunshineIntegrationWritesOnlyItsOwnEntries() {

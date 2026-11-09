@@ -40,6 +40,7 @@ struct SessionInterval {
 
 [[nodiscard]] QString defaultDatabasePath();
 [[nodiscard]] QString defaultConfigPath();
+// Empty when there is no usable runtime directory.
 [[nodiscard]] QString appServerName();
 // The pre-1.19 temp dir socket, only when this user owns it; empty otherwise.
 [[nodiscard]] QString legacyAppServerName();

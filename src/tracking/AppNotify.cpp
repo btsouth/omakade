@@ -21,7 +21,8 @@ bool deliver(const QString& name, const QByteArray& command, int timeoutMs) {
 } // namespace
 
 bool send(const QByteArray& command, int timeoutMs) {
-  if (deliver(SessionDatabase::appServerName(), command, timeoutMs)) return true;
+  const QString current = SessionDatabase::appServerName();
+  if (!current.isEmpty() && deliver(current, command, timeoutMs)) return true;
   const QString legacy = SessionDatabase::legacyAppServerName();
   return !legacy.isEmpty() && deliver(legacy, command, timeoutMs);
 }

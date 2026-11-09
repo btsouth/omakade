@@ -64,8 +64,8 @@ InGameGuide::InGameGuide(PlaySessionStore* sessions, UnifiedGameModel* library,
                  QStringLiteral("/omakade-guide-%1").arg(::getuid());
   m_server.setSocketOptions(QLocalServer::UserAccessOption);
   if (enabled) {
-    // A second Omakade whose temp dir hides the first from SingleInstance must not take
-    // over a live guide socket: the shell would lose the running app's pad input.
+    // A second Omakade that SingleInstance did not stop must not take over a live guide
+    // socket: the shell would lose the running app's pad input.
     QLocalSocket probe;
     probe.connectToServer(m_socketPath);
     if (probe.waitForConnected(250)) {

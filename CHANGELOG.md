@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Omakade's single-instance socket now lives in your owner-only runtime directory
+  instead of the shared temp directory, so another user on the same machine cannot
+  claim it first. A window opened before the update still gets the command.
 - On a Nintendo controller the in-game guide now selects with A and goes back with B, as
   the library does. It had them the other way round.
 
