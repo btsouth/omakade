@@ -10,6 +10,8 @@
   shows in Stats, Year in Review and the game's Play History. Steam's own total is
   unchanged. Non-Steam shortcuts are not recorded, an emulator started from Steam is
   recorded once as the emulator, and Pause When Unfocused follows the game's window.
+  Recording starts about ten seconds after launch and only while the Steam source is on.
+  Discord Status now shows Steam games too, by their Steam title.
 - A favorite now looks like one: the game details and Game Mode favorite button shows a
   filled accent heart with the selected fill and says FAVORITED, and screen readers hear it
   as checked. Library and Game Mode cards mark favorites with a filled heart on an accent

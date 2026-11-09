@@ -427,12 +427,12 @@ which game is running from the file the emulator was started with, so games star
 from Omakade, another launcher or a terminal all count. On Hyprland it also recognizes a
 game you load from inside the emulator when the window title names a game in your
 library. Dolphin reports the game it is running, and so does PCSX2 with file logging on.
-A Steam game counts from the moment Steam starts it, whether you start it from Omakade
-or from Steam, as long as Omakade lists it as installed.
+A Steam game counts from about ten seconds after Steam starts it, whether you start it
+from Omakade or from Steam, as long as the Steam source is on and lists it as installed.
 
 **What is not recorded.** A game loaded from inside an emulator that none of those
 checks can identify, non-Steam shortcuts you added to Steam, and Steam games Omakade
-does not list as installed. Heroic, Lutris, Faugus, Battle.net, direct GOG and manual
+does not list as installed, or any Steam game while the Steam source is off. Heroic, Lutris, Faugus, Battle.net, direct GOG and manual
 games are not recorded; their time comes from the launcher, where it keeps one.
 
 **How time is counted.** Time keeps counting while the emulator is open, including on
@@ -457,7 +457,8 @@ separately. **Play History** pages through sessions, and **Delete All Recorded
 Sessions…** clears them after confirmation.
 
 **Discord Status** on the same Settings page shows the game you are playing in
-Discord. It is off by default and sends only the game name and source; see
+Discord, including Steam games. It is off by default and sends only the game name and
+source; see
 [Privacy](../PRIVACY.md#statistics-and-discord-presence).
 
 The [recording coverage notes](RECORDING-COVERAGE.md) list what has been tested for
