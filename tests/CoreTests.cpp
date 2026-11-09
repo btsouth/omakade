@@ -17,6 +17,7 @@
 #include <QStandardItemModel>
 #include <csignal>
 #include <openssl/evp.h>
+#include <pwd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -6440,9 +6441,14 @@ void CoreTests::singleInstanceSocketIsOwnerOnly() {
 void CoreTests::singleInstanceRunsAloneWithoutRuntimeDir() {
   QTemporaryDir temp;
   QVERIFY(temp.isValid());
+  // Qt falls back to <temp>/runtime-<user> when XDG_RUNTIME_DIR is unusable, so block both
+  // with plain files.
+  const passwd* user = getpwuid(geteuid());
   const QString notADir = temp.filePath(QStringLiteral("runtime"));
-  {
-    QFile file(notADir);
+  const QString fallback =
+      temp.filePath(QStringLiteral("runtime-") + QString::fromLocal8Bit(user ? user->pw_name : ""));
+  for (const QString& path : {notADir, fallback}) {
+    QFile file(path);
     QVERIFY(file.open(QIODevice::WriteOnly));
   }
   const QByteArray previousRuntime = qgetenv("XDG_RUNTIME_DIR");
@@ -6453,8 +6459,8 @@ void CoreTests::singleInstanceRunsAloneWithoutRuntimeDir() {
     if (previousTemp.isNull()) qunsetenv("TMPDIR");
     else qputenv("TMPDIR", previousTemp);
   });
-  // Qt rejects a runtime dir that is not a directory. The socket name must then be empty,
-  // not a path at the filesystem root, and the app still opens on its own.
+  // With no usable runtime dir the socket name is empty, not a path at the filesystem root,
+  // and the app still opens on its own.
   qputenv("XDG_RUNTIME_DIR", notADir.toUtf8());
   qputenv("TMPDIR", temp.path().toUtf8());
   QVERIFY(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation).isEmpty());
