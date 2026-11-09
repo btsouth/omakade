@@ -6274,6 +6274,49 @@ void CoreTests::motionFollowsSystemUnlessChosen() {
   QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
   QVERIFY(!settings.applyBackupSettings({{"motion", "fast"}}, false));
   QCOMPARE(settings.backupSettings().value("motion").toString(), QStringLiteral("full"));
+  // A partial merge without either motion key keeps the current choice.
+  QVERIFY(settings.applyBackupSettings({{"library_sort_mode", "installed"}}, false));
+  QCOMPARE(settings.motionPreference(), QStringLiteral("full"));
+
+  // Detection asks the desktop tools on PATH, and only asks hyprctl inside Hyprland.
+  {
+    const QString bin = directory.path() + QStringLiteral("/bin");
+    QVERIFY(QDir().mkpath(bin));
+    const QString hyprctlRan = directory.path() + QStringLiteral("/hyprctl-ran");
+    const auto writeTool = [&bin](const QString& name, const QByteArray& script) {
+      writeFile(bin + QLatin1Char('/') + name, script);
+      return QFile::setPermissions(bin + QLatin1Char('/') + name,
+                                   QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+    };
+    QVERIFY(writeTool(QStringLiteral("hyprctl"),
+                      "#!/bin/sh\n: > '" + hyprctlRan.toUtf8() + "'\necho '{\"int\":0}'\n"));
+    // gsettings says animations are off but fails, so its answer does not count.
+    QVERIFY(writeTool(QStringLiteral("gsettings"), "#!/bin/sh\necho false\nexit 1\n"));
+    const auto restorePath = redirectPath(bin);
+    const bool signatureWasSet = qEnvironmentVariableIsSet("HYPRLAND_INSTANCE_SIGNATURE");
+    const QByteArray previousSignature = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    const auto restoreSignature = qScopeGuard([signatureWasSet, previousSignature] {
+      if (signatureWasSet) {
+        qputenv("HYPRLAND_INSTANCE_SIGNATURE", previousSignature);
+      } else {
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+      }
+    });
+    qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    AppSettings detecting(directory.path() + QStringLiteral("/detect.toml"));
+    detecting.detectSystemReducedMotion();
+    QVERIFY(!detecting.findChildren<QProcess*>().isEmpty());
+    QTRY_VERIFY(detecting.findChildren<QProcess*>().isEmpty());
+    QVERIFY(!detecting.reducedMotion());
+    QVERIFY(!QFile::exists(hyprctlRan));
+
+    qputenv("HYPRLAND_INSTANCE_SIGNATURE", "motion-test");
+    QSignalSpy changed(&detecting, &AppSettings::reducedMotionChanged);
+    detecting.detectSystemReducedMotion();
+    QVERIFY(changed.wait());
+    QVERIFY(QFile::exists(hyprctlRan));
+    QVERIFY(detecting.reducedMotion());
+  }
 
   QVERIFY(AppSettings::hyprlandAnimationsDisabled(
       R"({"option":"animations:enabled","int":0,"set":true})"));

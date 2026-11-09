@@ -239,7 +239,8 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
     if (!settings.contains(key))
       merged.insert(key, before.value(key));
   for (auto value = settings.begin(); value != settings.end(); ++value) merged.insert(value.key(), value.value());
-  if (!settings.contains("motion")) merged.remove("motion");
+  // A legacy reduced_motion without motion decides the preference on its own.
+  if (!settings.contains("motion") && settings.contains("reduced_motion")) merged.remove("motion");
   assignBackupSettings(merged);
   if (!save()) { assignBackupSettings(before); return false; }
   emit reducedMotionChanged(); emit artworkCacheLimitMbChanged(); emit sourcesChanged();
