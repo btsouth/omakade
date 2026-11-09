@@ -71,6 +71,7 @@
 #include "streaming/SunshineIntegration.h"
 #include "theme/OmarchyTheme.h"
 #include "tracking/PlaySessionStore.h"
+#include "tracking/PrivateStorage.h"
 #include "tracking/ProcFs.h"
 #include "tracking/SessionDatabase.h"
 #include "saves/SaveBackups.h"
@@ -1065,6 +1066,9 @@ int main(int argc, char* argv[]) {
   if (!isolatedTest && !singleInstance.claimOrNotify(instanceCommand)) {
     return EXIT_SUCCESS;
   }
+  // Before any database or settings file is opened, and on every start so an older
+  // installation's readable folders are tightened too.
+  if (!isolatedTest) PrivateStorage::secureDefaults();
   const QString settingsPath =
       isolatedTest
           ? QDir::tempPath() +

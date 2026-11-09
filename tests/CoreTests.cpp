@@ -20,6 +20,7 @@
 #include <pwd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "achievements/SteamAchievementApi.h"
@@ -101,6 +102,7 @@
 #include "theme/OmarchyTheme.h"
 #include "tracking/AttributionAdapter.h"
 #include "tracking/PlaySessionStore.h"
+#include "tracking/PrivateStorage.h"
 #include "tracking/ProcFs.h"
 #include "tracking/HyprlandWindows.h"
 #include "tracking/ProcessMatcher.h"
@@ -1324,6 +1326,8 @@ private slots:
   void metadataHeroUsesProviderImageIds();
   void sessionRecoveryPreservesLiveProgress();
   void sessionDaemonRejectsDuplicateOwner();
+  void privateStorageTightensExistingFolders();
+  void privateStorageCoversNewDatabaseAndSettings();
   void sessionDaemonRetriesUnavailableStorage();
   void sessionBaselineHandlesFirstAndLateObservation();
   void coverSizesPersistIndependently();
@@ -14275,9 +14279,111 @@ void CoreTests::metadataRefreshReplacesProviderFieldsAndPersists() {
   QCOMPARE(reopened.entry("example").value("igdbId").toLongLong(), qint64(42));
 }
 
+namespace {
+// The owner, group and other bits of a path, without Qt's current-user bits.
+QFile::Permissions modeOf(const QString& path) {
+  return QFileInfo(path).permissions() &
+         (QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ReadGroup |
+          QFile::WriteGroup | QFile::ExeGroup | QFile::ReadOther | QFile::WriteOther |
+          QFile::ExeOther);
+}
+const QFile::Permissions kPrivateFolder = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+const QFile::Permissions kPrivateFile = QFile::ReadOwner | QFile::WriteOwner;
+
+// A permissive umask, as many desktops use, restored when the test ends.
+auto permissiveUmask() {
+  const mode_t previous = ::umask(022);
+  return qScopeGuard([previous] { ::umask(previous); });
+}
+
+auto redirectXdgHomes(const QString& root) {
+  const QList<QByteArray> names{"XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME",
+                                "XDG_CACHE_HOME"};
+  QList<std::optional<QByteArray>> previous;
+  for (const auto& name : names) {
+    previous.append(qEnvironmentVariableIsSet(name.constData())
+                        ? std::optional<QByteArray>(qgetenv(name.constData()))
+                        : std::nullopt);
+    qputenv(name.constData(), (root + '/' + QString::fromLatin1(name).toLower()).toUtf8());
+  }
+  return qScopeGuard([names, previous] {
+    for (qsizetype i = 0; i < names.size(); ++i) {
+      if (previous[i])
+        qputenv(names[i].constData(), *previous[i]);
+      else
+        qunsetenv(names[i].constData());
+    }
+  });
+}
+} // namespace
+
+// An earlier version left the library, settings and caches readable by other users.
+// Startup tightens them without changing the umask that games inherit.
+void CoreTests::privateStorageTightensExistingFolders() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const auto umaskGuard = permissiveUmask();
+  const auto homes = redirectXdgHomes(temp.path());
+  const QString data = temp.filePath("xdg_data_home/omakade");
+  const QString config = temp.filePath("xdg_config_home/omakade");
+  const QString qtCache = temp.filePath("xdg_cache_home/Omakade");
+  QVERIFY(QDir().mkpath(data));
+  QVERIFY(QDir().mkpath(config));
+  QVERIFY(QDir().mkpath(qtCache));
+  const QStringList files{data + "/library.sqlite3", data + "/library.sqlite3-wal",
+                          data + "/library.sqlite3-shm", data + "/romm-catalog.sqlite3",
+                          config + "/config.toml"};
+  for (const auto& path : files)
+    writeFile(path, "x");
+  QVERIFY(modeOf(data) & QFile::ReadOther);
+  QVERIFY(modeOf(config + "/config.toml") & QFile::ReadOther);
+  // A link in the data folder is left alone rather than followed.
+  const QString outside = temp.filePath("outside.txt");
+  writeFile(outside, "x");
+  QVERIFY(QFile::link(outside, data + "/romm-catalog.sqlite3-wal"));
+
+  PrivateStorage::secureDefaults();
+
+  for (const auto& folder : {data, config, temp.filePath("xdg_state_home/omakade"),
+                             temp.filePath("xdg_cache_home/omakade"), qtCache})
+    QCOMPARE(modeOf(folder), kPrivateFolder);
+  for (const auto& path : files)
+    QCOMPARE(modeOf(path), kPrivateFile);
+  QVERIFY(modeOf(outside) & QFile::ReadOther);
+  QCOMPARE(::umask(022), mode_t(022));
+}
+
+// New databases, their WAL files and saved settings are owner-only from the start.
+void CoreTests::privateStorageCoversNewDatabaseAndSettings() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const auto umaskGuard = permissiveUmask();
+  const QString path = temp.filePath("library.sqlite3");
+  const QString connection = QStringLiteral("test-private-database");
+  {
+    QSqlDatabase database;
+    QVERIFY(SessionDatabase::open(database, path, connection));
+    QVERIFY(SessionDatabase::insertClosedSession(database, "game", "Steam", 1000, 1100, 100, 1, 1));
+    QVERIFY(QFileInfo::exists(path + "-wal"));
+    for (const char* suffix : {"", "-wal", "-shm"})
+      QCOMPARE(modeOf(path + QLatin1String(suffix)), kPrivateFile);
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  const QString settingsPath = temp.filePath("config/omakade/config.toml");
+  AppSettings settings(settingsPath);
+  settings.setCoverSize(61);
+  QVERIFY(QFileInfo::exists(settingsPath));
+  QCOMPARE(modeOf(temp.filePath("config/omakade")), kPrivateFolder);
+  QCOMPARE(modeOf(settingsPath), kPrivateFile);
+}
+
 void CoreTests::sessionDaemonRejectsDuplicateOwner() {
   QTemporaryDir temp;
   QVERIFY(temp.isValid());
+  // The daemon creates the library at login, so it must not rely on the umask either.
+  const auto umaskGuard = permissiveUmask();
   const auto config = temp.filePath("config");
   const auto data = temp.filePath("data");
   QVERIFY(QDir().mkpath(config + "/omakade"));
@@ -14288,6 +14394,8 @@ void CoreTests::sessionDaemonRejectsDuplicateOwner() {
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   env.insert("XDG_CONFIG_HOME", config);
   env.insert("XDG_DATA_HOME", data);
+  env.insert("XDG_STATE_HOME", temp.filePath("state"));
+  env.insert("XDG_CACHE_HOME", temp.filePath("cache"));
   env.insert("QT_FORCE_STDERR_LOGGING", "1");
   QProcess first, duplicate, restarted;
   const auto cleanup = qScopeGuard([&] {
@@ -14303,6 +14411,9 @@ void CoreTests::sessionDaemonRejectsDuplicateOwner() {
   first.start(executable, {});
   QVERIFY(first.waitForStarted());
   QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(data + "/omakade/library.sqlite3"), 5000);
+  QCOMPARE(modeOf(data + "/omakade"), kPrivateFolder);
+  QCOMPARE(modeOf(config + "/omakade"), kPrivateFolder);
+  QTRY_COMPARE_WITH_TIMEOUT(modeOf(data + "/omakade/library.sqlite3"), kPrivateFile, 5000);
   duplicate.setProcessEnvironment(env);
   duplicate.start(executable, {});
   QVERIFY(duplicate.waitForFinished(5000));
