@@ -26,6 +26,7 @@ private slots:
   void recordingFailureKeepsGuide();
   void upgradeAndMergedRequests();
   void enablesServiceOnce();
+  void enablesServiceOffOmarchy();
   void reconnectRefreshesEnvironment();
   void preparingDeadlineOwnsDecision();
   void failedProvisionRetries();
@@ -428,6 +429,24 @@ void ResidentGuideTests::enablesServiceOnce() {
   // Once enabled, a later `systemctl --user disable` stays in force.
   QFile::remove(log); GuideClient::ensureResident(this); QTRY_VERIFY(!property("guideStarting").toBool());
   QVERIFY(calls().contains("is-active")); QVERIFY(!calls().contains("enable"));
+}
+
+void ResidentGuideTests::enablesServiceOffOmarchy() {
+  // Off Omarchy, Omakade only sets the service to start at login, once, and never starts it.
+  Fixture fixture;
+  const auto state = fixture.root.filePath("state"), marker = state + "/omakade/sessiond-enabled";
+  const auto oldPath = qgetenv("PATH"), oldState = qgetenv("XDG_STATE_HOME");
+  qputenv("PATH", fixture.environment.value("PATH").toUtf8()); qputenv("XDG_STATE_HOME", state.toUtf8());
+  const auto cleanup = qScopeGuard([&] { qputenv("PATH", oldPath); qputenv("XDG_STATE_HOME", oldState); });
+  const auto log = fixture.root.filePath("systemctl.log");
+  const auto calls = [&] { QFile file(log); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); };
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\nexit 0\n", true));
+  bool done = false;
+  GuideClient::enableResidentOnce(this, [&] { done = true; }); QTRY_VERIFY(done);
+  QCOMPARE(calls(), QByteArray("--user enable omakade-sessiond.service\n")); QVERIFY(QFileInfo::exists(marker));
+  QFile::remove(log); done = false;
+  GuideClient::enableResidentOnce(this, [&] { done = true; }); QVERIFY(done);
+  QVERIFY(calls().isEmpty());
 }
 
 void ResidentGuideTests::reconnectRefreshesEnvironment() {

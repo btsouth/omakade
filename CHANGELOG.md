@@ -12,10 +12,9 @@
 - When the play-session recorder blocks a restore, the startup screen offers **Stop
   Recorder and Restore** instead of asking you to run systemctl.
 - The package no longer starts `omakade-sessiond` for every account on the computer.
-  On Omarchy, Omakade enables it for your account the first time it opens, so after
-  updating, open Omakade once to keep the recorder and guide starting at login.
-  Elsewhere, run `systemctl --user enable --now omakade-sessiond`. Disabling it with
-  `systemctl --user disable omakade-sessiond` now works too.
+  Omakade enables it for your account the first time it opens, on Omarchy or not, so
+  after updating, open Omakade once to keep the recorder and guide starting at login.
+  Disabling it with `systemctl --user disable omakade-sessiond` now works too.
 - The bundled in-game guide plugin is licensed GPL-3.0-or-later like the rest of Omakade,
   and its manifest carries the Omakade version instead of 0.1.0.
 - Omakade's single-instance socket now lives in your owner-only runtime directory

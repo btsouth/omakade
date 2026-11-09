@@ -2080,6 +2080,10 @@ int main(int argc, char* argv[]) {
     guideSnapshotTimer.start();
     GuideClient::ensureResident(&inGameGuide);
     QObject::connect(&launcher, &GameLauncher::gameRunningChanged, &inGameGuide, publishGuideGames);
+  } else if (!isolatedTest) {
+    // Off Omarchy the package no longer starts the recorder at login, so set it to start
+    // there for this user once. It keeps playtime and Highlights recording after updates.
+    GuideClient::enableResidentOnce(&inGameGuide);
   }
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("Home", &home);

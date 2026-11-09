@@ -406,9 +406,9 @@ To turn recording on:
 
 1. Open **Settings → Library & launching** and set **Record Playtime** to On.
    It is off on new installations.
-2. Make sure the recorder, `omakade-sessiond`, is running. On Omarchy, Omakade starts
-   it when it opens, and the first time it opens it sets it to start at login. To start
-   it yourself, or keep it running from login:
+2. Make sure the recorder, `omakade-sessiond`, is running. The first time Omakade opens
+   it sets the recorder to start at login, and on Omarchy it also starts it whenever it
+   opens. To start it yourself, or keep it running from login:
 
    ```bash
    systemctl --user enable --now omakade-sessiond
