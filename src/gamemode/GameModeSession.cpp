@@ -349,11 +349,24 @@ void GameModeSession::finishRefresh() {
   m_sinks = devices.sinks;
   m_defaultSink = devices.defaultSink;
   emit devicesChanged();
-  if (devices.ranRecovery &&
-      (!devices.recovered.output.isEmpty() || !devices.recovered.notes.isEmpty())) {
-    QStringList message{QStringLiteral("An interrupted Game Mode session was undone.")};
-    message.append(devices.recovered.notes);
-    emit notice(message.join(QLatin1Char(' ')));
+  const GameModeController::Result& recovered = devices.recovered;
+  if (devices.ranRecovery && !recovered.ok) {
+    // Try again on the next refresh: audio or the compositor may only be starting up.
+    m_recoveryChecked = false;
+    QStringList message{recovered.error};
+    message.append(recovered.notes);
+    const QString text = message.join(QLatin1Char(' '));
+    if (text != m_recoveryFailure) emit notice(text);
+    m_recoveryFailure = text;
+  } else if (devices.ranRecovery) {
+    m_recoveryFailure.clear();
+    if (!recovered.output.isEmpty() || !recovered.notes.isEmpty()) {
+      QStringList message;
+      if (!recovered.setAside)
+        message.append(QStringLiteral("An interrupted Game Mode session was undone."));
+      message.append(recovered.notes);
+      emit notice(message.join(QLatin1Char(' ')));
+    }
   }
   if (m_changePending) {
     startChange();

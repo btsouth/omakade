@@ -1282,6 +1282,7 @@ private slots:
   void metadataHeroUsesProviderImageIds();
   void sessionRecoveryPreservesLiveProgress();
   void sessionDaemonRejectsDuplicateOwner();
+  void sessionDaemonRetriesUnavailableStorage();
   void sessionBaselineHandlesFirstAndLateObservation();
   void coverSizesPersistIndependently();
   void controllerNavigationFollowsWindowFocus();
@@ -13758,6 +13759,54 @@ void CoreTests::sessionDaemonRejectsDuplicateOwner() {
   QCOMPARE(statusChanged.count(), 2);
 }
 
+// Storage that is unavailable when the recorder starts must not end recording for the
+// whole session: once it comes back, the same daemon takes over the database.
+void CoreTests::sessionDaemonRetriesUnavailableStorage() {
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const auto config = temp.filePath("config");
+  const auto data = temp.filePath("data");
+  const auto runtime = temp.filePath("runtime");
+  QVERIFY(QDir().mkpath(config + "/omakade"));
+  QVERIFY(QDir().mkpath(data));
+  QVERIFY(QDir().mkpath(runtime));
+  QVERIFY(QFile::setPermissions(runtime, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                             QFileDevice::ExeOwner));
+  QFile profiles(config + "/omakade/sessiond-profiles.json");
+  QVERIFY(profiles.open(QIODevice::WriteOnly));
+  profiles.write(R"({"romExtensions":[],"emulators":[]})");
+  profiles.close();
+  // A file where the data directory belongs makes the storage unavailable.
+  QFile blocker(data + "/omakade");
+  QVERIFY(blocker.open(QIODevice::WriteOnly));
+  blocker.write("not a directory");
+  blocker.close();
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  env.insert("XDG_CONFIG_HOME", config);
+  env.insert("XDG_DATA_HOME", data);
+  env.insert("XDG_RUNTIME_DIR", runtime);
+  env.insert("QT_FORCE_STDERR_LOGGING", "1");
+  QProcess daemon;
+  const auto cleanup = qScopeGuard([&] {
+    if (daemon.state() != QProcess::NotRunning) {
+      daemon.kill();
+      daemon.waitForFinished();
+    }
+  });
+  daemon.setProcessEnvironment(env);
+  daemon.start(QCoreApplication::applicationDirPath() + "/../omakade-sessiond", {});
+  QVERIFY(daemon.waitForStarted());
+  QByteArray log;
+  QTRY_VERIFY_WITH_TIMEOUT((log += daemon.readAllStandardError()).contains("retrying"), 5000);
+  QVERIFY(log.contains("could not create the data directory"));
+  const auto databasePath = data + "/omakade/library.sqlite3";
+  QVERIFY(!PlaySessionStore::recorderOwnsDatabase(databasePath));
+  QVERIFY(blocker.remove());
+  QTRY_VERIFY_WITH_TIMEOUT(PlaySessionStore::recorderOwnsDatabase(databasePath), 15000);
+  // The lock is taken just before the database is opened.
+  QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(databasePath), 5000);
+  QCOMPARE(daemon.state(), QProcess::Running);
+}
 
 void CoreTests::selectedMetadataStaysFirstInQueue() {
   QTemporaryDir temp;

@@ -72,6 +72,8 @@ public:
     // Things that could not be put back or were skipped, for the status line and the log.
     QStringList notes;
     QString output;
+    // Recovery could not read its record and set it aside instead of undoing a session.
+    bool setAside = false;
   };
   using Sleep = std::function<void(int milliseconds)>;
   using OwnerAlive = std::function<bool(qint64 pid)>;
@@ -133,6 +135,7 @@ private:
   void endLaunchHold();
   [[nodiscard]] bool save(const GameModeState& state) const;
   [[nodiscard]] bool load(GameModeState* state) const;
+  [[nodiscard]] Result setAsideUnreadable();
   void forget() const;
   // Shared by leaving, by a failed entry, and by recovery. Returns false when something
   // that needed undoing could not be undone.

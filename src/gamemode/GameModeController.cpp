@@ -2,6 +2,7 @@
 #include "tracking/ProcFs.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -1140,10 +1141,8 @@ GameModeController::Result GameModeController::recover() {
   result.ok = true;
   GameModeState state;
   if (!load(&state)) {
-    if (QFile::exists(m_statePath)) {
-      result.ok = false;
-      result.error = QStringLiteral("Game Mode's recovery record could not be read safely.");
-    }
+    if (QFile::exists(m_statePath))
+      return setAsideUnreadable();
     return result;
   }
   const qint64 self = QCoreApplication::applicationPid();
@@ -1178,6 +1177,36 @@ GameModeController::Result GameModeController::recover() {
     forget();
     m_state = {};
   }
+  return result;
+}
+
+// An unreadable record cannot say what to put back, and keeping it would block Game Mode
+// for good. Undo what is safe without it, keep the file for inspection and say what may
+// still need a look.
+GameModeController::Result GameModeController::setAsideUnreadable() {
+  Result result;
+  const QString kept =
+      m_statePath + QStringLiteral(".damaged-") +
+      QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+  if (!QFile::rename(m_statePath, kept)) {
+    result.error = QStringLiteral("Game Mode's recovery record could not be read safely.");
+    return result;
+  }
+  result.ok = true;
+  result.setAside = true;
+  result.notes.append(QStringLiteral("Game Mode's recovery record could not be read and was "
+                                     "set aside as %1.")
+                          .arg(QFileInfo(kept).fileName()));
+  bool quiet = false;
+  if (m_notifications && m_notifications->available() && m_notifications->silenced(&quiet) &&
+      quiet) {
+    if (m_notifications->setSilenced(false))
+      result.notes.append(QStringLiteral("Notifications were turned back on."));
+    else
+      result.notes.append(QStringLiteral("Notifications are still silenced."));
+  }
+  result.notes.append(QStringLiteral(
+      "Check that game audio is unmuted and that windows and displays are where you want them."));
   return result;
 }
 
