@@ -15,9 +15,12 @@ Item {
     // Where focus should land when something above hands it downwards. With no games left the
     // grid has nothing to select, so the empty state takes it instead.
     readonly property Item focusTarget: grid.count > 0 ? grid
-                                      : root.filtersActive ? emptyClearButton : emptyRescanButton
+                                      : root.filtersActive ? emptyClearButton
+                                      : root.setupAvailable ? emptySetupButton : emptyRescanButton
     property bool scanning: false
     property bool filtersActive: false
+    // An empty library with nothing filtered out: offer to set up sources and read the guide.
+    property bool setupAvailable: false
     property string emptyTitle: "No games found"
     property string emptyMessage: "Try a different search or library view."
 
@@ -25,6 +28,8 @@ Item {
     signal favoriteToggled(int index)
     signal refreshRequested()
     signal clearFiltersRequested()
+    signal setupRequested()
+    signal guideRequested()
     signal coverRequested(string source, string appId)
     signal focusAboveRequested()
 
@@ -39,7 +44,8 @@ Item {
             // Keyboard focus needs somewhere to land when the last visible game leaves the grid.
             Qt.callLater(emptyClearButton.forceActiveFocus)
         } else if (!root.scanning) {
-            Qt.callLater(emptyRescanButton.forceActiveFocus)
+            Qt.callLater(root.setupAvailable ? emptySetupButton.forceActiveFocus
+                                             : emptyRescanButton.forceActiveFocus)
         }
     }
 
@@ -416,28 +422,52 @@ Item {
             font.weight: Font.DemiBold
         }
         Text {
+            objectName: "emptyMessage"
+            textFormat: Text.PlainText
             anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(implicitWidth, Math.max(200, root.width - 48), 640)
             text: root.scanning ? "Looking for installed games and local artwork." : root.emptyMessage
             color: Theme.mutedText
             font.family: Theme.fontFamily
             font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
         }
-        GlassButton {
-            id: emptyClearButton
-            objectName: "emptyClearButton"
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            visible: !root.scanning && root.filtersActive
-            text: "CLEAR FILTERS"
-            compact: true
-            onClicked: root.clearFiltersRequested()
-        }
-        GlassButton {
-            id: emptyRescanButton
-            anchors.horizontalCenter: parent.horizontalCenter
-            visible: !root.scanning && !root.filtersActive
-            text: "RESCAN"
-            compact: true
-            onClicked: root.refreshRequested()
+            spacing: 8
+            GlassButton {
+                id: emptyClearButton
+                objectName: "emptyClearButton"
+                visible: !root.scanning && root.filtersActive
+                text: "CLEAR FILTERS"
+                compact: true
+                onClicked: root.clearFiltersRequested()
+            }
+            GlassButton {
+                id: emptySetupButton
+                objectName: "emptySetupButton"
+                visible: !root.scanning && !root.filtersActive && root.setupAvailable
+                text: "SET UP SOURCES"
+                primary: true
+                compact: true
+                onClicked: root.setupRequested()
+            }
+            GlassButton {
+                id: emptyRescanButton
+                objectName: "emptyRescanButton"
+                visible: !root.scanning && !root.filtersActive
+                text: "RESCAN"
+                compact: true
+                onClicked: root.refreshRequested()
+            }
+            GlassButton {
+                objectName: "emptyGuideButton"
+                visible: emptySetupButton.visible
+                text: "READ THE GUIDE"
+                compact: true
+                onClicked: root.guideRequested()
+            }
         }
     }
 }

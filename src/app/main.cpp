@@ -383,6 +383,19 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
         fail(QStringLiteral("Removing the last filtered game did not focus Clear Filters"));
         return;
       }
+      // With a search on top of the status filter, the empty state names both, not only the search.
+      auto* libraryView = window->findChild<QQuickItem*>(QStringLiteral("libraryView"));
+      library->setProperty("searchText", QStringLiteral("zz-no-match"));
+      const QString title = libraryView ? libraryView->property("emptyTitle").toString() : QString{};
+      const QString message = libraryView ? libraryView->property("emptyMessage").toString() : QString{};
+      library->setProperty("searchText", QString{});
+      if (title != QStringLiteral("No games match these filters") ||
+          !message.contains(QStringLiteral("Search: zz-no-match")) ||
+          !message.contains(QStringLiteral("Status: backlog"))) {
+        fail(QStringLiteral("Combined filter empty state did not name every filter: %1 / %2")
+                 .arg(title, message));
+        return;
+      }
       library->setProperty("completionFilter", QString{});
       application->quit();
     });

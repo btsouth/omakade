@@ -1572,7 +1572,29 @@ ApplicationWindow {
     // library itself is empty.
     readonly property string emptySourceFilter: Library.sourceFilters.length === 1 ? Library.sourceFilters[0] : ""
 
+    // The default view with nothing filtered out. When it is empty, as on a first run, the
+    // empty state offers to set up sources instead of only a rescan.
+    readonly property bool librarySetupAvailable: Library.mode === 0 && root.visibleLibraryFilters.length === 0
+                                                  && Library.consoleTitle.length === 0
+    readonly property string guideUrl: "https://github.com/btsouth/omakade/blob/main/docs/GUIDE.md#sources"
+    function openSourceSettings() {
+        const panel = root.loadSettingsPanel()
+        panel.sourceDetail = ""
+        panel.section = 0
+        root.diagnosticsOpen = true
+    }
+    // Names every active search and filter, so an empty result says which combination
+    // left nothing to show instead of blaming only the search.
+    function combinedFiltersMessage() {
+        const labels = root.visibleLibraryFilters.map(filter => filter.label)
+        return "Nothing matches " + labels.slice(0, -1).join(", ") + " and " + labels[labels.length - 1]
+               + " together. Remove one above, or clear all filters."
+    }
+
     function emptyTitleForFilters() {
+        if (Library.searchText !== "" && root.visibleLibraryFilters.length > 1) {
+            return "No games match these filters"
+        }
         if (Library.searchText !== "") {
             return "No games match \"" + Library.searchText + "\""
         }
@@ -2549,7 +2571,10 @@ ApplicationWindow {
                 libraryModel: Library
                 scanning: root.libraryScanning
                 filtersActive: root.visibleLibraryFilters.length > 0
+                setupAvailable: root.librarySetupAvailable
                 onClearFiltersRequested: root.clearLibraryFilters()
+                onSetupRequested: root.openSourceSettings()
+                onGuideRequested: Qt.openUrlExternally(root.guideUrl)
                 emptyTitle: root.emptyTitleForFilters() !== "" ? root.emptyTitleForFilters()
                             : root.emptySourceFilter === "GOG" && HeroicLibrary && !HeroicLibrary.gogDetected
                             ? "GOG was not found"
@@ -2594,8 +2619,11 @@ ApplicationWindow {
                               : Library.mode === 3 ? "No hidden games"
                               : Library.availability === 2 ? "No games ready to install"
                               : Library.availability === 1 ? "No games in this library"
+                              : root.librarySetupAvailable ? "Set up your library"
                               : "No installed games"
-                emptyMessage: Library.searchText !== ""
+                emptyMessage: root.visibleLibraryFilters.length > 1
+                              ? root.combinedFiltersMessage()
+                              : Library.searchText !== ""
                               ? "Try a different search, or clear it to see the whole library."
                               : root.organizationFiltersActive
                               ? "Clear or change these filters to see more games."
@@ -2640,7 +2668,7 @@ ApplicationWindow {
                                 ? SteamLibrary.errorText
                                 : Library.mode === 1 ? "Mark games as favorites from their details, or change this view to see more games."
                                 : Library.mode === 2 ? "Games you play appear here when they match this view."
-                                : "Install a game in Steam, GOG, Lutris, Heroic, Faugus, RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, shadPS4, Cemu, melonDS, Dolphin, Battle.net, or Xodus Nexus, then rescan your library."
+                                : "Omakade finds games in your launchers, emulators and ROM folders. Choose your sources in Settings, then rescan."
                 onGameActivated: index => root.openGame(index)
                 onFavoriteToggled: index => Library.toggleFavorite(index)
                 onCoverRequested: function(source, appId) {
@@ -2739,6 +2767,8 @@ ApplicationWindow {
             Qt.callLater(function() { if (statsLoader.item) statsLoader.item.focusStats() })
         }
         onSettingsRequested: root.diagnosticsOpen = true
+        onSourcesRequested: root.openSourceSettings()
+        onGuideRequested: Qt.openUrlExternally(root.guideUrl)
         onCouchRequested: root.setCouchMode(true)
         onBrowseRequested: (kind, value) => {
             if (kind === "saved") {

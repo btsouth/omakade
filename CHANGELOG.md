@@ -8,6 +8,10 @@
 - The Sources picker lists only sources that have games, and choosing Emulated shows one
   Emulated chip instead of one per emulator. Settings > Sources lists a source as In use
   only once it is found; sources that are on but not found move to Available.
+- An empty Library or Home, as on a first run, now has **Set Up Sources**, which opens
+  Settings > Sources, and a link to the guide, next to Rescan. When a search and a filter
+  together leave nothing to show, the message names every active filter instead of only
+  the search.
 - Keyboard and controller focus now has its own thicker ring around buttons, fields,
   checkboxes, lists and library cards, in a color that stands out on every theme. Hover only changes the fill,
   and the current card keeps a quieter outline while focus is elsewhere, such as the
