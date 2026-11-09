@@ -1045,6 +1045,7 @@ private slots:
   void backupIncludesCurrentPreferences();
   void themeLoadsSemanticColors();
   void themeFallsBackWithoutOmarchy();
+  void themePicksReadableTextOnStatusFills();
   void themeReloadsWhenActiveFileChanges();
   void themeFollowsShellLauncherTransparency();
   void themeResolvesCompactTerminalPalette();
@@ -1374,6 +1375,60 @@ void CoreTests::themeFallsBackWithoutOmarchy() {
   QCOMPARE(theme.themeName(), QStringLiteral("Omakade Dark"));
   QVERIFY(theme.background().isValid());
   QVERIFY(theme.foreground().isValid());
+}
+
+void CoreTests::themePicksReadableTextOnStatusFills() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString configHome = directory.path() + QStringLiteral("/config");
+  const QString tokyoState = directory.path() + QStringLiteral("/tokyo");
+  writeFile(tokyoState + QStringLiteral("/omarchy/current/theme/colors.toml"), sampleTheme());
+  // Catppuccin Latte, where the old pills drew dark text on a mid blue fill.
+  const QString latteState = directory.path() + QStringLiteral("/latte");
+  writeFile(latteState + QStringLiteral("/omarchy/current/theme/colors.toml"),
+            "mode = \"light\"\naccent = \"#1e66f5\"\n"
+            "background = \"#eff1f5\"\ndark_background = \"#e3e4e8\"\n"
+            "darker_background = \"#d7d8dc\"\nlighter_background = \"#dce0e8\"\n"
+            "foreground = \"#4c4f69\"\ndark_foreground = \"#9ca0b0\"\n"
+            "light_foreground = \"#5c5f77\"\nbright_foreground = \"#4c4f69\"\n"
+            "yellow = \"#df8e1d\"\ngreen = \"#40a02b\"\n");
+
+  OmarchyTheme fallback(directory.path() + QStringLiteral("/none"), configHome);
+  OmarchyTheme tokyo(tokyoState, configHome);
+  OmarchyTheme latte(latteState, configHome);
+  OmarchyTheme light(QStringLiteral(OMAKADE_FIXTURE_DIR) + QStringLiteral("/light-state"),
+                     configHome);
+  QVERIFY(latte.omarchyAvailable());
+
+  for (const OmarchyTheme* theme : {&fallback, &tokyo, &latte, &light}) {
+    // The status pill fills used by library cards.
+    for (const QColor& fill :
+         {theme->green(), theme->accent(), theme->yellow(), theme->darkerBackground()}) {
+      QVERIFY2(OmarchyTheme::contrastRatio(theme->readableOn(fill), fill) >= 4.5,
+               qPrintable(theme->themeName() + QStringLiteral(" ") + fill.name()));
+    }
+    // Any opaque fill a theme could supply gets AA text.
+    for (int red = 0; red <= 255; red += 15) {
+      for (int green = 0; green <= 255; green += 15) {
+        for (int blue = 0; blue <= 255; blue += 15) {
+          const QColor fill(red, green, blue);
+          QVERIFY2(OmarchyTheme::contrastRatio(theme->readableOn(fill), fill) >= 4.5,
+                   qPrintable(fill.name()));
+        }
+      }
+    }
+  }
+
+  // Theme colors are kept when they are readable.
+  QCOMPARE(tokyo.readableOn(tokyo.accent()), tokyo.darkerBackground());
+  QCOMPARE(tokyo.readableOn(tokyo.darkerBackground()), tokyo.brightForeground());
+  // Latte's dark foreground is unreadable on its blue accent, so the label turns white.
+  QVERIFY(OmarchyTheme::contrastRatio(latte.brightForeground(), latte.accent()) < 4.5);
+  QCOMPARE(latte.readableOn(latte.accent()), QColor(Qt::white));
+  // Translucent input is judged as the opaque fill it came from.
+  QColor translucent = tokyo.accent();
+  translucent.setAlphaF(0.5);
+  QCOMPARE(tokyo.readableOn(translucent), tokyo.darkerBackground());
 }
 
 void CoreTests::themeReloadsWhenActiveFileChanges() {

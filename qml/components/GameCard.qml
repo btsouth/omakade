@@ -202,30 +202,35 @@ FocusScope {
         }
 
         Rectangle {
+            id: statusPill
+            objectName: "statusPill"
             visible: root.completionStatus.length > 0
             height: 25
-            width: statusText.implicitWidth + 18
+            width: statusText.implicitWidth + 20
             radius: 13
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.margins: 9
+            // Opaque so the label contrast does not depend on the artwork underneath.
             color: root.completionStatus === "completed"
-                   ? root.alpha(Theme.green, 0.82)
+                   ? Theme.green
                    : root.completionStatus === "playing"
-                     ? root.alpha(Theme.accent, 0.82)
+                     ? Theme.accent
                      : root.completionStatus === "backlog"
-                       ? root.alpha(Theme.yellow, 0.78)
-                       : root.alpha(Theme.darkerBackground, 0.72)
+                       ? Theme.yellow
+                       : Theme.darkerBackground
             border.color: root.alpha(Theme.brightForeground, 0.20)
 
             Text {
                 id: statusText
+                objectName: "statusPillText"
                 anchors.centerIn: parent
                 text: root.completionStatus.toUpperCase()
-                color: Theme.brightForeground
+                color: Theme.readableOn(statusPill.color)
                 font.family: Theme.fontFamily
-                font.pixelSize: 8
+                font.pixelSize: 11
                 font.weight: Font.Bold
+                font.letterSpacing: 0.5
             }
         }
 
