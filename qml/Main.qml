@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import "components"
+import "components/Counts.js" as Counts
 import "components/UserDates.js" as UserDates
 import "screens"
 
@@ -2549,7 +2550,7 @@ ApplicationWindow {
                     onClicked: libraryActions.open()
                 }
                 Text {
-                    text: root.libraryScanning ? "SCANNING…" : libraryView.count + " GAMES"
+                    text: root.libraryScanning ? "SCANNING…" : Counts.text(libraryView.count, "GAME", "GAMES")
                     color: Theme.mutedText; font.family: Theme.fontFamily
                     font.pixelSize: UiMetrics.supporting
                     height: 34; verticalAlignment: Text.AlignVCenter

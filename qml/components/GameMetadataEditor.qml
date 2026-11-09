@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Counts.js" as Counts
 
 ColumnLayout {
     id: root
@@ -105,7 +106,7 @@ ColumnLayout {
         Layout.fillWidth: true
         visible: !root.panelMode
         text: !Metadata ? "" : root.entry.rating >= 0
-              ? "IGDB  " + root.entry.rating + " / 100 · " + root.entry.ratingCount + " ratings"
+              ? "IGDB  " + root.entry.rating + " / 100 · " + Counts.text(root.entry.ratingCount, "rating")
               : "No rating available"
         color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 12 * root.uiScale
     }

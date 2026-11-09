@@ -1267,6 +1267,7 @@ private slots:
   void textFieldsDeclareControllerEntry();
   void externalMetadataTextIsPlain();
   void markupTitleRendersLiterally();
+  void countLabelsUseSingularForOne();
   void thousandGameSearchStaysResponsive();
   void openingAConsoleDoesNotHangTheLibrary();
   void consoleFilterKeepsOtherSourcesOut();
@@ -6961,6 +6962,29 @@ void CoreTests::markupTitleRendersLiterally() {
   const qreal image = labelWidth(QStringLiteral("<img src=\"http://127.0.0.1:9/track.png\">Game"));
   QVERIFY(game > 0);
   QVERIFY2(image > game * 4, qPrintable(QString("%1 vs %2").arg(image).arg(game)));
+}
+
+void CoreTests::countLabelsUseSingularForOne() {
+  // Count labels such as the library toolbar's read "1 GAME", not "1 GAMES".
+  QQmlEngine engine;
+  QQmlComponent component(&engine);
+  component.setData(R"(import QtQml
+import "Counts.js" as Counts
+QtObject {
+  property string one: Counts.text(1, "GAME", "GAMES")
+  property string none: Counts.text(0, "GAME", "GAMES")
+  property string many: Counts.text(12, "game")
+  property string single: Counts.text(1, "older backup")
+  property string missing: Counts.text(undefined, "report")
+})",
+                    QUrl::fromLocalFile(QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/")));
+  QScopedPointer<QObject> labels(component.create());
+  QVERIFY2(labels, qPrintable(component.errorString()));
+  QCOMPARE(labels->property("one").toString(), QString("1 GAME"));
+  QCOMPARE(labels->property("none").toString(), QString("0 GAMES"));
+  QCOMPARE(labels->property("many").toString(), QString("12 games"));
+  QCOMPARE(labels->property("single").toString(), QString("1 older backup"));
+  QCOMPARE(labels->property("missing").toString(), QString("0 reports"));
 }
 
 void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
 import "../components"
+import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
 
 Item {
@@ -675,7 +676,7 @@ Item {
                         if (root.game.completionStatus) values.push(root.game.completionStatus.charAt(0).toUpperCase() + root.game.completionStatus.slice(1))
                         if (root.displayedAchievementTotal > 0) {
                             values.push(root.displayedAchievementsUnlocked + "/"
-                                        + root.displayedAchievementTotal + " achievements")
+                                        + Counts.text(root.displayedAchievementTotal, "achievement"))
                         }
                         return values.join("  ·  ")
                     }
