@@ -12,7 +12,9 @@ Suites are included into the `tests/` directory scope, so:
 - every test also gets the CI slot assignment at the end of `tests/CMakeLists.txt`;
 - every test that is not `WILL_FAIL` fails when its output shows a QML runtime error, such as
   a `TypeError`, `ReferenceError` or binding loop (`OMAKADE_TEST_QML_ERRORS` in
-  `tests/OmakadeTests.cmake`), even if it exits 0.
+  `tests/OmakadeTests.cmake`), even if it exits 0. Keep `WILL_FAIL` for runs that exit before
+  any QML loads; a run that renders and is expected to fail should match its failure message
+  with `PASS_REGULAR_EXPRESSION` instead, so the QML checks still apply.
 
 ## Helpers
 

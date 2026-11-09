@@ -17,7 +17,11 @@ set(OMAKADE_TEST_QML_ERRORS
   "Binding loop"
   "polish.*loop"
   "Unable to assign"
-  "Cannot assign")
+  "Cannot assign"
+  "is not a type"
+  "module .+ is not installed"
+  "Could not convert argument"
+  "Invalid write to global property")
 
 # omakade_app_test(<name> ARGS <omakade arguments>...)
 # Runs the omakade binary offscreen with software rendering. ENVIRONMENT adds to that.

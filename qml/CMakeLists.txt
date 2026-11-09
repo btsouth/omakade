@@ -32,6 +32,7 @@ foreach(singleton IN LISTS omakade_qml_singletons)
 endforeach()
 # components/qmldir names the same singletons for tests that load components from the source tree.
 file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/components/qmldir" omakade_component_qmldir REGEX "^singleton ")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/components/qmldir")
 set(omakade_component_singletons)
 foreach(singleton IN LISTS omakade_qml_singletons)
   if(singleton MATCHES "^components/(.+)\\.qml$")
