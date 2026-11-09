@@ -279,6 +279,7 @@ FocusScope {
         property string detail: ""
         spacing: 2 * root.scaleFactor
         Text {
+            textFormat: Text.PlainText
             text: stat.label.toUpperCase()
             color: Theme.mutedText
             font.family: Theme.fontFamily
@@ -286,6 +287,7 @@ FocusScope {
             font.letterSpacing: 0.7
         }
         Text {
+            textFormat: Text.PlainText
             text: stat.value
             color: Theme.brightForeground
             font.family: Theme.fontFamily
@@ -293,6 +295,7 @@ FocusScope {
             font.weight: Font.DemiBold
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             // Kept in the layout even when empty so a row of figures shares one baseline: hiding it
             // moved some labels a line above their neighbours.
@@ -316,6 +319,7 @@ FocusScope {
             Layout.fillWidth: true
             spacing: 8
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: row.label
                 color: Theme.foreground
@@ -324,6 +328,7 @@ FocusScope {
                 font.pixelSize: UiMetrics.body * root.scaleFactor
             }
             Text {
+                textFormat: Text.PlainText
                 text: row.detail
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
@@ -455,6 +460,7 @@ FocusScope {
                     font.letterSpacing: 1.0
                 }
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: Stats.periodLabel
                     color: Theme.mutedText
@@ -506,6 +512,7 @@ FocusScope {
                             font.letterSpacing: 1.0
                         }
                         Text {
+                            textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: Stats.periodLabel
                             color: Theme.mutedText
@@ -528,6 +535,7 @@ FocusScope {
                 // A read that failed is stated plainly rather than shown as zeroes, which would
                 // read as a fact about the library.
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: Stats.error.length > 0
                     wrapMode: Text.Wrap
@@ -578,6 +586,7 @@ FocusScope {
 
                 // Coverage describes dated figures. It is never used to date library totals.
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: root.currentView !== 2 && Stats.windowNote.length > 0
                     text: Stats.windowNote
@@ -634,6 +643,7 @@ FocusScope {
                             font.weight: Font.DemiBold
                         }
                         Text {
+                            textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: root.durationText(headline.topGameSeconds) + "  ·  "
                                   + root.percentText(headline.topGameShare) + " of recorded play"
@@ -671,6 +681,7 @@ FocusScope {
                     spacing: 6 * root.scaleFactor
                     SectionTitle { text: "WEEKLY PATTERN" }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         text: root.busiestWeekdayText().length > 0
@@ -738,6 +749,7 @@ FocusScope {
                                     }
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     Layout.fillWidth: true
                                     horizontalAlignment: Text.AlignHCenter
                                     text: (Number(modelData.hour) % 6) === 0 ? String(modelData.hour) : ""
@@ -749,6 +761,7 @@ FocusScope {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: root.selectedHourText()
                         color: Theme.brightForeground
@@ -771,6 +784,7 @@ FocusScope {
                         Repeater {
                             model: root.byHour
                             Text {
+                                textFormat: Text.PlainText
                                 required property var modelData
                                 text: root.hourText(modelData.hour) + "  " + root.durationText(modelData.seconds)
                                 color: Theme.foreground
@@ -780,6 +794,7 @@ FocusScope {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         objectName: "statsWhenYouPlay"
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
@@ -826,6 +841,7 @@ FocusScope {
                                     }
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     Layout.fillWidth: true
                                     horizontalAlignment: Text.AlignHCenter
                                     text: root.weekdayShortName(modelData.weekday)
@@ -839,6 +855,7 @@ FocusScope {
                     Repeater {
                         model: root.byWeekday
                         Text {
+                            textFormat: Text.PlainText
                             required property var modelData
                             visible: root.showHourValues
                             text: root.weekdayShortName(modelData.weekday) + "  "
@@ -1004,6 +1021,7 @@ FocusScope {
                     visible: root.currentView !== 2 && !root.hasRecordedPlay && Stats.error.length === 0
                     SectionTitle { text: "NO RECORDED PLAY YET" }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         color: Theme.foreground
@@ -1021,6 +1039,7 @@ FocusScope {
                     visible: root.currentView === 2 && Stats.error.length === 0
                     SectionTitle { text: "LIBRARY NOW" }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: "Current collection and lifetime totals stay fixed when the period changes. "
                               + "System, source and genre rows below describe recorded play in the selected period."
@@ -1039,12 +1058,14 @@ FocusScope {
                         Layout.fillWidth: true
                         spacing: 18 * root.scaleFactor
                         Text {
+                            textFormat: Text.PlainText
                             text: root.countText(libraryStats.games, "game")
                             color: Theme.foreground
                             font.family: Theme.fontFamily
                             font.pixelSize: UiMetrics.body * root.scaleFactor
                         }
                         Text {
+                            textFormat: Text.PlainText
                             text: root.countText(libraryStats.systems, "console")
                             color: Theme.foreground
                             font.family: Theme.fontFamily
@@ -1053,6 +1074,7 @@ FocusScope {
                     }
                     SectionTitle { text: "CURRENT COMPLETION MARKS" }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         color: Theme.mutedText
@@ -1074,6 +1096,7 @@ FocusScope {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         objectName: "statsSystemScope"
                         Layout.fillWidth: true
                         visible: root.bySystem.length > 0
@@ -1095,6 +1118,7 @@ FocusScope {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         objectName: "statsSourceScope"
                         Layout.fillWidth: true
                         visible: root.bySource.length > 0
@@ -1118,6 +1142,7 @@ FocusScope {
                     // Genres arrive through the metadata layer and only for games whose identity is
                     // confirmed, so an unidentified game contributes no genre rather than a guess.
                     Text {
+                        textFormat: Text.PlainText
                         objectName: "statsGenreScope"
                         Layout.fillWidth: true
                         visible: root.topGenres.length > 0

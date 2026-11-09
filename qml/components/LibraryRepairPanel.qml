@@ -634,6 +634,7 @@ Rectangle {
             }
             Text {
                 objectName: "libraryRepairSelectionStatus"
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 font.pixelSize: 12 * root.uiScale

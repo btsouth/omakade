@@ -235,6 +235,7 @@ Rectangle {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     visible: cover.status !== Image.Ready
                     anchors.centerIn: parent
                     text: screen.game.coverMark || "◇"
@@ -312,6 +313,7 @@ Rectangle {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: screen.listedWindows.length > 0
                           ? "Waiting for the game. Open a window here if it needs you, such as a sign-in."
@@ -334,6 +336,7 @@ Rectangle {
 
 
             Text {
+                textFormat: Text.PlainText
                 visible: windowRepeater.count > 0
                 text: windowRepeater.count === 1 ? "1 WINDOW WAITING" : windowRepeater.count + " WINDOWS WAITING"
                 color: screen.alpha(Theme.brightForeground, 0.72)
@@ -362,6 +365,7 @@ Rectangle {
                     contentItem: RowLayout {
                         spacing: 16 * screen.uiScale
                         Text {
+                            textFormat: Text.PlainText
                             Layout.fillWidth: true
                             text: windowButton.text
                             elide: Text.ElideRight
@@ -371,6 +375,7 @@ Rectangle {
                             font.weight: Font.Medium
                         }
                         Text {
+                            textFormat: Text.PlainText
                             text: screen.owner(windowButton.modelData.windowClass).toUpperCase()
                             visible: text.length > 0
                             color: Theme.mutedText
@@ -418,6 +423,7 @@ Rectangle {
                     border.color: screen.alpha(Theme.foreground, 0.22)
 
                     Text {
+                        textFormat: Text.PlainText
                         id: glyphText
                         anchors.centerIn: parent
                         text: modelData.glyph
@@ -429,6 +435,7 @@ Rectangle {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.label
                     color: Theme.mutedText

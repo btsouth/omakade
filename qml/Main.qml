@@ -3247,6 +3247,7 @@ ApplicationWindow {
 
         Text {
             id: toastText
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             width: toast.width - 34
             horizontalAlignment: Text.AlignHCenter

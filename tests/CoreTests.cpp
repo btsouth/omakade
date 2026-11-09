@@ -13,7 +13,6 @@
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QQmlContext>
-#include <QQmlNetworkAccessManagerFactory>
 #include <QQmlPropertyMap>
 #include <QStandardItemModel>
 #include <csignal>
@@ -6696,9 +6695,11 @@ void CoreTests::externalMetadataTextIsPlain() {
   const QString root = QDir(QString::fromUtf8(OMAKADE_SOURCE_DIR)).filePath("qml");
   QVERIFY2(QDir(root).exists(), qPrintable(root));
   // Every bound Text in these files shows library data or passes it through.
-  const QStringList wholeFiles{"screens/HomeScreen.qml", "components/GlassButton.qml",
-                               "components/ActionMenu.qml"};
-  const QRegularExpression metadata(R"re((?i:title)\b|\.name\b|suggestionReason|\bcaption\b|subtitle)re");
+  const QStringList wholeFiles{"screens/HomeScreen.qml", "screens/StatsScreen.qml",
+                               "components/GlassButton.qml", "components/ActionMenu.qml",
+                               "components/LaunchingScreen.qml"};
+  const QRegularExpression metadata(
+      R"re((?i:title)|\.name\b|suggestionReason|\bcaption\b|subtitle|rarest|toast\.message)re");
   const QRegularExpression literals(R"re("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*[\s\S]*?\*/)re");
   const QRegularExpression textBinding(R"re((?<![\w.])text\s*:\s*)re");
   const QRegularExpression plainFormat(R"re(textFormat\s*:\s*Text\.PlainText\b)re");
@@ -6754,26 +6755,10 @@ void CoreTests::externalMetadataTextIsPlain() {
     }
   }
   QVERIFY(homeChecked >= 19);
-  QVERIFY(checked >= 45);
+  QVERIFY(checked >= 90);
 }
 
 void CoreTests::markupTitleRendersLiterally() {
-  struct CountingNetwork : QNetworkAccessManager {
-    std::atomic<int>* requests;
-    CountingNetwork(std::atomic<int>* count, QObject* parent)
-        : QNetworkAccessManager(parent), requests(count) {}
-    QNetworkReply* createRequest(Operation op, const QNetworkRequest& request,
-                                 QIODevice* data) override {
-      ++*requests;
-      return QNetworkAccessManager::createRequest(op, request, data);
-    }
-  };
-  struct CountingFactory : QQmlNetworkAccessManagerFactory {
-    std::atomic<int> requests{0};
-    QNetworkAccessManager* create(QObject* parent) override {
-      return new CountingNetwork(&requests, parent);
-    }
-  } factory;
   QTemporaryDir temp;
   OmarchyTheme theme(temp.filePath("state"), temp.filePath("config"));
   struct Preferences : QQmlPropertyMap {
@@ -6781,7 +6766,6 @@ void CoreTests::markupTitleRendersLiterally() {
   } preferences;
   preferences.insert("reducedMotion", true);
   QQmlEngine engine;
-  engine.setNetworkAccessManagerFactory(&factory);
   engine.rootContext()->setContextProperty("Theme", &theme);
   engine.rootContext()->setContextProperty("Preferences", &preferences);
   QQmlComponent component(&engine, QUrl::fromLocalFile(
@@ -6806,8 +6790,11 @@ void CoreTests::markupTitleRendersLiterally() {
   const qreal markup = labelWidth(QStringLiteral("<b></b>Wide"));
   QVERIFY(plain > 0);
   QVERIFY2(markup > plain * 1.5, qPrintable(QString("%1 vs %2").arg(markup).arg(plain)));
-  QVERIFY(labelWidth(QStringLiteral("<img src=\"http://127.0.0.1:9/track.png\">Game")) > 0);
-  QCOMPARE(factory.requests.load(), 0);
+  // An image tag must show as its literal characters too, not as an image plus a short name.
+  const qreal game = labelWidth(QStringLiteral("Game"));
+  const qreal image = labelWidth(QStringLiteral("<img src=\"http://127.0.0.1:9/track.png\">Game"));
+  QVERIFY(game > 0);
+  QVERIFY2(image > game * 4, qPrintable(QString("%1 vs %2").arg(image).arg(game)));
 }
 
 void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {

@@ -445,6 +445,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: card.rarestText().length > 0
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     text: (card.rarestIsRarity ? "Rarest: " : "Latest: ") + card.rarestText()
                     color: Theme.foreground
