@@ -6,11 +6,12 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
-CMAKE, BUILD, VERSION, LIBDIR, DATADIR = sys.argv[1:6]
-del sys.argv[1:6]
+CMAKE, BUILD, VERSION, LIBDIR, DATADIR, BINDIR, SOURCE = sys.argv[1:8]
+del sys.argv[1:8]
 
 LINK = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)|<img\s[^>]*src=\"([^\"]+)\"|^\[[^\]]+\]:\s*(\S+)",
                   re.MULTILINE)
@@ -54,6 +55,25 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue((units / "omakade-sessiond.service").is_file())
         self.assertTrue((units / "omakade-guide-button.service").is_file())
         self.assertEqual([str(path) for path in units.glob("*.wants")], [])
+
+    def test_user_services_start_binaries_from_the_configured_prefix(self) -> None:
+        units = self.prefix / LIBDIR / "systemd" / "user"
+        for name in ("omakade-sessiond", "omakade-guide-button"):
+            lines = (units / f"{name}.service").read_text().splitlines()
+            exec_lines = [line for line in lines if line.startswith("ExecStart=")]
+            self.assertEqual(exec_lines, [f"ExecStart={BINDIR}/{name}"])
+
+    def test_omastore_services_match_the_packaged_units(self) -> None:
+        manifest = tomllib.loads((Path(SOURCE) / "omastore.toml").read_text())
+        services = {service["unit"]: service for service in manifest["services"].values()}
+        units = self.prefix / LIBDIR / "systemd" / "user"
+        self.assertEqual(sorted(services), sorted(path.name for path in units.glob("*.service")))
+        for unit, service in services.items():
+            self.assertTrue((self.prefix / "bin" / Path(service["exec"]).name).is_file(), unit)
+            self.assertEqual(service["exec"], "usr/bin/" + unit.removesuffix(".service"))
+        # Settings turns the Home button on; installing must not.
+        self.assertFalse(services["omakade-guide-button.service"]["enable"])
+        self.assertFalse(services["omakade-guide-button.service"]["start"])
 
     def test_plugin_manifest_matches_the_package(self) -> None:
         path = self.prefix / DATADIR / "omakade" / "omarchy-plugin" / "manifest.json"

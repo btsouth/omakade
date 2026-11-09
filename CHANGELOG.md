@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- OmaStore installs can now use the controller Home button. OmaStore sets up its service,
+  which stays off until it is turned on in Settings > Controls.
+- The installed `omakade-sessiond` and `omakade-guide-button` user services now start the
+  binaries from the install prefix, so a build installed under `/usr/local` no longer looks
+  for them in `/usr/bin`.
 - The package now installs Troubleshooting, the in-game guide page, Architecture and the
   README's screenshots, so every link in the installed docs opens. Troubleshooting now
   says a source that is on but not found is listed under Available, and the user guides

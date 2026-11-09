@@ -134,5 +134,5 @@ stable's Qt, since OPR builds it in its own environment.
 [OmaStore](https://github.com/KitsuneForgering/OmaStore) reads `omastore.toml`
 from `main` and installs the latest release's package into the user's home
 directory. After the release, run `omastore check btsouth/omakade` and confirm
-it finds both architecture packages, the `omakade-sessiond` service and no
-blockers.
+it finds both architecture packages, the `omakade-sessiond` and
+`omakade-guide-button` services and no blockers.
