@@ -634,6 +634,7 @@ import "Counts.js" as Counts
                                     text: modelData.path + "\nUnavailable. " + modelData.games
                                           + (modelData.games === 1 ? " game is" : " games are")
                                           + " kept until the drive is back."
+                                    textFormat: Text.PlainText
                                     color: Theme.mutedText
                                     font.family: Theme.fontFamily
                                     font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale

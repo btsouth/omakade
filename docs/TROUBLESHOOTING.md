@@ -121,8 +121,9 @@ disconnected**, until it is back.
 2. Choose **Rescan Source** in Steam's **Details**.
 
 If you moved or removed the library on purpose, choose **Forget** next to it in
-Steam's **Details** to drop its games, and remove it in Steam's **Storage** settings
-too so it stops appearing in the warning.
+Steam's **Details** to drop its installed games. Games you own on Steam stay listed as
+not installed. Remove the library in Steam's **Storage** settings too so it stops
+appearing in the warning.
 
 ## ROMs are missing or under the wrong console
 
