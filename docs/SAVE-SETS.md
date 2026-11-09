@@ -59,10 +59,13 @@ undoing a restore into a previously empty save bank.
 Multi-file restore writes a persistent journal containing both the previous and requested
 sets before changing live files. Each file uses an atomic write. Interrupted restores roll
 back on recovery; a committed journal only needs completion/cleanup. Recovery refuses to
-overwrite unexpected external changes and keeps its copies for investigation. Omakade pauses
-emulator launches while a restore journal remains unresolved. **Retry Save Recovery** appears
-in Save Backups when needed. Close emulators before retrying. Do not delete the journal to
-bypass recovery.
+overwrite unexpected external changes and keeps its copies for investigation. While a restore
+journal remains unresolved, Omakade pauses launches of the game it belongs to and of any game
+whose save files overlap it; other games still launch, without a new save copy. With save
+protection turned off, nothing is paused. **Retry Save Recovery** and **Keep Current Saves**
+appear in Save Backups when needed. Close emulators first. Keep Current Saves leaves the live
+saves as they are and moves the recovery copies to a dated folder under
+`sets/recovery-archive` instead of deleting them. Do not delete the journal by hand.
 
 Process checks cover the supported emulators, including Eden used by local wrappers.
 An emulator started outside Omakade during restore can interrupt the operation; its subsequent

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- An unfinished save restore no longer stops every emulator game from launching. Only the
+  game it belongs to waits, nothing waits with save protection off, and Save Backups now
+  offers Keep Current Saves, which moves the recovery copies to a dated folder.
 - Omakade's single-instance socket now lives in your owner-only runtime directory
   instead of the shared temp directory, so another user on the same machine cannot
   claim it first. A window opened before the update still gets the command.

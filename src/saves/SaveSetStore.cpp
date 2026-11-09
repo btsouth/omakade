@@ -688,10 +688,60 @@ bool SaveSetStore::recover(const Resolver& resolve, QString* error) {
       return false;
     }
   }
-  if (!QDir(dir).removeRecursively()) {
+  // Move the finished journal aside first so an interrupted cleanup never leaves a
+  // partial journal behind. Leftover .recovery-* folders are cleared later.
+  const QString done = m_root + "/.recovery-" + QUuid::createUuid().toString(QUuid::Id128);
+  if (!QDir().rename(dir, done)) {
     *error = "Recovered saves, but could not clear the recovery journal.";
     return false;
   }
+  QDir(done).removeRecursively();
+  return true;
+}
+bool SaveSetStore::pendingAffects(const QString& game, const SaveLayout& layout) const {
+  if (!pending())
+    return false;
+  const auto m = json(m_root + "/.restore/manifest.json");
+  const QString owner = m["game"].toString();
+  if (owner.isEmpty() || owner == game || !m["scope"].isObject() || !layout.valid())
+    return true;
+  const auto journalScope = m["scope"].toObject();
+  QStringList journal;
+  for (const auto& list : {journalScope.value("files"), journalScope.value("trees")})
+    for (const auto& path : list.toArray())
+      journal << path.toString();
+  const QStringList launch = layout.files + layout.trees;
+  if (journal.isEmpty() || launch.isEmpty())
+    return true;
+  for (const auto& a : journal)
+    for (const auto& b : launch)
+      if (a.isEmpty() || b.isEmpty() || a == b || a.startsWith(b + '/') || b.startsWith(a + '/'))
+        return true;
+  return false;
+}
+bool SaveSetStore::archiveRecovery(QString* folder, QString* error) {
+  if (!pending())
+    return true;
+  const QString dir = m_root + "/.restore";
+  if (!safePath(m_root) || !safePath(dir)) {
+    *error = "The recovery folder is redirected.";
+    return false;
+  }
+  QLockFile lock(m_root + "/.lock");
+  lock.setStaleLockTime(0);
+  if (!lock.tryLock(0) || m_running()) {
+    *error = "Close emulators before keeping the current saves.";
+    return false;
+  }
+  const QString archive = m_root + "/recovery-archive";
+  const QString target =
+      archive + '/' + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz");
+  if (!QDir().mkpath(archive) || !safePath(archive) || QFileInfo::exists(target) ||
+      !QDir().rename(dir, target)) {
+    *error = "Could not move the recovery copies. Nothing was changed.";
+    return false;
+  }
+  *folder = target;
   return true;
 }
 bool SaveSetStore::restore(const QString& game, const QString& version, const Resolver& resolve,

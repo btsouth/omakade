@@ -156,6 +156,13 @@ ActionMenu {
             text: "RETRY SAVE RECOVERY"
             onClicked: SaveBackups.retryRecovery()
         }
+        MenuAction {
+            objectName: saveBackupsMenu.namePrefix + "keepCurrentSaves"
+            Layout.fillWidth: true
+            visible: typeof SaveBackups !== "undefined" && SaveBackups.recoveryPending
+            text: "KEEP CURRENT SAVES"
+            onClicked: SaveBackups.keepCurrentSaves()
+        }
         Repeater {
             model: typeof SaveBackups !== "undefined" ? SaveBackups.versions : []
             MenuAction {

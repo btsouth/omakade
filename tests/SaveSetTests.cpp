@@ -435,6 +435,60 @@ private slots:
     QVERIFY(backups.message().contains("Launch is paused"));
     QCOMPARE(get(f.home + "/saves/game.srm"), QByteArray("external progress"));
   }
+  void stuckRecoveryOnlyBlocksItsOwnGame() {
+    Fixture f;
+    const QString config = f.home + "/retroarch.cfg";
+    put(config, "savefile_directory = \"~/saves\"\n");
+    put(f.home + "/saves/game.srm", "original SRAM");
+    put(f.home + "/saves/game.rtc", "original RTC");
+    const QJsonObject context{
+        {"source", "RetroArch"}, {"game", f.game}, {"core", "gambatte_libretro.so"}};
+    auto resolve = [&](const QJsonObject& c) { return resolveSaveLayout(c, f.home, config); };
+    int checks = 0;
+    bool interrupt = false;
+    SaveSetStore store(f.root + "/sets", [&] { return interrupt && ++checks >= 6; });
+    QVERIFY(store.snapshot(f.game, context, resolve(context), &f.error));
+    const auto version = store.versions(f.game).first().toMap()["id"].toString();
+    put(f.home + "/saves/game.srm", "new SRAM");
+    put(f.home + "/saves/game.rtc", "new RTC");
+    interrupt = true;
+    QVERIFY(!store.restore(f.game, version, resolve, &f.error));
+    QVERIFY(store.pending());
+    put(f.home + "/saves/game.srm", "external progress");
+    const QString other = f.home + "/other.gbc";
+    put(f.home + "/saves/other.srm", "other SRAM");
+    SaveBackups backups(f.home, config, f.root, [] { return false; });
+    // Another game with separate save files still launches.
+    QVERIFY(backups.protectLaunch("RetroArch", other, "gambatte_libretro.so"));
+    QVERIFY(backups.recoveryPending());
+    // Turning save protection off never blocks a launch.
+    backups.setEnabled(false);
+    QVERIFY(backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
+    backups.setEnabled(true);
+    QVERIFY(!backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
+    QVERIFY(backups.message().contains("keep the current saves"));
+    // Keeping current saves moves the journal aside without touching live saves.
+    QVERIFY(backups.keepCurrentSaves());
+    QVERIFY(!backups.recoveryPending());
+    const QDir archive(f.root + "/sets/recovery-archive");
+    const auto kept = archive.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    QCOMPARE(kept.size(), 1);
+    QVERIFY(QFileInfo::exists(archive.filePath(kept.first() + "/manifest.json")));
+    QCOMPARE(get(f.home + "/saves/game.srm"), QByteArray("external progress"));
+    QVERIFY(backups.protectLaunch("RetroArch", f.game, "gambatte_libretro.so"));
+    QCOMPARE(get(f.home + "/saves/game.srm"), QByteArray("external progress"));
+  }
+  void damagedRecoveryJournalBlocksEveryProtectedLaunch() {
+    Fixture f;
+    QVERIFY(QDir().mkpath(f.root + "/.restore"));
+    put(f.root + "/.restore/manifest.json", "{");
+    QVERIFY(f.store.pending());
+    QVERIFY(f.store.pendingAffects(f.home + "/other.gbc", f.layout));
+    QString folder;
+    QVERIFY(f.store.archiveRecovery(&folder, &f.error));
+    QVERIFY(!f.store.pending());
+    QVERIFY(QFileInfo::exists(folder + "/manifest.json"));
+  }
   void retroArchClockAndOverrides() {
     Fixture f;
     const QString config = f.home + "/retroarch.cfg";

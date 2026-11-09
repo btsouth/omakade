@@ -43,6 +43,10 @@ public:
                QString* error);
   bool recover(const Resolver& resolve, QString* error);
   bool pending() const;
+  // True when an unresolved journal may touch this game's saves, or cannot be read.
+  bool pendingAffects(const QString& game, const SaveLayout& layout) const;
+  // Keeps the live saves and moves the journal to a dated folder instead of deleting it.
+  bool archiveRecovery(QString* folder, QString* error);
 
 private:
   QString m_root, m_budgetRoot;
