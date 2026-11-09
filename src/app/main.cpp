@@ -4284,6 +4284,28 @@ int main(int argc, char* argv[]) {
             qCritical() << "Home did not prioritize Play";
             application.exit(EXIT_FAILURE); return;
           }
+          // Down out of Play's row starts the shelves at their first card. A narrow window
+          // wraps the buttons, so Down first visits the wrapped row.
+          if (home.recent().size() > 1) {
+            const QString firstCard = QStringLiteral("homeTile-") +
+                                      home.recent().at(1).toMap().value("identity").toString();
+            auto* heroActions = quickWindow->activeFocusItem()->parentItem();
+            for (int press = 0; press < 3 && quickWindow->activeFocusItem() &&
+                                quickWindow->activeFocusItem()->parentItem() == heroActions;
+                 ++press) {
+              deliverKeyboardTestKey(quickWindow, Qt::Key_Down);
+            }
+            if (!quickWindow->activeFocusItem() || quickWindow->activeFocusItem()->objectName() != firstCard) {
+              qCritical() << "Down from Home Play did not reach the first shelf card"
+                          << (quickWindow->activeFocusItem() ? quickWindow->activeFocusItem()->objectName() : QString());
+              application.exit(EXIT_FAILURE); return;
+            }
+            QMetaObject::invokeMethod(screen, "focusIdentity", Q_ARG(QVariant, identity));
+            if (quickWindow->activeFocusItem()->objectName() != "homeFeaturedPlay") {
+              qCritical() << "Home could not return focus to Play";
+              application.exit(EXIT_FAILURE); return;
+            }
+          }
           // Demo mode exercises the normal launch route without starting an emulator.
           deliverKeyboardTestKey(quickWindow, Qt::Key_Return);
           if (!quickWindow->property("detailOpen").toBool()) {
@@ -6997,11 +7019,24 @@ int main(int argc, char* argv[]) {
                       fail(QStringLiteral("Settings opened without its controls"));
                       return;
                     }
-                    settingsPage->setProperty("section", 1);
+                    // Choosing a section, as its button does, starts on that section's first control.
+                    QMetaObject::invokeMethod(settingsPage, "chooseSection", Q_ARG(QVariant, QVariant(1)));
                     QEventLoop settingsLayout;
                     QTimer::singleShot(50, &settingsLayout, &QEventLoop::quit);
                     settingsLayout.exec();
+                    QQuickItem* firstControl = settingsScroll->nextItemInFocusChain(true);
+                    for (int hops = 0; firstControl && hops < 300 &&
+                                       !(settingsScroll->isAncestorOf(firstControl) && firstControl->isVisible() &&
+                                         firstControl->isEnabled() && firstControl->activeFocusOnTab());
+                         ++hops) {
+                      firstControl = firstControl->nextItemInFocusChain(true);
+                    }
                     QQuickItem* settingsStart = quickWindow->activeFocusItem();
+                    if (firstControl == nullptr || settingsStart != firstControl) {
+                      fail(QStringLiteral("Choosing a Settings section did not focus its first control (%1)")
+                               .arg(settingsStart ? settingsStart->objectName() : QStringLiteral("nothing")));
+                      return;
+                    }
                     for (int step = 0; step < 30; ++step) {
                       controller.focusDirectionRequested(Qt::Key_Down);
                     }
@@ -7011,11 +7046,29 @@ int main(int argc, char* argv[]) {
                       return;
                     }
                     controller.backRequested();
-                    QTimer::singleShot(50, quickWindow, [quickWindow, &application, &controller, grid, fail] {
+                    QTimer::singleShot(50, quickWindow, [quickWindow, &application, &controller, grid, fail, settingsPage] {
                       if (quickWindow->property("diagnosticsOpen").toBool()) {
                         fail(QStringLiteral("Controller Back did not close Settings"));
                         return;
                       }
+                      // Connect in game details picks Connections and then opens Settings.
+                      // Opening must not step past the section's first control.
+                      settingsPage->setProperty("section", 2);
+                      quickWindow->setProperty("diagnosticsOpen", true);
+                      QEventLoop connectionsLayout;
+                      QTimer::singleShot(50, &connectionsLayout, &QEventLoop::quit);
+                      connectionsLayout.exec();
+                      QQuickItem* connectionsStart = quickWindow->activeFocusItem();
+                      if (connectionsStart == nullptr ||
+                          connectionsStart->objectName() != QStringLiteral("rommConnectionToggle")) {
+                        fail(QStringLiteral("Opening Settings on Connections did not focus its first control (%1)")
+                                 .arg(connectionsStart ? connectionsStart->objectName() : QStringLiteral("nothing")));
+                        return;
+                      }
+                      quickWindow->setProperty("diagnosticsOpen", false);
+                      QEventLoop connectionsClosed;
+                      QTimer::singleShot(50, &connectionsClosed, &QEventLoop::quit);
+                      connectionsClosed.exec();
                       controller.toolbarRequested();
                       if (!grid->hasActiveFocus()) {
                         fail(QStringLiteral("Controller Controls did not return to the game grid"));

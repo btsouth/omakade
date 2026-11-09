@@ -96,18 +96,32 @@ import QtQuick.Layouts
         function chooseSection(value) {
             categoriesOpen = false
             section = value
-            pageChanged()
+            // onSectionChanged starts a new section; choosing the open one starts it again.
+            startSection()
         }
-        function pageChanged() {
-            Qt.callLater(function() {
-                settingsScroll.contentItem.contentY = 0
-                host.focusWithin(settingsScroll, true)
-                // A page with nothing to focus (or whose controls are all hidden) leaves focus
-                // on its entry in the section list instead of a control from the last page.
-                const current = host.activeFocusItem
-                if (!current || !current.visible || !host.isWithin(current, settingsOverlay))
-                    settingsOverlay.focusCurrentSection()
-            })
+        // A new section starts on its first control. Queuing the same function twice runs it
+        // once, and it names its target rather than stepping on from the focused control.
+        function startSection() { Qt.callLater(focusSectionStart) }
+        function focusSectionStart() { focusPage(firstPageControl()) }
+        function firstPageControl() {
+            let candidate = settingsScroll.nextItemInFocusChain(true)
+            for (let attempts = 0; candidate && attempts < 300; ++attempts) {
+                if (host.isWithin(candidate, settingsScroll) && candidate.visible
+                        && candidate.enabled && candidate.activeFocusOnTab)
+                    return candidate
+                candidate = candidate.nextItemInFocusChain(true)
+            }
+            return null
+        }
+        function pageChanged() { Qt.callLater(function() { settingsOverlay.focusPage(null) }) }
+        function focusPage(preferred) {
+            settingsScroll.contentItem.contentY = 0
+            host.focusWithin(settingsScroll, true, preferred)
+            // A page with nothing to focus (or whose controls are all hidden) leaves focus
+            // on its entry in the section list instead of a control from the last page.
+            const current = host.activeFocusItem
+            if (!current || !current.visible || !host.isWithin(current, settingsOverlay))
+                settingsOverlay.focusCurrentSection()
         }
         function focusCurrentSection() {
             for (let index = 0; index < sectionButtons.count; ++index) {
@@ -126,7 +140,7 @@ import QtQuick.Layouts
             if (section === 2 && connection >= 0) { connection = -1; pageChanged(); return }
             host.diagnosticsOpen = false
         }
-        onSectionChanged: pageChanged()
+        onSectionChanged: startSection()
         property var previousFocus: null
         anchors.fill: parent
         visible: host.diagnosticsOpen
@@ -137,7 +151,12 @@ import QtQuick.Layouts
             if (SessionRecorderStatus) SessionRecorderStatus.refreshRecorderStatus()
             settingsOverlay.refreshGameMode()
             previousFocus = host.activeFocusItem
-            Qt.callLater(function() { host.focusWithin(settingsOverlay, true) })
+            // Opening on a section chosen just before, as Connect does, already started that
+            // section on its first control. Stepping on from there would skip it.
+            Qt.callLater(function() {
+                if (!host.isWithin(host.activeFocusItem, settingsOverlay))
+                    host.focusWithin(settingsOverlay, true)
+            })
         }
         onVisibleChanged: {
             if (visible) {
