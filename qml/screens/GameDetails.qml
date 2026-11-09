@@ -2237,6 +2237,7 @@ Item {
             Layout.fillWidth: true
             visible: playHistoryMenu.confirming
             text: playHistoryMenu.pendingClearAll ? "DELETE ALL SESSIONS" : "DELETE SESSION"
+            destructive: true
             onClicked: playHistoryMenu.applyDelete()
         }
         Repeater {

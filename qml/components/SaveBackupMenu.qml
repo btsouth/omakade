@@ -131,6 +131,7 @@ ActionMenu {
             Layout.fillWidth: true
             visible: saveBackupsMenu.pendingVersion !== ""
             text: saveBackupsMenu.pendingDelete ? "DELETE BACKUP" : "RESTORE THIS SAVE"
+            destructive: saveBackupsMenu.pendingDelete
             onClicked: {
                 if (saveBackupsMenu.pendingDelete)
                     SaveBackups.deleteVersion(saveBackupsMenu.pendingVersion)

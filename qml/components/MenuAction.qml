@@ -9,4 +9,5 @@ GlassButton {
     compact: true
     implicitWidth: 120 * displayScale
     maximumLabelWidth: Math.max(0, width - leftPadding - rightPadding)
+    labelAlignment: Qt.AlignLeft
 }

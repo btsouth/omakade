@@ -122,7 +122,8 @@ Rectangle {
                 onClicked: Library.renameSavedFilter(editor.selectedId, nameField.text)
             }
             GlassButton {
-                text: editor.pendingDelete === editor.selectedId && editor.selectedId ? "CONFIRM DELETE" : "DELETE"
+                text: destructive ? "CONFIRM DELETE" : "DELETE"
+                destructive: editor.pendingDelete === editor.selectedId && editor.selectedId.length > 0
                 enabled: editor.selectedId.length > 0
                 displayScale: editor.uiScale
                 onClicked: {

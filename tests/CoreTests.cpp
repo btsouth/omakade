@@ -1084,6 +1084,7 @@ private slots:
   void themeFallsBackWithoutOmarchy();
   void themePicksReadableTextOnStatusFills();
   void themeFocusRingStandsOutOnEverySurface();
+  void themeDestructiveFillStaysRedAndApartFromAccent();
   void themeReloadsWhenActiveFileChanges();
   void themeFollowsShellLauncherTransparency();
   void themeResolvesCompactTerminalPalette();
@@ -1478,6 +1479,55 @@ void CoreTests::themePicksReadableTextOnStatusFills() {
   QColor translucent = tokyo.accent();
   translucent.setAlphaF(0.5);
   QCOMPARE(tokyo.readableOn(translucent), tokyo.darkerBackground());
+}
+
+void CoreTests::themeDestructiveFillStaysRedAndApartFromAccent() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString configHome = directory.path() + QStringLiteral("/config");
+  // Accent and red from shipped Omarchy themes, including ones whose red is green, blue, grey
+  // or nearly the accent.
+  struct Palette {
+    const char* name;
+    QByteArray accent;
+    QByteArray red;
+    bool keepsThemeRed;
+  };
+  const QList<Palette> palettes = {
+      {"tokyo-night", "#7aa2f7", "#f7768e", true},   {"catppuccin", "#89b4fa", "#f38ba8", true},
+      {"rose-pine", "#56949f", "#b4637a", true},     {"retro-82", "#faa968", "#f85525", true},
+      {"hackerman", "#82FB9C", "#50f872", false},    {"lumon", "#8bc9eb", "#4d86b0", false},
+      {"vantablack", "#8d8d8d", "#a4a4a4", false},   {"solitude", "#798186", "#565d60", false},
+      {"last-horizon", "#b59790", "#c38b7b", false}, {"ristretto", "#f38d70", "#fd6883", false},
+      {"lupine", "#3264eb", "#c900c4", false},
+  };
+  const auto apart = [](const QColor& a, const QColor& b) {
+    return std::abs(a.redF() - b.redF()) + std::abs(a.greenF() - b.greenF()) +
+           std::abs(a.blueF() - b.blueF());
+  };
+  for (const Palette& palette : palettes) {
+    const QString state = directory.path() + QStringLiteral("/") + QLatin1String(palette.name);
+    QByteArray colors = sampleTheme(palette.accent);
+    colors.replace("red = \"#f7768e\"", "red = \"" + palette.red + "\"");
+    writeFile(state + QStringLiteral("/omarchy/current/theme/colors.toml"), colors);
+    OmarchyTheme theme(state, configHome);
+    const QColor fill = theme.destructive();
+    const QColor hsv = fill.toHsv();
+    const QString context = QLatin1String(palette.name) + QStringLiteral(" ") + fill.name();
+    QVERIFY2(hsv.hsvHue() <= 25 || hsv.hsvHue() >= 335, qPrintable(context));
+    QVERIFY2(hsv.hsvSaturationF() >= 0.4, qPrintable(context));
+    QVERIFY2(apart(fill, theme.accent()) >= 0.45, qPrintable(context));
+    QVERIFY2(OmarchyTheme::contrastRatio(theme.readableOn(fill), fill) >= 4.5, qPrintable(context));
+    QCOMPARE(fill == QColor(QString::fromLatin1(palette.red)), palette.keepsThemeRed);
+  }
+
+  // A red accent keeps whichever red stands further from it.
+  const QString redAccent = directory.path() + QStringLiteral("/red-accent");
+  QByteArray colors = sampleTheme("#d8403c");
+  colors.replace("red = \"#f7768e\"", "red = \"#e05050\"");
+  writeFile(redAccent + QStringLiteral("/omarchy/current/theme/colors.toml"), colors);
+  OmarchyTheme theme(redAccent, configHome);
+  QCOMPARE(theme.destructive(), QColor(QStringLiteral("#e05050")));
 }
 
 void CoreTests::themeFocusRingStandsOutOnEverySurface() {

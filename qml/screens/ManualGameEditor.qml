@@ -206,6 +206,7 @@ Rectangle {
             EditorButton {
                 visible: editor.entryId !== ""
                 text: editor.confirmingRemoval ? "CONFIRM REMOVAL" : "REMOVE FROM OMAKADE"
+                destructive: editor.confirmingRemoval
                 onClicked: {
                     if (!editor.confirmingRemoval) editor.confirmingRemoval = true
                     else if (ManualLibrary.removeEntry(editor.entryId)) editor.removed()

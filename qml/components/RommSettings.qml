@@ -77,7 +77,7 @@ ColumnLayout {
             Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.yellow; text: "This server uses plain HTTP and is not on your local network. Anyone on the network path could read your RomM token. Use https if the server supports it." }
             Flow {
                 Layout.fillWidth: true; spacing: 8
-                GlassButton { id: confirmHttpButton; objectName: "rommConfirmHttp"; text: "SEND TOKEN OVER HTTP"; enabled: root.service && !root.service.scanning; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus(); if(root.service.connectServer(server.text,folder.text,token.text,true)) token.clear() } }
+                GlassButton { id: confirmHttpButton; objectName: "rommConfirmHttp"; text: "SEND TOKEN OVER HTTP"; destructive: true; enabled: root.service && !root.service.scanning; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus(); if(root.service.connectServer(server.text,folder.text,token.text,true)) token.clear() } }
                 GlassButton { text: "CANCEL"; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus() } }
             }
         }
