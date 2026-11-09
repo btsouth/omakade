@@ -227,7 +227,7 @@ private slots:
 
     // Primary is the solid accent with text that reads on it at WCAG AA.
     const QColor accent = theme.property("accent").value<QColor>();
-    const QColor red = theme.property("red").value<QColor>();
+    const QColor red = theme.property("destructive").value<QColor>();
     const auto labelColor = [&](QQuickItem* button) {
       return find(button, "buttonLabel")->property("color").value<QColor>();
     };

@@ -28,6 +28,7 @@ class OmarchyTheme final : public QObject {
   Q_PROPERTY(QColor mutedText READ mutedText NOTIFY themeChanged)
   Q_PROPERTY(QColor focusRing READ focusRing NOTIFY themeChanged)
   Q_PROPERTY(QColor red READ red NOTIFY themeChanged)
+  Q_PROPERTY(QColor destructive READ destructive NOTIFY themeChanged)
   Q_PROPERTY(QColor yellow READ yellow NOTIFY themeChanged)
   Q_PROPERTY(QColor green READ green NOTIFY themeChanged)
   Q_PROPERTY(QColor cyan READ cyan NOTIFY themeChanged)
@@ -63,6 +64,10 @@ public:
   // against every app surface and otherwise falls back to a theme or black/white color that does.
   [[nodiscard]] QColor focusRing() const;
   [[nodiscard]] QColor red() const;
+  // The fill for confirmations that cannot be undone. It keeps the theme red when that is
+  // clearly red and clearly apart from the accent, and otherwise uses a fixed red, since some
+  // themes set red to a green, blue or grey, or to nearly the accent itself.
+  [[nodiscard]] QColor destructive() const;
   [[nodiscard]] QColor yellow() const;
   [[nodiscard]] QColor green() const;
   [[nodiscard]] QColor cyan() const;

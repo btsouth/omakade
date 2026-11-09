@@ -326,6 +326,25 @@ QColor OmarchyTheme::focusRing() const {
   return best;
 }
 
+QColor OmarchyTheme::destructive() const {
+  const auto apartFromAccent = [this](const QColor& color) {
+    return std::abs(color.redF() - m_accent.redF()) + std::abs(color.greenF() - m_accent.greenF()) +
+           std::abs(color.blueF() - m_accent.blueF());
+  };
+  const auto clearlyRed = [](const QColor& color) {
+    const QColor hsv = color.toHsv();
+    const int hue = hsv.hsvHue();
+    return hue >= 0 && (hue <= 25 || hue >= 335) && hsv.hsvSaturationF() >= 0.4;
+  };
+  if (clearlyRed(m_red) && apartFromAccent(m_red) >= 0.45) {
+    return m_red;
+  }
+  // A red accent may sit near the fixed red too, so keep whichever red stands further apart.
+  const QColor fixedRed(QStringLiteral("#d93a3a"));
+  return !clearlyRed(m_red) || apartFromAccent(fixedRed) >= apartFromAccent(m_red) ? fixedRed
+                                                                                   : m_red;
+}
+
 QColor OmarchyTheme::readableOn(const QColor& fill) const {
   QColor opaque = fill.toRgb();
   opaque.setAlpha(255);

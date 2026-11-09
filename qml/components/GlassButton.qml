@@ -18,7 +18,7 @@ Button {
     // Labels sit in the middle of the button. Menu rows set Qt.AlignLeft to keep a label column.
     property int labelAlignment: Qt.AlignHCenter
     readonly property bool filled: root.primary || root.destructive
-    readonly property color fillColor: root.destructive ? Theme.red : Theme.accent
+    readonly property color fillColor: root.destructive ? Theme.destructive : Theme.accent
     readonly property color labelColor: {
         if (!root.enabled) return root.alpha(Theme.foreground, 0.35)
         if (!root.filled) return root.selected ? Theme.brightForeground : Theme.foreground

@@ -17,7 +17,8 @@
 - Button labels now sit in the middle of their buttons instead of at the left edge. The
   main action on a screen, such as Play or Set Up Sources, is a solid accent button with
   text picked to stay readable on every theme, so it stands out from selected toggles like
-  Favorited. Delete and other confirmations that cannot be undone are solid red.
+  Favorited. Delete and other confirmations that cannot be undone are solid red, with a
+  fixed red on themes whose red is not red or sits too close to the accent.
 - Screen readers now hear a game card's favorite, completion status and install state in
   the library, Home and Game Mode, and can open the game from the card. Hidden achievements
   no longer reveal their name to screen readers before they are unlocked.
