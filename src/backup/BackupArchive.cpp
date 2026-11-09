@@ -148,6 +148,7 @@ QStringList BackupArchive::settingNames() {
           "console_layouts",
           "reduced_motion",
           "motion",
+          "text_size",
           "artwork_cache_limit_mb",
           "steam_enabled",
           "lutris_enabled",
@@ -426,6 +427,11 @@ bool BackupArchive::validate(const BackupPayload& payload, QString* error) {
     } else if (setting.key() == "motion") {
       if (!QStringList{"system", "reduced", "full"}.contains(setting.value().toString()))
         return fail(error, "The motion preference is invalid.");
+    } else if (setting.key() == "text_size") {
+      // 0 follows the system; the rest are the percentages Settings offers.
+      if (!integer(setting.value(), 0, 150) ||
+          !QList<int>{0, 90, 100, 115, 130, 150}.contains(setting.value().toInt()))
+        return fail(error, "The text size is invalid.");
     } else if (setting.key() == "stats_period") {
       if (!QStringList{"year", "all"}.contains(setting.value().toString()))
         return fail(error, "The statistics period is invalid.");

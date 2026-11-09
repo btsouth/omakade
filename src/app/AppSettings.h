@@ -14,6 +14,11 @@ class AppSettings final : public QObject {
   Q_PROPERTY(QString motionPreference READ motionPreference WRITE setMotionPreference NOTIFY
                  reducedMotionChanged)
   Q_PROPERTY(bool systemReducedMotion READ systemReducedMotion NOTIFY reducedMotionChanged)
+  Q_PROPERTY(int textSizePreference READ textSizePreference WRITE setTextSizePreference NOTIFY
+                 textSizeChanged)
+  Q_PROPERTY(int systemTextSize READ systemTextSize NOTIFY textSizeChanged)
+  Q_PROPERTY(int textSize READ textSize NOTIFY textSizeChanged)
+  Q_PROPERTY(QList<int> textSizes READ textSizes CONSTANT)
   Q_PROPERTY(int artworkCacheLimitMb READ artworkCacheLimitMb WRITE setArtworkCacheLimitMb NOTIFY
                  artworkCacheLimitMbChanged)
   Q_PROPERTY(bool protonDbEnabled READ protonDbEnabled WRITE setProtonDbEnabled NOTIFY protonDbEnabledChanged)
@@ -125,6 +130,19 @@ public:
   [[nodiscard]] static bool hyprlandAnimationsDisabled(const QByteArray& json);
   // Reads `gsettings get org.gnome.desktop.interface enable-animations`.
   [[nodiscard]] static bool gtkAnimationsDisabled(const QByteArray& output);
+  // Desktop text size in percent: one of textSizes(). 0 as the preference follows the system.
+  [[nodiscard]] static QList<int> textSizes();
+  [[nodiscard]] int textSizePreference() const { return m_textSizePreference; }
+  void setTextSizePreference(int value);
+  [[nodiscard]] int systemTextSize() const { return m_systemTextSize; }
+  void setSystemTextSize(int value);
+  [[nodiscard]] int textSize() const;
+  // The nearest of textSizes() to a scale factor such as 1.25.
+  [[nodiscard]] static int nearestTextSize(double factor);
+  // Reads `gsettings get org.gnome.desktop.interface text-scaling-factor`; 0 when unreadable.
+  [[nodiscard]] static int gtkTextSize(const QByteArray& output);
+  // Asks GTK for its text scaling factor. The answer arrives asynchronously.
+  void detectSystemTextSize();
   [[nodiscard]] int artworkCacheLimitMb() const;
   void setArtworkCacheLimitMb(int value);
   bool protonDbEnabled() const { return m_protonDbEnabled; }
@@ -297,6 +315,7 @@ signals:
   void gogLibraryPathsChanged();
   void rommConfigurationChanged();
   void reducedMotionChanged();
+  void textSizeChanged();
   void artworkCacheLimitMbChanged();
   void protonDbEnabledChanged();
   void protonDbBadgesChanged();
@@ -341,6 +360,8 @@ private:
   bool m_metadataAutoIdentify = true;
   QString m_motionPreference = QStringLiteral("system");
   bool m_systemReducedMotion = false;
+  int m_textSizePreference = 0;
+  int m_systemTextSize = 100;
   int m_artworkCacheLimitMb = 1024;
   QString m_steamId;
   QString m_igdbClientId;
