@@ -119,6 +119,15 @@ authenticated read-only catalog requests to the configured server. Game files ar
 read from the configured local mount; Omakade does not download games or upload saves.
 The RomM token is not sent to artwork providers.
 
+The token travels as an `Authorization` header, so over plain `http` anyone on the
+network path can read it. RomM settings show which transport the server address uses.
+Plain HTTP is accepted without asking only for loopback, private network (RFC 1918,
+IPv6 unique local, link-local and 100.64.0.0/10) and local names such as `localhost`,
+single-label names and `.local`, `.lan`, `.home.arpa` or `.internal`. For any other
+`http` server Omakade asks before sending the token. That confirmation covers that one
+address, is kept in `config.toml` as `romm_http_approved`, and is cleared when the
+address changes.
+
 Failed refreshes retain the last successful local catalog. Disconnect disables
 requests while retaining the catalog and token. Forget Token also removes the
 server credential. Machine-local launch setups and credentials are excluded from

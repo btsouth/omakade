@@ -235,6 +235,91 @@ private slots:
     QTRY_VERIFY(started.load());model.disconnectServer();release=true;
     QTest::qWait(30);QCOMPARE(network.requests.size(),0);QCOMPARE(model.rowCount(),0);QVERIFY(!model.scanning());
   }
+  void plainHttpOutsideLocalNetworkNeedsConfirmation() {
+    using Transport = RommCatalog::Transport;
+    QCOMPARE(RommCatalog::transport(QUrl("https://romm.example")), Transport::Https);
+    QCOMPARE(RommCatalog::transport(QUrl("ftp://romm.local")), Transport::Invalid);
+    for (const char* local :
+         {"http://localhost:8080", "http://127.0.0.1", "http://[::1]:3000", "http://10.0.0.5",
+          "http://172.16.4.1", "http://192.168.1.20", "http://169.254.1.1", "http://100.100.1.1",
+          "http://[fd00::5]", "http://nas", "http://romm.local", "http://romm.lan",
+          "http://romm.home.arpa", "http://romm.internal", "http://ROMM.LOCAL."})
+      QVERIFY2(RommCatalog::transport(QUrl(local)) == Transport::LocalHttp, local);
+    for (const char* remote :
+         {"http://romm.example", "http://8.8.8.8", "http://172.32.0.1", "http://100.128.0.1",
+          "http://[2001:db8::1]", "http://local.example.com", "http://romm.localdomain.example"})
+      QVERIFY2(RommCatalog::transport(QUrl(remote)) == Transport::PublicHttp, remote);
+
+    QTemporaryDir dir;
+    game(dir.path());
+    RommNetwork network;
+    RommCatalog catalog(dir.filePath("catalog.sqlite"), nullptr, &network);
+    QSignalSpy done(&catalog, &RommCatalog::finished);
+    const QUrl insecure("http://romm.example");
+    QVERIFY(!catalog.refresh(insecure, dir.path(), token));
+    QCOMPARE(done.size(), 1);
+    QVERIFY(!done.last().at(0).toBool());
+    QCOMPARE(network.requests.size(), 0);
+    network.responses = {{page(1)}, {page(1)}};
+    QVERIFY(catalog.refresh(insecure, dir.path(), token, true));
+    QTRY_COMPARE(done.size(), 2);
+    QVERIFY(done.last().at(0).toBool());
+    QVERIFY(catalog.refresh(QUrl("http://192.168.1.20"), dir.path(), token));
+    QTRY_COMPARE(done.size(), 3);
+    QVERIFY(done.last().at(0).toBool());
+    QCOMPARE(network.requests.size(), 2);
+  }
+  void modelAsksBeforeSendingTokenOverPlainHttp() {
+    QTemporaryDir dir;
+    const QString mount = dir.filePath("mount");
+    QVERIFY(QDir().mkpath(mount));
+    game(mount);
+    const QString settingsPath = dir.filePath("config.toml");
+    AppSettings settings(settingsPath);
+    RommNetwork network;
+    network.responses = {{page(1)}};
+    auto credentials = [this](const QUrl&, const QByteArray&, bool) {
+      return RommCredentialResult{true, token, {}};
+    };
+    RommGameModel model(dir.filePath("catalog.sqlite"), &settings, nullptr, nullptr, &network,
+                        credentials);
+    const QString insecure = "http://romm.example";
+    QVERIFY(model.needsHttpConfirmation(insecure));
+    QVERIFY(!model.needsHttpConfirmation("http://192.168.1.20"));
+    QVERIFY(!model.needsHttpConfirmation(server.toString()));
+    QVERIFY(model.transportText(server.toString()).contains("HTTPS"));
+    QVERIFY(model.transportText("http://192.168.1.20").contains("local network"));
+    QVERIFY(model.transportText(insecure).contains("asks"));
+
+    QVERIFY(!model.connectServer(insecure, mount, QString::fromLatin1(token)));
+    QVERIFY(!model.errorText().isEmpty());
+    QVERIFY(!settings.rommEnabled());
+    QTest::qWait(30);
+    QCOMPARE(network.requests.size(), 0);
+
+    QVERIFY(model.connectServer(insecure, mount, QString::fromLatin1(token), true));
+    QTRY_COMPARE(model.rowCount(), 1);
+    QTRY_VERIFY(!model.scanning());
+    QCOMPARE(network.requests.size(), 1);
+    QVERIFY(settings.rommHttpApproved());
+    QVERIFY(!model.needsHttpConfirmation(insecure));
+    QVERIFY(model.transportText(insecure).contains("confirmed"));
+    {
+      AppSettings reloaded(settingsPath);
+      QVERIFY(reloaded.rommHttpApproved());
+    }
+
+    // The confirmation covers one address; a new one is not contacted until confirmed.
+    settings.setRommUrl("http://other.example");
+    QVERIFY(!settings.rommHttpApproved());
+    QTRY_COMPARE(model.statusText(), QString("Plain HTTP not confirmed"));
+    QVERIFY(!model.scanning());
+    QCOMPARE(network.requests.size(), 1);
+    settings.setRommUrl(insecure);
+    QVERIFY(!settings.rommHttpApproved());
+    QTRY_COMPARE(model.statusText(), QString("Plain HTTP not confirmed"));
+    QCOMPARE(network.requests.size(), 1);
+  }
   void validatesCredentialsWithoutTouchingKeyring() {
     QVERIFY(RommCatalog::validToken(token));
     QVERIFY(!RommCatalog::validToken(token + "\r\nHeader: bad"));

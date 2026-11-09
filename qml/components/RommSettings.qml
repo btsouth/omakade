@@ -8,6 +8,7 @@ ColumnLayout {
     objectName: "rommSettingsPanel"
     property var host: null
     property bool expanded: false
+    property bool confirmHttp: false
     readonly property var service: typeof RommLibrary !== "undefined" ? RommLibrary : null
     spacing: 10
     GlassButton {
@@ -32,6 +33,13 @@ ColumnLayout {
             function controllerAccept() { acceptInput({ modifiers: Qt.NoModifier, accepted: false }) }
             Keys.onReturnPressed: event => acceptInput(event)
             Keys.onEnterPressed: event => { if(root.host) root.host.handleCouchTextEntry(event,server,"ROMM SERVER",false,placeholderText) }
+            onTextChanged: root.confirmHttp = false
+        }
+        Text {
+            objectName: "rommTransport"; Layout.fillWidth: true; wrapMode: Text.Wrap
+            color: server.text.trim().toLowerCase().startsWith("https:") ? Theme.mutedText : Theme.yellow
+            text: { Preferences.rommUrl; Preferences.rommHttpApproved; return root.service ? root.service.transportText(server.text) : "" }
+            visible: text.length > 0
         }
         RowLayout {
             Layout.fillWidth: true
@@ -59,10 +67,19 @@ ColumnLayout {
         }
         Flow {
             Layout.fillWidth: true; spacing: 8
-            GlassButton { objectName: "rommConnect"; text: "SAVE AND CONNECT"; enabled: root.service && !root.service.scanning; onClicked: { if(root.service.connectServer(server.text,folder.text,token.text)) token.clear() } }
+            GlassButton { objectName: "rommConnect"; text: "SAVE AND CONNECT"; enabled: root.service && !root.service.scanning; onClicked: { if(root.service.needsHttpConfirmation(server.text)) { root.confirmHttp = true; return } if(root.service.connectServer(server.text,folder.text,token.text)) token.clear() } }
             GlassButton { text: "TEST / REFRESH"; enabled: root.service && Preferences.rommEnabled && !root.service.scanning; onClicked: root.service.refresh() }
             GlassButton { text: "DISCONNECT"; enabled: root.service && Preferences.rommEnabled; onClicked: root.service.disconnectServer(false) }
             GlassButton { text: "FORGET TOKEN"; enabled: root.service && !root.service.scanning; onClicked: { root.service.disconnectServer(true); token.clear() } }
+        }
+        ColumnLayout {
+            objectName: "rommHttpConfirmation"; Layout.fillWidth: true; spacing: 8; visible: root.confirmHttp
+            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.yellow; text: "This server uses plain HTTP and is not on your local network. Anyone on the network path could read your RomM token. Use https if the server supports it." }
+            Flow {
+                Layout.fillWidth: true; spacing: 8
+                GlassButton { objectName: "rommConfirmHttp"; text: "SEND TOKEN OVER HTTP"; enabled: root.service && !root.service.scanning; onClicked: { root.confirmHttp = false; if(root.service.connectServer(server.text,folder.text,token.text,true)) token.clear() } }
+                GlassButton { text: "CANCEL"; onClicked: root.confirmHttp = false }
+            }
         }
         Text { objectName: "rommConnectionStatus"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.foreground; text: root.service ? root.service.statusText : "Unavailable in demo mode" }
         Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.mutedText; text: root.service ? root.service.errorText : ""; visible: text.length > 0 }

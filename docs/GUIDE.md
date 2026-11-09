@@ -155,6 +155,11 @@ and the last catalog stays available while the server is offline. **Disconnect**
 stops requests and keeps the token; **Forget Token** removes it too. The token is
 kept in Secret Service; see [Privacy](../PRIVACY.md#optional-romm-library).
 
+Use an `https` address when the server supports it. Below the address, Settings shows
+whether the connection is encrypted. A plain `http` address on your local network
+connects without asking; for any other `http` server, Omakade asks before it sends
+the token unencrypted.
+
 ## Include uninstalled Heroic games
 
 Omakade reads the Epic, GOG, and Amazon libraries cached by Heroic, including

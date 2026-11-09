@@ -49,6 +49,8 @@ class AppSettings final : public QObject {
   Q_PROPERTY(QString rommUrl READ rommUrl WRITE setRommUrl NOTIFY rommConfigurationChanged)
   Q_PROPERTY(QString rommLibraryRoot READ rommLibraryRoot WRITE setRommLibraryRoot NOTIFY
                  rommConfigurationChanged)
+  Q_PROPERTY(bool rommHttpApproved READ rommHttpApproved WRITE setRommHttpApproved NOTIFY
+                 rommConfigurationChanged)
   Q_PROPERTY(bool consolePortalsEnabled READ consolePortalsEnabled WRITE setConsolePortalsEnabled
                  NOTIFY consolePortalsEnabledChanged)
   Q_PROPERTY(QStringList romFolders READ romFolders WRITE setRomFolders NOTIFY romFoldersChanged)
@@ -216,6 +218,11 @@ public:
   void setRommUrl(const QString& value);
   [[nodiscard]] QString rommLibraryRoot() const { return m_rommLibraryRoot; }
   void setRommLibraryRoot(const QString& value);
+  // True when the user confirmed sending the token over plain HTTP to the current server.
+  [[nodiscard]] bool rommHttpApproved() const {
+    return !m_rommUrl.isEmpty() && m_rommHttpApprovedUrl == m_rommUrl;
+  }
+  void setRommHttpApproved(bool value);
   [[nodiscard]] bool closeAfterLaunch() const;
   void setCloseAfterLaunch(bool value);
   // Session recording by omakade-sessiond; the daemon reads the same config key.
@@ -356,6 +363,7 @@ private:
   bool m_rommEnabled = false;
   QString m_rommUrl;
   QString m_rommLibraryRoot;
+  QString m_rommHttpApprovedUrl;
   bool m_closeAfterLaunch = false;
   bool m_trackPlaySessions = false;
   bool m_pauseUnfocusedSessions = false;

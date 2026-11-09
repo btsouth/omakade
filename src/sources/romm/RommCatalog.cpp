@@ -2,6 +2,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -38,8 +39,33 @@ QUrl pageUrl(QUrl server, int offset) {
   server.setQuery(query);
   return server;
 }
+bool localHost(QString host) {
+  host = host.toLower();
+  if (host.endsWith('.'))
+    host.chop(1);
+  QHostAddress address;
+  if (address.setAddress(host))
+    return address.isLoopback() || address.isPrivateUse() || address.isLinkLocal() ||
+           address.isInSubnet(QHostAddress("100.64.0.0"), 10);
+  if (host.isEmpty())
+    return false;
+  if (!host.contains('.'))
+    return true;
+  for (const auto* suffix : {".localhost", ".local", ".lan", ".home.arpa", ".internal"})
+    if (host.endsWith(QLatin1String(suffix)))
+      return true;
+  return host == "localhost";
+}
 } // namespace
 
+RommCatalog::Transport RommCatalog::transport(const QUrl& server) {
+  const auto url = serverUrl(server);
+  if (url.isEmpty())
+    return Transport::Invalid;
+  if (url.scheme() == "https")
+    return Transport::Https;
+  return localHost(url.host()) ? Transport::LocalHttp : Transport::PublicHttp;
+}
 QUrl RommCatalog::serverUrl(const QUrl& input) {
   if (!input.isValid() || (input.scheme() != "https" && input.scheme() != "http") ||
       input.host().isEmpty() || !input.userInfo().isEmpty() || input.hasQuery() ||
@@ -85,10 +111,16 @@ RommCatalog::~RommCatalog() {
   m_database = {};
   QSqlDatabase::removeDatabase(m_connection);
 }
-bool RommCatalog::refresh(const QUrl& server, const QString& root, const QByteArray& token) {
+bool RommCatalog::refresh(const QUrl& server, const QString& root, const QByteArray& token,
+                          bool allowPublicHttp) {
   if (m_busy)
     return false;
   m_server = serverUrl(server);
+  if (transport(m_server) == Transport::PublicHttp && !allowPublicHttp) {
+    emit finished(false, "RomM uses plain HTTP outside the local network. Confirm it in "
+                         "Settings before the token is sent.");
+    return false;
+  }
   m_root = QFileInfo(root).canonicalFilePath();
   if (!m_valid || m_server.isEmpty() || !QFileInfo(m_root).isDir() || !validToken(token)) {
     emit finished(false,

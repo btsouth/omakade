@@ -16,9 +16,14 @@ public:
   explicit RommCatalog(const QString& databasePath, QObject* parent = nullptr,
                        QNetworkAccessManager* network = nullptr);
   ~RommCatalog() override;
+  // How the token travels. Plain HTTP is accepted without asking only for loopback and
+  // local network hosts; any other HTTP host needs the user's confirmation first.
+  enum class Transport { Invalid, Https, LocalHttp, PublicHttp };
+  static Transport transport(const QUrl& server);
   static QUrl serverUrl(const QUrl& url);
   static bool validToken(const QByteArray& token);
-  bool refresh(const QUrl& server, const QString& libraryRoot, const QByteArray& token);
+  bool refresh(const QUrl& server, const QString& libraryRoot, const QByteArray& token,
+               bool allowPublicHttp = false);
   void cancel();
   bool busy() const { return m_busy; }
   QVector<RommGameRecord> cached(const QUrl& server, const QString& libraryRoot) const;
