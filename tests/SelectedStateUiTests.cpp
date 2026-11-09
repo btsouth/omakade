@@ -1,8 +1,11 @@
 #include "app/AppSettings.h"
+#include "metadata/ProtonDbService.h"
 #include "theme/OmarchyTheme.h"
 #include <QAccessible>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QLocale>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickView>
@@ -11,7 +14,8 @@
 #include <cmath>
 
 // GlassButton's selected state has to read as selected on screen, including under keyboard
-// focus, and reach screen readers as checked.
+// focus, and reach screen readers as checked. Game cards tell screen readers the state they
+// show and can be opened from them.
 class SelectedStateUiTests : public QObject {
   Q_OBJECT
 
@@ -160,6 +164,69 @@ private slots:
     QVERIFY(!heart->property("filled").toBool());
 
     QVERIFY(view.grabWindow().save("selected-states.png"));
+  }
+
+  void gameCardsAnnounceTheirState() {
+    QTest::failOnWarning(
+        QRegularExpression(QStringLiteral("Binding loop|TypeError|ReferenceError|Unable to")));
+    QAccessible::setActive(true);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    AppSettings preferences(dir.filePath("config"));
+    preferences.setReducedMotion(true);
+    OmarchyTheme theme(dir.filePath("state"), dir.filePath("theme-config"));
+    ProtonDbService protonDb(dir.filePath("protondb-cache"));
+    QQuickView view;
+    view.rootContext()->setContextProperty("Theme", &theme);
+    view.rootContext()->setContextProperty("Preferences", &preferences);
+    view.rootContext()->setContextProperty("ProtonDB", &protonDb);
+    view.setSource(QUrl::fromLocalFile(
+        QStringLiteral(OMAKADE_SOURCE_DIR "/tests/fixtures/selected-states/GameCards.qml")));
+    QVERIFY2(view.status() == QQuickView::Ready,
+             qPrintable(view.errors().isEmpty() ? QString() : view.errors().first().toString()));
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    QQuickItem* root = view.rootObject();
+    QQuickItem* favorite = find(root, "favoriteCard");
+    QQuickItem* plain = find(root, "plainCard");
+    QVERIFY(favorite && plain);
+    QAccessibleInterface* face = QAccessible::queryAccessibleInterface(favorite);
+    QVERIFY(face);
+    QCOMPARE(face->role(), QAccessible::ListItem);
+    QCOMPARE(face->text(QAccessible::Name), QStringLiteral("Portal 2"));
+    // The heart, the status pill and the dimmed cover all reach the screen reader.
+    QCOMPARE(face->text(QAccessible::Description),
+             QStringLiteral("Steam, 12h played, rated 91 out of 100, favorite, status playing, "
+                            "not installed"));
+    QAccessibleInterface* plainFace = QAccessible::queryAccessibleInterface(plain);
+    QVERIFY(plainFace);
+    QCOMPARE(plainFace->text(QAccessible::Description), QStringLiteral("Heroic, 0h played"));
+
+    // A screen reader can open the game, as Enter and a click do.
+    QAccessibleActionInterface* actions = face->actionInterface();
+    QVERIFY(actions);
+    QVERIFY(actions->actionNames().contains(QAccessibleActionInterface::pressAction()));
+    actions->doAction(QAccessibleActionInterface::pressAction());
+    QTRY_COMPARE(root->property("activations").toInt(), 1);
+
+    // A hidden achievement keeps its name and description secret until it is unlocked.
+    QQuickItem* locked = find(root, "achievementCard0");
+    QQuickItem* unlocked = find(root, "achievementCard1");
+    QVERIFY(locked && unlocked);
+    QAccessibleInterface* lockedFace = QAccessible::queryAccessibleInterface(locked);
+    QVERIFY(lockedFace);
+    QCOMPARE(lockedFace->role(), QAccessible::ListItem);
+    QCOMPARE(lockedFace->text(QAccessible::Name), QStringLiteral("Hidden achievement"));
+    QCOMPARE(lockedFace->text(QAccessible::Description),
+             QStringLiteral("Unlock to reveal details, locked, 3.3% of players"));
+    QAccessibleInterface* unlockedFace = QAccessible::queryAccessibleInterface(unlocked);
+    QVERIFY(unlockedFace);
+    QCOMPARE(unlockedFace->text(QAccessible::Name), QStringLiteral("Secret Ending"));
+    const QString unlockedOn = QLocale().toString(
+        QDateTime::fromSecsSinceEpoch(1794139200).date(), QStringLiteral("MMM d, yyyy"));
+    QCOMPARE(unlockedFace->text(QAccessible::Description),
+             QStringLiteral("Beat the final boss, unlocked %1, 3.3% of players").arg(unlockedOn));
   }
 };
 QTEST_MAIN(SelectedStateUiTests)

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Screen readers now hear a game card's favorite, completion status and install state in
+  the library, Home and Game Mode, and can open the game from the card. Hidden achievements
+  no longer reveal their name to screen readers before they are unlocked.
 - The controller favorite button no longer favorites the game behind an open editor or
   dialog, such as the artwork editor opened from the game details.
 - The app and package are about 80 MB smaller. Console cards are now bundled as 768x1152

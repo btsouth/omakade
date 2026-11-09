@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Window
+import "GameAccessibility.js" as GameAccessibility
 
 FocusScope {
     id: root
@@ -859,6 +860,7 @@ FocusScope {
             required property string appId
             required property bool installed
             required property bool favorite
+            required property string completionStatus
             required property color accentStart
             required property color accentEnd
 
@@ -866,7 +868,12 @@ FocusScope {
             height: gameStrip.height
             z: 1
             Accessible.name: title
+            Accessible.description: GameAccessibility.cardDescription({
+                source: source || subtitle, favorite: favorite,
+                completionStatus: completionStatus, installed: installed
+            })
             Accessible.role: Accessible.ListItem
+            Accessible.onPressAction: if (index >= 0) root.gameActivated(index)
 
             function requestMissingCover() {
                 if (visible && coverPath.length === 0)
@@ -1077,9 +1084,9 @@ FocusScope {
             required property bool favorite
             required property int rating
             required property int hours
+            required property string completionStatus
             required property color accentStart
             required property color accentEnd
-
 
             readonly property bool current: gameGrid.currentIndex === index
 
@@ -1090,7 +1097,12 @@ FocusScope {
             scale: current ? 1.025 : 1
             z: current ? 2 : 1
             Accessible.name: title
+            Accessible.description: GameAccessibility.cardDescription({
+                source: source || subtitle, playtime: hours > 0 ? hours + "h" : "", rating: rating,
+                favorite: favorite, completionStatus: completionStatus, installed: installed
+            })
             Accessible.role: Accessible.ListItem
+            Accessible.onPressAction: if (index >= 0) root.gameActivated(index)
 
             Behavior on scale {
                 enabled: !Preferences.reducedMotion
