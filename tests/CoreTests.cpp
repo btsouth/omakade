@@ -6985,6 +6985,21 @@ QtObject {
   QCOMPARE(labels->property("many").toString(), QString("12 games"));
   QCOMPARE(labels->property("single").toString(), QString("1 older backup"));
   QCOMPARE(labels->property("missing").toString(), QString("0 reports"));
+
+  // The labels themselves go through the helper rather than gluing a plural to the count.
+  const QString root = QDir(QString::fromUtf8(OMAKADE_SOURCE_DIR)).filePath("qml");
+  QFile main(QDir(root).filePath("Main.qml"));
+  QVERIFY(main.open(QIODevice::ReadOnly));
+  QVERIFY(QString::fromUtf8(main.readAll())
+              .contains(R"(Counts.text(libraryView.count, "GAME", "GAMES"))"));
+  const QRegularExpression gluedPlural(R"re([cC]ount\b[^"\n]{0,8}\+\s*"\s+[A-Za-z][A-Za-z ]*[sS]")re");
+  QDirIterator files(root, {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
+  while (files.hasNext()) {
+    QFile file(files.next());
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto match = gluedPlural.match(QString::fromUtf8(file.readAll()));
+    QVERIFY2(!match.hasMatch(), qPrintable(file.fileName() + ": " + match.captured()));
+  }
 }
 
 void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {

@@ -648,12 +648,12 @@ Item {
                         wrapMode: Text.Wrap
                         Accessible.role: Accessible.StaticText
                         Accessible.name: text + (root.detailsEntry.ratingCount > 0
-                                                ? ", " + root.detailsEntry.ratingCount + " IGDB ratings" : "")
+                                                ? ", " + Counts.text(root.detailsEntry.ratingCount, "IGDB rating") : "")
                         HoverHandler { id: ratingHover; enabled: gameRating.visible }
                         ToolTip {
                             objectName: "gameRatingTooltip"
                             visible: gameRating.visible && ratingHover.hovered && root.detailsEntry.ratingCount > 0
-                            text: (root.detailsEntry.ratingCount || 0) + " IGDB ratings"
+                            text: Counts.text(root.detailsEntry.ratingCount, "IGDB rating")
                             delay: 500
                             x: 0
                             y: gameRating.height + 4
