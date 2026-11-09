@@ -3436,13 +3436,18 @@ void CoreTests::explicitLinksPersistAndPreserveInstallations() {
     QVERIFY(QDir().mkpath(installedPath));
     QCOMPARE(games.preferredInstallation(0).value(QStringLiteral("source")).toString(),
              QStringLiteral("Lutris"));
+    const QStringList bothSources{QStringLiteral("Demo"), QStringLiteral("Lutris")};
+    QCOMPARE(preferenceView.librarySources(), bothSources);
     games.setSourceEnabled(QStringLiteral("Lutris"), false);
+    // Lutris only had a linked installation, so it leaves the source list with no row removed.
+    QCOMPARE(preferenceView.librarySources(), QStringList{QStringLiteral("Demo")});
     QVERIFY(games.installations(0)
                 .at(0)
                 .toMap()
                 .value(QStringLiteral("preferredUnavailable"))
                 .toBool());
     games.setSourceEnabled(QStringLiteral("Lutris"), true);
+    QCOMPARE(preferenceView.librarySources(), bothSources);
     QVERIFY(games.installations(0).at(1).toMap().value(QStringLiteral("preferred")).toBool());
     QVERIFY(!games.installations(0)
                  .at(1)

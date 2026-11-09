@@ -1462,6 +1462,7 @@ void UnifiedGameModel::rebuildRows() {
   QVector<SourceRow> rows;
   QHash<QString, SourceRow> rowForKey;
   QHash<QString, QVector<SourceRow>> rowsForGroup;
+  QHash<QString, QStringList> groupMemberKeys;
   for (QAbstractItemModel* model : m_models) {
     for (int row = 0; row < model->rowCount(); ++row) {
       const SourceRow source{.model = model, .row = row};
@@ -1476,6 +1477,7 @@ void UnifiedGameModel::rebuildRows() {
       const QString groupId = m_groupForGame.value(key);
       if (!groupId.isEmpty()) {
         rowsForGroup[groupId].append(source);
+        groupMemberKeys[groupId].append(key);
       }
     }
   }
@@ -1516,13 +1518,18 @@ void UnifiedGameModel::rebuildRows() {
     m_rowKeys = keys;
     m_rowForKey = rowForKey;
     m_rowsForGroup = rowsForGroup;
+    m_groupMemberKeys = groupMemberKeys;
     m_unifiedIndexForKey = unifiedIndexForKey;
   };
   if (keys == m_rowKeys) {
     // A rescan that found the same games. The row mapping may point at different source rows,
     // so take it, but say nothing: the view is already correct and any real change to a game
     // arrives through dataChanged.
+    const bool membersChanged = groupMemberKeys != m_groupMemberKeys;
     adopt();
+    // Turning off a source whose games are all linked keeps every row but changes their sources.
+    if (membersChanged && !m_rows.isEmpty())
+      emit dataChanged(index(0), index(m_rows.size() - 1), {GameRoles::LinkedSources, GameRoles::Linked});
     refreshSourceErrors();
     scheduleReviewAvailability(true);
     return;
