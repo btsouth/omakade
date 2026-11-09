@@ -49,19 +49,26 @@ env -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
 as CI does, works too.
 
 To look at the app without touching your own library or window, give it a scratch
-home and run it in a nested compositor window, such as `weston` or a nested
-Hyprland, by pointing `WAYLAND_DISPLAY` at that compositor's socket:
+home, its own D-Bus session and a nested compositor window, such as `weston` or a
+nested Hyprland:
 
 ```bash
 scratch=$(mktemp -d)
 env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME -u XDG_STATE_HOME \
+  -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY \
   HOME="$scratch" TMPDIR="$scratch" WAYLAND_DISPLAY=wayland-1 \
-  ./build/dev/omakade --demo
+  dbus-run-session -- ./build/dev/omakade --demo
 ```
 
 The scratch `TMPDIR` keeps it from handing the command to an Omakade window that is
 already open. `wayland-1` is an example; use the socket name your nested compositor
-prints. An isolated test desktop such as omabox works as well.
+prints. Under a nested Hyprland, set `HYPRLAND_INSTANCE_SIGNATURE` to that
+instance's signature instead of unsetting it, or Game Mode cannot drive it.
+
+This still shares your audio server and your systemd user manager. Game Mode can
+switch the real default audio output, and the controller-button switch in
+Settings enables or disables the real `omakade-guide-button` service, so leave both
+alone here. To try those safely, use an isolated test desktop such as omabox.
 
 ## Useful references
 
