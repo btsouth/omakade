@@ -725,7 +725,7 @@ Item {
                     text: "This installation is unavailable. Choose another in Manage or reconnect its drive."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: (root.couchMode ? 16 : 11) * root.uiScale
+                    font.pixelSize: (root.couchMode ? 16 : UiMetrics.supporting) * root.uiScale
                     wrapMode: Text.Wrap
                 }
 
@@ -736,7 +736,7 @@ Item {
                     text: (root.launchFailed ? "Launch failed: " : "") + root.launchMessage
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: (root.couchMode ? 16 : 12) * root.uiScale
+                    font.pixelSize: (root.couchMode ? 16 : UiMetrics.supporting) * root.uiScale
                     wrapMode: Text.Wrap
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
@@ -938,7 +938,7 @@ Item {
                             text: "ABOUT THE GAME"
                             color: Theme.brightForeground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 13 * root.uiScale
+                            font.pixelSize: UiMetrics.body * root.uiScale
                             font.weight: Font.Bold
                             font.letterSpacing: 0.6
                         }
@@ -953,7 +953,7 @@ Item {
                             wrapMode: Text.Wrap
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 13 * root.uiScale
+                            font.pixelSize: UiMetrics.body * root.uiScale
                         }
                         GlassButton {
                             objectName: "detailsRetryButton"
@@ -982,7 +982,7 @@ Item {
                             elide: Text.ElideRight
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: (root.couchMode ? 17 : 13) * root.uiScale
+                            font.pixelSize: (root.couchMode ? 17 : UiMetrics.body) * root.uiScale
                             lineHeight: 1.3
                             wrapMode: Text.Wrap
                         }
@@ -1008,7 +1008,7 @@ Item {
                         textFormat: Text.PlainText
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
+                        font.pixelSize: (root.couchMode ? 15 : UiMetrics.label) * root.uiScale
                         wrapMode: Text.Wrap
                     }
                     Text {
@@ -1019,7 +1019,7 @@ Item {
                         textFormat: Text.PlainText
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
+                        font.pixelSize: (root.couchMode ? 15 : UiMetrics.supporting) * root.uiScale
                         wrapMode: Text.Wrap
                     }
                     Text {
@@ -1039,7 +1039,7 @@ Item {
                         textFormat: Text.PlainText
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
+                        font.pixelSize: (root.couchMode ? 15 : UiMetrics.supporting) * root.uiScale
                         wrapMode: Text.Wrap
                     }
                     GlassButton {
@@ -1062,14 +1062,14 @@ Item {
                         wrapMode: Text.Wrap
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
+                        font.pixelSize: (root.couchMode ? 15 : UiMetrics.supporting) * root.uiScale
                     }
                     ProtonDbBadge {
                         id: detailsProtonBadge
                         Layout.fillWidth: true
                         gameSource: root.selectedInstallation.source || ""
                         appId: root.selectedInstallation.appId || ""
-                        font.pixelSize: (root.couchMode ? 15 : 12) * root.uiScale
+                        font.pixelSize: (root.couchMode ? 15 : UiMetrics.label) * root.uiScale
                         fetchEnabled: root.visible && !DemoMode
                     }
                     Text {
@@ -1080,7 +1080,7 @@ Item {
                         wrapMode: Text.Wrap
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: (root.couchMode ? 13 : 11) * root.uiScale
+                        font.pixelSize: (root.couchMode ? 13 : UiMetrics.supporting) * root.uiScale
                     }
                     Flow {
                         Layout.fillWidth: true
@@ -1138,7 +1138,7 @@ Item {
                         wrapMode: Text.Wrap
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 12 * root.uiScale
+                        font.pixelSize: UiMetrics.supporting * root.uiScale
                     }
                     Text {
                         Layout.fillWidth: true
@@ -1147,7 +1147,7 @@ Item {
                         textFormat: Text.PlainText
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * root.uiScale
+                        font.pixelSize: UiMetrics.supporting * root.uiScale
                     }
                 }
 
@@ -1161,7 +1161,7 @@ Item {
                         text: "ORGANIZE"
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: UiMetrics.body
                         font.weight: Font.Bold
                         font.letterSpacing: 0.6
                     }
@@ -1182,8 +1182,8 @@ Item {
                             text: "STATUS"
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 9
-                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : 76
+                            font.pixelSize: UiMetrics.label
+                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(90)
                             Layout.columnSpan: statusLayout.columns === 2 ? 2 : 1
                         }
                         Repeater {
@@ -1215,8 +1215,8 @@ Item {
                             text: "TAGS"
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 9
-                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : 76
+                            font.pixelSize: UiMetrics.label
+                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(90)
                         }
                         TextField {
                             id: tagsField
@@ -1280,8 +1280,8 @@ Item {
                             text: "COLLECTIONS"
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 9
-                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : 76
+                            font.pixelSize: UiMetrics.label
+                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(90)
                         }
                         ScrollView {
                             Layout.fillWidth: true
@@ -1348,8 +1348,8 @@ Item {
                             text: "NEW"
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 9
-                            Layout.preferredWidth: 76
+                            font.pixelSize: UiMetrics.label
+                            Layout.preferredWidth: UiMetrics.scaled(90)
                             Layout.columnSpan: collectionEditor.columns === 2 ? 2 : 1
                         }
                         TextField {
@@ -1451,7 +1451,7 @@ Item {
                             text: "GAME INSIGHTS · IGDB"
                             color: Theme.brightForeground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: UiMetrics.body
                             font.weight: Font.Bold
                             font.letterSpacing: 0.6
                         }
@@ -1487,7 +1487,7 @@ Item {
                         text: Insights ? Insights.statusText : ""
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: UiMetrics.supporting
                         wrapMode: Text.Wrap
                     }
 
@@ -1495,7 +1495,7 @@ Item {
                         id: insightsGrid
                         Layout.fillWidth: true
                         visible: insightsSection.metrics.length > 0
-                        readonly property real minimumMetricWidth: 130
+                        readonly property real minimumMetricWidth: UiMetrics.scaled(130)
                         columns: Math.max(1, Math.min(
                                               insightsSection.metrics.length,
                                               Math.floor((detailsContent.width + columnSpacing)
@@ -1511,28 +1511,34 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: insightsGrid.minimumMetricWidth
                                 Layout.maximumWidth: 340
-                                Layout.preferredHeight: 72
+                                Layout.preferredHeight: UiMetrics.scaled(72)
                                 radius: Math.max(5, Theme.cornerRadius)
                                 color: root.alpha(Theme.foreground, 0.045)
                                 border.color: root.alpha(Theme.foreground, 0.13)
 
                                 Column {
                                     anchors.left: parent.left
+                                    anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.leftMargin: 14
+                                    anchors.rightMargin: 14
                                     spacing: 6
                                     Text {
+                                        width: parent.width
+                                        elide: Text.ElideRight
                                         text: modelData.label
                                         color: Theme.mutedText
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: 8
+                                        font.pixelSize: UiMetrics.caption
                                         font.weight: Font.DemiBold
                                     }
                                     Text {
+                                        width: parent.width
+                                        elide: Text.ElideRight
                                         text: modelData.value
                                         color: Theme.brightForeground
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: 14
+                                        font.pixelSize: UiMetrics.body
                                         font.weight: Font.DemiBold
                                     }
                                 }
@@ -1545,11 +1551,11 @@ Item {
                         text: "Critic aggregate and time estimates provided by IGDB"
                         color: root.alpha(Theme.foreground, 0.48)
                         font.family: Theme.fontFamily
-                        font.pixelSize: 8
+                        font.pixelSize: UiMetrics.supporting
                     }
                 }
 
-                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; visible: root.shownReviewReasons.length > 0; text: "Needs review: " + root.shownReviewReasons.map(reason => reason.label).join(", "); color: Theme.mutedText }
+                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; visible: root.shownReviewReasons.length > 0; text: "Needs review: " + root.shownReviewReasons.map(reason => reason.label).join(", "); color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting }
                 LaunchSetupPanel {
                     id: launchSetup
                     Layout.fillWidth: true
@@ -1581,7 +1587,7 @@ Item {
                             text: "ACHIEVEMENT PROGRESS"
                             color: Theme.foreground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: UiMetrics.label
                             font.weight: Font.DemiBold
                         }
                         Item { Layout.fillWidth: true }
@@ -1592,7 +1598,7 @@ Item {
                                   : (root.game.progress || 0) + "%"
                             color: Theme.accent
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: UiMetrics.label
                             font.weight: Font.DemiBold
                         }
                     }
@@ -1629,7 +1635,7 @@ Item {
                             text: "ACHIEVEMENTS"
                             color: Theme.brightForeground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 14
+                            font.pixelSize: UiMetrics.body
                             font.weight: Font.Bold
                             font.letterSpacing: 0.7
                         }
@@ -1691,7 +1697,7 @@ Item {
                                   + root.displayedAchievementTotal
                             color: Theme.accent
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: UiMetrics.label
                             font.weight: Font.DemiBold
                         }
                     }
@@ -1701,7 +1707,7 @@ Item {
                         text: Achievements.statusText
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: UiMetrics.supporting
                         wrapMode: Text.Wrap
                     }
 
@@ -1715,7 +1721,7 @@ Item {
                                                 || root.achievementAccount.state === "rate-limited")
                                ? Theme.yellow : Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10
+                        font.pixelSize: UiMetrics.supporting
                         wrapMode: Text.Wrap
                     }
 
@@ -1753,7 +1759,7 @@ Item {
                             text: "CLIPS"
                             color: Theme.brightForeground
                             font.family: Theme.fontFamily
-                            font.pixelSize: (root.couchMode ? 18 : 14) * root.uiScale
+                            font.pixelSize: (root.couchMode ? 18 : UiMetrics.body) * root.uiScale
                             font.weight: Font.Bold
                             font.letterSpacing: 0.7
                         }
@@ -1763,7 +1769,7 @@ Item {
                             text: root.highlightClips.length
                             color: Theme.accent
                             font.family: Theme.fontFamily
-                            font.pixelSize: (root.couchMode ? 16 : 11) * root.uiScale
+                            font.pixelSize: (root.couchMode ? 16 : UiMetrics.caption) * root.uiScale
                             font.weight: Font.DemiBold
                         }
                         Item { Layout.fillWidth: true }
@@ -1849,7 +1855,7 @@ Item {
                                                 text: clipCard.modelData.seconds + " s"
                                                 color: Theme.brightForeground
                                                 font.family: Theme.fontFamily
-                                                font.pixelSize: (root.couchMode ? 13 : 9) * root.uiScale
+                                                font.pixelSize: (root.couchMode ? 13 : UiMetrics.caption) * root.uiScale
                                             }
                                         }
                                     }
@@ -1860,7 +1866,7 @@ Item {
                                         textFormat: Text.PlainText
                                         color: Theme.brightForeground
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: (root.couchMode ? 16 : 11) * root.uiScale
+                                        font.pixelSize: (root.couchMode ? 16 : UiMetrics.caption) * root.uiScale
                                         font.weight: Font.DemiBold
                                         elide: Text.ElideRight
                                     }
@@ -1870,7 +1876,7 @@ Item {
                                               + clipCard.modelData.when.toUpperCase()
                                         color: clipCard.modelData.trigger === "achievement" ? Theme.accent : Theme.mutedText
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: (root.couchMode ? 12 : 8) * root.uiScale
+                                        font.pixelSize: (root.couchMode ? 12 : UiMetrics.caption) * root.uiScale
                                         font.weight: Font.DemiBold
                                         elide: Text.ElideRight
                                     }
@@ -1947,7 +1953,7 @@ Item {
                         text: modelData.glyph
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11 * root.uiScale
+                        font.pixelSize: UiMetrics.caption * root.uiScale
                         font.weight: Font.Bold
                     }
                 }
@@ -1957,7 +1963,7 @@ Item {
                     text: modelData.label
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 12 * root.uiScale
+                    font.pixelSize: UiMetrics.label * root.uiScale
                     font.weight: Font.DemiBold
                     font.letterSpacing: 0.8
                 }
@@ -2020,7 +2026,7 @@ Item {
                         text: "LAUNCH WITH"
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 9
+                        font.pixelSize: UiMetrics.label
                         font.weight: Font.DemiBold
                     }
                     GridLayout {
@@ -2191,7 +2197,7 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.mutedText
             font.family: Theme.fontFamily
-            font.pixelSize: 12
+            font.pixelSize: UiMetrics.supporting
             visible: !playHistoryMenu.confirming
             text: (SessionRecorderStatus && SessionRecorderStatus.enabled
                    ? "Sessions recorded locally by Omakade. "
@@ -2204,7 +2210,7 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 12
+            font.pixelSize: UiMetrics.supporting
             lineHeight: 1.2
             visible: playHistoryMenu.confirming
             text: playHistoryMenu.pendingClearAll
@@ -2220,7 +2226,7 @@ Item {
             wrapMode: Text.Wrap
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 12
+            font.pixelSize: UiMetrics.supporting
             font.weight: Font.DemiBold
             text: playHistoryMenu.message
         }

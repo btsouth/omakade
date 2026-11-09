@@ -106,7 +106,7 @@ Popup {
                 wrapMode: Text.Wrap
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 12 * menu.headerTextScale
+                font.pixelSize: UiMetrics.supporting * menu.headerTextScale
             }
             GlassButton {
                 id: headerDone
@@ -142,7 +142,7 @@ Popup {
                 text: menu.title
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: UiMetrics.supporting
                 wrapMode: Text.Wrap
             }
             ColumnLayout {

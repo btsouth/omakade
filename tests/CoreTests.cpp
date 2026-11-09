@@ -1273,6 +1273,7 @@ private slots:
   void stressLibraryContainsOneThousandGames();
   void settingsPersistReducedMotionAndCacheLimit();
   void motionFollowsSystemUnlessChosen();
+  void textSizeFollowsSystemUnlessChosen();
   void settingsReportWriteFailuresAndRecover();
   void invalidMetadataResponseKeepsDataAndReportsFailure();
   void gogFoldersPersistAndHandleDisconnectedRoots();
@@ -6753,6 +6754,82 @@ void CoreTests::motionFollowsSystemUnlessChosen() {
   QVERIFY(AppSettings::gtkAnimationsDisabled("false\n"));
   QVERIFY(!AppSettings::gtkAnimationsDisabled("true\n"));
   QVERIFY(!AppSettings::gtkAnimationsDisabled(""));
+}
+
+void CoreTests::textSizeFollowsSystemUnlessChosen() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.path() + QStringLiteral("/config.toml");
+  {
+    AppSettings settings(path);
+    QCOMPARE(settings.textSizePreference(), 0);
+    QCOMPARE(settings.textSize(), 100);
+    QSignalSpy changed(&settings, &AppSettings::textSizeChanged);
+    settings.setSystemTextSize(130);
+    QCOMPARE(changed.count(), 1);
+    QCOMPARE(settings.textSize(), 130);
+    // An explicit choice wins over the desktop, and a size Settings does not offer is ignored.
+    settings.setTextSizePreference(150);
+    QCOMPARE(settings.textSize(), 150);
+    settings.setTextSizePreference(120);
+    settings.setSystemTextSize(120);
+    QCOMPARE(settings.textSizePreference(), 150);
+    QCOMPARE(settings.systemTextSize(), 130);
+  }
+  QCOMPARE(AppSettings(path).textSizePreference(), 150);
+  {
+    AppSettings settings(path);
+    settings.setTextSizePreference(0);
+  }
+  QCOMPARE(AppSettings(path).textSizePreference(), 0);
+  writeFile(path, "text_size = 115\n");
+  QCOMPARE(AppSettings(path).textSize(), 115);
+  writeFile(path, "text_size = 400\n");
+  QCOMPARE(AppSettings(path).textSizePreference(), 0);
+
+  // Backups carry the choice; archives from before it existed keep the current one.
+  AppSettings settings(path);
+  QVERIFY(settings.applyBackupSettings({{"text_size", 90}}, false));
+  QCOMPARE(settings.textSizePreference(), 90);
+  QCOMPARE(settings.backupSettings().value("text_size").toInt(), 90);
+  QVERIFY(!settings.applyBackupSettings({{"text_size", 120}}, false));
+  QVERIFY(!settings.applyBackupSettings({{"text_size", "130"}}, false));
+  QVERIFY(!settings.applyBackupSettings({{"text_size", 130.5}}, false));
+  QCOMPARE(settings.textSizePreference(), 90);
+  QVERIFY(settings.applyBackupSettings({{"library_sort_mode", "installed"}}, true));
+  QCOMPARE(settings.textSizePreference(), 90);
+  QVERIFY(settings.applyBackupSettings({{"text_size", 0}}, false));
+  QCOMPARE(settings.textSizePreference(), 0);
+
+  // The desktop's text scaling factor snaps to the nearest size Settings offers.
+  QCOMPARE(AppSettings::gtkTextSize("1.0\n"), 100);
+  QCOMPARE(AppSettings::gtkTextSize("1.25\n"), 130);
+  QCOMPARE(AppSettings::gtkTextSize("1.1\n"), 115);
+  QCOMPARE(AppSettings::gtkTextSize("0.8\n"), 90);
+  QCOMPARE(AppSettings::gtkTextSize("2.0\n"), 150);
+  QCOMPARE(AppSettings::gtkTextSize(""), 0);
+  QCOMPARE(AppSettings::gtkTextSize("No such schema"), 0);
+  QCOMPARE(AppSettings::gtkTextSize("0\n"), 0);
+
+  // Detection asks gsettings on PATH and keeps 100% when it fails.
+  const QString bin = directory.path() + QStringLiteral("/bin");
+  QVERIFY(QDir().mkpath(bin));
+  const QString tool = bin + QStringLiteral("/gsettings");
+  const auto restorePath = redirectPath(bin);
+  writeFile(tool, "#!/bin/sh\necho 1.5\nexit 1\n");
+  QVERIFY(QFile::setPermissions(tool, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  AppSettings detecting(directory.path() + QStringLiteral("/detect.toml"));
+  detecting.detectSystemTextSize();
+  QVERIFY(!detecting.findChildren<QProcess*>().isEmpty());
+  QTRY_VERIFY(detecting.findChildren<QProcess*>().isEmpty());
+  QCOMPARE(detecting.textSize(), 100);
+  writeFile(tool, "#!/bin/sh\n[ \"$3\" = text-scaling-factor ] && echo 1.5\n");
+  QSignalSpy changed(&detecting, &AppSettings::textSizeChanged);
+  detecting.detectSystemTextSize();
+  QVERIFY(changed.wait());
+  QCOMPARE(detecting.systemTextSize(), 150);
+  QCOMPARE(detecting.textSize(), 150);
+  QCOMPARE(detecting.textSizePreference(), 0);
 }
 
 void CoreTests::settingsPersistReducedMotionAndCacheLimit() {

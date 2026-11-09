@@ -45,10 +45,10 @@ ComboBox {
         return true
     }
     implicitWidth: 180 * uiScale
-    implicitHeight: 40 * uiScale
+    implicitHeight: UiMetrics.scaled(40) * uiScale
     spacing: 8 * uiScale
     font.family: Theme.fontFamily
-    font.pixelSize: 13 * uiScale
+    font.pixelSize: UiMetrics.body * uiScale
 
     contentItem: Text {
         leftPadding: 12 * control.uiScale
@@ -69,7 +69,7 @@ ComboBox {
         text: "▼"
         color: control.enabled ? Theme.foreground : Theme.mutedText
         font.family: Theme.fontFamily
-        font.pixelSize: 9 * control.uiScale
+        font.pixelSize: UiMetrics.scaled(9) * control.uiScale
     }
 
     background: Rectangle {
@@ -89,7 +89,7 @@ ComboBox {
         id: optionDelegate
         required property int index
         width: control.width
-        height: 40 * control.uiScale
+        height: UiMetrics.scaled(40) * control.uiScale
         highlighted: (Controller.driving ? control.controllerIndex : control.highlightedIndex) === index
         enabled: !control.availabilityRole || !!control.model[index][control.availabilityRole]
         opacity: enabled ? 1 : 0.5
@@ -118,7 +118,7 @@ ComboBox {
         onClosed: control.releaseControllerCombo()
         y: control.height
         width: control.width
-        implicitHeight: Math.min(listView.contentHeight, 8 * 40 * control.uiScale) + 2
+        implicitHeight: Math.min(listView.contentHeight, 8 * UiMetrics.scaled(40) * control.uiScale) + 2
         padding: 1
         clip: true
 

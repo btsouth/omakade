@@ -32,7 +32,7 @@ Text {
     visible: show && tier.length > 0
     color: compact ? tierColor : Theme.mutedText
     font.family: Theme.fontFamily
-    font.pixelSize: compact ? 10 : 12
+    font.pixelSize: compact ? UiMetrics.caption : UiMetrics.label
     Accessible.name: "ProtonDB " + tierLabel
     Accessible.description: details
     readonly property string details: "ProtonDB community reports, not a compatibility guarantee. "

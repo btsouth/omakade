@@ -799,6 +799,19 @@ ApplicationWindow {
     readonly property bool textEntryNeedsKeyboard: TextEntry.keyboardNeeded
     // The singleton is what every field reads; the window is what knows the mode.
     Binding { target: TextEntry; property: "couchMode"; value: root.couchMode }
+    // Game Mode sizes its text from the display, so the desktop text size stays out of it.
+    Binding {
+        target: UiMetrics
+        property: "textScale"
+        value: root.couchMode ? 1 : Preferences.textSize / 100
+    }
+    // Controls left on the default font, such as most text fields, follow the text size too.
+    Binding {
+        target: root
+        property: "font.pointSize"
+        when: Qt.application.font.pointSize > 0
+        value: Qt.application.font.pointSize * UiMetrics.textScale
+    }
 
     function openCouchTextEntry(target, title, password, placeholder) {
         if (!root.textEntryNeedsKeyboard || !target) {
@@ -2534,7 +2547,7 @@ ApplicationWindow {
                         text: "⌕"
                         color: searchField.activeFocus ? Theme.accent : Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 15
+                        font.pixelSize: UiMetrics.scaled(15)
                     }
                 }
             }
@@ -2635,7 +2648,7 @@ ApplicationWindow {
                     text: Library.consoleTitle
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 16
+                    font.pixelSize: UiMetrics.scaled(16)
                     font.weight: Font.DemiBold
                 }
                 Item { Layout.fillWidth: true }
@@ -3097,7 +3110,7 @@ ApplicationWindow {
                     text: "LINK ANOTHER INSTALLATION"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 15
+                    font.pixelSize: UiMetrics.scaled(15)
                     font.weight: Font.Bold
                 }
                 Item { Layout.fillWidth: true }
@@ -3112,7 +3125,7 @@ ApplicationWindow {
                 text: "Choose only another installation of the same game. Omakade will keep every launch target."
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 10
+                font.pixelSize: UiMetrics.supporting
                 wrapMode: Text.Wrap
             }
             TextField {
@@ -3172,7 +3185,7 @@ ApplicationWindow {
                     required property var modelData
                     required property int index
                     width: candidateList.width
-                    height: 58
+                    height: UiMetrics.scaled(58)
                     focusPolicy: Qt.StrongFocus
                     Accessible.name: "Link " + modelData.title + " from " + modelData.source
                     onClicked: root.linkCandidate(modelData)
@@ -3206,7 +3219,7 @@ ApplicationWindow {
                             textFormat: Text.PlainText
                             color: Theme.brightForeground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: UiMetrics.label
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
                         }
@@ -3215,7 +3228,7 @@ ApplicationWindow {
                                   + (modelData.runner ? "  ·  " + modelData.runner.toUpperCase() : "")
                             color: Theme.accent
                             font.family: Theme.fontFamily
-                            font.pixelSize: 9
+                            font.pixelSize: UiMetrics.caption
                         }
                     }
 
@@ -3237,7 +3250,7 @@ ApplicationWindow {
                     text: "No matching installations"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: UiMetrics.supporting
                 }
             }
             }
@@ -3307,7 +3320,7 @@ ApplicationWindow {
                             : "FILTER BY " + root.filterPickerKind.toUpperCase()
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 13
+                        font.pixelSize: UiMetrics.body
                         font.weight: Font.Bold
                     }
                     Item { Layout.fillWidth: true }
@@ -3323,7 +3336,7 @@ ApplicationWindow {
                     text: "Uses available game metadata. Games without a matching value are excluded."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: UiMetrics.supporting
                     wrapMode: Text.Wrap
                 }
                 ListView {
@@ -3363,7 +3376,7 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 26
         width: Math.min(toastText.implicitWidth + 34, parent.width - 48)
-        height: 42
+        height: UiMetrics.controlHeight
         // Above the settings panel and dialogs so confirmations stay readable.
         z: 40
         radius: Math.max(6, Theme.cornerRadius)
@@ -3387,7 +3400,7 @@ ApplicationWindow {
             text: toast.message
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 11
+            font.pixelSize: UiMetrics.supporting
         }
     }
 
@@ -3405,6 +3418,7 @@ ApplicationWindow {
         width: Math.min(540, root.width - 48)
         initialFocus: allSourcesButton
         Text {
+            font.pixelSize: UiMetrics.supporting
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             text: "Select a source. Shift+Enter or the controller favorite button adds or removes a source."
@@ -3850,7 +3864,7 @@ ApplicationWindow {
                 text: "AVAILABILITY"
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 9
+                font.pixelSize: UiMetrics.label
                 font.weight: Font.DemiBold
             }
             GlassButton {
@@ -4166,7 +4180,7 @@ ApplicationWindow {
             text: (launchClosedNotice.gameTitle || "The game") + " closed right after starting."
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 13 * launchClosedNotice.textScale
+            font.pixelSize: UiMetrics.body * launchClosedNotice.textScale
             font.weight: Font.DemiBold
         }
         Text {
@@ -4210,7 +4224,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
             CoverSizeControl { id: libraryCoverSize; Layout.fillWidth: true; onEditingFinished: coverSizePopup.close() }
-            Text { text: libraryView.columns + " PER ROW"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 }
+            Text { text: libraryView.columns + " PER ROW"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.caption }
         }
         onOpened: libraryCoverSize.focusSlider()
         onClosed: {
@@ -4288,7 +4302,7 @@ ApplicationWindow {
                     text: "DELETE COLLECTION?"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 16
+                    font.pixelSize: UiMetrics.scaled(16)
                     font.weight: Font.Bold
                 }
                 Text {
@@ -4297,7 +4311,7 @@ ApplicationWindow {
                           + "” and its game memberships? This does not remove any games."
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: UiMetrics.supporting
                     wrapMode: Text.Wrap
                 }
                 Item { Layout.fillHeight: true }

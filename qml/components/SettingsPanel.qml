@@ -199,7 +199,7 @@ import "Counts.js" as Counts
                 id: settingsHeader
                 anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
                 anchors.margins: 24
-                Text { Layout.fillWidth: true; text: "SETTINGS"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 20 * settingsPanel.uiScale }
+                Text { Layout.fillWidth: true; text: "SETTINGS"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.scaled(20) * settingsPanel.uiScale }
                 GlassButton { id: closeSettings; objectName: "closeSettings"; compact: true; text: "CLOSE"; onClicked: host.diagnosticsOpen = false }
             }
             ColumnLayout {
@@ -758,10 +758,12 @@ import "Counts.js" as Counts
                     visible: (!DemoMode || GogSettingsFixture) && settingsOverlay.sourceDetail === ""
                     spacing: 8
                     Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
                         text: "EXTRA GOG FOLDERS"
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                         font.weight: Font.DemiBold
                     }
                     Text {
@@ -769,7 +771,7 @@ import "Counts.js" as Counts
                         text: "Standard folders are discovered automatically. Add a folder containing GOG installations. Removing it here never deletes game files."
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                         wrapMode: Text.Wrap
                     }
                     Repeater {
@@ -785,7 +787,7 @@ import "Counts.js" as Counts
                                     text: modelData
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
-                                    font.pixelSize: 11 * settingsPanel.uiScale
+                                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                                     wrapMode: Text.WrapAnywhere
                                 }
                                 GlassButton {
@@ -804,7 +806,7 @@ import "Counts.js" as Counts
                                 text: { scanState; return Preferences.gogLibraryPathStatus(modelData) }
                                 color: Theme.mutedText
                                 font.family: Theme.fontFamily
-                                font.pixelSize: 10 * settingsPanel.uiScale
+                                font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                                 wrapMode: Text.Wrap
                             }
                         }
@@ -819,7 +821,7 @@ import "Counts.js" as Counts
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         placeholderTextColor: host.alpha(Theme.foreground, 0.42)
-                        font.pixelSize: 13 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.body * settingsPanel.uiScale
 
                         function acceptInput(event) {
                             host.handleCouchTextEntry(event, gogLibraryPathField, "GOG FOLDER", false,
@@ -872,7 +874,7 @@ import "Counts.js" as Counts
                     text: "Demo library"
                     color: Theme.accent
                     font.family: Theme.fontFamily
-                    font.pixelSize: 12 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                 }
                 }
                 ColumnLayout {
@@ -884,10 +886,12 @@ import "Counts.js" as Counts
                     visible: true
                     spacing: 6
                     Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
                         text: "CONSOLE LAYOUT"
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                         font.weight: Font.DemiBold
                     }
                     Text {
@@ -895,7 +899,7 @@ import "Counts.js" as Counts
                         text: "Every console follows the library view unless you choose an override below. Pinned games can still appear beside their console card."
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 9 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                         wrapMode: Text.Wrap
                     }
                     Repeater {
@@ -910,7 +914,7 @@ import "Counts.js" as Counts
                                 text: modelData.name
                                 color: Theme.foreground
                                 font.family: Theme.fontFamily
-                                font.pixelSize: 10 * settingsPanel.uiScale
+                                font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                                 elide: Text.ElideRight
                             }
                             GlassButton {
@@ -932,10 +936,12 @@ import "Counts.js" as Counts
                         Layout.fillWidth: true
                         spacing: 4
                         Text {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
                             text: "STANDALONE EMULATORS"
                             color: Preferences.preferStandaloneEmulators ? Theme.accent : Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11 * settingsPanel.uiScale
+                            font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                             font.weight: Font.Bold
                         }
                         Text {
@@ -943,7 +949,7 @@ import "Counts.js" as Counts
                             text: "When a ROM has no RetroArch core, prefer Snes9x, Nestopia, and other standalone emulators over a RetroArch fallback."
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 9 * settingsPanel.uiScale
+                            font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                             wrapMode: Text.Wrap
                         }
                     }
@@ -958,18 +964,22 @@ import "Counts.js" as Counts
                 }
                 Text {
                     id: collectionsHeading
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
                     text: "LIBRARY COLLECTIONS"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     font.weight: Font.DemiBold
                 }
                 Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
                     visible: Library.collectionNames.length === 0
                     text: "Create collections from a game's details."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                 }
                 Repeater {
                     model: Library.collectionNames
@@ -981,7 +991,7 @@ import "Counts.js" as Counts
                             text: modelData
                             color: Theme.foreground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11 * settingsPanel.uiScale
+                            font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                             elide: Text.ElideRight
                         }
                         GlassButton {
@@ -1040,7 +1050,7 @@ import "Counts.js" as Counts
                             : "Recorder not running. " + (Preferences.trackPlaySessions ? "Recording is enabled, but new sessions will not be recorded." : "Recording is switched off.")
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 12 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1052,7 +1062,7 @@ import "Counts.js" as Counts
                         : "Recovery protection is degraded. A damaged session recovery file was set aside, so a refused write may not survive a crash until the recorder restarts."
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 12 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1062,7 +1072,7 @@ import "Counts.js" as Counts
                     text: SessionRecorderStatus ? SessionRecorderStatus.attributionSummary : ""
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1070,7 +1080,7 @@ import "Counts.js" as Counts
                     text: "Recording runs separately from Omakade and continues when this window closes. Imported and recorded totals are reconciled: recorded time is added when the emulator's own counter cannot already include it, and a session that counter later counts is not counted twice. Switching recording off keeps your history and displays imported time. Pause when unfocused stops billing time while the emulator window is behind other work; it is off by default, since a game left running on purpose still counts as play. Discord status publishes the game you are playing as Rich Presence; it is off by default and sends only the game name and its source."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1079,7 +1089,7 @@ import "Counts.js" as Counts
                     text: "Start the recorder in a terminal: systemctl --user enable --now omakade-sessiond"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 }
@@ -1090,7 +1100,7 @@ import "Counts.js" as Counts
                 Text {
                     Layout.fillWidth: true; wrapMode: Text.Wrap
                     text: "Optional connections add ratings, portraits, and achievements. Local games work without them."
-                    color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale
+                    color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                 }
                 RommSettings { Layout.fillWidth: true; host: settingsOverlay.host }
                 GlassButton {
@@ -1107,7 +1117,7 @@ import "Counts.js" as Counts
                     text: "Optional community compatibility reports in Steam game details. Sends opened games' Steam App IDs to ProtonDB and caches results for seven days. No account or key required."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 GlassButton {
@@ -1126,7 +1136,7 @@ import "Counts.js" as Counts
                     text: "Show the ProtonDB tier on library cards. Off by default to keep the grid clean."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 GlassButton {
@@ -1143,7 +1153,7 @@ import "Counts.js" as Counts
                     text: "With IGDB or SteamGridDB connected, Omakade looks up every game in the background, sending titles, platform IDs and Steam App IDs. Turn this off to look games up only when you select Update or open a game's details."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 GlassButton {
@@ -1153,11 +1163,11 @@ import "Counts.js" as Counts
                     onClicked: Metadata.refreshLibrary()
                 }
                 GlassButton { compact: true; text: "STOP UPDATE"; visible: Metadata && Metadata.busy; onClicked: Metadata.cancel() }
-                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: Metadata ? Metadata.status : ""; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 10 * settingsPanel.uiScale }
+                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: Metadata ? Metadata.status : ""; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale }
                 ConnectionButton { text: settingsOverlay.connectionLabel("STEAMGRIDDB PORTRAIT COVERS", Metadata && Metadata.hasGridKey, ""); selected: settingsOverlay.connection === 3; onClicked: { settingsOverlay.connection = settingsOverlay.connection === 3 ? -1 : 3; settingsOverlay.pageChanged() } }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 10; visible: settingsOverlay.connection === 3
-                    Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Add a SteamGridDB API key for portrait covers. You can choose a different portrait in each game's details. Once connected, game titles and IDs are sent to SteamGridDB in the background unless Identify Library Automatically is off."; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 11 * settingsPanel.uiScale }
+                    Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Add a SteamGridDB API key for portrait covers. You can choose a different portrait in each game's details. Once connected, game titles and IDs are sent to SteamGridDB in the background unless Identify Library Automatically is off."; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale }
                     TextField {
                         id: gridKeyField; Layout.fillWidth: true
                         placeholderText: Metadata && Metadata.hasGridKey ? "API key saved securely" : "SteamGridDB API key"
@@ -1203,7 +1213,7 @@ import "Counts.js" as Counts
                                             || SteamAccount.state === "rate-limited")
                            ? Theme.yellow : Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1329,7 +1339,7 @@ import "Counts.js" as Counts
                               ? Counts.text(SteamAccount.ownedGameCount, "OWNED GAME", "OWNED GAMES") + " CACHED" : ""
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 9 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     }
                     Item { Layout.fillWidth: true }
                 }
@@ -1338,7 +1348,7 @@ import "Counts.js" as Counts
                     text: "OWNED LIBRARY SYNC REQUIRES PUBLIC STEAM GAME DETAILS"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 8 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 }
@@ -1354,7 +1364,7 @@ import "Counts.js" as Counts
                                                  || RetroAchievements.state === "rate-limited")
                            ? Theme.yellow : Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1465,7 +1475,7 @@ import "Counts.js" as Counts
                     text: "SUPPORTS NES, SNES, GENESIS, GAME BOY AND OTHER CARTRIDGE SYSTEMS FIRST; DISC-BASED SYSTEMS ARE NOT MATCHED YET"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 8 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 }
@@ -1476,7 +1486,7 @@ import "Counts.js" as Counts
                     text: Insights ? Insights.statusText : "IGDB is unavailable in demo mode."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1484,7 +1494,7 @@ import "Counts.js" as Counts
                     text: "Once connected, game titles, platform IDs and Steam App IDs are sent to IGDB in the background unless Identify Library Automatically is off."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1492,7 +1502,7 @@ import "Counts.js" as Counts
                     text: "TWITCH SETUP · Create Application, not Extension · Redirect: http://localhost · Client type: Confidential · Manage → New Secret"
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 9 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1608,14 +1618,14 @@ import "Counts.js" as Counts
                     Layout.fillWidth: true
                     spacing: 14
                     visible: settingsOverlay.section === 3
-                Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: Controller.connected ? "CONTROLLER · " + Controller.name : "CONTROLLER · NOT CONNECTED"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 12 * settingsPanel.uiScale }
+                Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: Controller.connected ? "CONTROLLER · " + Controller.name : "CONTROLLER · NOT CONNECTED"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * settingsPanel.uiScale }
                 GlassButton { compact: true; enabled: !GameMode.hasSession; text: host.couchMode ? "SWITCH TO DESKTOP" : "GAME MODE ON THIS DISPLAY"; onClicked: host.setCouchMode(!host.couchMode) }
                 Text {
                     Layout.topMargin: 10
                     text: "GAME MODE"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     font.weight: Font.DemiBold
                 }
                 Text {
@@ -1623,14 +1633,14 @@ import "Counts.js" as Counts
                     text: "F11, Start, the GAME MODE button and the controller Home button play fullscreen on the display you are using and leave sound and notifications alone. Start Game Mode, " + (GameModeShortcut.available ? GameModeShortcut.keyLabel : "Super + Ctrl + G") + " and holding the controller Home button use the display and sound chosen here. Leaving puts the display, sound and notifications back the way they were."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 9 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
                     text: "DISPLAY"
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                 }
                 ThemedComboBox {
                     objectName: "gameModeDisplayButton"
@@ -1650,14 +1660,14 @@ import "Counts.js" as Counts
                     text: "Choosing another display needs Hyprland with a Lua configuration."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 9 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
                     text: "SOUND"
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                 }
                 ThemedComboBox {
                     objectName: "gameModeSoundButton"
@@ -1676,7 +1686,7 @@ import "Counts.js" as Counts
                     text: "Choosing a sound output switches all desktop audio, including music and calls. Your previous output returns when you leave."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1687,7 +1697,7 @@ import "Counts.js" as Counts
                         text: "NOTIFICATIONS IN GAME MODE"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "gameModeNotificationsButton"
@@ -1708,7 +1718,7 @@ import "Counts.js" as Counts
                         text: "START STEAM IN THE BACKGROUND"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "gameModeWarmSteamButton"
@@ -1726,7 +1736,7 @@ import "Counts.js" as Counts
                     text: "Starts Steam minimized when Game Mode starts, so Steam games open without waiting for it. Steam keeps running after you leave."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1737,7 +1747,7 @@ import "Counts.js" as Counts
                         text: "HOLD LAUNCHER WINDOWS"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "gameModeHoldLaunchersButton"
@@ -1755,7 +1765,7 @@ import "Counts.js" as Counts
                     text: "While a game starts, launcher, update and sign-in windows wait out of sight and Omakade stays in front. Any of them can be opened from the Starting screen."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1766,7 +1776,7 @@ import "Counts.js" as Counts
                         text: "KEYBOARD SHORTCUT"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "gameModeShortcutButton"
@@ -1793,7 +1803,7 @@ import "Counts.js" as Counts
                               + " free. Adding it writes one line to ~/.config/hypr/bindings.lua."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1804,7 +1814,7 @@ import "Counts.js" as Counts
                         text: "CONTROLLER HOME BUTTON"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "gameModeGuideButton"
@@ -1827,7 +1837,7 @@ import "Counts.js" as Counts
                           + " With Steam open, turn off \"Guide button focuses Steam\" and \"Enable Guide Button Chords\" in Steam's controller settings."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1838,7 +1848,7 @@ import "Counts.js" as Counts
                         text: "HOME BUTTON IN GAMES"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "homeButtonOpensGuide"
@@ -1856,7 +1866,7 @@ import "Counts.js" as Counts
                           : "Home switches between Game Mode and your desktop, as before the guide."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1868,7 +1878,7 @@ import "Counts.js" as Counts
                           : GameMode.statusText
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1909,36 +1919,88 @@ import "Counts.js" as Counts
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 14
+                    objectName: "appearanceSettings"
                     visible: settingsOverlay.section === 5
                 CoverSizeControl { Layout.fillWidth: true; uiScale: settingsPanel.uiScale }
                 CoverSizeControl { Layout.fillWidth: true; couch: true; uiScale: settingsPanel.uiScale }
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "CONSOLE VIEW"; color: Theme.foreground; font.family: Theme.fontFamily; Layout.fillWidth: true }
+                    Text { text: "CONSOLE VIEW"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * settingsPanel.uiScale; Layout.fillWidth: true }
                     GlassButton { compact: true; text: Preferences.expandConsoles ? "GAMES" : "CONSOLES"; onClicked: Preferences.expandConsoles = !Preferences.expandConsoles }
                 }
-                RowLayout {
+                ColumnLayout {
                     Layout.fillWidth: true
+                    spacing: 8 * settingsPanel.uiScale
                     Text {
                         text: "MOTION"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 11 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                         Layout.fillWidth: true
                     }
-                    Repeater {
-                        model: ["system", "reduced", "full"]
-                        GlassButton {
-                            required property string modelData
-                            objectName: "motion_" + modelData
-                            compact: true
-                            text: modelData === "system"
-                                  ? "SYSTEM (" + (Preferences.systemReducedMotion ? "REDUCED" : "FULL") + ")"
-                                  : modelData.toUpperCase()
-                            Accessible.name: "Motion: " + text.toLowerCase()
-                            selectable: true
-                            selected: Preferences.motionPreference === modelData
-                            onClicked: Preferences.motionPreference = modelData
+                    // Wraps, so the choices fit a narrow window at a large text size.
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8 * settingsPanel.uiScale
+                        Repeater {
+                            model: ["system", "reduced", "full"]
+                            GlassButton {
+                                required property string modelData
+                                objectName: "motion_" + modelData
+                                compact: true
+                                text: modelData === "system"
+                                      ? "SYSTEM (" + (Preferences.systemReducedMotion ? "REDUCED" : "FULL") + ")"
+                                      : modelData.toUpperCase()
+                                Accessible.name: "Motion: " + text.toLowerCase()
+                                selectable: true
+                                selected: Preferences.motionPreference === modelData
+                                onClicked: Preferences.motionPreference = modelData
+                            }
+                        }
+                    }
+                }
+                ColumnLayout {
+                    objectName: "textSizeSetting"
+                    Layout.fillWidth: true
+                    spacing: 8 * settingsPanel.uiScale
+                    Text {
+                        Layout.fillWidth: true
+                        text: "TEXT SIZE"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Sizes text and buttons on the desktop. System follows the desktop's text scaling. Game Mode sizes its text to the display instead."
+                        color: Theme.mutedText
+                        font.family: Theme.fontFamily
+                        font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
+                        wrapMode: Text.Wrap
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8 * settingsPanel.uiScale
+                        Repeater {
+                            // 0 follows the system.
+                            model: {
+                                const sizes = [0]
+                                for (const size of Preferences.textSizes) sizes.push(size)
+                                return sizes
+                            }
+                            GlassButton {
+                                required property int modelData
+                                objectName: "textSize_" + (modelData === 0 ? "system" : modelData)
+                                compact: true
+                                text: modelData === 0 ? "SYSTEM (" + Preferences.systemTextSize + "%)"
+                                                      : modelData + "%"
+                                Accessible.name: modelData === 0
+                                                 ? "Text size: system, " + Preferences.systemTextSize + " percent"
+                                                 : "Text size: " + modelData + " percent"
+                                selectable: true
+                                selected: Preferences.textSizePreference === modelData
+                                onClicked: Preferences.textSizePreference = modelData
+                            }
                         }
                     }
                 }
@@ -1951,7 +2013,7 @@ import "Counts.js" as Counts
                     text: "STREAM WITH SUNSHINE AND MOONLIGHT"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     font.weight: Font.DemiBold
                 }
                 Text {
@@ -1959,7 +2021,7 @@ import "Counts.js" as Counts
                     text: Sunshine ? Sunshine.statusText : "Sunshine export is unavailable in demo mode."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -1967,7 +2029,7 @@ import "Counts.js" as Counts
                     text: "Moonlight shows Sunshine's app list. Omakade can add itself next to Steam Big Picture and one app per installed game with its cover. Sunshine reads the list when it starts, so restart it after changes."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 9 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 RowLayout {
@@ -1978,7 +2040,7 @@ import "Counts.js" as Counts
                         text: "OMAKADE IN MOONLIGHT"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "sunshineOmakadeButton"
@@ -1997,7 +2059,7 @@ import "Counts.js" as Counts
                               : "ONE APP PER INSTALLED GAME"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "sunshineGamesButton"
@@ -2034,7 +2096,7 @@ import "Counts.js" as Counts
                     text: "HIGHLIGHTS"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     font.weight: Font.DemiBold
                 }
                 Text {
@@ -2042,7 +2104,7 @@ import "Counts.js" as Counts
                     text: "Keep the last moments of a game ready to save. While a game is in view, Omakade keeps a short recording of its display in memory and writes a clip only when you ask for one or unlock an achievement."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Flow {
@@ -2081,7 +2143,7 @@ import "Counts.js" as Counts
                         text: "CLIP LENGTH"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     Repeater {
                         model: Preferences.highlightLengths
@@ -2104,7 +2166,7 @@ import "Counts.js" as Counts
                         text: "KEYBOARD SHORTCUT"
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * settingsPanel.uiScale
+                        font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     }
                     GlassButton {
                         objectName: "clipShortcutButton"
@@ -2129,7 +2191,7 @@ import "Counts.js" as Counts
                               + " free. Adding it writes one line to ~/.config/hypr/bindings.lua."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -2143,7 +2205,7 @@ import "Counts.js" as Counts
                             : ""
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
-                    font.pixelSize: 12 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -2151,7 +2213,7 @@ import "Counts.js" as Counts
                     text: "Save a clip from the Clip tile in the in-game guide, with the keyboard shortcut, or with the Share button on an Xbox controller or the Capture button on a Nintendo controller while the controller Home button is on in Controls. A clip ends where the game was when you asked, even from the guide. Steam achievement clips end a few seconds after the unlock and are named after it. Clips are saved in " + Preferences.highlightFolder + ", one folder per game, and listed on each game's page."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 Text {
@@ -2159,7 +2221,7 @@ import "Counts.js" as Counts
                     text: "The recording is of the display the game is on, including anything shown over it, with the sound your computer plays. It stays in memory and on this computer, and nothing is kept until a clip is saved."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
-                    font.pixelSize: 11 * settingsPanel.uiScale
+                    font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                     wrapMode: Text.Wrap
                 }
                 }
@@ -2184,14 +2246,14 @@ import "Counts.js" as Counts
                             text: modelData.label
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: 10 * settingsPanel.uiScale
+                            font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                         }
                         Text {
                             Layout.fillWidth: true
                             text: modelData.value
                             color: Theme.foreground
                             font.family: Theme.fontFamily
-                            font.pixelSize: 11 * settingsPanel.uiScale
+                            font.pixelSize: UiMetrics.label * settingsPanel.uiScale
                             elide: Text.ElideMiddle
                         }
                     }
@@ -2324,7 +2386,7 @@ import "Counts.js" as Counts
                       + Controller.backGlyph + (settingsOverlay.sourceDetail || settingsOverlay.connection >= 0 ? "  BACK" : "  CLOSE")
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
-                font.pixelSize: 12 * settingsPanel.uiScale
+                font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale
                 font.weight: Font.DemiBold
             }
         }

@@ -101,6 +101,9 @@ const QStringList kSortModeNames = {QStringLiteral("title"), QStringLiteral("rec
                                     QStringLiteral("popularity"), QStringLiteral("installed")};
 const QStringList kMotionPreferences = {QStringLiteral("system"), QStringLiteral("reduced"),
                                         QStringLiteral("full")};
+bool validTextSizePreference(int value) {
+  return value == 0 || AppSettings::textSizes().contains(value);
+}
 }  // namespace
 
 QJsonObject AppSettings::backupSettings() const {
@@ -130,6 +133,7 @@ QJsonObject AppSettings::backupSettings() const {
           {"console_layouts", QJsonArray::fromStringList(m_consoleLayouts)},
           {"reduced_motion", m_motionPreference == QStringLiteral("reduced")},
           {"motion", m_motionPreference},
+          {"text_size", m_textSizePreference},
           {"artwork_cache_limit_mb", m_artworkCacheLimitMb},
           {"steam_enabled", m_steamEnabled},
           {"lutris_enabled", m_lutrisEnabled},
@@ -188,6 +192,8 @@ void AppSettings::assignBackupSettings(const QJsonObject& settings) {
   m_motionPreference = kMotionPreferences.contains(motion) ? motion
                        : settings.value("reduced_motion").toBool() ? QStringLiteral("reduced")
                                                                   : QStringLiteral("system");
+  const int textSize = settings.value("text_size").toInt();
+  m_textSizePreference = validTextSizePreference(textSize) ? textSize : 0;
   m_artworkCacheLimitMb = settings.value("artwork_cache_limit_mb").toInt();
   m_steamEnabled = settings.value("steam_enabled").toBool();
   m_lutrisEnabled = settings.value("lutris_enabled").toBool();
@@ -236,7 +242,7 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
                    "prefer_standalone_emulators", "track_play_sessions", "cover_size",
                    "couch_cover_size", "console_expand_limit", "rom_folders", "console_layouts",
                    "pause_unfocused_sessions", "discord_presence", "stats_period",
-                   "xodus_enabled"})
+                   "xodus_enabled", "text_size"})
     if (!settings.contains(key))
       merged.insert(key, before.value(key));
   for (auto value = settings.begin(); value != settings.end(); ++value) merged.insert(value.key(), value.value());
@@ -244,7 +250,8 @@ bool AppSettings::applyBackupSettings(const QJsonObject& settings, bool replace)
   if (!settings.contains("motion") && settings.contains("reduced_motion")) merged.remove("motion");
   assignBackupSettings(merged);
   if (!save()) { assignBackupSettings(before); return false; }
-  emit reducedMotionChanged(); emit artworkCacheLimitMbChanged(); emit sourcesChanged();
+  emit reducedMotionChanged(); emit textSizeChanged(); emit artworkCacheLimitMbChanged();
+  emit sourcesChanged();
   emit closeAfterLaunchChanged(); emit couchModeEnabledChanged(); emit couchLibraryViewChanged();
   emit statsPeriodChanged();
   emit librarySortModeChanged(); emit gogLibraryPathsChanged();
@@ -352,6 +359,62 @@ void AppSettings::detectSystemReducedMotion() {
       {QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"),
        QStringLiteral("enable-animations")},
       &gtkAnimationsDisabled);
+}
+
+QList<int> AppSettings::textSizes() { return {90, 100, 115, 130, 150}; }
+
+void AppSettings::setTextSizePreference(int value) {
+  if (!validTextSizePreference(value) || m_textSizePreference == value) {
+    return;
+  }
+  m_textSizePreference = value;
+  save();
+  emit textSizeChanged();
+}
+
+void AppSettings::setSystemTextSize(int value) {
+  if (!textSizes().contains(value) || m_systemTextSize == value) {
+    return;
+  }
+  m_systemTextSize = value;
+  emit textSizeChanged();
+}
+
+int AppSettings::textSize() const {
+  return m_textSizePreference == 0 ? m_systemTextSize : m_textSizePreference;
+}
+
+int AppSettings::nearestTextSize(double factor) {
+  int nearest = 100;
+  for (const int size : textSizes()) {
+    if (qAbs(size - factor * 100) < qAbs(nearest - factor * 100)) nearest = size;
+  }
+  return nearest;
+}
+
+int AppSettings::gtkTextSize(const QByteArray& output) {
+  bool valid = false;
+  const double factor = output.trimmed().toDouble(&valid);
+  return valid && factor >= 0.5 && factor <= 4 ? nearestTextSize(factor) : 0;
+}
+
+void AppSettings::detectSystemTextSize() {
+  const QString executable = QStandardPaths::findExecutable(QStringLiteral("gsettings"));
+  if (executable.isEmpty()) {
+    return;
+  }
+  auto* process = new QProcess(this);
+  connect(process, &QProcess::finished, this,
+          [this, process](int exitCode, QProcess::ExitStatus status) {
+            process->deleteLater();
+            const int size = gtkTextSize(process->readAllStandardOutput());
+            if (status == QProcess::NormalExit && exitCode == 0 && size > 0) {
+              setSystemTextSize(size);
+            }
+          });
+  connect(process, &QProcess::errorOccurred, process, &QObject::deleteLater);
+  process->start(executable, {QStringLiteral("get"), QStringLiteral("org.gnome.desktop.interface"),
+                              QStringLiteral("text-scaling-factor")});
 }
 
 int AppSettings::artworkCacheLimitMb() const { return m_artworkCacheLimitMb; }
@@ -1058,6 +1121,11 @@ void AppSettings::load() {
   } else if (legacyMotion.match(contents).hasMatch()) {
     m_motionPreference = QStringLiteral("reduced");
   }
+  const QRegularExpressionMatch textSizeMatch =
+      QRegularExpression(QStringLiteral("(?m)^text_size\\s*=\\s*(\\d+)\\s*$")).match(contents);
+  if (textSizeMatch.hasMatch() && validTextSizePreference(textSizeMatch.captured(1).toInt())) {
+    m_textSizePreference = textSizeMatch.captured(1).toInt();
+  }
   const QRegularExpression limit(QStringLiteral("(?m)^artwork_cache_limit_mb\\s*=\\s*(\\d+)\\s*$"));
   const QRegularExpressionMatch limitMatch = limit.match(contents);
   if (limitMatch.hasMatch()) {
@@ -1363,6 +1431,8 @@ bool AppSettings::save() {
                   .arg(m_discordPresence ? QStringLiteral("true") : QStringLiteral("false"));
   contents += QStringLiteral("stats_period = \"%1\"\n").arg(m_statsPeriod);
   contents += QStringLiteral("motion = \"%1\"\n").arg(m_motionPreference);
+  // 0 follows the desktop's text scaling factor.
+  contents += QStringLiteral("text_size = %1\n").arg(m_textSizePreference);
   contents += QStringLiteral("cover_size = %1\ncouch_cover_size = %2\n").arg(m_coverSize).arg(m_couchCoverSize);
   contents += QStringLiteral("gog_library_paths = ") +
               QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(m_gogLibraryPaths))

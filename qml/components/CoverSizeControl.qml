@@ -16,7 +16,7 @@ ColumnLayout {
     spacing: 10
     RowLayout {
         Layout.fillWidth: true
-        Text { Layout.fillWidth: true; text: root.couch ? "COUCH GRID COVER SIZE" : "COVER SIZE"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 11 * root.uiScale }
+        Text { Layout.fillWidth: true; text: root.couch ? "COUCH GRID COVER SIZE" : "COVER SIZE"; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * root.uiScale }
         GlassButton { id: resetSize; property Item controllerDownTarget: sizeSlider; compact: true; text: "RESET"; enabled: root.percent !== 100; onClicked: root.apply(100) }
     }
     Slider {
@@ -59,8 +59,8 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
-        Text { text: "SMALLER"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 10 * root.uiScale }
-        Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "CURRENT " + root.percent + "%"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 10 * root.uiScale }
-        Text { text: "LARGER"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: 10 * root.uiScale }
+        Text { text: "SMALLER"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * root.uiScale }
+        Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "CURRENT " + root.percent + "%"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * root.uiScale }
+        Text { text: "LARGER"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * root.uiScale }
     }
 }

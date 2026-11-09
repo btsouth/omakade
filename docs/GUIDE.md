@@ -244,6 +244,10 @@ hides during controller or keyboard use, returns on mouse movement, and remains
 visible on the desktop. Motion follows the desktop by default: it is reduced when
 Hyprland animations or GTK animations are turned off. Settings > Appearance can
 choose System, Reduced or Full, and `Ctrl+M` switches between Reduced and Full.
+**Text size** in Settings > Appearance makes text, buttons and fields larger or
+smaller on the desktop, from 90% to 150%. System, the default, follows the desktop's
+text scaling factor (`gsettings get org.gnome.desktop.interface text-scaling-factor`).
+Game Mode sizes its text to the display instead.
 `Ctrl+D` opens settings and source diagnostics.
 
 ## Game Mode

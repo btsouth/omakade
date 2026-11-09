@@ -303,8 +303,8 @@ FocusScope {
         Layout.fillWidth: true
         Layout.topMargin: 12
         spacing: 12
-        Text { textFormat: Text.PlainText; text: title; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 19 * root.scaleFactor; font.bold: true }
-        Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: caption; color: Theme.mutedText; font.family: Theme.fontFamily; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight }
+        Text { textFormat: Text.PlainText; text: title; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.scaled(19) * root.scaleFactor; font.bold: true }
+        Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: caption; color: Theme.mutedText; font.family: Theme.fontFamily; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; font.pixelSize: UiMetrics.supporting * root.scaleFactor }
         GlassButton { visible: actionText !== ""; text: actionText; compact: true; onClicked: actionRequested() }
     }
     component GameShelf: Flickable {
@@ -317,7 +317,8 @@ FocusScope {
         readonly property real gap: 16
         readonly property real tileWidth: Math.max(1, (width - (columns - 1) * gap) / columns)
         readonly property real buttonScale: root.couchMode ? Math.max(1, Math.min(2.4, root.Window.window.height / 900)) : 1
-        readonly property real tileHeight: tileWidth * 1.5 + 69 * root.scaleFactor
+        // The caption grows with the text size; 69 at 100%.
+        readonly property real tileHeight: tileWidth * 1.5 + (UiMetrics.scaled(57) + 12) * root.scaleFactor
         readonly property int count: tiles.count
         readonly property int firstVisibleIndex: Math.min(count, Math.floor(contentX / (tileWidth + gap)) + 1)
         readonly property int lastVisibleIndex: Math.min(count, firstVisibleIndex + columns - 1)
@@ -534,6 +535,7 @@ FocusScope {
                             height: 30
                             color: Theme.darkerBackground
                             Text {
+                                font.pixelSize: UiMetrics.caption
                                 anchors.centerIn: parent
                                 text: "UNAVAILABLE"
                                 color: Theme.mutedText
@@ -548,12 +550,12 @@ FocusScope {
                         text: tile.game.title || "Unavailable game"
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
-                        font.pixelSize: 13 * root.scaleFactor
+                        font.pixelSize: UiMetrics.body * root.scaleFactor
                         font.bold: true
                         maximumLineCount: 2
                         wrapMode: Text.Wrap
                         elide: Text.ElideRight
-                        height: 39 * root.scaleFactor
+                        height: UiMetrics.scaled(39) * root.scaleFactor
                     }
                     Text {
                         textFormat: Text.PlainText
@@ -562,11 +564,11 @@ FocusScope {
                         text: tile.suggested ? tile.game.suggestionReason : root.gameCaption(tile.game)
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
-                        font.pixelSize: 10 * root.scaleFactor
+                        font.pixelSize: UiMetrics.caption * root.scaleFactor
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         wrapMode: Text.NoWrap
-                        height: 18 * root.scaleFactor
+                        height: UiMetrics.scaled(18) * root.scaleFactor
                         visible: !tileAction.visible
                     }
                 }
@@ -732,9 +734,10 @@ FocusScope {
                 width: Math.min(scroll.width - 12, 1480 * root.scaleFactor)
                 x: (scroll.width - width) / 2
                 spacing: 18
-                Text { textFormat: Text.PlainText; text: Counts.text(Home.gameCount, "game") + " ready to explore"; color: Theme.mutedText; font.family: Theme.fontFamily }
-                Text { textFormat: Text.PlainText; Layout.fillWidth: true; visible: Home.error !== "" || root.notice !== ""; text: Home.error || root.notice; color: Theme.brightForeground; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
+                Text { textFormat: Text.PlainText; text: Counts.text(Home.gameCount, "game") + " ready to explore"; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting * root.scaleFactor }
+                Text { textFormat: Text.PlainText; Layout.fillWidth: true; visible: Home.error !== "" || root.notice !== ""; text: Home.error || root.notice; color: Theme.brightForeground; font.family: Theme.fontFamily; wrapMode: Text.Wrap; font.pixelSize: UiMetrics.body * root.scaleFactor }
                 Text {
+                    font.pixelSize: UiMetrics.body * root.scaleFactor
                     textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: root.stopFailure.length > 0
@@ -761,7 +764,7 @@ FocusScope {
                             text: "NOW PLAYING"
                             color: Theme.accent
                             font.family: Theme.fontFamily
-                            font.pixelSize: (root.couchMode ? 16 : 12) * root.panelScale
+                            font.pixelSize: (root.couchMode ? 16 : UiMetrics.label) * root.panelScale
                             font.bold: root.couchMode
                             font.letterSpacing: root.couchMode ? 1.5 : 0
                         }
@@ -805,7 +808,7 @@ FocusScope {
                                               + (modelData.fromWindowTitle === true ? " · from window title" : "")
                                         color: Theme.mutedText
                                         font.family: Theme.fontFamily
-                                        font.pixelSize: (root.couchMode ? 17 : 11) * root.panelScale
+                                        font.pixelSize: (root.couchMode ? 17 : UiMetrics.supporting) * root.panelScale
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -844,7 +847,7 @@ FocusScope {
                                   : "Press " + Controller.primaryGlyph + " to stop this game."
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
-                            font.pixelSize: (root.couchMode ? 15 : 11) * root.panelScale
+                            font.pixelSize: (root.couchMode ? 15 : UiMetrics.supporting) * root.panelScale
                             wrapMode: Text.Wrap
                         }
                     }
@@ -870,10 +873,10 @@ FocusScope {
                         }
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 12
-                            Text { text: "JUMP BACK IN"; color: Theme.accent; font.family: Theme.fontFamily; font.pixelSize: 12 * root.scaleFactor }
+                            Text { text: "JUMP BACK IN"; color: Theme.accent; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * root.scaleFactor }
                             Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: root.featured.title || ""; color: Theme.brightForeground; font.family: Theme.fontFamily; font.bold: true; font.pixelSize: (content.width < 650 ? 22 : 32) * root.scaleFactor; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight }
-                            Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: root.gameCaption(root.featured); color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
-                            Text { textFormat: Text.PlainText; visible: root.featured.lastPlayed > 0; text: root.featured.lastPlayed > 0 ? "Last played " + UserDates.format(new Date(root.featured.lastPlayed * 1000), "day") : ""; color: Theme.mutedText; font.family: Theme.fontFamily }
+                            Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: root.gameCaption(root.featured); color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap; font.pixelSize: UiMetrics.body * root.scaleFactor }
+                            Text { textFormat: Text.PlainText; visible: root.featured.lastPlayed > 0; text: root.featured.lastPlayed > 0 ? "Last played " + UserDates.format(new Date(root.featured.lastPlayed * 1000), "day") : ""; color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.body * root.scaleFactor }
                             Flow {
                                 id: featuredActions
                                 Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; spacing: 8
@@ -911,15 +914,15 @@ FocusScope {
                             Layout.preferredWidth: 280 * root.scaleFactor
                             Layout.maximumWidth: 280 * root.scaleFactor
                             spacing: 12
-                            Text { textFormat: Text.PlainText; text: Home.queue.length ? "NEXT IN YOUR QUEUE" : "ON YOUR RADAR"; color: Theme.accent; font.family: Theme.fontFamily; font.pixelSize: 12 * root.scaleFactor }
+                            Text { textFormat: Text.PlainText; text: Home.queue.length ? "NEXT IN YOUR QUEUE" : "ON YOUR RADAR"; color: Theme.accent; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.label * root.scaleFactor }
                             Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: root.nextGame.title || ""; color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 22 * root.scaleFactor; font.bold: true; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight }
-                            Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: Home.queue.length ? "Picked by you. Ready when you are." : root.nextGame.suggestionReason || ""; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
+                            Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: Home.queue.length ? "Picked by you. Ready when you are." : root.nextGame.suggestionReason || ""; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap; font.pixelSize: UiMetrics.body * root.scaleFactor }
                             GlassButton { text: "EXPLORE GAME"; onClicked: root.openGame(root.nextGame) }
                         }
                     }
                 }
                 SectionTitle { title: "Set up your library"; visible: Home.gameCount === 0 }
-                Text { Layout.fillWidth: true; visible: Home.gameCount === 0; text: "Your Home starts with your games. Omakade finds them in your launchers, emulators and ROM folders. Choose your sources, then play something to make this space yours."; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
+                Text { Layout.fillWidth: true; visible: Home.gameCount === 0; text: "Your Home starts with your games. Omakade finds them in your launchers, emulators and ROM folders. Choose your sources, then play something to make this space yours."; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap; font.pixelSize: UiMetrics.body * root.scaleFactor }
                 Flow {
                     Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; spacing: 8
                     visible: Home.gameCount === 0
@@ -936,7 +939,7 @@ FocusScope {
                 }
                 ShelfPager { shelf: recentTiles }
                 SectionTitle { title: "Up next"; caption: Home.queue.length ? Home.queue.length + " in your queue" : "Your own shortlist" }
-                Text { Layout.fillWidth: true; visible: !Home.queue.length; text: "Something catch your eye? Add it to Up next and keep your next session ready."; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
+                Text { Layout.fillWidth: true; visible: !Home.queue.length; text: "Something catch your eye? Add it to Up next and keep your next session ready."; color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap; font.pixelSize: UiMetrics.body * root.scaleFactor }
                 GameShelf {
                     id: queueTiles
                     objectName: "homeQueueShelf"

@@ -8,6 +8,11 @@
 - The installed `omakade-sessiond` and `omakade-guide-button` user services now start the
   binaries from the install prefix, so a build installed under `/usr/local` no longer looks
   for them in `/usr/bin`.
+- Settings > Appearance has a Text size choice: 90%, 100%, 115%, 130% or 150%. It sizes
+  text, buttons and fields on the desktop, and by default follows the desktop's text
+  scaling factor. Game Mode keeps sizing its text to the display. The small 8 to 11 px
+  labels and explanations in Settings, game details and the library now use the shared
+  text sizes, so they are easier to read and match each other.
 - The package now installs Troubleshooting, the in-game guide page, Architecture and the
   README's screenshots, so every link in the installed docs opens. Troubleshooting now
   says a source that is on but not found is listed under Available, and the user guides
