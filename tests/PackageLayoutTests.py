@@ -101,6 +101,26 @@ class PackageLayoutTests(unittest.TestCase):
                     broken.append(f"{page.relative_to(docs)}: {link} (no such heading)")
         self.assertEqual(broken, [])
 
+    def test_package_ships_the_app_without_its_test_harness(self) -> None:
+        binaries = self.prefix / "bin"
+        self.assertEqual(sorted(path.name for path in binaries.iterdir()),
+                         ["omakade", "omakade-guide-button", "omakade-guide-guard", "omakade-sessiond"])
+        # The options only omakade-uitest reads. Qt keeps QStringLiteral text as UTF-16.
+        app = (binaries / "omakade").read_bytes()
+
+        def mentions(option: str) -> bool:
+            return option.encode() in app or option.encode("utf-16-le") in app
+
+        self.assertTrue(mentions("--smoke-test"))
+        harness = ["--render-screenshot", "--render-size", "--render-overlay", "--render-game-info-file",
+                   "--export-card", "--stats-fixture", "--repair-navigation-fixture",
+                   "--restore-startup-test", "--gog-settings-test", "--linked-preference-test",
+                   "--backup-editor-test", "--bulk-editor-test", "--saved-filter-test",
+                   "--random-selection-test", "--launching-navigation-test", "--stale-selection-test",
+                   "--game-mode-test", "--filter-back-test", "--artwork-editor-test",
+                   "--manual-editor-test"]
+        self.assertEqual([option for option in harness if mentions(option)], [])
+
     def test_installed_documentation_names_no_private_machines(self) -> None:
         docs = self.prefix / DATADIR / "doc" / "omakade"
         for page in docs.rglob("*.md"):

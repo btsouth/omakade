@@ -1,7 +1,7 @@
 # The installed tree enables no service for every account, its units start the binaries from
 # the configured prefix, OmaStore's services run binaries the package ships, and the bundled
 # plugin's manifest carries the package's version and license. Every relative link in the
-# installed docs opens.
+# installed docs opens. The package has no omakade-uitest, and omakade reads none of its options.
 omakade_python_test(omakade_package_layout
   SCRIPT PackageLayoutTests.py
   ARGS ${CMAKE_COMMAND} ${CMAKE_BINARY_DIR} ${PROJECT_VERSION} ${CMAKE_INSTALL_LIBDIR} ${CMAKE_INSTALL_DATADIR}
