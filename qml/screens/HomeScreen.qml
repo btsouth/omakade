@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../components"
+import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
 
 FocusScope {
@@ -723,7 +724,7 @@ FocusScope {
                 width: Math.min(scroll.width - 12, 1480 * root.scaleFactor)
                 x: (scroll.width - width) / 2
                 spacing: 18
-                Text { textFormat: Text.PlainText; text: Home.gameCount + " games ready to explore"; color: Theme.mutedText; font.family: Theme.fontFamily }
+                Text { textFormat: Text.PlainText; text: Counts.text(Home.gameCount, "game") + " ready to explore"; color: Theme.mutedText; font.family: Theme.fontFamily }
                 Text { textFormat: Text.PlainText; Layout.fillWidth: true; visible: Home.error !== "" || root.notice !== ""; text: Home.error || root.notice; color: Theme.brightForeground; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
                 Text {
                     textFormat: Text.PlainText

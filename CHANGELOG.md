@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Counts read correctly for a single item, such as "1 GAME" in the library toolbar
+  instead of "1 GAMES", and the same on Home, Settings, game details and save panels.
 - An empty Stats now says when play recording is off, which it is on new installations,
   and offers Turn On Recording with a line on what is recorded and which emulators give
   dated sessions. With recording on, it still says nothing has been recorded yet.

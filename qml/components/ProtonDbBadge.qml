@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "Counts.js" as Counts
 
 Text {
     id: root
@@ -35,7 +36,7 @@ Text {
     Accessible.name: "ProtonDB " + tierLabel
     Accessible.description: details
     readonly property string details: "ProtonDB community reports, not a compatibility guarantee. "
-        + (entry.total || 0) + " reports. Cached " + (entry.updated || "")
+        + Counts.text(entry.total, "report") + ". Cached " + (entry.updated || "")
         + (entry.stale ? ". Older than seven days; refresh unavailable or pending." : ".")
     ToolTip.visible: hover.hovered && visible
     ToolTip.text: details

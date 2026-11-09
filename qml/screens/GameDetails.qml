@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
 import "../components"
+import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
 
 Item {
@@ -647,12 +648,12 @@ Item {
                         wrapMode: Text.Wrap
                         Accessible.role: Accessible.StaticText
                         Accessible.name: text + (root.detailsEntry.ratingCount > 0
-                                                ? ", " + root.detailsEntry.ratingCount + " IGDB ratings" : "")
+                                                ? ", " + Counts.text(root.detailsEntry.ratingCount, "IGDB rating") : "")
                         HoverHandler { id: ratingHover; enabled: gameRating.visible }
                         ToolTip {
                             objectName: "gameRatingTooltip"
                             visible: gameRating.visible && ratingHover.hovered && root.detailsEntry.ratingCount > 0
-                            text: (root.detailsEntry.ratingCount || 0) + " IGDB ratings"
+                            text: Counts.text(root.detailsEntry.ratingCount, "IGDB rating")
                             delay: 500
                             x: 0
                             y: gameRating.height + 4
@@ -675,7 +676,7 @@ Item {
                         if (root.game.completionStatus) values.push(root.game.completionStatus.charAt(0).toUpperCase() + root.game.completionStatus.slice(1))
                         if (root.displayedAchievementTotal > 0) {
                             values.push(root.displayedAchievementsUnlocked + "/"
-                                        + root.displayedAchievementTotal + " achievements")
+                                        + Counts.text(root.displayedAchievementTotal, "achievement"))
                         }
                         return values.join("  ·  ")
                     }

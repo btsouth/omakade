@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Counts.js" as Counts
 
     Rectangle {
         id: settingsOverlay
@@ -1296,7 +1297,7 @@ import QtQuick.Layouts
                     Text {
                         visible: SteamAccount && SteamAccount.ownedGameCount > 0
                         text: SteamAccount
-                              ? SteamAccount.ownedGameCount + " OWNED GAMES CACHED" : ""
+                              ? Counts.text(SteamAccount.ownedGameCount, "OWNED GAME", "OWNED GAMES") + " CACHED" : ""
                         color: Theme.mutedText
                         font.family: Theme.fontFamily
                         font.pixelSize: 9 * settingsPanel.uiScale
@@ -2132,8 +2133,8 @@ import QtQuick.Layouts
                     visible: settingsOverlay.section === 7
                 Repeater {
                     model: [
-                        { label: "LIBRARY", value: settingsOverlay.libraryCount + " visible games" },
-                        { label: "LOCAL ARTWORK", value: SteamLibrary ? SteamLibrary.artworkCount + " covers" : "Procedural demo art" },
+                        { label: "LIBRARY", value: Counts.text(settingsOverlay.libraryCount, "visible game") },
+                        { label: "LOCAL ARTWORK", value: SteamLibrary ? Counts.text(SteamLibrary.artworkCount, "cover") : "Procedural demo art" },
                         { label: "CONTROLLER", value: Controller.connected ? Controller.name : "Not connected" },
                         { label: "DATABASE", value: SteamLibrary ? SteamLibrary.databasePath : "Not used in demo mode" },
                         { label: "ACHIEVEMENT ART", value: (Achievements.cacheBytes / 1048576).toFixed(1) + " MB / " + Preferences.artworkCacheLimitMb + " MB" },

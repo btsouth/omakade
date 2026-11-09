@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import "../components"
+import "Counts.js" as Counts
 
 Rectangle {
     id: root
@@ -142,7 +143,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: (root.Window.window && root.Window.window.libraryScanning
                        ? "Checking sources; counts may change. " : "")
-                      + root.entries.length + " games in this review view"
+                      + Counts.text(root.entries.length, "game") + " in this review view"
                       + (root.reasonSummary ? "  ·  " + root.reasonSummary : "")
                 color: Theme.foreground
                 font.family: Theme.fontFamily

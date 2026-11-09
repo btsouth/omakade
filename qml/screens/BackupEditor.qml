@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import "../components"
+import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
 
 Rectangle {
@@ -52,7 +53,7 @@ Rectangle {
         }
         text += "\nBACKUP / CURRENT / MATCHING\n"
         for (const row of p.counts) text += row.label + ": " + row.incoming + " / " + row.current + " / " + row.matching + "\n"
-        text += "\n" + p.artworkCount + " artwork files · " + p.settingsCount + " preferences\n"
+        text += "\n" + Counts.text(p.artworkCount, "artwork file") + " · " + Counts.text(p.settingsCount, "preference") + "\n"
         if (p.missingPathCount) text += "\nUNAVAILABLE PATHS (" + p.missingPathCount + ")\n" + p.missingPaths.join("\n") + "\nThese entries remain stored for repair or reconnection.\n"
         if (p.savedFilterNameConflicts.length) text += "\nRENAMED DURING MERGE\n" + p.savedFilterNameConflicts.join(", ") + "\n"
         const labels = {reduced_motion:"Reduced motion", artwork_cache_limit_mb:"Artwork cache limit (MB)", steam_enabled:"Steam", lutris_enabled:"Lutris", heroic_enabled:"Heroic", gog_enabled:"GOG", faugus_enabled:"Faugus", xodus_enabled:"Xodus Nexus", retroarch_enabled:"RetroArch", pcsx2_enabled:"PCSX2", ryujinx_enabled:"Ryujinx", pcsx2_auto:"Detect PCSX2 automatically", ryujinx_auto:"Detect Ryujinx automatically", battlenet_enabled:"Battle.net", close_after_launch:"Close after launching", couch_mode:"Start in Game Mode", couch_library_view:"Couch library view", gog_library_paths:"GOG folders",

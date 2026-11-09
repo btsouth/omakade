@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import "Counts.js" as Counts
 
 ColumnLayout {
     id: root
@@ -22,7 +23,7 @@ ColumnLayout {
     GlassButton { objectName: "saveOverviewToggle"; text: "SAVE PROTECTION OVERVIEW"; onClicked: {root.expanded=!root.expanded;if(root.expanded)SaveProtection.refresh()} }
     ColumnLayout {
         Layout.fillWidth: true; visible: root.expanded; spacing: 10
-        Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: SaveProtection.busy ? "Checking save coverage…" : root.entries.length+" installations · "+(SaveProtection.storageBytes/(1024*1024)).toFixed(1)+" MiB in backups (shared sets counted once)"; color: Theme.foreground }
+        Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: SaveProtection.busy ? "Checking save coverage…" : Counts.text(root.entries.length, "installation")+" · "+(SaveProtection.storageBytes/(1024*1024)).toFixed(1)+" MiB in backups (shared sets counted once)"; color: Theme.foreground }
         ThemedTextField { id: search; Layout.fillWidth: true; placeholderText: "Find a game"; Accessible.name: placeholderText; onTextChanged: root.page=0
             property bool controllerNavigation: TextEntry.keyboardNeeded
 
@@ -67,7 +68,7 @@ ColumnLayout {
                 GlassButton {text:"APPLY LAYOUT";enabled:root.preview.valid===true;onClicked:{SaveBackups.setCustomFiles(root.selected.context,root.preview.files,shared.checked);root.preview=({});SaveProtection.refresh()}}
                 GlassButton {text:"USE AUTOMATIC LAYOUT";onClicked:{SaveBackups.resetCustomFiles(root.selected.context);SaveProtection.refresh()}}
             }
-            Text {Layout.fillWidth:true;wrapMode:Text.Wrap;color:Theme.foreground;text:root.preview.valid ? root.preview.files.length+" files · "+(root.preview.bytes/1024).toFixed(1)+" KiB" : (root.preview.error || "")}
+            Text {Layout.fillWidth:true;wrapMode:Text.Wrap;color:Theme.foreground;text:root.preview.valid ? Counts.text(root.preview.files.length, "file")+" · "+(root.preview.bytes/1024).toFixed(1)+" KiB" : (root.preview.error || "")}
         }
         Text {Layout.fillWidth:true;wrapMode:Text.Wrap;text:"Retention and storage";color:Theme.foreground;font.bold:true}
         RowLayout {
@@ -84,7 +85,7 @@ ColumnLayout {
         }
         ColumnLayout {
             Layout.fillWidth:true;visible:root.confirmCleanup
-            Text {Layout.fillWidth:true;wrapMode:Text.Wrap;text:SaveProtection.cleanup.length+" older backups selected. Deletion cannot be undone; live saves are unchanged.";color:Theme.foreground}
+            Text {Layout.fillWidth:true;wrapMode:Text.Wrap;text:Counts.text(SaveProtection.cleanup.length, "older backup")+" selected. Deletion cannot be undone; live saves are unchanged.";color:Theme.foreground}
             Text { textFormat: Text.PlainText;Layout.fillWidth:true;wrapMode:Text.Wrap;text:SaveProtection.cleanup.map(item=>item.title+" · "+item.createdAt+" · "+(item.bytes/1024).toFixed(1)+" KiB").join("\n");color:Theme.mutedText}
             Flow {Layout.fillWidth:true;spacing:8
                 GlassButton {text:"DELETE LISTED BACKUPS";enabled:SaveProtection.cleanup.length>0;onClicked:{SaveProtection.applyCleanup();root.confirmCleanup=false}}
