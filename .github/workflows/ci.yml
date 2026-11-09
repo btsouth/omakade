@@ -16,7 +16,8 @@ env:
   # Compiler output is validated against source/dependencies and compiler
   # content by ccache; package builds stay clean and all tests still run.
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  # Preserve absolute __FILE__ paths: source-inspection tests run from tests/.
+  # CCACHE_BASEDIR stays unset here and in release.yml: source-inspection tests read
+  # absolute __FILE__ paths, and the release tests reuse the outputs saved on main.
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 500M
   CMAKE_C_COMPILER_LAUNCHER: ccache
@@ -91,6 +92,8 @@ jobs:
           - check: x86_64
             arch: x86_64
             packages: omarchy-stable
+            # The clip trim test needs ffmpeg, and a required leg has to run it.
+            ffmpeg: true
             runner: ubuntu-24.04
             container: archlinux@sha256:82b1b08faae9d61e3e7e13d562f4d09114d939105b0d59ff34140f3bd418593a
           - check: x86_64 current Arch
@@ -109,7 +112,9 @@ jobs:
     steps:
       - name: Use Omarchy stable packages
         if: matrix.packages == 'omarchy-stable'
-        run: echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
+        run: |
+          # shellcheck disable=SC2016 # $repo and $arch are for pacman, not the shell.
+          echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' > /etc/pacman.d/mirrorlist
       - name: Install dependencies
         # -uu lets the stable snapshot downgrade packages newer than it.
         run: >-
@@ -117,6 +122,7 @@ jobs:
           appstream base-devel ccache cmake desktop-file-utils git layer-shell-qt libsecret libzip ninja
           pkgconf python qt6-base qt6-declarative qt6-imageformats qt6-svg sdl3
           ttf-dejavu wayland wayland-protocols
+          ${{ matrix.ffmpeg && 'ffmpeg' || '' }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Restore compiler outputs
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -131,12 +137,34 @@ jobs:
         run: cmake --preset release
       - name: Build
         run: cmake --build --preset release
+      - name: Add an unprivileged test user
+        # As root, the cases that check unreadable files and device nodes would skip.
+        run: |
+          useradd --create-home tester
+          chown -R tester:tester "$GITHUB_WORKSPACE"
       - name: Test
         # Every second test, so the shards together cover the whole suite.
-        run: ctest --preset release --parallel 8 -I ${{ matrix.shard }},,2 --output-junit test-results.xml
+        run: >-
+          runuser -u tester --
+          ctest --preset release --parallel 8 -I ${{ matrix.shard }},,2 --output-junit test-results.xml
+      - name: Require the permission cases
+        # ctest counts a QSKIP as a pass, so check that these really ran.
+        if: matrix.shard == 1
+        run: |
+          runuser -u tester -- python tools/ci/require-qt-cases.py \
+            build/release/tests/omakade_guide_button_tests listenerRetriesAControllerItCannotOpenYet
+          runuser -u tester -- python tools/ci/require-qt-cases.py \
+            build/release/tests/omakade_save_set_tests unreadableFoldersRefuseSnapshotAndRestore
+      - name: Require the clip trim case
+        if: matrix.shard == 1 && matrix.ffmpeg
+        run: >-
+          runuser -u tester -- python tools/ci/require-qt-cases.py
+          build/release/tests/omakade_highlight_tests serviceTrimsGuideTime
       - name: Test release tooling
         if: matrix.shard == 1
-        run: python tests/SbomGeneratorTests.py
+        run: |
+          python tests/SbomGeneratorTests.py
+          python tools/ci/CiToolsTests.py
       - name: Validate metadata
         if: matrix.shard == 1
         run: |

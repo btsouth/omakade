@@ -1,6 +1,6 @@
 pkgname=omakade
 pkgver=@VERSION@
-pkgrel=1
+pkgrel=@PKGREL@
 pkgdesc='A beautiful, local-first game library for Omarchy'
 arch=('x86_64' 'aarch64')
 url='https://btsouth.github.io/omakade/'
