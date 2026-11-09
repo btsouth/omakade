@@ -8166,7 +8166,10 @@ int main(int argc, char* argv[]) {
       } else if (*step == 7 && !backups.busy()) {
         if (!editor->property("queued").toBool() || BackupRecovery(managerPaths).status() != "queued") { fail("Confirmed restore was not queued: " + backups.message()); return; }
         auto* close = rootWindow->findChild<QQuickItem*>("backupCloseAppButton");
-        if (!close || !close->hasActiveFocus()) { fail("Queued restore did not focus Close Omakade"); return; }
+        if (!close || !close->isVisible()) { fail("Queued restore did not show Close Omakade"); return; }
+        // The editor moves focus with Qt.callLater, so this tick can land first.
+        // The fixture deadline still fails the test if focus never arrives.
+        if (!close->hasActiveFocus()) return;
         timer->stop(); application.quit();
       }
     });
