@@ -243,11 +243,13 @@ private slots:
          {"http://localhost:8080", "http://127.0.0.1", "http://[::1]:3000", "http://10.0.0.5",
           "http://172.16.4.1", "http://192.168.1.20", "http://169.254.1.1", "http://100.100.1.1",
           "http://[fd00::5]", "http://nas", "http://romm.local", "http://romm.lan",
-          "http://romm.home.arpa", "http://romm.internal", "http://ROMM.LOCAL."})
+          "http://romm.home.arpa", "http://romm.internal", "http://ROMM.LOCAL.",
+          "http://localhost."})
       QVERIFY2(RommCatalog::transport(QUrl(local)) == Transport::LocalHttp, local);
     for (const char* remote :
          {"http://romm.example", "http://8.8.8.8", "http://172.32.0.1", "http://100.128.0.1",
-          "http://[2001:db8::1]", "http://local.example.com", "http://romm.localdomain.example"})
+          "http://[2001:db8::1]", "http://local.example.com", "http://romm.localdomain.example",
+          "http://com.", "http://ai."})
       QVERIFY2(RommCatalog::transport(QUrl(remote)) == Transport::PublicHttp, remote);
 
     QTemporaryDir dir;
@@ -290,6 +292,12 @@ private slots:
     QVERIFY(model.transportText(server.toString()).contains("HTTPS"));
     QVERIFY(model.transportText("http://192.168.1.20").contains("local network"));
     QVERIFY(model.transportText(insecure).contains("asks"));
+    // Settings asks to confirm HTTP only once the rest of the form is valid.
+    QVERIFY(model.validConnection(insecure, mount, QString::fromLatin1(token)));
+    QVERIFY(model.validConnection(insecure, mount, QString()));
+    QVERIFY(!model.validConnection(insecure, dir.filePath("missing"), QString()));
+    QVERIFY(!model.validConnection(insecure, mount, "rmm_bad"));
+    QVERIFY(!model.validConnection("ftp://romm.example", mount, QString()));
 
     QVERIFY(!model.connectServer(insecure, mount, QString::fromLatin1(token)));
     QVERIFY(!model.errorText().isEmpty());

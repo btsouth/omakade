@@ -41,7 +41,9 @@ QUrl pageUrl(QUrl server, int offset) {
 }
 bool localHost(QString host) {
   host = host.toLower();
-  if (host.endsWith('.'))
+  // A trailing dot marks an absolute DNS name, so "com." is never a local search-domain name.
+  const bool absolute = host.endsWith('.');
+  if (absolute)
     host.chop(1);
   QHostAddress address;
   if (address.setAddress(host))
@@ -50,7 +52,7 @@ bool localHost(QString host) {
   if (host.isEmpty())
     return false;
   if (!host.contains('.'))
-    return true;
+    return !absolute || host == "localhost";
   for (const auto* suffix : {".localhost", ".local", ".lan", ".home.arpa", ".internal"})
     if (host.endsWith(QLatin1String(suffix)))
       return true;

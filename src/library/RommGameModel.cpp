@@ -96,12 +96,17 @@ QString RommGameModel::transportText(const QString& address) const {
   }
   return {};
 }
+bool RommGameModel::validConnection(const QString& address, const QString& root,
+                                    const QString& token) const {
+  const QFileInfo folder(root.trimmed());
+  return !RommCatalog::serverUrl(QUrl(address.trimmed())).isEmpty() && folder.isAbsolute() &&
+         folder.isDir() && (token.isEmpty() || RommCatalog::validToken(token.toLatin1()));
+}
 bool RommGameModel::connectServer(const QString& address, const QString& root,
                                   const QString& token, bool allowPublicHttp) {
   const auto server = RommCatalog::serverUrl(QUrl(address.trimmed()));
   const QFileInfo folder(root.trimmed());
-  if (server.isEmpty() || !folder.isAbsolute() || !folder.isDir() ||
-      (!token.isEmpty() && !RommCatalog::validToken(token.toLatin1()))) {
+  if (!validConnection(address, root, token)) {
     m_error = "Enter a valid server, existing mounted folder, and Client API Token.";
     emit statusChanged();
     return false;

@@ -67,7 +67,7 @@ ColumnLayout {
         }
         Flow {
             Layout.fillWidth: true; spacing: 8
-            GlassButton { objectName: "rommConnect"; text: "SAVE AND CONNECT"; enabled: root.service && !root.service.scanning; onClicked: { if(root.service.needsHttpConfirmation(server.text)) { root.confirmHttp = true; return } if(root.service.connectServer(server.text,folder.text,token.text)) token.clear() } }
+            GlassButton { id: connectButton; objectName: "rommConnect"; text: "SAVE AND CONNECT"; enabled: root.service && !root.service.scanning; onClicked: { if(root.service.validConnection(server.text,folder.text,token.text) && root.service.needsHttpConfirmation(server.text)) { root.confirmHttp = true; confirmHttpButton.forceActiveFocus(); return } if(root.service.connectServer(server.text,folder.text,token.text)) token.clear() } }
             GlassButton { text: "TEST / REFRESH"; enabled: root.service && Preferences.rommEnabled && !root.service.scanning; onClicked: root.service.refresh() }
             GlassButton { text: "DISCONNECT"; enabled: root.service && Preferences.rommEnabled; onClicked: root.service.disconnectServer(false) }
             GlassButton { text: "FORGET TOKEN"; enabled: root.service && !root.service.scanning; onClicked: { root.service.disconnectServer(true); token.clear() } }
@@ -77,8 +77,8 @@ ColumnLayout {
             Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.yellow; text: "This server uses plain HTTP and is not on your local network. Anyone on the network path could read your RomM token. Use https if the server supports it." }
             Flow {
                 Layout.fillWidth: true; spacing: 8
-                GlassButton { objectName: "rommConfirmHttp"; text: "SEND TOKEN OVER HTTP"; enabled: root.service && !root.service.scanning; onClicked: { root.confirmHttp = false; if(root.service.connectServer(server.text,folder.text,token.text,true)) token.clear() } }
-                GlassButton { text: "CANCEL"; onClicked: root.confirmHttp = false }
+                GlassButton { id: confirmHttpButton; objectName: "rommConfirmHttp"; text: "SEND TOKEN OVER HTTP"; enabled: root.service && !root.service.scanning; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus(); if(root.service.connectServer(server.text,folder.text,token.text,true)) token.clear() } }
+                GlassButton { text: "CANCEL"; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus() } }
             }
         }
         Text { objectName: "rommConnectionStatus"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.foreground; text: root.service ? root.service.statusText : "Unavailable in demo mode" }
