@@ -1,10 +1,53 @@
-# Compatibility report
+# Compatibility
+
+What each source supports in the current release, followed by dated test reports.
+For setup, see the [guide](GUIDE.md). Omakade runs on Omarchy and Arch Linux, on
+x86_64 and ARM64.
+
+## Support by source
+
+| Source | Installs found | Launches through | Artwork | Play time | Save protection |
+| --- | --- | --- | --- | --- | --- |
+| Steam | Native, Flatpak | Steam | Steam's library cache, then Steam's image hosts | Steam's own | No |
+| Heroic (Epic, GOG, Amazon) | Native, Flatpak | Heroic | Heroic's artwork cache | Heroic's own | No |
+| Lutris | Native, Flatpak | Lutris | Lutris covers | Lutris's own | No |
+| Faugus | Native, Flatpak | Faugus | Faugus covers and banners | Faugus's own | No |
+| GOG (direct) | Standard and added GOG folders | The game, or `umu-run` for Windows builds | Connections only | None | No |
+| Battle.net | Wine, Proton and Bottles prefixes, including Flatpak Bottles and Steam | The prefix's Battle.net client | Lutris's public game art | Last played only | No |
+| Xodus Nexus | Native | Nexus's own shortcut | Microsoft Store images | Recorder | No |
+| RetroArch and ROM folders | Native, Flatpak | RetroArch with the assigned core, or a standalone emulator | Local thumbnails, then Libretro's thumbnail server | RetroArch's logs and recorder | Yes |
+| PCSX2 | Native, Flatpak | PCSX2 | PCSX2's covers folder | PCSX2's own and recorder | Yes |
+| RPCS3 | Native; Flatpak found but not accepted | RPCS3 | The game's icon | Recorder | Yes |
+| PPSSPP | Native; Flatpak only for games in its own storage | PPSSPP | Connections only | Recorder | Yes |
+| Ryujinx | Native, Flatpak | Ryujinx | Icon inside the dump with `prod.keys`, or local images | Ryujinx's own and recorder | Yes |
+| Cemu | Native, Flatpak | Cemu | Icon inside `.wua` archives, Cemu's cache, or an image beside the game | Recorder | Yes |
+| Dolphin | Native, Flatpak | Dolphin's batch mode | Dolphin's cover cache, then GameTDB | Recorder | Yes |
+| shadPS4 | Native, Flatpak | shadPS4 | Icon inside the dump | Recorder | Yes |
+| melonDS | Native, Flatpak | melonDS | An image beside the ROM | Recorder | Yes |
+| Xenia Canary | `xenia_canary` on your PATH | Xenia Canary | An image beside the game | Recorder | No |
+| Kyty (PS5) | Native | Your launcher wrapper, or `kyty_emulator` | Icon inside the dump | None | No |
+| Native ports | Desktop entries and AppImages | The port | The desktop entry's icon | None | No |
+| RomM | A locally mounted RomM library | The matching local emulator | RomM's covers | Recorder | Yes |
+| Manual games | Executables and desktop entries you add | The executable | Your custom images | None | No |
+
+- **Play time.** "Own" means the launcher's or emulator's counter, which Omakade
+  reads. "Recorder" needs [recording](GUIDE.md#track-play-sessions) turned on.
+- **Artwork.** "Connections only" means covers come from IGDB or SteamGridDB once
+  connected. Every source can use those and [custom images](GUIDE.md#customize-game-artwork).
+- **Save protection.** Copies in-game saves before an emulator launch; see
+  [Emulator save protection](SAVE-SETS.md). Save states and cloud saves are not included.
+- **Owned but not installed** games come from Steam after an owned-library sync and
+  from Heroic's cached libraries.
+
+Fixtures cover each source's discovery and launch commands. Reports from more real
+libraries, listed under [Still needed](#still-needed), widen this table's evidence.
+
+## Test reports
 
 These dated reports describe the versions and environments tested at the time.
-They do not certify every launcher layout or the current release. For supported
-sources and setup, see the [guide](GUIDE.md).
+They do not certify every launcher layout or the current release.
 
-## 1.12 PPSSPP local acceptance, September 20, 2026
+### 1.12 PPSSPP local acceptance, September 20, 2026
 
 Native PPSSPP `1.20.4-4` from the Arch repositories was tested with the MIT-licensed
 [2048PSP 1.0.0](https://github.com/violinmelody/2048PSP/releases/tag/1.0.0) homebrew PBP.
@@ -30,7 +73,7 @@ failure; sandbox-local content remains supported. Compressed CSO/CHD identity pa
 deliberately deferred because the image needs a bounded decompression layer before its PARAM.SFO
 can be read; unconverted ISO files and PBP/ELF homebrew are supported.
 
-## 1.12 RPCS3 local source wiring, September 20, 2026
+### 1.12 RPCS3 local source wiring, September 20, 2026
 
 Native RPCS3 `0.0.42-20024-9e86f165` from AUR `rpcs3-bin` was tested with the GPL-2.0-or-later
 [iPSX3 Test Cart v1.0](https://github.com/otti83/ipsx3-test-cart/releases/tag/v1.0) homebrew.
@@ -48,7 +91,7 @@ not contain the supplied firmware, and the runtime also hit a distribution font 
 before the firmware check. The scanner, launch argv, title index, AUR AppRun process matching and
 PARAM.SFO save resolver are also covered by fixtures.
 
-## 1.12 PCSX2 local acceptance, September 20, 2026
+### 1.12 PCSX2 local acceptance, September 20, 2026
 
 Native PCSX2 `2.9.34-1` from AUR `pcsx2-latest-bin` was tested with the supplied SCPH-39001 BIOS
 (SHA-256 `f4c948e61a291d4b3f92a141e550cf8357204287a31ff784caccbedaef910c9d`) and
@@ -59,7 +102,7 @@ identified `Black`, serial `SLUS-21376`, version `1.00`, CRC `5C891FF1`. Live-lo
 closed one PCSX2 row after 75 billed seconds. A disc change made inside PCSX2's own UI remains
 fixture-tested only.
 
-## 1.12 melonDS local acceptance, September 20, 2026
+### 1.12 melonDS local acceptance, September 20, 2026
 
 Native melonDS `1.1-2` from the AUR was tested with the MIT-licensed
 [DS-Craft beta 1.7.1](https://github.com/moltony/ds-craft/releases/tag/beta1.7.1) homebrew ROM
@@ -74,7 +117,7 @@ verified app id and was exercised with the same homebrew; it launched and the re
 14-second row. melonDS still has no current-session artifact that proves which game its own file
 picker loaded, so that path remains command-line and window-title attribution only.
 
-## Reference Omarchy system
+### Reference Omarchy system
 
 Verified through September 4, 2026:
 
@@ -93,7 +136,7 @@ The reference library contains 45 installed Steam games. Theme colors, font,
 launcher transparency, one-click details, keyboard navigation, and the
 controller input path have been exercised on this system.
 
-## 1.7 candidate
+### 1.7 candidate
 
 The maintainer has exercised the development build on this desktop with Ryujinx,
 Dolphin, and Cemu. Exact 1.7.0 package validation and architecture CI are separate
@@ -111,7 +154,7 @@ Known limitations:
   tested offline; live verification for this candidate is pending.
 - Additional bundled console artwork does not add emulator or scanner support.
 
-## 1.6 release validation
+### 1.6 release validation
 
 Published 1.6.0 is commit `c91b14e40437a14849f37c188d5762c12655299e`. The
 maintainer tested the exact installed candidate, including the controller-focus
@@ -130,14 +173,14 @@ x86_64 package also passed upgrade from 1.5.0, removal, reinstall, and smoke tes
 in a disposable Arch container. This does not replace real Omarchy ARM64 hardware
 or native/Flatpak library reports. Those gaps remain open with maintainer approval.
 
-## Main after 1.6.0
+### Main after 1.6.0
 
 The role-name cleanup in PR #28 merged as `2de11d5`. All nine models retain
 identical role IDs and names, and all 41 release tests pass on the integrated
 code. This is an unreleased maintenance change, not an update to the 1.6.0
 packages. It does not add hardware or real-library compatibility evidence.
 
-## 1.7 candidate validation
+### 1.7 candidate validation
 
 The completion candidate passes 81 automated checks covering personal-data
 migration, backup recovery, controller flows, offscreen layouts, and a cached
@@ -145,7 +188,7 @@ large-library fixture. The maintainer confirmed the installed grid fix looks
 good. Physical controller, broader real-launcher, and native ARM64 validation
 remain separate from these checks.
 
-## Automated visual matrix
+### Automated visual matrix
 
 Verified offscreen on August 31, 2026:
 
@@ -161,7 +204,7 @@ These deterministic renders verify layout, clipping, card aspect ratios, and
 theme contrast without changing the active desktop. A render smoke test runs in
 CI. Additional real-user reports expand compatibility coverage after v1.
 
-## Contract-tested sources
+### Contract-tested sources
 
 Lutris native and Flatpak discovery, Heroic native and Flatpak discovery,
 Faugus and RetroArch native and Flatpak discovery, PCSX2 and Ryujinx scanner
