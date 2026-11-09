@@ -223,6 +223,7 @@ Rectangle {
                     spacing: 12 * root.uiScale
                     Text {
                         objectName: "libraryRepairGameTitle"
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: root.game.title || "Nothing left to review in these filters"
                         color: Theme.brightForeground
@@ -633,6 +634,7 @@ Rectangle {
             }
             Text {
                 objectName: "libraryRepairSelectionStatus"
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 font.pixelSize: 12 * root.uiScale

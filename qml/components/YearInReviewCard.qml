@@ -244,6 +244,7 @@ Item {
                     font.letterSpacing: 1.6 * card.unit
                 }
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     text: card.headline.topGameTitle || ""
@@ -272,6 +273,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: 10 * card.unit
                             Text {
+                                textFormat: Text.PlainText
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
                                 text: modelData.title || ""
@@ -380,6 +382,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
+                                textFormat: Text.PlainText
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
                                 text: modelData.name
@@ -442,6 +445,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: card.rarestText().length > 0
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     text: (card.rarestIsRarity ? "Rarest: " : "Latest: ") + card.rarestText()
                     color: Theme.foreground

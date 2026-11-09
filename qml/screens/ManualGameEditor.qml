@@ -195,6 +195,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 visible: editor.confirmingRemoval
+                textFormat: Text.PlainText
                 text: "Remove " + (titleField.text.trim() || "this game")
                       + " from Omakade? The game files will stay where they are."
                 wrapMode: Text.Wrap

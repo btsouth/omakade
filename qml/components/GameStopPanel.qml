@@ -144,6 +144,7 @@ ActionMenu {
     }
 
     Text {
+        textFormat: Text.PlainText
         Layout.fillWidth: true
         visible: stopPanel.mode === "one" && stopPanel.targets.length > 0
                  && !stopPanel.pending && stopPanel.resultMessage.length === 0
@@ -186,6 +187,7 @@ ActionMenu {
             Layout.fillWidth: true
             spacing: 2
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 color: Theme.foreground

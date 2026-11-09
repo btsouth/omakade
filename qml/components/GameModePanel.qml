@@ -87,6 +87,7 @@ ActionMenu {
         color: Theme.mutedText
     }
     Text {
+        textFormat: Text.PlainText
         Layout.fillWidth: true
         text: GameMode.statusText || (panel.scanning ? "Checking running games…" : panel.liveGames.length > 0
               ? panel.liveGames.map(game => game.title || game.appId).join(", ")

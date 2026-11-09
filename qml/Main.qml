@@ -2510,6 +2510,7 @@ ApplicationWindow {
                     onClicked: root.leaveConsole()
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: Library.consoleTitle
                     color: Theme.foreground
                     font.family: Theme.fontFamily
@@ -3246,6 +3247,7 @@ ApplicationWindow {
 
         Text {
             id: toastText
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             width: toast.width - 34
             horizontalAlignment: Text.AlignHCenter

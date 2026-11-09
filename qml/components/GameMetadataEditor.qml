@@ -126,6 +126,7 @@ ColumnLayout {
             ColumnLayout {
                 Layout.fillWidth: true
                 Text {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true; wrapMode: Text.Wrap
                     text: root.entry.title || root.game.title || ""
                     color: Theme.brightForeground; font.family: Theme.fontFamily; font.pixelSize: 14 * root.uiScale

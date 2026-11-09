@@ -47,7 +47,7 @@ ColumnLayout {
         }
         ColumnLayout {
             Layout.fillWidth: true; visible: !!root.selected.key; spacing: 8
-            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.selected.title || ""; color: Theme.foreground; font.bold:true }
+            Text { textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap; text: root.selected.title || ""; color: Theme.foreground; font.bold:true }
             Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: (root.selected.description || "")+"\n"+(root.selected.error || "")+"\n"+(root.selected.latestVerified ? "Latest verified capture: "+root.selected.latestVerified : "No capture-verification record yet; backups are validated before restore."); color:Theme.mutedText }
             Text { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "Included files:\n"+(root.selected.files || []).join("\n")+"\nIncluded folders:\n"+(root.selected.trees || []).join("\n");color:Theme.mutedText }
             GlassButton { id: backupsButton; text:"BACKUPS / RESTORE / UNDO"; onClicked: {if(SaveProtection.select(root.selected.key))backupMenu.open()} }
@@ -85,7 +85,7 @@ ColumnLayout {
         ColumnLayout {
             Layout.fillWidth:true;visible:root.confirmCleanup
             Text {Layout.fillWidth:true;wrapMode:Text.Wrap;text:SaveProtection.cleanup.length+" older backups selected. Deletion cannot be undone; live saves are unchanged.";color:Theme.foreground}
-            Text {Layout.fillWidth:true;wrapMode:Text.Wrap;text:SaveProtection.cleanup.map(item=>item.title+" · "+item.createdAt+" · "+(item.bytes/1024).toFixed(1)+" KiB").join("\n");color:Theme.mutedText}
+            Text { textFormat: Text.PlainText;Layout.fillWidth:true;wrapMode:Text.Wrap;text:SaveProtection.cleanup.map(item=>item.title+" · "+item.createdAt+" · "+(item.bytes/1024).toFixed(1)+" KiB").join("\n");color:Theme.mutedText}
             Flow {Layout.fillWidth:true;spacing:8
                 GlassButton {text:"DELETE LISTED BACKUPS";enabled:SaveProtection.cleanup.length>0;onClicked:{SaveProtection.applyCleanup();root.confirmCleanup=false}}
                 GlassButton {text:"CANCEL";onClicked:root.confirmCleanup=false}

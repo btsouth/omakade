@@ -1247,6 +1247,8 @@ private slots:
   void couchCursorFollowsInputMode();
   void virtualControllerConnectsAndMapsPrimaryButton();
   void textFieldsDeclareControllerEntry();
+  void externalMetadataTextIsPlain();
+  void markupTitleRendersLiterally();
   void thousandGameSearchStaysResponsive();
   void openingAConsoleDoesNotHangTheLibrary();
   void consoleFilterKeepsOtherSourcesOut();
@@ -6685,6 +6687,114 @@ void CoreTests::textFieldsDeclareControllerEntry() {
     }
   }
   QVERIFY(fields >= 21);
+}
+
+void CoreTests::externalMetadataTextIsPlain() {
+  // Text defaults to AutoText, which renders a title holding markup as rich text and fetches
+  // any <img> it names. Titles come from RomM, Steam and other sources, so they must be plain.
+  const QString root = QDir(QString::fromUtf8(OMAKADE_SOURCE_DIR)).filePath("qml");
+  QVERIFY2(QDir(root).exists(), qPrintable(root));
+  // Every bound Text in these files shows library data or passes it through.
+  const QStringList wholeFiles{"screens/HomeScreen.qml", "screens/StatsScreen.qml",
+                               "components/GlassButton.qml", "components/ActionMenu.qml",
+                               "components/LaunchingScreen.qml"};
+  const QRegularExpression metadata(
+      R"re((?i:title)|\.name\b|suggestionReason|\bcaption\b|subtitle|rarest|toast\.message)re");
+  const QRegularExpression literals(R"re("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*[\s\S]*?\*/)re");
+  const QRegularExpression textBinding(R"re((?<![\w.])text\s*:\s*)re");
+  const QRegularExpression plainFormat(R"re(textFormat\s*:\s*Text\.PlainText\b)re");
+  const QRegularExpression literalOnly(R"re(^"[^"]*"$)re");
+  QDirIterator files(root, {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
+  int checked = 0, homeChecked = 0;
+  while (files.hasNext()) {
+    QFile file(files.next());
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QString relative = QDir(root).relativeFilePath(file.fileName());
+    const QString source = QString::fromUtf8(file.readAll());
+    QString structural = source;
+    auto ignored = literals.globalMatch(source);
+    while (ignored.hasNext()) {
+      const auto match = ignored.next();
+      structural.replace(match.capturedStart(), match.capturedLength(), QString(match.capturedLength(), ' '));
+    }
+    auto matches = QRegularExpression(R"re((?<![\w.])Text\s*\{)re").globalMatch(structural);
+    while (matches.hasNext()) {
+      const auto match = matches.next();
+      int end = match.capturedEnd(), depth = 1;
+      for (; end < structural.size() && depth; ++end) {
+        if (structural.at(end) == '{') ++depth;
+        if (structural.at(end) == '}') --depth;
+      }
+      QCOMPARE(depth, 0);
+      // Keep only the Text's own properties, not those of objects nested in it.
+      QString own = source.mid(match.capturedEnd(), end - 1 - match.capturedEnd());
+      depth = 0;
+      for (int i = 0; i < own.size(); ++i) {
+        const QChar c = structural.at(match.capturedEnd() + i);
+        if (c == '{') ++depth;
+        if (depth > 0) own[i] = ' ';
+        if (c == '}') --depth;
+      }
+      const auto binding = textBinding.match(own);
+      if (!binding.hasMatch()) continue;
+      int stop = binding.capturedEnd();
+      for (; stop < own.size() && own.at(stop) != ';'; ++stop) {
+        if (own.at(stop) != '\n') continue;
+        const QString rest = own.mid(stop + 1).trimmed();
+        if (rest.isEmpty() || !QStringLiteral("+?:|&").contains(rest.at(0))) break;
+      }
+      const QString expression = own.mid(binding.capturedEnd(), stop - binding.capturedEnd()).trimmed();
+      if (literalOnly.match(expression).hasMatch()) continue;
+      if (!wholeFiles.contains(relative) && !metadata.match(expression).hasMatch()) continue;
+      const QByteArray location = relative.toUtf8() + ":" +
+          QByteArray::number(source.left(match.capturedStart()).count('\n') + 1) + ": " +
+          expression.left(80).toUtf8();
+      QVERIFY2(plainFormat.match(own).hasMatch(), location.constData());
+      ++checked;
+      if (relative == QStringLiteral("screens/HomeScreen.qml")) ++homeChecked;
+    }
+  }
+  QVERIFY(homeChecked >= 19);
+  QVERIFY(checked >= 90);
+}
+
+void CoreTests::markupTitleRendersLiterally() {
+  QTemporaryDir temp;
+  OmarchyTheme theme(temp.filePath("state"), temp.filePath("config"));
+  struct Preferences : QQmlPropertyMap {
+    Preferences() : QQmlPropertyMap(this, nullptr) {}
+  } preferences;
+  preferences.insert("reducedMotion", true);
+  QQmlEngine engine;
+  engine.rootContext()->setContextProperty("Theme", &theme);
+  engine.rootContext()->setContextProperty("Preferences", &preferences);
+  QQmlComponent component(&engine, QUrl::fromLocalFile(
+      QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/GlassButton.qml")));
+  const auto labelWidth = [&](const QString& title) -> qreal {
+    QScopedPointer<QObject> button(component.createWithInitialProperties({{"text", title}}));
+    if (!button) {
+      qWarning() << component.errorString();
+      return -1;
+    }
+    QTest::qWait(50);
+    const auto children = button->findChildren<QObject*>();
+    for (QObject* child : children) {
+      if (QByteArray(child->metaObject()->className()).startsWith("QQuickText") &&
+          child->property("text").toString() == title)
+        return child->property("implicitWidth").toReal();
+    }
+    return -1;
+  };
+  // A title that only wraps itself in markup must take the room of its literal characters.
+  const qreal plain = labelWidth(QStringLiteral("Wide"));
+  const qreal markup = labelWidth(QStringLiteral("<b></b>Wide"));
+  QVERIFY(plain > 0);
+  QVERIFY2(markup > plain * 1.5, qPrintable(QString("%1 vs %2").arg(markup).arg(plain)));
+  // An image tag must show as its literal characters too, not as an image plus a short name.
+  const qreal game = labelWidth(QStringLiteral("Game"));
+  const qreal image = labelWidth(QStringLiteral("<img src=\"http://127.0.0.1:9/track.png\">Game"));
+  QVERIFY(game > 0);
+  QVERIFY2(image > game * 4, qPrintable(QString("%1 vs %2").arg(image).arg(game)));
 }
 
 void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {

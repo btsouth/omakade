@@ -11,6 +11,9 @@
   color is picked by contrast against the pill, so Catppuccin Latte and other light
   themes no longer show dark text on a saturated fill. On the smallest covers the label
   shrinks so the pill stays clear of the favorite heart.
+- Game titles, achievement names, launch window titles and other library text on Home, Stats
+  and elsewhere show as typed. A title holding markup, such as one from a RomM server, is no
+  longer drawn as rich text and can no longer make Omakade fetch an image it names.
 
 ## 1.18.0
 

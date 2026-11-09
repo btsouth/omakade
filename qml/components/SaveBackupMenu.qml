@@ -24,6 +24,7 @@ ActionMenu {
             pendingLabel = ""
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             visible: saveBackupsMenu.gameTitle.length > 0
             text: "Saves for " + saveBackupsMenu.gameTitle
@@ -82,6 +83,7 @@ ActionMenu {
             text: "SHARED STORAGE · This may also change saves for other games or profiles."
         }
         Text {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             visible: saveBackupsMenu.pendingVersion !== ""
             wrapMode: Text.Wrap

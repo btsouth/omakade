@@ -422,6 +422,7 @@ import QtQuick.Layouts
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
+                                textFormat: Text.PlainText
                                 Layout.fillWidth: true
                                 text: modelData.name
                                 Layout.preferredWidth: 130
@@ -837,6 +838,7 @@ import QtQuick.Layouts
                             Layout.fillWidth: true
                             spacing: 8
                             Text {
+                                textFormat: Text.PlainText
                                 Layout.fillWidth: true
                                 text: modelData.name
                                 color: Theme.foreground
@@ -1503,7 +1505,7 @@ import QtQuick.Layouts
                     Layout.fillWidth: true
                     spacing: 14
                     visible: settingsOverlay.section === 3
-                Text { Layout.fillWidth: true; text: Controller.connected ? "CONTROLLER · " + Controller.name : "CONTROLLER · NOT CONNECTED"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 12 * settingsPanel.uiScale }
+                Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: Controller.connected ? "CONTROLLER · " + Controller.name : "CONTROLLER · NOT CONNECTED"; color: Theme.foreground; font.family: Theme.fontFamily; font.pixelSize: 12 * settingsPanel.uiScale }
                 GlassButton { compact: true; enabled: !GameMode.hasSession; text: host.couchMode ? "SWITCH TO DESKTOP" : "GAME MODE ON THIS DISPLAY"; onClicked: host.setCouchMode(!host.couchMode) }
                 Text {
                     Layout.topMargin: 10

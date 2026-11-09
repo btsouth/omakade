@@ -100,6 +100,7 @@ Popup {
             Layout.fillWidth: true
             visible: menu.fixedHeader
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: menu.title
                 wrapMode: Text.Wrap
@@ -135,6 +136,7 @@ Popup {
             width: actionScroll.availableWidth
             spacing: 8
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: !menu.fixedHeader
                 text: menu.title
