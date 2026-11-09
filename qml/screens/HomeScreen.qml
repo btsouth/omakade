@@ -210,10 +210,29 @@ FocusScope {
         else browseAll.forceActiveFocus()
         return true
     }
+    function actionBelow(current) {
+        for (let index = 0; index < featuredActions.children.length; ++index) {
+            const item = featuredActions.children[index]
+            if (item.visible && item.y >= current.y + current.height) return true
+        }
+        return false
+    }
     function navigate(current, key) {
         if (current && key === Qt.Key_Up && root.Window.window.isWithin(current, featureRow)) {
             focusHome()
             return true
+        }
+        // Down from Play and its neighbours starts the shelves at their first card, not
+        // whichever card happens to sit nearest the button. A narrow window wraps the
+        // buttons, and Down then reaches the wrapped row first.
+        if (current && key === Qt.Key_Down && current.parent === featuredActions
+                && !root.actionBelow(current)) {
+            for (const shelf of [recentTiles, queueTiles, suggestionTiles]) {
+                if (shelf.visible && shelf.count > 0) {
+                    shelf.itemAt(0).focusTile()
+                    return true
+                }
+            }
         }
         // The Now Playing panel sits above everything else on Home, so in Game Mode it
         // is the first stop below the toolbar and the way back up out of the content.
@@ -847,6 +866,7 @@ FocusScope {
                             Text { textFormat: Text.PlainText; Layout.fillWidth: true; text: root.gameCaption(root.featured); color: Theme.mutedText; font.family: Theme.fontFamily; wrapMode: Text.Wrap }
                             Text { textFormat: Text.PlainText; visible: root.featured.lastPlayed > 0; text: root.featured.lastPlayed > 0 ? "Last played " + UserDates.format(new Date(root.featured.lastPlayed * 1000), "day") : ""; color: Theme.mutedText; font.family: Theme.fontFamily }
                             Flow {
+                                id: featuredActions
                                 Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; spacing: 8
                                 GlassButton {
                                     id: featuredPlay
