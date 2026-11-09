@@ -39,7 +39,8 @@ Check these in order. The first four hide games that Omakade already knows about
    that are on but were not found. Turn a source **On** and it scans straight away.
    Turning a source off also removes it from the library's **Sources** filter.
 6. **Source not found.** A source that is on but missing from **In Use** was not found.
-   Find it under **Available**: it shows **ON** with a status such as **Not detected**.
+   Find it under **Available**: it shows **ON** and its status says it was not found,
+   such as "Lutris was not found".
    Open its **Details** there. If it lists no folders, Omakade is not looking where your
    launcher keeps its data. Compare with
    [Where Omakade looks for each launcher](#where-omakade-looks-for-each-launcher).
