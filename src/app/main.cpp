@@ -6802,8 +6802,14 @@ int main(int argc, char* argv[]) {
               if (sources->property("text").toString() != QStringLiteral("SOURCES (1)")) {
                 fail(QStringLiteral("Emulated counted as %1").arg(sources->property("text").toString())); return;
               }
-              if (!activate(item("sourceFilterChip")) || !model->property("sourceFilters").toStringList().isEmpty()) {
-                fail("Removing the Emulated chip left emulator filters"); return;
+              // Chips removed earlier may still wait for deletion, so take the visible one.
+              QQuickItem* emulatedChip = nullptr;
+              for (auto* chip : quickWindow->findChildren<QQuickItem*>("sourceFilterChip"))
+                if (chip->isVisible()) emulatedChip = chip;
+              if (!activate(emulatedChip) || !model->property("sourceFilters").toStringList().isEmpty()) {
+                fail(QStringLiteral("Removing the Emulated chip left filters %1 (chip %2)")
+                         .arg(model->property("sourceFilters").toStringList().join(", "),
+                              emulatedChip ? QStringLiteral("found") : QStringLiteral("missing"))); return;
               }
               if (!activate(filters) || !opened("libraryFilters")) { fail("Filters menu did not open"); return; }
               auto* repairInFilters = item("libraryRepairButton");
