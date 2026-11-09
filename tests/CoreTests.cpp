@@ -11160,6 +11160,7 @@ void CoreTests::statsLimitFiguresToTheChosenPeriod() {
   QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 1);
   // All time keeps everything, and says so in the period label.
   stats.setPeriod(QStringLiteral("all"));
+  stats.refresh();
   QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(4800));
   QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 2);
   QCOMPARE(stats.headline().value(QStringLiteral("allTimeRecordedSeconds")).toLongLong(),
@@ -11169,6 +11170,7 @@ void CoreTests::statsLimitFiguresToTheChosenPeriod() {
   // A year before recording started reports nothing rather than borrowing another year's play.
   stats.setPeriod(QStringLiteral("year"));
   stats.setYear(year - 5);
+  stats.refresh();
   QCOMPARE(stats.headline().value(QStringLiteral("recordedSeconds")).toLongLong(), qint64(0));
   QCOMPARE(stats.headline().value(QStringLiteral("recordedSessions")).toInt(), 0);
   QVERIFY(stats.windowNote().contains(QString::number(year - 5)));
@@ -11176,6 +11178,7 @@ void CoreTests::statsLimitFiguresToTheChosenPeriod() {
   // Back in the chosen year: the game was already played last year, so it is not a first-time
   // play this year, and the year-long gap between the two sessions is a return.
   stats.setYear(year);
+  stats.refresh();
   QCOMPARE(stats.backlog().value(QStringLiteral("firstTimeGames")).toInt(), 0);
   QCOMPARE(stats.backlog().value(QStringLiteral("returns")).toInt(), 1);
   QCOMPARE(stats.backlog().value(QStringLiteral("longestGapDays")).toLongLong(),
@@ -11417,12 +11420,14 @@ void CoreTests::statsReportAchievementsAndNameTheRecordedWindow() {
   // carry rarity zero, and the period below holds only one of those, so the figure falls back to
   // the newest unlock and says its basis is recency rather than rarity.
   stats.setYear(year - 2);
+  stats.refresh();
   const QVariantMap unlockOnly = stats.achievements();
   QCOMPARE(unlockOnly.value(QStringLiteral("unlockedInPeriod")).toLongLong(), qint64(1));
   const QVariantMap latest = unlockOnly.value(QStringLiteral("rarest")).toMap();
   QCOMPARE(latest.value(QStringLiteral("title")).toString(), QStringLiteral("No Rarity"));
   QCOMPARE(latest.value(QStringLiteral("basis")).toString(), QStringLiteral("recent"));
   stats.setYear(year);
+  stats.refresh();
 
   // The card and the screen both repeat what the recorded figures really cover.
   QCOMPARE(stats.recordingStartsAt(), inPeriod);

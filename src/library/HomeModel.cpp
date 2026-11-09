@@ -9,7 +9,20 @@
 #include <QElapsedTimer>
 #include <QDebug>
 #include <QUuid>
+#include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
+
+namespace {
+// The fields that decide whether a game is on a shelf and where. Everything else a row carries
+// is only shown, so a change to it never needs the shelves rebuilt.
+QVariantList rankOf(const QVariantMap& game) {
+  if (game.isEmpty()) return {};
+  return {game.value("identity"), game.value("hidden"), game.value("available"),
+          game.value("lastPlayed"), game.value("genres"), game.value("system"),
+          game.value("source"), game.value("collections"), game.value("completionStatus"),
+          game.value("favorite"), game.value("rating")};
+}
+} // namespace
 
 QString HomeModel::keyFor(const QVariantMap& game) {
   return QString::fromUtf8(
@@ -31,6 +44,18 @@ HomeModel::HomeModel(UnifiedGameModel* games, const QString& path, QObject* pare
             "PRIMARY KEY(source,runner,app_id))"))
       m_error = "Could not prepare Up next storage.";
   }
+  connect(&m_watcher, &QFutureWatcher<Shelves>::finished, this, [this] {
+    m_inFlight = false;
+    const Shelves shelves = m_watcher.result();
+    // A build finished in place since this one started describes a newer library.
+    if (shelves.generation == m_generation)
+      apply(shelves);
+    if (m_rerun) {
+      m_rerun = false;
+      if (m_active)
+        backgroundRefresh();
+    }
+  });
   const auto invalidate = [this] {
     m_cacheInvalid = true;
     scheduleRefresh();
@@ -48,9 +73,26 @@ HomeModel::HomeModel(UnifiedGameModel* games, const QString& path, QObject* pare
   });
 }
 HomeModel::~HomeModel() {
+  // The build holds copies only; finishing it keeps the worker from outliving the model.
+  m_watcher.waitForFinished();
   m_database.close();
   m_database = {};
   QSqlDatabase::removeDatabase(m_connection);
+}
+void HomeModel::setActive(bool value) {
+  if (m_active == value) return;
+  m_active = value;
+  if (!value) return;
+  // The first opening builds in place so Home never paints empty shelves. Later openings
+  // recheck every row, as an explicit refresh does, and keep the current shelves on screen
+  // while the new ones are built in the background.
+  if (!m_hasShelves) {
+    refresh();
+    return;
+  }
+  m_cacheInvalid = true;
+  m_needsBuild = true;
+  scheduleRefresh();
 }
 void HomeModel::scheduleRefresh() {
   if (!m_active || m_refreshPending)
@@ -58,45 +100,68 @@ void HomeModel::scheduleRefresh() {
   m_refreshPending = true;
   QTimer::singleShot(0, this, [this] {
     m_refreshPending = false;
-    if (m_active) refreshCached();
+    if (m_active) backgroundRefresh();
   });
 }
-QHash<QString, QVariantMap> HomeModel::gamesByIdentity() const {
+bool HomeModel::updateCache(QSet<int>* patched) const {
+  bool rebuilt = false;
   if (m_cacheInvalid || m_gameCache.size() != m_games->rowCount()) {
     m_gameCache.clear();
     m_gameCache.resize(m_games->rowCount());
     m_dirtyRows.clear();
     for (int row = 0; row < m_games->rowCount(); ++row) m_dirtyRows.insert(row);
     m_cacheInvalid = false;
+    rebuilt = true;
   }
+  bool rankChanged = rebuilt;
   const auto roles = m_games->roleNames();
   for (int row : std::as_const(m_dirtyRows)) {
-    auto& cached = m_gameCache[row];
-    cached = {};
+    if (row < 0 || row >= m_gameCache.size()) continue;
+    CachedGame fresh;
     const auto index = m_games->index(row);
-    if (index.data(GameRoles::IsPortal).toBool()) continue;
-    auto& game = cached.game;
-    for (auto role = roles.begin(); role != roles.end(); ++role)
-      game.insert(QString::fromUtf8(role.value()), index.data(role.key()));
-    // One installation read supplies both availability and the linked identities.
-    // preferredInstallation is available iff at least one member can launch.
-    const auto installations = m_games->installations(row);
-    bool available = false;
-    for (const auto& member : installations) {
-      const auto installation = member.toMap();
-      available = available || installation.value("launchAvailable").toBool();
-      cached.identities.append(keyFor(installation));
+    if (!index.data(GameRoles::IsPortal).toBool()) {
+      auto& game = fresh.game;
+      for (auto role = roles.begin(); role != roles.end(); ++role)
+        game.insert(QString::fromUtf8(role.value()), index.data(role.key()));
+      // One installation read supplies both availability and the linked identities.
+      // preferredInstallation is available iff at least one member can launch.
+      const auto installations = m_games->installations(row);
+      bool available = false;
+      for (const auto& member : installations) {
+        const auto installation = member.toMap();
+        available = available || installation.value("launchAvailable").toBool();
+        fresh.identities.append(keyFor(installation));
+      }
+      game["available"] = available;
+      game["identity"] = keyFor(game);
+      fresh.identities.append(game.value("identity").toString());
+      fresh.rank = rankOf(game);
     }
-    game["available"] = available;
-    game["identity"] = keyFor(game);
-    cached.identities.append(game.value("identity").toString());
+    auto& cached = m_gameCache[row];
+    if (!rebuilt) {
+      if (cached.rank != fresh.rank || cached.identities != fresh.identities)
+        rankChanged = true;
+      else if (patched && cached.game != fresh.game)
+        patched->insert(row);
+    }
+    cached = std::move(fresh);
   }
   m_dirtyRows.clear();
+  return rankChanged;
+}
+QHash<QString, QVariantMap> HomeModel::identityMap(const QVector<CachedGame>& cache) {
   QHash<QString, QVariantMap> result;
-  result.reserve(m_gameCache.size());
-  for (const auto& cached : std::as_const(m_gameCache))
+  result.reserve(cache.size());
+  for (const auto& cached : cache)
     for (const auto& identity : cached.identities) result.insert(identity, cached.game);
   return result;
+}
+QHash<QString, QVariantMap> HomeModel::gamesByIdentity() const {
+  QSet<int> patched;
+  // Queue actions can read rows the shelves have not caught up with yet; the next refresh
+  // then has to rebuild rather than patch.
+  if (updateCache(&patched) || !patched.isEmpty()) m_needsBuild = true;
+  return identityMap(m_gameCache);
 }
 QVariantList HomeModel::stored(bool* okay) const {
   QVariantList rows;
@@ -131,7 +196,91 @@ void HomeModel::refreshCached() {
     emit changed();
     return;
   }
-  const auto games = gamesByIdentity();
+  updateCache();
+  m_needsBuild = false;
+  ++m_rebuilds;
+  // Supersedes a background build still in flight, which started from older rows.
+  Shelves shelves = build(m_gameCache, saved);
+  shelves.generation = ++m_generation;
+  apply(shelves);
+  if (qEnvironmentVariableIsSet("OMAKADE_SCROLL_TRACE"))
+    qInfo() << "scroll-trace home-refresh-ms" << refreshTimer.elapsed() << "rows" << m_games->rowCount();
+}
+void HomeModel::backgroundRefresh() {
+  QSet<int> patched;
+  if (updateCache(&patched)) m_needsBuild = true;
+  if (m_inFlight) {
+    // The build in flight started before these rows were read; build again once it lands.
+    m_needsBuild = true;
+    m_rerun = true;
+    return;
+  }
+  if (m_hasShelves && !m_needsBuild) {
+    // Nothing moved: carry new artwork, labels and counters into the shelves as they are.
+    if (patchShelves(patched)) emit changed();
+    return;
+  }
+  bool readOkay = false;
+  const auto saved = stored(&readOkay);
+  if (!readOkay) {
+    m_error = "Could not read Up next. Your queue has not been changed.";
+    emit changed();
+    return;
+  }
+  m_needsBuild = false;
+  ++m_rebuilds;
+  m_inFlight = true;
+  const quint64 generation = ++m_generation;
+  // The cache is shared by reference count; the GUI thread detaches it on its next write.
+  m_watcher.setFuture(QtConcurrent::run([cache = m_gameCache, saved, generation] {
+    Shelves shelves = build(cache, saved);
+    shelves.generation = generation;
+    return shelves;
+  }));
+}
+bool HomeModel::patchShelves(const QSet<int>& rows) {
+  QHash<QString, QVariantMap> fresh;
+  for (int row : rows) {
+    if (row < 0 || row >= m_gameCache.size()) continue;
+    const auto& game = m_gameCache.at(row).game;
+    if (!game.isEmpty()) fresh.insert(game.value("identity").toString(), game);
+  }
+  if (fresh.isEmpty()) return false;
+  bool changedAny = false;
+  const auto patch = [&](QVariantList& shelf) {
+    for (auto& value : shelf) {
+      const auto entry = value.toMap();
+      const auto found = fresh.constFind(entry.value("identity").toString());
+      if (found == fresh.cend()) continue;
+      // Keep what the shelf added to the row: queue keys and suggestion reasons.
+      auto merged = found.value();
+      for (auto it = entry.cbegin(); it != entry.cend(); ++it)
+        if (!merged.contains(it.key())) merged.insert(it.key(), it.value());
+      if (merged == entry) continue;
+      value = merged;
+      changedAny = true;
+    }
+  };
+  patch(m_recent);
+  patch(m_queue);
+  patch(m_suggestions);
+  return changedAny;
+}
+void HomeModel::apply(const Shelves& shelves) {
+  m_hasShelves = true;
+  if (m_recent != shelves.recent || m_queue != shelves.queue ||
+      m_suggestions != shelves.suggestions || m_shortcuts != shelves.shortcuts ||
+      m_gameCount != shelves.gameCount) {
+    m_recent = shelves.recent;
+    m_queue = shelves.queue;
+    m_suggestions = shelves.suggestions;
+    m_shortcuts = shelves.shortcuts;
+    m_gameCount = shelves.gameCount;
+    emit changed();
+  }
+}
+HomeModel::Shelves HomeModel::build(const QVector<CachedGame>& cache, const QVariantList& saved) {
+  const auto games = identityMap(cache);
   QSet<QString> seen;
   QVariantList recent, queue;
   for (const auto& game : games) {
@@ -248,16 +397,13 @@ void HomeModel::refreshCached() {
   addShortcuts(collections, "collection");
   addShortcuts(systems, "console");
   addShortcuts(sources, "source");
-  if (m_recent != recent || m_queue != queue || m_suggestions != suggestions || m_shortcuts != shortcuts || m_gameCount != gameCount) {
-    m_recent = recent;
-    m_queue = queue;
-    m_suggestions = suggestions;
-    m_shortcuts = shortcuts;
-    m_gameCount = gameCount;
-    emit changed();
-  }
-  if (qEnvironmentVariableIsSet("OMAKADE_SCROLL_TRACE"))
-    qInfo() << "scroll-trace home-refresh-ms" << refreshTimer.elapsed() << "rows" << m_games->rowCount();
+  Shelves shelves;
+  shelves.recent = recent;
+  shelves.queue = queue;
+  shelves.suggestions = suggestions;
+  shelves.shortcuts = shortcuts;
+  shelves.gameCount = gameCount;
+  return shelves;
 }
 bool HomeModel::write(const QVariantList& rows) {
   if (!m_database.transaction()) {

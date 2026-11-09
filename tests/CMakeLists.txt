@@ -34,6 +34,8 @@ target_compile_definitions(omakade_backup_recovery_tests PRIVATE
 add_test(NAME omakade_backup_recovery_tests COMMAND omakade_backup_recovery_tests)
 set_tests_properties(omakade_backup_recovery_tests PROPERTIES TIMEOUT 60)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/suites/stats-aggregation.cmake)
+
 foreach(preference_case IN ITEMS gog-settings linked-preference)
   add_test(NAME omakade_${preference_case}_controls COMMAND omakade --${preference_case}-test)
   add_test(NAME omakade_${preference_case}_couch_controls COMMAND omakade --${preference_case}-test --couch)
