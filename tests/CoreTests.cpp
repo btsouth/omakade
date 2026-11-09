@@ -414,6 +414,19 @@ private:
   bool m_available = false;
 };
 
+// Counts every game read, so a test can tell a single-game event from a walk over the library.
+class CountingStatusSource final : public QIdentityProxyModel {
+  Q_OBJECT
+public:
+  mutable int reads = 0;
+  [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override {
+    ++reads;
+    return QIdentityProxyModel::data(index, role);
+  }
+signals:
+  void statusChanged();
+};
+
 void writeFile(const QString& path, const QByteArray& contents) {
   QDir().mkpath(QFileInfo(path).absolutePath());
   QFile file(path);
@@ -1029,6 +1042,7 @@ private slots:
   void libraryRepairRelocationUndoPersistsAndPreservesIndependentRepairs();
   void libraryRepairRelocationSetupFailureRollsBackBackupCopy();
   void metadataUpdatesOnlyInvalidateChangedRoles();
+  void singleGameEventsDoNotWalkTheLibrary();
   void homeQueuePreservesIdentityAndStorage();
   void homeQueueCapacityAndRecovery();
   void recordingPreferenceMigration();
@@ -14712,6 +14726,75 @@ void CoreTests::regionalCatalogRegressionMatrix() {
     reopened.m_selected = metadata.m_selected;
     QCOMPARE(reopened.current().value("releaseText"), metadata.current().value("releaseText"));
   }
+}
+
+void CoreTests::singleGameEventsDoNotWalkTheLibrary() {
+  MockGameModel mock(nullptr, 2000);
+  CountingStatusSource source;
+  source.setSourceModel(&mock);
+  QTemporaryDir temp;
+  const auto database = temp.filePath("library.sqlite3");
+  UnifiedGameModel games(database);
+  games.addSourceModel(&source);
+  GameMetadata metadata(database, nullptr);
+  games.setMetadata(&metadata);
+  QCOMPARE(games.rowCount(), 2000);
+  constexpr int target = 1234;
+  const QString key = games.index(target).data(GameRoles::MetadataKey).toString();
+  const QString gameSource = source.index(target, 0).data(GameRoles::Source).toString();
+  const QString appId = source.index(target, 0).data(GameRoles::AppId).toString();
+  QSignalSpy updates(&games, &QAbstractItemModel::dataChanged);
+  const auto updatedRows = [&updates] {
+    QList<int> rows;
+    for (const auto& update : std::as_const(updates)) {
+      const auto first = update.at(0).toModelIndex().row();
+      const auto last = update.at(1).toModelIndex().row();
+      for (int row = first; row <= last; ++row) rows.append(row);
+    }
+    return rows;
+  };
+
+  // A metadata change reaches only its own card and does not read every game's key.
+  source.reads = 0;
+  QVERIFY(metadata.persist(key, {{"rating", 77}}));
+  QCOMPARE(updatedRows(), QList<int>{target});
+  QVERIFY2(source.reads < 50, qPrintable(QStringLiteral("%1 reads").arg(source.reads)));
+
+  // A source change to one game, such as a finished cover download, is forwarded to its card.
+  updates.clear();
+  emit source.dataChanged(source.index(target, 0), source.index(target, 0), {GameRoles::CoverPath});
+  QCOMPARE(updatedRows(), QList<int>{target});
+
+  // A source status change, which Steam sends after every cover, does not reread the library.
+  source.reads = 0;
+  emit source.statusChanged();
+  QVERIFY2(source.reads < 50, qPrintable(QStringLiteral("%1 reads").arg(source.reads)));
+
+  // The in-game guide finds a running game's card by its source and app id.
+  source.reads = 0;
+  QCOMPARE(games.rowForGame(gameSource, appId), target);
+  QCOMPARE(games.rowForGame(gameSource, QStringLiteral("not-in-library")), -1);
+  QCOMPARE(games.rowForGame(QString{}, appId), -1);
+  QCOMPARE(source.reads, 0);
+
+  // A linked game's change and lookup both land on the linked card.
+  const QString otherAppId = source.index(5, 0).data(GameRoles::AppId).toString();
+  QVERIFY(games.linkGames(0, gameSource, QString{}, otherAppId));
+  QCOMPARE(games.rowCount(), 1999);
+  const int linkedRow = games.rowForGame(gameSource, otherAppId);
+  QVERIFY(linkedRow >= 0);
+  QCOMPARE(games.rowForGame(gameSource, source.index(0, 0).data(GameRoles::AppId).toString()),
+           linkedRow);
+  QCOMPARE(games.rowForGame(gameSource, appId), target - 1);
+  // A linked game's change used to read every game's key to find its group's card.
+  updates.clear();
+  source.reads = 0;
+  emit source.dataChanged(source.index(5, 0), source.index(5, 0), {GameRoles::CoverPath});
+  QCOMPARE(updatedRows(), QList<int>{linkedRow});
+  QVERIFY2(source.reads < 50, qPrintable(QStringLiteral("%1 reads").arg(source.reads)));
+  updates.clear();
+  emit source.dataChanged(source.index(target, 0), source.index(target, 0), {GameRoles::CoverPath});
+  QCOMPARE(updatedRows(), QList<int>{target - 1});
 }
 
 void CoreTests::metadataUpdatesOnlyInvalidateChangedRoles() {

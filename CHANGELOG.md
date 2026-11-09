@@ -26,6 +26,10 @@
   tries again later, instead of saying it was undone. A damaged recovery record is set
   aside with a note on what to check, so Game Mode can start again. A record from a newer
   Omakade is kept for that version.
+- Big libraries stay responsive while covers and metadata load. A change to one game, such
+  as a finished cover download, now updates only that game's card instead of checking
+  every game, and the in-game guide no longer scans the whole library every second
+  while a game runs.
 - An unfinished save restore no longer stops every emulator game from launching. Only the
   game it belongs to waits, nothing waits with save protection off (the rollback is still
   tried), and Save Backups now offers Keep Current Saves, which asks first and moves the

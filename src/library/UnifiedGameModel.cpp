@@ -149,22 +149,26 @@ void UnifiedGameModel::addSourceModel(QAbstractItemModel* model) {
                 if (!forwardedRoles.contains(role))
                   forwardedRoles.append(role);
             }
-            QSet<QString> changedGroups;
+            // Look the changed rows up instead of walking the library, so a pass of N cover
+            // downloads stays linear.
+            const auto direct = m_unifiedRowsForSource.constFind(model);
+            QList<int> changedRows;
             for (int row = topLeft.row(); row <= bottomRight.row(); ++row) {
+              if (direct != m_unifiedRowsForSource.cend() && row >= 0 && row < direct->size() &&
+                  direct->at(row) >= 0)
+                changedRows.append(direct->at(row));
               const QString groupId = m_groupForGame.value(gameKey({.model = model, .row = row}));
               if (!groupId.isEmpty()) {
-                changedGroups.insert(groupId);
+                const int groupRow = m_unifiedIndexForGroup.value(groupId, -1);
+                if (groupRow >= 0)
+                  changedRows.append(groupRow);
               }
             }
-            for (int row = 0; row < m_rows.size(); ++row) {
-              const SourceRow& source = m_rows.at(row);
-              const bool direct = source.model == model && source.row >= topLeft.row() &&
-                                  source.row <= bottomRight.row();
-              if (direct || (!changedGroups.isEmpty() &&
-                             changedGroups.contains(m_groupForGame.value(gameKey(source))))) {
-                emit dataChanged(index(row), index(row), forwardedRoles);
-              }
-            }
+            std::sort(changedRows.begin(), changedRows.end());
+            changedRows.erase(std::unique(changedRows.begin(), changedRows.end()),
+                              changedRows.end());
+            for (const int row : std::as_const(changedRows))
+              emit dataChanged(index(row), index(row), forwardedRoles);
           });
 }
 
@@ -173,10 +177,7 @@ void UnifiedGameModel::refreshSourceErrors() {
   QHash<QString, QAbstractItemModel*> modelForSource;
   for (QAbstractItemModel* model : m_models) {
     const QString error = model->property("errorText").toString().trimmed();
-    for (int row = 0; row < model->rowCount(); ++row) {
-      const QString source = model->index(row, 0).data(GameRoles::Source).toString();
-      if (source.isEmpty())
-        continue;
+    for (const QString& source : m_sourcesForModel.value(model)) {
       modelForSource.insert(source, model);
       if (!error.isEmpty())
         errors.insert(source, error);
@@ -855,6 +856,12 @@ QVariantList UnifiedGameModel::installations(int row) const {
   return result;
 }
 
+int UnifiedGameModel::rowForGame(const QString& source, const QString& appId) const {
+  if (source.isEmpty() || appId.isEmpty())
+    return -1;
+  return m_unifiedIndexForSourceApp.value(source + QChar::Null + appId, -1);
+}
+
 QVariantMap UnifiedGameModel::preferredInstallation(int row) const {
   const QVariantList entries = installations(row);
   for (const QVariant& entry : entries) {
@@ -1463,10 +1470,15 @@ void UnifiedGameModel::rebuildRows() {
   QHash<QString, SourceRow> rowForKey;
   QHash<QString, QVector<SourceRow>> rowsForGroup;
   QHash<QString, QStringList> groupMemberKeys;
+  QHash<const QAbstractItemModel*, QSet<QString>> sourcesForModel;
   for (QAbstractItemModel* model : m_models) {
+    QSet<QString>& sources = sourcesForModel[model];
     for (int row = 0; row < model->rowCount(); ++row) {
       const SourceRow source{.model = model, .row = row};
-      if (!sourceEnabled(source)) {
+      const QString sourceName = model->index(row, 0).data(GameRoles::Source).toString();
+      if (!sourceName.isEmpty())
+        sources.insert(sourceName);
+      if (m_disabledSources.contains(sourceName)) {
         continue;
       }
       const QString key = gameKey(source);
@@ -1501,16 +1513,39 @@ void UnifiedGameModel::rebuildRows() {
 
   QStringList keys;
   QHash<QString, int> unifiedIndexForKey;
+  QHash<QString, int> unifiedIndexForGroup;
+  QHash<QString, int> unifiedIndexForSourceApp;
+  QHash<const QAbstractItemModel*, QVector<int>> unifiedRowsForSource;
+  for (QAbstractItemModel* model : m_models)
+    unifiedRowsForSource.insert(model, QVector<int>(model->rowCount(), -1));
+  // A game key is source, runner and app id; the guide only knows the source and app id.
+  const auto indexSourceApp = [&unifiedIndexForSourceApp](const QString& key, int row) {
+    if (key.isEmpty())
+      return;
+    const QString sourceApp =
+        key.left(key.indexOf(QChar::Null) + 1) + key.mid(key.lastIndexOf(QChar::Null) + 1);
+    if (!unifiedIndexForSourceApp.contains(sourceApp))
+      unifiedIndexForSourceApp.insert(sourceApp, row);
+  };
   keys.reserve(rows.size());
   for (int row = 0; row < rows.size(); ++row) {
-    const QString key = gameKey(rows.at(row));
+    const SourceRow& source = rows.at(row);
+    QVector<int>& sourceRows = unifiedRowsForSource[source.model];
+    if (source.row >= 0 && source.row < sourceRows.size())
+      sourceRows[source.row] = row;
+    const QString key = gameKey(source);
     keys.append(key);
     const QString groupId = m_groupForGame.value(key);
     if (groupId.isEmpty()) {
       unifiedIndexForKey.insert(key, row);
+      indexSourceApp(key, row);
     } else {
-      for (const SourceRow& member : rowsForGroup.value(groupId))
-        unifiedIndexForKey.insert(gameKey(member), row);
+      unifiedIndexForGroup.insert(groupId, row);
+      for (const SourceRow& member : rowsForGroup.value(groupId)) {
+        const QString memberKey = gameKey(member);
+        unifiedIndexForKey.insert(memberKey, row);
+        indexSourceApp(memberKey, row);
+      }
     }
   }
   const auto adopt = [&] {
@@ -1520,6 +1555,10 @@ void UnifiedGameModel::rebuildRows() {
     m_rowsForGroup = rowsForGroup;
     m_groupMemberKeys = groupMemberKeys;
     m_unifiedIndexForKey = unifiedIndexForKey;
+    m_unifiedIndexForGroup = unifiedIndexForGroup;
+    m_unifiedIndexForSourceApp = unifiedIndexForSourceApp;
+    m_unifiedRowsForSource = unifiedRowsForSource;
+    m_sourcesForModel = sourcesForModel;
   };
   if (keys == m_rowKeys) {
     // A rescan that found the same games. The row mapping may point at different source rows,
@@ -1926,8 +1965,10 @@ void UnifiedGameModel::setMetadata(GameMetadata* metadata) {
     // An empty dataChanged role list means every role. Details-only changes
     // must not reload artwork, rebuild Home, or rescan the library filters.
     if (roles.isEmpty()) return;
-    for (int row = 0; row < m_rows.size(); ++row)
-      if (gameKey(m_rows.at(row)) == key) emit dataChanged(index(row), index(row), roles);
+    // Only the card whose own game changed, found through the index, not a library walk.
+    const int row = m_unifiedIndexForKey.value(key, -1);
+    if (row >= 0 && row < m_rowKeys.size() && m_rowKeys.at(row) == key)
+      emit dataChanged(index(row), index(row), roles);
   });
   if (!m_rows.isEmpty())
     emit dataChanged(index(0), index(m_rows.size() - 1),

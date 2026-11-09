@@ -57,6 +57,9 @@ public:
   [[nodiscard]] QVariantList installationIdentities(int row) const;
   Q_INVOKABLE QVariantList installations(int row) const;
   Q_INVOKABLE QVariantMap preferredInstallation(int row) const;
+  // The first library row that holds this source and app id, or -1. A hash lookup, so a
+  // timer can call it every second without walking the library.
+  [[nodiscard]] int rowForGame(const QString& source, const QString& appId) const;
   Q_INVOKABLE bool setPreferredInstallation(int row, const QString& source, const QString& runner,
                                             const QString& appId);
   Q_INVOKABLE QVariantList linkCandidates(int row, const QString& search) const;
@@ -156,6 +159,13 @@ private:
   // Member game keys per linked group, so a rebuild notices an installation coming or going.
   QHash<QString, QStringList> m_groupMemberKeys;
   QHash<QString, int> m_unifiedIndexForKey;
+  QHash<QString, int> m_unifiedIndexForGroup;
+  // Source and app id without the runner, mapped to the first row that holds them.
+  QHash<QString, int> m_unifiedIndexForSourceApp;
+  // Each source row's library row, or -1, so a single-game change finds its card directly.
+  QHash<const QAbstractItemModel*, QVector<int>> m_unifiedRowsForSource;
+  // The source names each model reports, so a status change does not reread every game.
+  QHash<const QAbstractItemModel*, QSet<QString>> m_sourcesForModel;
   QSqlDatabase m_database;
   QString m_connectionName;
   QString m_databasePath;

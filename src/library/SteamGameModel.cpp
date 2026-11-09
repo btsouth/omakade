@@ -207,18 +207,21 @@ void SteamGameModel::reloadAchievementSummary(const QString& appId) {
   if (!query.exec() || !query.next()) {
     return;
   }
-  for (int row = 0; row < m_games.size(); ++row) {
-    Game& game = m_games[row];
-    if (game.steam.appId != appId) {
-      continue;
-    }
-    game.achievementsUnlocked = query.value(0).toInt();
-    game.achievementsTotal = query.value(1).toInt();
-    emit dataChanged(
-        index(row), index(row),
-        {GameRoles::Progress, GameRoles::AchievementsUnlocked, GameRoles::AchievementsTotal});
+  const int row = rowForAppId(appId);
+  if (row < 0) {
     return;
   }
+  Game& game = m_games[row];
+  game.achievementsUnlocked = query.value(0).toInt();
+  game.achievementsTotal = query.value(1).toInt();
+  emit dataChanged(
+      index(row), index(row),
+      {GameRoles::Progress, GameRoles::AchievementsUnlocked, GameRoles::AchievementsTotal});
+}
+
+int SteamGameModel::rowForAppId(const QString& appId) const {
+  const int row = m_rowForAppId.value(appId, -1);
+  return row >= 0 && row < m_games.size() && m_games.at(row).steam.appId == appId ? row : -1;
 }
 
 void SteamGameModel::reloadOwnedGames() {
@@ -240,13 +243,12 @@ void SteamGameModel::reloadOwnedGames() {
 }
 
 void SteamGameModel::requestCover(const QString& appId) {
-  for (const Game& game : m_games) {
-    if (game.steam.appId == appId) {
-      requestCoverForGame(game);
-      startNextCoverDownloads();
-      return;
-    }
+  const int row = rowForAppId(appId);
+  if (row < 0) {
+    return;
   }
+  requestCoverForGame(m_games.at(row));
+  startNextCoverDownloads();
 }
 
 void SteamGameModel::refreshFromRoots(const QStringList& roots) {
@@ -501,8 +503,15 @@ void SteamGameModel::loadDatabase() {
                    .accentStart = colorFor(steam.appId, 0),
                    .accentEnd = colorFor(steam.appId, 1)});
   }
+  QHash<QString, int> rowForAppId;
+  for (int row = 0; row < loaded.size(); ++row) {
+    if (!rowForAppId.contains(loaded.at(row).steam.appId)) {
+      rowForAppId.insert(loaded.at(row).steam.appId, row);
+    }
+  }
   beginResetModel();
   m_games = loaded;
+  m_rowForAppId = rowForAppId;
   endResetModel();
   query.finish();
   if (cachedCoverUpdates.isEmpty()) {
@@ -843,19 +852,17 @@ void SteamGameModel::downloadCover(const QString& appId, int attempt) {
 }
 
 void SteamGameModel::applyCover(const QString& appId, const QString& path) {
-  for (int row = 0; row < m_games.size(); ++row) {
-    if (m_games.at(row).steam.appId != appId) {
-      continue;
-    }
-    m_games[row].steam.coverPath = path;
-    m_pendingCoverWrites.insert(appId, path);
-    if (!m_coverWriteTimer.isActive()) {
-      m_coverWriteTimer.start();
-    }
-    emit dataChanged(index(row), index(row), {GameRoles::CoverPath});
-    emit statusChanged();
+  const int row = rowForAppId(appId);
+  if (row < 0) {
     return;
   }
+  m_games[row].steam.coverPath = path;
+  m_pendingCoverWrites.insert(appId, path);
+  if (!m_coverWriteTimer.isActive()) {
+    m_coverWriteTimer.start();
+  }
+  emit dataChanged(index(row), index(row), {GameRoles::CoverPath});
+  emit statusChanged();
 }
 
 void SteamGameModel::flushCoverWrites() {

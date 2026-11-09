@@ -97,6 +97,9 @@ private:
   };
 
   QVector<Game> m_games;
+  // Rebuilt with m_games so a single cover or achievement update finds its row directly.
+  QHash<QString, int> m_rowForAppId;
+  [[nodiscard]] int rowForAppId(const QString& appId) const;
   QSqlDatabase m_database;
   QString m_connectionName;
   QString m_databasePath;
