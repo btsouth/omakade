@@ -2485,11 +2485,13 @@ ApplicationWindow {
                         text: modelData.label + " ×"
                         Accessible.name: "Remove " + modelData.label + " filter"
                         onClicked: {
+                            // Queue the focus move first: clearing the filter removes this chip,
+                            // and ids are out of reach once its delegate is gone.
+                            Qt.callLater(filtersMenuButton.forceActiveFocus)
                             if (modelData.key === "searchText") { searchField.clear(); Library.searchText = "" }
                             else if (modelData.key === "sourceFilters")
                                 Library.sourceFilters = Library.sourceFilters.filter(source => source !== modelData.source)
                             else Library[modelData.key] = modelData.empty
-                            Qt.callLater(filtersMenuButton.forceActiveFocus)
                         }
                     }
                 }

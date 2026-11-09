@@ -9,7 +9,10 @@ Suites are included into the `tests/` directory scope, so:
 - relative paths, such as a test's sources or a Python script, are relative to `tests/`;
 - `${CMAKE_CURRENT_SOURCE_DIR}` is `tests/` and `${CMAKE_CURRENT_BINARY_DIR}` is the build's
   `tests/` folder, the place for screenshots and other output;
-- every test also gets the CI slot assignment at the end of `tests/CMakeLists.txt`.
+- every test also gets the CI slot assignment at the end of `tests/CMakeLists.txt`;
+- every test that is not `WILL_FAIL` fails when its output shows a QML runtime error, such as
+  a `TypeError`, `ReferenceError` or binding loop (`OMAKADE_TEST_QML_ERRORS` in
+  `tests/OmakadeTests.cmake`), even if it exits 0.
 
 ## Helpers
 

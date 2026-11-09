@@ -26,6 +26,8 @@
 - Game titles, achievement names, launch window titles and other library text on Home, Stats
   and elsewhere show as typed. A title holding markup, such as one from a RomM server, is no
   longer drawn as rich text and can no longer make Omakade fetch an image it names.
+- Removing a library filter by its chip moves focus back to the Filters button, as Clear All
+  does, instead of leaving it nowhere.
 
 ## 1.18.0
 

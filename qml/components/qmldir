@@ -1,0 +1,6 @@
+# Only for tests that load these files from the source tree instead of the built Omakade
+# module: without these lines a directory import treats the singletons as plain types and
+# every binding on them is undefined. Keep in step with omakade_qml_singletons in
+# qml/CMakeLists.txt, which checks it at configure time.
+singleton TextEntry 1.0 TextEntry.qml
+singleton UiMetrics 1.0 UiMetrics.qml

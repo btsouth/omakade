@@ -30,6 +30,19 @@ foreach(singleton IN LISTS omakade_qml_singletons)
     message(FATAL_ERROR "qml/CMakeLists.txt lists the singleton ${singleton}, which does not exist.")
   endif()
 endforeach()
+# components/qmldir names the same singletons for tests that load components from the source tree.
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/components/qmldir" omakade_component_qmldir REGEX "^singleton ")
+set(omakade_component_singletons)
+foreach(singleton IN LISTS omakade_qml_singletons)
+  if(singleton MATCHES "^components/(.+)\\.qml$")
+    list(APPEND omakade_component_singletons "singleton ${CMAKE_MATCH_1} 1.0 ${CMAKE_MATCH_1}.qml")
+  endif()
+endforeach()
+list(SORT omakade_component_qmldir)
+list(SORT omakade_component_singletons)
+if(NOT omakade_component_qmldir STREQUAL omakade_component_singletons)
+  message(FATAL_ERROR "qml/components/qmldir must list exactly these singletons: ${omakade_component_singletons}")
+endif()
 
 qt_add_qml_module(omakade
   URI Omakade
