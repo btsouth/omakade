@@ -758,6 +758,8 @@ import "Counts.js" as Counts
                     visible: (!DemoMode || GogSettingsFixture) && settingsOverlay.sourceDetail === ""
                     spacing: 8
                     Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
                         text: "EXTRA GOG FOLDERS"
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
@@ -884,6 +886,8 @@ import "Counts.js" as Counts
                     visible: true
                     spacing: 6
                     Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
                         text: "CONSOLE LAYOUT"
                         color: Theme.brightForeground
                         font.family: Theme.fontFamily
@@ -960,6 +964,8 @@ import "Counts.js" as Counts
                 }
                 Text {
                     id: collectionsHeading
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
                     text: "LIBRARY COLLECTIONS"
                     color: Theme.brightForeground
                     font.family: Theme.fontFamily
@@ -967,6 +973,8 @@ import "Counts.js" as Counts
                     font.weight: Font.DemiBold
                 }
                 Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
                     visible: Library.collectionNames.length === 0
                     text: "Create collections from a game's details."
                     color: Theme.mutedText
