@@ -1,23 +1,33 @@
 import QtQuick
 import "../../../qml/components"
-import "../../../qml/components/GameAccessibility.js" as GameAccessibility
 
 Row {
-    width: 520
+    width: 800
     height: 400
     spacing: 20
     property int activations: 0
 
-    // What a screen reader hears for a hidden achievement before and after it is unlocked.
-    readonly property var hiddenAchievement: ({ title: "Secret Ending", description: "Beat the final boss",
-                                                hidden: true, unlocked: false, rarity: 3.25 })
-    readonly property var unlockedAchievement: ({ title: "Secret Ending", description: "Beat the final boss",
-                                                  hidden: true, unlocked: true, rarity: 3.25 })
-    readonly property string hiddenName: GameAccessibility.achievementName(hiddenAchievement)
-    readonly property string hiddenDescription: GameAccessibility.achievementDescription(hiddenAchievement, "")
-    readonly property string unlockedName: GameAccessibility.achievementName(unlockedAchievement)
-    readonly property string unlockedDescription:
-        GameAccessibility.achievementDescription(unlockedAchievement, "Nov 8, 2026")
+    // The game details page's achievement cards, fed the same roles as the Achievements model:
+    // a hidden achievement before and after it is unlocked.
+    Column {
+        spacing: 10
+        Repeater {
+            model: ListModel {
+                ListElement {
+                    title: "Secret Ending"; description: "Beat the final boss"; iconPath: ""
+                    unlocked: false; unlockTime: 0; rarity: 3.25; hidden: true
+                }
+                ListElement {
+                    title: "Secret Ending"; description: "Beat the final boss"; iconPath: ""
+                    unlocked: true; unlockTime: 1794139200; rarity: 3.25; hidden: true
+                }
+            }
+            AchievementCard {
+                width: 260
+                height: 82
+            }
+        }
+    }
 
     GameCard {
         objectName: "favoriteCard"

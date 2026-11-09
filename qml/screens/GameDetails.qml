@@ -5,7 +5,6 @@ import QtQuick.Window
 import "../components"
 import "../components/Counts.js" as Counts
 import "../components/UserDates.js" as UserDates
-import "../components/GameAccessibility.js" as GameAccessibility
 
 Item {
     id: root
@@ -1731,103 +1730,10 @@ Item {
                         Repeater {
                             model: Achievements
 
-                            Rectangle {
-                                id: achievementCard
-                                required property int index
-                                required property string title
-                                required property string description
-                                required property string iconPath
-                                required property bool unlocked
-                                required property double unlockTime
-                                required property real rarity
-                                required property bool hidden
-                                objectName: "achievementCard" + index
-                                activeFocusOnTab: true
-                                Accessible.name: GameAccessibility.achievementName(achievementCard)
-                                Accessible.description: GameAccessibility.achievementDescription(
-                                    achievementCard, unlocked && unlockTime > 0
-                                    ? UserDates.format(new Date(unlockTime * 1000), "day") : "")
-                                Accessible.role: Accessible.ListItem
-                                Accessible.focused: activeFocus
+                            AchievementCard {
                                 Layout.fillWidth: true
-                                Layout.minimumWidth: 260
-                                Layout.preferredHeight: 82
-                                radius: Math.max(6, Theme.cornerRadius)
-                                color: root.alpha(Theme.foreground, unlocked ? 0.075 : 0.035)
-                                border.width: activeFocus ? 2 : 1
-                                border.color: activeFocus
-                                              ? Theme.accent
-                                              : unlocked
-                                                ? root.alpha(Theme.accent, 0.34)
-                                                : root.alpha(Theme.foreground, 0.10)
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 11
-                                    spacing: 12
-
-                                    Rectangle {
-                                        Layout.preferredWidth: 54
-                                        Layout.preferredHeight: 54
-                                        radius: 5
-                                        color: root.alpha(Theme.darkerBackground, 0.54)
-                                        border.color: root.alpha(Theme.foreground, 0.12)
-                                        clip: true
-
-                                        Image {
-                                            anchors.fill: parent
-                                            source: iconPath
-                                            asynchronous: true
-                                            fillMode: Image.PreserveAspectFit
-                                            opacity: unlocked ? 1 : 0.42
-                                        }
-                                        Text {
-                                            visible: iconPath.length === 0
-                                            anchors.centerIn: parent
-                                            text: unlocked ? "◆" : "◇"
-                                            color: unlocked ? Theme.accent : Theme.mutedText
-                                            font.pixelSize: 19
-                                        }
-                                    }
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 3
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: hidden && !unlocked ? "Hidden achievement" : title
-                                            textFormat: Text.PlainText
-                                            color: unlocked ? Theme.brightForeground : Theme.foreground
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 11
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: hidden && !unlocked ? "Unlock to reveal details" : description
-                                            textFormat: Text.PlainText
-                                            color: Theme.mutedText
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 9
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: (unlocked && unlockTime > 0
-                                                   ? "UNLOCKED " + UserDates.format(new Date(unlockTime * 1000), "day").toUpperCase() + "  ·  "
-                                                   : "")
-                                                  + (rarity > 0 ? rarity.toFixed(1) + "% OF PLAYERS"
-                                                     : root.achievementSourceIsRetroArch ? "RETROACHIEVEMENTS"
-                                                     : root.achievementSourceIsXbox ? "XBOX" : "STEAM")
-                                            color: unlocked ? Theme.accent : root.alpha(Theme.foreground, 0.45)
-                                            font.family: Theme.fontFamily
-                                            font.pixelSize: 8
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-                                }
+                                sourceLabel: root.achievementSourceIsRetroArch ? "RETROACHIEVEMENTS"
+                                             : root.achievementSourceIsXbox ? "XBOX" : "STEAM"
                             }
                         }
                     }

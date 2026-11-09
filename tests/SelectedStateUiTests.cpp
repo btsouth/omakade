@@ -2,8 +2,10 @@
 #include "metadata/ProtonDbService.h"
 #include "theme/OmarchyTheme.h"
 #include <QAccessible>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QLocale>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickView>
@@ -209,12 +211,22 @@ private slots:
     QTRY_COMPARE(root->property("activations").toInt(), 1);
 
     // A hidden achievement keeps its name and description secret until it is unlocked.
-    QCOMPARE(root->property("hiddenName").toString(), QStringLiteral("Hidden achievement"));
-    QCOMPARE(root->property("hiddenDescription").toString(),
+    QQuickItem* locked = find(root, "achievementCard0");
+    QQuickItem* unlocked = find(root, "achievementCard1");
+    QVERIFY(locked && unlocked);
+    QAccessibleInterface* lockedFace = QAccessible::queryAccessibleInterface(locked);
+    QVERIFY(lockedFace);
+    QCOMPARE(lockedFace->role(), QAccessible::ListItem);
+    QCOMPARE(lockedFace->text(QAccessible::Name), QStringLiteral("Hidden achievement"));
+    QCOMPARE(lockedFace->text(QAccessible::Description),
              QStringLiteral("Unlock to reveal details, locked, 3.3% of players"));
-    QCOMPARE(root->property("unlockedName").toString(), QStringLiteral("Secret Ending"));
-    QCOMPARE(root->property("unlockedDescription").toString(),
-             QStringLiteral("Beat the final boss, unlocked Nov 8, 2026, 3.3% of players"));
+    QAccessibleInterface* unlockedFace = QAccessible::queryAccessibleInterface(unlocked);
+    QVERIFY(unlockedFace);
+    QCOMPARE(unlockedFace->text(QAccessible::Name), QStringLiteral("Secret Ending"));
+    const QString unlockedOn = QLocale().toString(
+        QDateTime::fromSecsSinceEpoch(1794139200).date(), QStringLiteral("MMM d, yyyy"));
+    QCOMPARE(unlockedFace->text(QAccessible::Description),
+             QStringLiteral("Beat the final boss, unlocked %1, 3.3% of players").arg(unlockedOn));
   }
 };
 QTEST_MAIN(SelectedStateUiTests)
