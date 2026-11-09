@@ -83,6 +83,8 @@ public:
 signals:
   void changed();
   void liveGamesChanged();
+  // A stop is about to signal these games, each a map of source and appId.
+  void stopping(const QVariantList& games);
   // okay is false when nothing was signalled or a lever failed.
   void finished(bool okay, const QString& message, const QVariantList& lines);
 

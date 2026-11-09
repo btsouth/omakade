@@ -43,6 +43,11 @@ Omakade retains:
 - Steam ID, RetroAchievements username, public IGDB client ID, cache limit, and
   reduced-motion preference, console-view overrides, and cover sizes in
   `$XDG_CONFIG_HOME/omakade/config.toml`
+- What emulators, manual games, native ports and GOG games that Omakade starts print
+  while they run, one log per game in `$XDG_STATE_HOME/omakade/launch-logs/`, readable
+  only by you. Above 2 MiB a log is cut to its newest part while Omakade follows the
+  game, at the game's next launch and when Omakade starts. Something a game leaves
+  running after it exits can keep writing to the log until then.
 - Downloaded covers and achievement icons in `$XDG_CACHE_HOME/omakade/`
 - SteamGridDB portraits in `$XDG_DATA_HOME/omakade/portrait-covers/`
 - Copies of covers, heroes, and logos selected by the user in
