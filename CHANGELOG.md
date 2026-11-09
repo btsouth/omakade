@@ -6,7 +6,8 @@
   already was for other emulators, so a restore no longer writes under a running game.
 - The restore preview lists every manual game launch command a backup adds or changes,
   with its program, full arguments and working folder, and warns when a shell or
-  interpreter is told to run code from its arguments. Merge and Replace confirmations
+  interpreter is told to run code from its arguments, including through wrappers
+  like gamemoderun or a terminal. Merge and Replace confirmations
   say these commands will be able to run when you choose Play.
 - Settings > Connections explains that a connected IGDB or SteamGridDB looks up the
   whole library in the background, and a new Identify Library Automatically switch

