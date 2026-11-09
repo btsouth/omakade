@@ -8,8 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-CMAKE, BUILD, VERSION, LIBDIR = sys.argv[1:5]
-del sys.argv[1:5]
+CMAKE, BUILD, VERSION, LIBDIR, DATADIR = sys.argv[1:6]
+del sys.argv[1:6]
 
 
 class PackageLayoutTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertEqual([str(path) for path in units.glob("*.wants")], [])
 
     def test_plugin_manifest_matches_the_package(self) -> None:
-        path = self.prefix / "share" / "omakade" / "omarchy-plugin" / "manifest.json"
+        path = self.prefix / DATADIR / "omakade" / "omarchy-plugin" / "manifest.json"
         manifest = json.loads(path.read_text())
         self.assertEqual(manifest["id"], "omakade.guide")
         self.assertEqual(manifest["version"], VERSION)
