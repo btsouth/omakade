@@ -8,6 +8,8 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QProcess>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLockFile>
 #include <unistd.h>
@@ -18,21 +20,48 @@ QString GuideClient::socketPath() {
   return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/omakade-guide-control-%1").arg(::getuid());
 }
 
+namespace {
+void runSystemctl(QObject* owner, const QStringList& arguments, std::function<void(bool, QByteArray)> done) {
+  auto* process = new QProcess(owner);
+  auto completed = std::make_shared<bool>(false);
+  const auto finish = [process, completed, done](bool ok) {
+    if (*completed) return;
+    *completed = true; const auto output = process->readAllStandardOutput(); process->deleteLater(); done(ok, output);
+  };
+  QObject::connect(process, &QProcess::finished, owner, [finish](int code, QProcess::ExitStatus status) { finish(code == 0 && status == QProcess::NormalExit); });
+  QObject::connect(process, &QProcess::errorOccurred, owner, [finish](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) finish(false); });
+  QTimer::singleShot(1000, process, [process] { process->kill(); });
+  process->start("systemctl", QStringList{"--user"} + arguments);
+}
+
+QString enabledMarker() {
+  return QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation) + "/omakade/sessiond-enabled";
+}
+
+void writeEnabledMarker() {
+  const auto marker = enabledMarker();
+  if (QDir().mkpath(QFileInfo(marker).path())) { QFile file(marker); if (file.open(QIODevice::WriteOnly)) file.close(); }
+}
+} // namespace
+
+// The package does not start the service for every account. Enable it once for the user
+// who runs Omakade, on Omarchy or not, so it starts with their desktop from then on. The
+// marker keeps a later `systemctl --user disable` in force. A failed enable, such as on a
+// masked unit, writes no marker, so the next launch tries again.
+void GuideClient::enableResidentOnce(QObject* owner, std::function<void()> done) {
+  if (QFileInfo::exists(enabledMarker())) { if (done) done(); return; }
+  runSystemctl(owner, {"enable", "omakade-sessiond.service"}, [done](bool ok, const QByteArray&) {
+    if (ok) writeEnabledMarker();
+    if (done) done();
+  });
+}
+
 void GuideClient::ensureResident(QObject* owner) {
   if (owner->property("guideStarting").toBool()) return;
   owner->setProperty("guideStarting", true);
   request({{"action", "status"}}, owner, [owner](const QString& result, const QJsonObject& reply) {
     const auto run = [owner](const QStringList& arguments, std::function<void(bool, QByteArray)> done) {
-      auto* process = new QProcess(owner);
-      auto completed = std::make_shared<bool>(false);
-      const auto finish = [process, completed, done](bool ok) {
-        if (*completed) return;
-        *completed = true; const auto output = process->readAllStandardOutput(); process->deleteLater(); done(ok, output);
-      };
-      QObject::connect(process, &QProcess::finished, owner, [finish](int code, QProcess::ExitStatus status) { finish(code == 0 && status == QProcess::NormalExit); });
-      QObject::connect(process, &QProcess::errorOccurred, owner, [finish](QProcess::ProcessError error) { if (error == QProcess::FailedToStart) finish(false); });
-      QTimer::singleShot(1000, process, [process] { process->kill(); });
-      process->start("systemctl", QStringList{"--user"} + arguments);
+      runSystemctl(owner, arguments, std::move(done));
     };
     const auto start = [owner, run, result, reply] {
       if (result == "handled" && reply.contains("ready")) { owner->setProperty("guideStarting", false); return; }
@@ -57,8 +86,12 @@ void GuideClient::ensureResident(QObject* owner) {
     // user disabled or migrate unrelated user-unit links.
     const auto oldLink = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                          "/systemd/user/default.target.wants/omakade-sessiond.service";
-    if (QFileInfo(oldLink).isSymLink()) run({"reenable", "omakade-sessiond.service"}, [start](bool, const QByteArray&) { start(); });
-    else start();
+    if (QFileInfo(oldLink).isSymLink())
+      run({"reenable", "omakade-sessiond.service"}, [start](bool ok, const QByteArray&) {
+        if (ok) writeEnabledMarker();
+        start();
+      });
+    else enableResidentOnce(owner, start);
   });
 }
 

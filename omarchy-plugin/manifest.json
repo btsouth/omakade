@@ -4,7 +4,7 @@
   "name": "In-game guide",
   "version": "0.1.0",
   "author": "Omakade",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "description": "A theme-matched card over any running game: resume, capture, volume and quit, one button away.",
   "kinds": ["overlay"],
   "keepLoaded": true,
