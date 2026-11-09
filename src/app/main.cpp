@@ -1987,6 +1987,8 @@ int main(int argc, char* argv[]) {
   } else {
     QObject::connect(&cardExport, &CardExport::exportReported, &application,
                      [&application](bool written) {
+                       if (!written)
+                         qCritical() << "Card export: the card was not written";
                        application.exit(written ? EXIT_SUCCESS : EXIT_FAILURE);
                      }, Qt::QueuedConnection);
   }

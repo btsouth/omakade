@@ -6,6 +6,23 @@
 set(OMAKADE_TEST_UI_ENVIRONMENT
   "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1")
 
+# QML runtime errors and warnings that fail any test whose output shows them. The app only logs
+# these and keeps running, so without this a broken binding still exits 0. tests/CMakeLists.txt
+# adds them to every test's FAIL_REGULAR_EXPRESSION, apart from WILL_FAIL tests, where a match
+# would count as the expected failure and hide the problem.
+set(OMAKADE_TEST_QML_ERRORS
+  "TypeError"
+  "ReferenceError"
+  "RangeError"
+  "Binding loop"
+  "polish.*loop"
+  "Unable to assign"
+  "Cannot assign"
+  "is not a type"
+  "module .+ is not installed"
+  "Could not convert argument"
+  "Invalid write to global property")
+
 # omakade_app_test(<name> ARGS <omakade arguments>...)
 # Runs the omakade binary offscreen with software rendering. ENVIRONMENT adds to that.
 function(omakade_app_test name)

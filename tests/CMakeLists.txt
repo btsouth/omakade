@@ -1267,7 +1267,10 @@ foreach(card_case IN ITEMS empty paused error)
   set_tests_properties(omakade_card_export_${card_case} PROPERTIES TIMEOUT 20
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1")
 endforeach()
-set_tests_properties(omakade_card_export_error PROPERTIES WILL_FAIL TRUE)
+# The error card still renders, so this matches the refusal instead of using WILL_FAIL, which
+# would let a QML error in that render pass as the expected failure.
+set_tests_properties(omakade_card_export_error PROPERTIES
+  PASS_REGULAR_EXPRESSION "Card export: the card was not written")
 
 add_test(NAME omakade_card_export_requires_fixture_flag COMMAND omakade
   --export-card=${CMAKE_CURRENT_BINARY_DIR}/unmarked-demo-card.png)
@@ -1340,5 +1343,16 @@ get_property(omakade_all_tests DIRECTORY PROPERTY TESTS)
 foreach(omakade_test IN LISTS omakade_all_tests)
   if(NOT omakade_test MATCHES "_navigation_(sweep|contract)_")
     set_tests_properties(${omakade_test} PROPERTIES PROCESSORS 2)
+  endif()
+  # A QML runtime error fails the test even when the app exits 0. See OMAKADE_TEST_QML_ERRORS.
+  get_test_property(${omakade_test} WILL_FAIL omakade_test_will_fail)
+  if(NOT omakade_test_will_fail)
+    get_test_property(${omakade_test} FAIL_REGULAR_EXPRESSION omakade_test_failures)
+    if(NOT omakade_test_failures)
+      set(omakade_test_failures)
+    endif()
+    list(APPEND omakade_test_failures ${OMAKADE_TEST_QML_ERRORS})
+    list(REMOVE_DUPLICATES omakade_test_failures)
+    set_tests_properties(${omakade_test} PROPERTIES FAIL_REGULAR_EXPRESSION "${omakade_test_failures}")
   endif()
 endforeach()
