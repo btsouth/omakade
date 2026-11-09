@@ -9,7 +9,7 @@ Button {
     // Drawn icon in place of iconText, such as HeartIcon. It can size and color itself from
     // iconSize and iconColor so it matches a text icon.
     property Component iconDelegate: null
-    readonly property real iconSize: (compact ? 12 : 14) * displayScale
+    readonly property real iconSize: (compact ? UiMetrics.label : UiMetrics.body) * displayScale
     readonly property color iconColor: root.labelColor
     // The screen's main action, such as Play, drawn as a solid accent fill.
     property bool primary: false
@@ -45,7 +45,7 @@ Button {
         return Qt.rgba(color.r, color.g, color.b, value)
     }
 
-    implicitHeight: (compact ? 36 : UiMetrics.controlHeight) * displayScale
+    implicitHeight: (compact ? UiMetrics.compactControlHeight : UiMetrics.controlHeight) * displayScale
     implicitWidth: Math.max((compact ? 76 : 104) * displayScale,
                             contentHolder.implicitWidth + (compact ? 22 : 30) * displayScale)
     leftPadding: (compact ? 11 : 15) * displayScale

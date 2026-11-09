@@ -6,9 +6,9 @@ SpinBox {
 
     property real uiScale: 1
     implicitWidth: 136 * uiScale
-    implicitHeight: 40 * uiScale
+    implicitHeight: UiMetrics.scaled(40) * uiScale
     font.family: Theme.fontFamily
-    font.pixelSize: 12 * uiScale
+    font.pixelSize: UiMetrics.label * uiScale
     leftPadding: 8 * uiScale
     rightPadding: 34 * uiScale
 
@@ -42,7 +42,7 @@ SpinBox {
             text: "+"
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 12 * control.uiScale
+            font.pixelSize: UiMetrics.label * control.uiScale
         }
     }
 
@@ -62,7 +62,7 @@ SpinBox {
             text: "−"
             color: Theme.foreground
             font.family: Theme.fontFamily
-            font.pixelSize: 12 * control.uiScale
+            font.pixelSize: UiMetrics.label * control.uiScale
         }
     }
 

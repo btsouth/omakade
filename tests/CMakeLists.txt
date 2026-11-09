@@ -542,6 +542,46 @@ foreach(settings_section IN ITEMS sources library connections controls storage a
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30)
 endforeach()
+# Settings > Appearance > Text size scales the type roles and control heights on the
+# desktop, and Game Mode keeps its own scale. The settings render checks both.
+foreach(text_size_case IN ITEMS appearance-desktop-130 appearance-desktop-150 appearance-couch-150
+                                storage-desktop-150)
+  string(REPLACE "-" ";" text_size_parts ${text_size_case})
+  list(GET text_size_parts 0 text_size_page)
+  list(GET text_size_parts 1 text_size_mode)
+  list(GET text_size_parts 2 text_size_percent)
+  set(text_size_args)
+  if(text_size_mode STREQUAL "couch")
+    list(APPEND text_size_args --couch)
+  endif()
+  string(REPLACE "-" "_" text_size_name ${text_size_case})
+  add_test(NAME omakade_text_size_settings_${text_size_name}
+    COMMAND omakade ${text_size_args} --text-size=${text_size_percent}
+            --render-overlay=settings-${text_size_page}
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-settings-${text_size_case}.png
+            --render-size=820x590)
+  set_tests_properties(omakade_text_size_settings_${text_size_name} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+    TIMEOUT 30)
+endforeach()
+add_test(NAME omakade_text_size_settings_appearance_narrow_150
+  COMMAND omakade --text-size=150 --render-size=380x800 --render-overlay=settings-appearance
+          --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-settings-appearance-narrow-150.png)
+add_test(NAME omakade_text_size_library_150
+  COMMAND omakade --text-size=150 --render-size=820x590
+          --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-library-150.png)
+add_test(NAME omakade_text_size_details_150
+  COMMAND omakade --owned-layout-test --uninstalled-layout-test --text-size=150
+          --render-size=820x590
+          --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-details-150.png)
+add_test(NAME omakade_cli_rejects_unknown_text_size
+  COMMAND omakade --smoke-test --text-size=120)
+set_tests_properties(omakade_cli_rejects_unknown_text_size PROPERTIES
+  PASS_REGULAR_EXPRESSION "--text-size requires one of")
+set_tests_properties(omakade_text_size_settings_appearance_narrow_150 omakade_text_size_library_150
+                     omakade_text_size_details_150 omakade_cli_rejects_unknown_text_size PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+  TIMEOUT 30)
 
 foreach(wheel_mode IN ITEMS animated reduced)
   set(wheel_options --expand-scroll-test)

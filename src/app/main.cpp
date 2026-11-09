@@ -1094,6 +1094,17 @@ int main(int argc, char* argv[]) {
   } else if (!isolatedTest) {
     preferences.detectSystemReducedMotion();
   }
+  if (!isolatedTest) {
+    preferences.detectSystemTextSize();
+  } else if (optionSupplied(application.arguments(), QStringLiteral("--text-size"))) {
+    // Renders and UI tests check layouts at a chosen Settings > Appearance text size.
+    const int textSize = optionValue(application.arguments(), QStringLiteral("--text-size")).toInt();
+    if (!AppSettings::textSizes().contains(textSize)) {
+      qCritical() << "--text-size requires one of" << AppSettings::textSizes();
+      return EXIT_FAILURE;
+    }
+    preferences.setTextSizePreference(textSize);
+  }
   if (startupNavigationTest && application.arguments().contains("--startup-grid")) {
     preferences.setCouchLibraryView(QStringLiteral("grid"));
   }
@@ -5499,11 +5510,58 @@ int main(int argc, char* argv[]) {
             for (auto* child : item->childItems()) self(self, child);
           };
           if (overlay) check(check, overlay);
-          // Backup & Storage draws its own text, so it is held to the same type roles as the
-          // other pages: section headings, body and supporting text, never the default size.
+          // The text size from Settings > Appearance scales the shared type roles and control
+          // heights on the desktop. Game Mode keeps them at 100% and scales to the display.
+          auto* metrics = qmlEngine(quickWindow)
+                              ? qmlEngine(quickWindow)->singletonInstance<QObject*>(
+                                    QStringLiteral("Omakade"), QStringLiteral("UiMetrics"))
+                              : nullptr;
+          auto* textPreferences = qmlContext(quickWindow)
+                                      ->contextProperty(QStringLiteral("Preferences"))
+                                      .value<QObject*>();
+          const qreal textScale =
+              quickWindow->property("couchMode").toBool() || !textPreferences
+                  ? 1.0
+                  : textPreferences->property("textSize").toInt() / 100.0;
+          const auto role = [metrics](const char* name) {
+            return metrics ? metrics->property(name).toInt() : -1;
+          };
+          if (!metrics || qAbs(metrics->property("textScale").toReal() - textScale) > 0.001 ||
+              role("body") != qRound(14 * textScale) || role("supporting") != qRound(12 * textScale) ||
+              role("label") != qRound(12 * textScale) || role("caption") != qRound(11 * textScale) ||
+              role("section") != qRound(18 * textScale) ||
+              role("controlHeight") != qRound(42 * textScale) ||
+              role("compactControlHeight") != qRound(36 * textScale)) {
+            qCritical() << "Type roles do not follow the text size" << textScale
+                        << (metrics ? metrics->property("textScale").toReal() : -1) << role("body")
+                        << role("label") << role("controlHeight");
+            okay = false;
+          }
+          if (renderOverlay == QStringLiteral("settings-appearance")) {
+            const int preference =
+                textPreferences ? textPreferences->property("textSizePreference").toInt() : -1;
+            auto* chosen = findVisualItem(
+                overlay, QStringLiteral("textSize_") +
+                             (preference == 0 ? QStringLiteral("system") : QString::number(preference)));
+            const qreal buttonScale =
+                chosen ? chosen->property("displayScale").toReal() : 0;
+            if (!chosen || !chosen->isVisible() || !chosen->property("selected").toBool() ||
+                qAbs(chosen->height() - role("compactControlHeight") * buttonScale) > 1) {
+              qCritical() << "Text size choice is missing, unselected or not scaled" << preference
+                          << (chosen ? chosen->height() : -1) << role("compactControlHeight");
+              okay = false;
+            }
+          }
+          // Backup & Storage and Appearance draw their own text, so they are held to the same
+          // type roles as the other pages: section headings, body and supporting text, never
+          // the default size.
           if (renderOverlay == QStringLiteral("settings-storage") ||
-              renderOverlay == QStringLiteral("settings-save-overview")) {
-            auto* page = quickWindow->findChild<QQuickItem*>(QStringLiteral("backupStorageSettings"));
+              renderOverlay == QStringLiteral("settings-save-overview") ||
+              renderOverlay == QStringLiteral("settings-appearance")) {
+            const QString pageName = renderOverlay == QStringLiteral("settings-appearance")
+                                         ? QStringLiteral("appearanceSettings")
+                                         : QStringLiteral("backupStorageSettings");
+            auto* page = quickWindow->findChild<QQuickItem*>(pageName);
             auto* panel = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsPanel"));
             const qreal scale = panel ? panel->property("uiScale").toReal() : 0;
             int checked = 0;
@@ -5514,9 +5572,10 @@ int main(int argc, char* argv[]) {
               if (item->inherits("QQuickText")) {
                 const int size = item->property("font").value<QFont>().pixelSize();
                 bool matches = false;
-                for (const int role : {12, 14, 18}) matches |= qAbs(size - role * scale) <= 1;
+                for (const int value : {role("supporting"), role("body"), role("section")})
+                  matches |= qAbs(size - value * scale) <= 1;
                 if (!matches) {
-                  qCritical() << "Backup & Storage text is off the shared type roles"
+                  qCritical() << pageName << "text is off the shared type roles"
                               << item->property("text").toString().left(40) << size << scale;
                   okay = false;
                 }
@@ -5526,7 +5585,7 @@ int main(int argc, char* argv[]) {
             };
             if (page && page->isVisible() && scale > 0) checkRoles(checkRoles, page);
             if (checked < 6) {
-              qCritical() << "Backup & Storage page did not render its text" << checked;
+              qCritical() << pageName << "did not render its text" << checked;
               okay = false;
             }
           }

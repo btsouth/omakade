@@ -7,7 +7,7 @@ CheckBox {
     property real uiScale: 1
     spacing: 10 * uiScale
     font.family: Theme.fontFamily
-    font.pixelSize: 12 * uiScale
+    font.pixelSize: UiMetrics.label * uiScale
 
     contentItem: Text {
         leftPadding: control.indicator.width + control.spacing
