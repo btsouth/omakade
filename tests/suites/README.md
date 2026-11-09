@@ -54,6 +54,6 @@ helpers do not cover.
 
 The same applies to the code under test. Each `src/<dir>/CMakeLists.txt` globs its
 directory into a target, `qml/CMakeLists.txt` takes every `.qml` and `.js` file, and
-`resources/CMakeLists.txt` bundles `resources/consoles/*` and `resources/icons/ui/*.svg`. A
-new file in an existing folder needs a CMake edit only when it belongs to a different target
-than the rest of its folder, or is a QML singleton.
+`resources/CMakeLists.txt` bundles `resources/consoles/cards/*.webp` and
+`resources/icons/ui/*.svg`. A new file in an existing folder needs a CMake edit only when it
+belongs to a different target than the rest of its folder, or is a QML singleton.
