@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Play time recording no longer stops for the whole session when its storage is
+  unavailable at login. The recorder keeps retrying for about an hour and starts as soon
+  as the storage is back.
+- Game Mode reports an interrupted session it could not fully undo as a failure and
+  tries again later, instead of saying it was undone. A damaged recovery record is set
+  aside with a note on what to check, so Game Mode can start again. A record from a newer
+  Omakade is kept for that version.
 - An unfinished save restore no longer stops every emulator game from launching. Only the
   game it belongs to waits, nothing waits with save protection off (the rollback is still
   tried), and Save Backups now offers Keep Current Saves, which asks first and moves the

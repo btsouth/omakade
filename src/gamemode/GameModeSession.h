@@ -236,6 +236,8 @@ private:
   bool m_exitAfterChange = false;
   QTimer m_parkTimer;
   bool m_recoveryChecked = false;
+  // The last recovery failure shown, so a retry that fails the same way stays quiet.
+  QString m_recoveryFailure;
   bool m_refreshPending = false;
   bool m_changePending = false;
 };

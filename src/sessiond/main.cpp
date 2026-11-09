@@ -16,6 +16,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonObject>
@@ -29,6 +30,10 @@
 
 namespace {
 constexpr int kPollIntervalMs = 5000;
+// Retry delays for recording storage that is unavailable at startup.
+constexpr int kStorageRetryFirstMs = 2000;
+constexpr int kStorageRetryMaxMs = 60000;
+constexpr int kStorageRetryLimitMs = 60 * 60 * 1000;
 
 // The record switch lives in Omakade's own config so one toggle controls the
 // display and the recording. Read with the file's mtime so the poll loop stays
@@ -127,29 +132,65 @@ int main(int argc, char* argv[]) {
   if (app.arguments().contains("--guide-only")) return app.exec();
 
   const QString databasePath = SessionDatabase::defaultDatabasePath();
-  if (!QDir().mkpath(QFileInfo(databasePath).absolutePath())) {
-    qWarning("omakade-sessiond: could not create the data directory");
-    return app.exec(); // Recording is unavailable; the guide remains usable.
-  }
   // One owner per database, including manually started copies of the daemon.
   QLockFile owner(databasePath + QStringLiteral(".sessiond.lock"));
   owner.setStaleLockTime(0);
-  if (!owner.tryLock(0)) {
-    qWarning("omakade-sessiond: recorder already running or its lock is unavailable");
-    return app.exec(); // Recording is unavailable; the guide remains usable.
+  QSqlDatabase database;
+  // Set when the last try found another recorder holding the database lock.
+  bool lockHeld = false;
+  // Returns why recording storage is unavailable, or nothing once it is ready.
+  const auto openStorage = [&]() -> QString {
+    lockHeld = false;
+    if (!QDir().mkpath(QFileInfo(databasePath).absolutePath()))
+      return QStringLiteral("could not create the data directory");
+    if (!owner.tryLock(0)) {
+      lockHeld = owner.error() == QLockFile::LockFailedError;
+      return QStringLiteral("recorder already running or its lock is unavailable");
+    }
+    if (SessionDatabase::open(database, databasePath, QStringLiteral("omakade-sessiond")))
+      return {};
+    // Not recording, so the lock must not tell the app a recorder is running.
+    database.close();
+    database = QSqlDatabase();
+    QSqlDatabase::removeDatabase(QStringLiteral("omakade-sessiond"));
+    owner.unlock();
+    return QStringLiteral("could not open the play session database");
+  };
+  // Storage can be briefly unavailable at login, such as a data disk that is still
+  // mounting or a recorder copy that is still exiting. The guide keeps running while
+  // recording retries on a growing delay, and gives up after about an hour.
+  QString storageError = openStorage();
+  if (!storageError.isEmpty()) {
+    qWarning("omakade-sessiond: %s; retrying", qPrintable(storageError));
+    int delayMs = kStorageRetryFirstMs;
+    int waitedMs = 0;
+    bool warned = false;
+    while (!storageError.isEmpty()) {
+      // Another recorder owning the database is still recording, so only real storage
+      // trouble is shown in the app, once, whichever try first runs into it.
+      if (!lockHeld && !warned) {
+        AppNotify::send("tracking-storage-error");
+        warned = true;
+      }
+      if (waitedMs >= kStorageRetryLimitMs) {
+        qWarning("omakade-sessiond: recording is unavailable for this session: %s",
+                 qPrintable(storageError));
+        return app.exec(); // The guide remains usable.
+      }
+      QEventLoop wait;
+      QTimer::singleShot(delayMs, &wait, &QEventLoop::quit);
+      wait.exec();
+      waitedMs += delayMs;
+      delayMs = qMin(delayMs * 2, kStorageRetryMaxMs);
+      storageError = openStorage();
+    }
+    qInfo("omakade-sessiond: recording storage is available");
   }
 
   QString profileError;
   const ProcessProfileSet profiles = ProcessMatcher::load(ProcessMatcher::profilesPath(), &profileError);
   if (!profileError.isEmpty()) {
     qWarning("omakade-sessiond: %s", qPrintable(profileError));
-  }
-
-  QSqlDatabase database;
-  if (!SessionDatabase::open(database, SessionDatabase::defaultDatabasePath(),
-                             QStringLiteral("omakade-sessiond"))) {
-    qWarning("omakade-sessiond: could not open the play session database");
-    return app.exec(); // Recording is unavailable; the guide remains usable.
   }
 
   ConfigToggle toggle;

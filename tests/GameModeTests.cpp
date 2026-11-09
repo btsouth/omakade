@@ -7,6 +7,7 @@
 #include "tracking/ProcFs.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QJsonDocument>
@@ -2476,16 +2477,101 @@ private slots:
     QVERIFY(QFile::exists(statePath()));
   }
 
-  void unreadableStateIsPreservedForSafeRecovery() {
+  void unreadableStateIsSetAsideSoGameModeCanStartAgain() {
     deskAndTv(true);
     QFile file(statePath());
     QVERIFY(file.open(QIODevice::WriteOnly));
     file.write("{ not json");
     file.close();
+    m_notifications.quiet = true;
+    // A crash mid-launch can leave the compositor hold on with the record damaged.
+    m_compositor.canHold = true;
+    m_compositor.held = {{QStringLiteral("0x72"), 72, QStringLiteral("steam"), QStringLiteral("Steam")}};
     GameModeController game = controller();
-    QVERIFY(!game.enter(tvSettings(), 100).ok);
-    QVERIFY(QFile::exists(statePath()));
+    const auto recovered = game.recover();
+    QVERIFY2(recovered.ok, qPrintable(recovered.error));
+    QVERIFY(recovered.setAside);
+    // Lifting the hold is the only compositor change made without the record.
+    QCOMPARE(m_compositor.log,
+             QStringList({QStringLiteral("steam-hold "), QStringLiteral("launch-hold "),
+                          QStringLiteral("release-held 0x72 name:omakade")}));
+    m_compositor.canHold = false;
+    m_compositor.log.clear();
+    QVERIFY(recovered.notes.join(' ').contains("set aside"));
+    QVERIFY(recovered.notes.join(' ').contains("game audio"));
+    QVERIFY(!m_notifications.quiet);
+    QVERIFY(!QFile::exists(statePath()));
+    // The damaged record is kept, unchanged, for a later look.
+    const QStringList kept = QDir(m_directory.path())
+                                 .entryList({QStringLiteral("game-mode-state.json.damaged-*")});
+    QCOMPARE(kept.size(), 1);
+    QFile damaged(m_directory.filePath(kept.first()));
+    QVERIFY(damaged.open(QIODevice::ReadOnly));
+    QCOMPARE(damaged.readAll(), QByteArray("{ not json"));
+    damaged.close();
+    QVERIFY(damaged.remove());
     QVERIFY(m_compositor.log.isEmpty());
+    QVERIFY(game.enter(tvSettings(), 100).ok);
+  }
+
+  // A newer Omakade's record is valid there, so an older build keeps it and says why.
+  void newerStateIsKeptForTheVersionThatWroteIt() {
+    deskAndTv(true);
+    const QByteArray newer = R"({"version": 3, "phase": "active"})";
+    QFile file(statePath());
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(newer);
+    file.close();
+    GameModeController game = controller();
+    const auto recovered = game.recover();
+    QVERIFY(!recovered.ok);
+    QVERIFY(!recovered.setAside);
+    QVERIFY2(recovered.error.contains("newer Omakade"), qPrintable(recovered.error));
+    QVERIFY(QFile::exists(statePath()));
+    QVERIFY(QDir(m_directory.path())
+                .entryList({QStringLiteral("game-mode-state.json.damaged-*")})
+                .isEmpty());
+    QVERIFY(m_compositor.log.isEmpty());
+    QVERIFY(!game.enter(tvSettings(), 100).ok);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), newer);
+  }
+
+  // Startup recovery that fails is reported as a failure and tried again later, rather
+  // than announced as undone and never retried.
+  void sessionRecoveryFailureIsReportedAndRetried() {
+    deskAndTv(true);
+    GameModeState state;
+    state.output = kTv;
+    state.ownerPid = 424242;
+    state.ownerStart = 123;
+    state.silencedNotifications = true;
+    m_notifications.quiet = true;
+    m_notifications.usable = false;
+    QFile file(statePath());
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QJsonDocument(state.toJson()).toJson());
+    file.close();
+    GameModeSession session(&m_compositor, &m_audio, &m_notifications, {}, statePath());
+    QSignalSpy notices(&session, &GameModeSession::notice);
+    QSignalSpy devices(&session, &GameModeSession::devicesChanged);
+    session.refresh();
+    QTRY_COMPARE(notices.size(), 1);
+    const QString failure = notices.first().first().toString();
+    QVERIFY2(failure.contains("could not be fully undone"), qPrintable(failure));
+    QVERIFY(!failure.contains("was undone"));
+    QVERIFY(QFile::exists(statePath()));
+    // The same failure again stays quiet.
+    session.refresh();
+    QTRY_COMPARE(devices.size(), 2);
+    QCOMPARE(notices.size(), 1);
+    m_notifications.usable = true;
+    session.refresh();
+    QTRY_COMPARE(notices.size(), 2);
+    QVERIFY(notices.last().first().toString().contains("was undone"));
+    QVERIFY(!m_notifications.quiet);
+    QVERIFY(!QFile::exists(statePath()));
+    session.shutdown();
   }
 
   void withoutACompositorOnlySoundAndNotificationsChange() {
