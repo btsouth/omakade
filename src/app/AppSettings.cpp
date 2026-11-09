@@ -474,9 +474,27 @@ void AppSettings::setRommUrl(const QString& value) {
   if ((!value.trimmed().isEmpty() && normalized.isEmpty()) || normalized == m_rommUrl)
     return;
   const QString previous = m_rommUrl;
+  const QString previousApproval = m_rommHttpApprovedUrl;
   m_rommUrl = normalized;
+  // A plain HTTP confirmation covers one server only.
+  if (m_rommHttpApprovedUrl != normalized)
+    m_rommHttpApprovedUrl.clear();
   if (!save()) {
     m_rommUrl = previous;
+    m_rommHttpApprovedUrl = previousApproval;
+    return;
+  }
+  emit rommConfigurationChanged();
+}
+
+void AppSettings::setRommHttpApproved(bool value) {
+  const QString approved = value ? m_rommUrl : QString{};
+  if (approved == m_rommHttpApprovedUrl)
+    return;
+  const QString previous = m_rommHttpApprovedUrl;
+  m_rommHttpApprovedUrl = approved;
+  if (!save()) {
+    m_rommHttpApprovedUrl = previous;
     return;
   }
   emit rommConfigurationChanged();
@@ -1004,6 +1022,7 @@ void AppSettings::load() {
   m_rommUrl = normalizedRommUrl(readJsonString(QStringLiteral("romm_url")));
   m_rommLibraryRoot =
       normalizedLibraryPath(readJsonString(QStringLiteral("romm_library_root")));
+  m_rommHttpApprovedUrl = normalizedRommUrl(readJsonString(QStringLiteral("romm_http_approved")));
   const auto readEnabled = [&contents](const QString& key, bool fallback) {
     const QRegularExpression expression(
         QStringLiteral("(?m)^%1\\s*=\\s*(true|false)\\s*$").arg(key));
@@ -1276,6 +1295,8 @@ bool AppSettings::save() {
   contents += QStringLiteral("romm_enabled = %1\nromm_url = %2\nromm_library_root = %3\n")
                   .arg(m_rommEnabled ? QStringLiteral("true") : QStringLiteral("false"),
                        jsonString(m_rommUrl), jsonString(m_rommLibraryRoot));
+  if (!m_rommHttpApprovedUrl.isEmpty())
+    contents += QStringLiteral("romm_http_approved = %1\n").arg(jsonString(m_rommHttpApprovedUrl));
   const QByteArray encoded = contents.toUtf8();
   if (file.write(encoded) != encoded.size() || !file.commit())
     return failed();

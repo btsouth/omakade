@@ -4,6 +4,9 @@
 
 - On a Nintendo controller the in-game guide now selects with A and goes back with B, as
   the library does. It had them the other way round.
+- RomM settings show whether the server connection is encrypted. Plain HTTP works
+  without asking for local network and loopback addresses; for any other server,
+  Omakade asks before it sends the token unencrypted.
 
 ## 1.18.0
 

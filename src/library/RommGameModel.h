@@ -29,7 +29,14 @@ public:
   QStringList detectedPaths() const;
   bool hasToken() const { return m_hasToken; }
   Q_INVOKABLE void refresh();
-  Q_INVOKABLE bool connectServer(const QString& server, const QString& root, const QString& token);
+  Q_INVOKABLE bool connectServer(const QString& server, const QString& root, const QString& token,
+                                 bool allowPublicHttp = false);
+  // True when the address, mounted folder and optional token would pass connectServer's checks.
+  Q_INVOKABLE bool validConnection(const QString& server, const QString& root,
+                                   const QString& token) const;
+  // True when the address uses plain HTTP outside the local network and is not confirmed yet.
+  Q_INVOKABLE bool needsHttpConfirmation(const QString& server) const;
+  Q_INVOKABLE QString transportText(const QString& server) const;
   Q_INVOKABLE void storeToken(const QString& token);
   Q_INVOKABLE void disconnectServer(bool forgetToken = false);
   void configure();

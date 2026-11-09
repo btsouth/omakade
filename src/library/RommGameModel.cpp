@@ -74,13 +74,47 @@ void RommGameModel::reload() {
   m_games = m_enabled ? m_catalog.cached(m_server, m_root) : QVector<RommGameRecord>{};
   endResetModel();
 }
+bool RommGameModel::needsHttpConfirmation(const QString& address) const {
+  const auto server = RommCatalog::serverUrl(QUrl(address.trimmed()));
+  return RommCatalog::transport(server) == RommCatalog::Transport::PublicHttp &&
+         !(m_settings->rommHttpApproved() && m_settings->rommUrl() == server.toString());
+}
+QString RommGameModel::transportText(const QString& address) const {
+  switch (RommCatalog::transport(QUrl(address.trimmed()))) {
+  case RommCatalog::Transport::Https:
+    return "Connection: HTTPS. The token is encrypted in transit.";
+  case RommCatalog::Transport::LocalHttp:
+    return "Connection: plain HTTP on the local network. The token is not encrypted in transit.";
+  case RommCatalog::Transport::PublicHttp:
+    return needsHttpConfirmation(address)
+               ? "Connection: plain HTTP outside the local network. Omakade asks before "
+                 "sending the token unencrypted."
+               : "Connection: plain HTTP outside the local network, confirmed. The token is "
+                 "not encrypted in transit.";
+  case RommCatalog::Transport::Invalid:
+    break;
+  }
+  return {};
+}
+bool RommGameModel::validConnection(const QString& address, const QString& root,
+                                    const QString& token) const {
+  const QFileInfo folder(root.trimmed());
+  return !RommCatalog::serverUrl(QUrl(address.trimmed())).isEmpty() && folder.isAbsolute() &&
+         folder.isDir() && (token.isEmpty() || RommCatalog::validToken(token.toLatin1()));
+}
 bool RommGameModel::connectServer(const QString& address, const QString& root,
-                                  const QString& token) {
+                                  const QString& token, bool allowPublicHttp) {
   const auto server = RommCatalog::serverUrl(QUrl(address.trimmed()));
   const QFileInfo folder(root.trimmed());
-  if (server.isEmpty() || !folder.isAbsolute() || !folder.isDir() ||
-      (!token.isEmpty() && !RommCatalog::validToken(token.toLatin1()))) {
+  if (!validConnection(address, root, token)) {
     m_error = "Enter a valid server, existing mounted folder, and Client API Token.";
+    emit statusChanged();
+    return false;
+  }
+  const bool confirmHttp = needsHttpConfirmation(address);
+  if (confirmHttp && !allowPublicHttp) {
+    m_error = "This server uses plain HTTP outside the local network. Confirm before the token "
+              "is sent, or use https.";
     emit statusChanged();
     return false;
   }
@@ -93,6 +127,8 @@ bool RommGameModel::connectServer(const QString& address, const QString& root,
     emit statusChanged();
     return false;
   }
+  if (confirmHttp)
+    m_settings->setRommHttpApproved(true);
   m_settings->setRommEnabled(true);
   if (!token.isEmpty())
     storeToken(token);
@@ -150,9 +186,13 @@ void RommGameModel::credentials(const QByteArray& token, bool store, bool refres
               if (!QFileInfo(m_root).isDir()) {
                 m_status = "Mounted library unavailable";
                 m_error = "Mount the library, then refresh. Cached entries were kept.";
+              } else if (needsHttpConfirmation(m_server.toString())) {
+                m_status = "Plain HTTP not confirmed";
+                m_error = "This server uses plain HTTP outside the local network. Save and "
+                          "connect again to confirm, or use https. The token was not sent.";
               } else {
                 m_status = "Connecting to RomM";
-                m_catalog.refresh(m_server, m_root, secret);
+                m_catalog.refresh(m_server, m_root, secret, m_settings->rommHttpApproved());
               }
             } else
               m_status = m_enabled ? "Add a Client API Token" : "Disconnected";
