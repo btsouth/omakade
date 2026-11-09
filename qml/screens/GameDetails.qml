@@ -1495,7 +1495,7 @@ Item {
                         id: insightsGrid
                         Layout.fillWidth: true
                         visible: insightsSection.metrics.length > 0
-                        readonly property real minimumMetricWidth: 130
+                        readonly property real minimumMetricWidth: UiMetrics.scaled(130)
                         columns: Math.max(1, Math.min(
                                               insightsSection.metrics.length,
                                               Math.floor((detailsContent.width + columnSpacing)
@@ -1518,10 +1518,14 @@ Item {
 
                                 Column {
                                     anchors.left: parent.left
+                                    anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.leftMargin: 14
+                                    anchors.rightMargin: 14
                                     spacing: 6
                                     Text {
+                                        width: parent.width
+                                        elide: Text.ElideRight
                                         text: modelData.label
                                         color: Theme.mutedText
                                         font.family: Theme.fontFamily
@@ -1529,6 +1533,8 @@ Item {
                                         font.weight: Font.DemiBold
                                     }
                                     Text {
+                                        width: parent.width
+                                        elide: Text.ElideRight
                                         text: modelData.value
                                         color: Theme.brightForeground
                                         font.family: Theme.fontFamily
