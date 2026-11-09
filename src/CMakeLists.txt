@@ -194,6 +194,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(omakade PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# The UI test harness: the same app with the fixtures, render paths and self-tests that the
+# test suite drives, from src/selftest. Built with the tests and never installed, so none of
+# it ships in omakade.
+if(BUILD_TESTING)
+  qt_add_executable(omakade-uitest)
+  target_link_libraries(omakade-uitest PRIVATE omakade_app omakade_appplugin)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(omakade-uitest PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  list(APPEND omakade_executables omakade-uitest)
+endif()
+
 set_target_properties(${omakade_executables} PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
@@ -211,6 +223,9 @@ add_subdirectory(launch)
 add_subdirectory(library)
 add_subdirectory(metadata)
 add_subdirectory(saves)
+if(BUILD_TESTING)
+  add_subdirectory(selftest)
+endif()
 add_subdirectory(sessiond)
 add_subdirectory(sources)
 add_subdirectory(streaming)

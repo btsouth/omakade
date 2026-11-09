@@ -45,6 +45,9 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Concurrent Core DBus Gui Network Qml Qu
 find_package(Qt6 6.8 REQUIRED COMPONENTS GuiPrivate)
 qt_standard_project_setup(REQUIRES 6.8)
 
+# Before src/, which builds the omakade-uitest harness only when testing is on.
+include(CTest)
+
 # Targets and their links are in src/CMakeLists.txt. Each src/<dir>/CMakeLists.txt adds its
 # directory's sources by glob, so a new file in an existing directory needs no CMake edit.
 add_subdirectory(src)
@@ -132,7 +135,6 @@ install(FILES omarchy-plugin/README.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/omarchy-plugin
 )
 
-include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()
