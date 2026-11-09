@@ -3,10 +3,13 @@
 #include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
 
+#include <QBuffer>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QImage>
+#include <QImageReader>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QNetworkReply>
@@ -17,7 +20,30 @@
 #include <QUrl>
 #include <QtConcurrent>
 
+#include <memory>
+
 namespace {
+// GameTDB covers are a few hundred pixels on a side; anything far outside that is not one.
+constexpr int kMinimumCoverSide = 16;
+constexpr int kMaximumCoverSide = 4096;
+
+// A full decode, not a magic check: only a PNG that reads back at a cover's size is cached.
+bool decodesAsCover(const QByteArray& bytes) {
+  QBuffer buffer;
+  buffer.setData(bytes);
+  if (!buffer.open(QIODevice::ReadOnly)) {
+    return false;
+  }
+  QImageReader reader(&buffer, "png");
+  const QSize size = reader.size();
+  if (!reader.canRead() || size.width() < kMinimumCoverSide || size.height() < kMinimumCoverSide ||
+      size.width() > kMaximumCoverSide || size.height() > kMaximumCoverSide) {
+    return false;
+  }
+  const QImage image = reader.read();
+  return !image.isNull() && image.size() == size;
+}
+
 QColor colorFor(const QString& id, int offset) {
   const QByteArray hash = QCryptographicHash::hash(id.toUtf8(), QCryptographicHash::Sha256);
   return QColor::fromHsl((static_cast<unsigned char>(hash.at(offset)) * 359) / 255, 115,
@@ -185,26 +211,16 @@ void DolphinGameModel::requestCover(const QString& appId) {
       m_failedCovers.insert(appId);
       return;
     }
-    QNetworkRequest request{QUrl(gameTdbCoverUrl(discId))};
-    request.setTransferTimeout(8000);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     m_pendingCovers.insert(appId);
-    QNetworkReply* reply = m_network.get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, appId, cached] {
-      const QByteArray bytes = reply->read(8 * 1024 * 1024);
-      const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-      reply->deleteLater();
+    fetchCover(&m_network, QUrl(gameTdbCoverUrl(discId)), cached, this, [this, appId, cached](bool saved) {
       m_pendingCovers.remove(appId);
-      QDir().mkpath(QFileInfo(cached).absolutePath());
-      if (reply->error() == QNetworkReply::NoError && status == 200 && bytes.startsWith("\x89PNG")) {
-        QSaveFile file(cached);
-        if (file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit()) {
-          QFile::remove(cached + QStringLiteral(".missing"));
-          applyCover(appId, cached);
-          return;
-        }
+      if (saved) {
+        QFile::remove(cached + QStringLiteral(".missing"));
+        applyCover(appId, cached);
+        return;
       }
       m_failedCovers.insert(appId);
+      QDir().mkpath(QFileInfo(cached).absolutePath());
       QFile marker(cached + QStringLiteral(".missing"));
       if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         marker.close();
@@ -212,6 +228,52 @@ void DolphinGameModel::requestCover(const QString& appId) {
     });
     return;
   }
+}
+
+void DolphinGameModel::fetchCover(QNetworkAccessManager* network, const QUrl& url,
+                                  const QString& cachePath, QObject* context,
+                                  std::function<void(bool)> done) {
+  QNetworkRequest request{url};
+  request.setTransferTimeout(8000);
+  request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+  QNetworkReply* reply = network->get(request);
+  auto buffer = std::make_shared<QByteArray>();
+  auto tooLarge = std::make_shared<bool>(false);
+  // Reads the body as it arrives and gives up as soon as it passes the cap, so an endless or
+  // oversized response is never held in memory.
+  const auto take = [reply, buffer, tooLarge] {
+    if (*tooLarge) {
+      return;
+    }
+    buffer->append(reply->read(kMaximumCoverBytes - buffer->size() + 1));
+    if (buffer->size() > kMaximumCoverBytes) {
+      *tooLarge = true;
+      reply->abort();
+    }
+  };
+  connect(reply, &QNetworkReply::metaDataChanged, context, [reply, tooLarge] {
+    bool known = false;
+    const qint64 length = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong(&known);
+    if (known && length > kMaximumCoverBytes && !*tooLarge) {
+      *tooLarge = true;
+      reply->abort();
+    }
+  });
+  connect(reply, &QNetworkReply::readyRead, context, take);
+  connect(reply, &QNetworkReply::finished, context, [reply, buffer, tooLarge, take, cachePath, done] {
+    take();
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const bool valid = !*tooLarge && reply->error() == QNetworkReply::NoError && status == 200 &&
+                       decodesAsCover(*buffer);
+    reply->deleteLater();
+    bool saved = false;
+    if (valid) {
+      QDir().mkpath(QFileInfo(cachePath).absolutePath());
+      QSaveFile file(cachePath);
+      saved = file.open(QIODevice::WriteOnly) && file.write(*buffer) == buffer->size() && file.commit();
+    }
+    done(saved);
+  });
 }
 
 void DolphinGameModel::applyCover(const QString& gameId, const QString& path) {

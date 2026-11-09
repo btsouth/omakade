@@ -5,12 +5,15 @@
 
 #include <QAbstractListModel>
 #include <QColor>
+#include <QUrl>
 #include <QFutureWatcher>
 #include <QHash>
 #include <QTimer>
 #include <QNetworkAccessManager>
 #include <QSet>
 #include <QSqlDatabase>
+
+#include <functional>
 
 class DolphinGameModel final : public QAbstractListModel {
   Q_OBJECT
@@ -43,6 +46,12 @@ public:
   void refreshFromRoots(const QStringList& roots, const QStringList& folders = {});
   [[nodiscard]] static QString gameTdbCoverUrl(const QString& discId);
   [[nodiscard]] static QString coverCachePath(const QString& discId);
+  // Downloads one cover into cachePath. The body is capped while it arrives and must decode as a
+  // cover-sized PNG before anything is written. done(true) once the file is saved; done is not
+  // called if context goes away first.
+  static constexpr qint64 kMaximumCoverBytes = 8 * 1024 * 1024;
+  static void fetchCover(QNetworkAccessManager* network, const QUrl& url, const QString& cachePath,
+                         QObject* context, std::function<void(bool saved)> done);
 
 signals:
   void statusChanged();

@@ -12,6 +12,11 @@ constexpr quint32 kVersion1 = 0x61bf3a01;
 constexpr qint64 kFooterBytes = 16 * 6 + 32 + 8 + 4 + 4;
 constexpr quint64 kBlockBytes = 64 * 1024;
 constexpr int kEntriesPerRecord = 16;
+constexpr quint64 kRecordBytes = 8 + 2 * kEntriesPerRecord;
+// One record covers 16 blocks, 1 MiB of game data, so this is room for well over a terabyte.
+constexpr quint64 kMaximumRecordBytes = 64 * 1024 * 1024;
+constexpr quint64 kMaximumNameBytes = 64 * 1024 * 1024;
+constexpr quint64 kMaximumTreeBytes = 256 * 1024 * 1024;
 
 QString nodeName(const QByteArray& names, quint32 offset) {
   if (offset == 0x7FFFFFFF || offset >= static_cast<quint32>(names.size())) {
@@ -27,7 +32,7 @@ QString nodeName(const QByteArray& names, quint32 offset) {
   } else {
     offset += 1;
   }
-  if (offset + length > static_cast<quint32>(names.size())) {
+  if (length > static_cast<quint32>(names.size()) - offset) {
     return {};
   }
   return QString::fromLatin1(names.constData() + offset, static_cast<int>(length));
@@ -67,9 +72,15 @@ std::unique_ptr<ZArchiveReader> ZArchiveReader::open(const QString& path) {
   const auto within = [fileSize](const Section& s) {
     return s.size <= static_cast<quint64>(fileSize) && s.offset <= static_cast<quint64>(fileSize) - s.size;
   };
+  // Every block takes at least one byte of the data section, so a record table longer than the
+  // data could need is not a real archive. The caps apply before any section is read: a sparse
+  // file can claim any size without taking any space.
+  const quint64 recordCount = records.size / kRecordBytes;
+  const quint64 maximumRecords = data.size / kEntriesPerRecord + 1;
   if (!within(data) || !within(records) || !within(names) || !within(tree) ||
-      records.size % (8 + 2 * kEntriesPerRecord) != 0 || tree.size % 16 != 0 || tree.size == 0 ||
-      names.size > 64 * 1024 * 1024 || tree.size > 256 * 1024 * 1024) {
+      records.size % kRecordBytes != 0 || records.size > kMaximumRecordBytes ||
+      recordCount > maximumRecords || tree.size % 16 != 0 || tree.size == 0 ||
+      names.size > kMaximumNameBytes || tree.size > kMaximumTreeBytes) {
     return nullptr;
   }
   reader->m_dataOffset = data.offset;
@@ -79,24 +90,13 @@ std::unique_ptr<ZArchiveReader> ZArchiveReader::open(const QString& path) {
     return reader->m_file.seek(static_cast<qint64>(s.offset)) ? reader->m_file.read(static_cast<qint64>(s.size))
                                                               : QByteArray{};
   };
-  const QByteArray recordBytes = readSection(records);
+  reader->m_records = readSection(records);
   const QByteArray nameBytes = readSection(names);
   const QByteArray treeBytes = readSection(tree);
-  if (static_cast<quint64>(recordBytes.size()) != records.size ||
+  if (static_cast<quint64>(reader->m_records.size()) != records.size ||
       static_cast<quint64>(nameBytes.size()) != names.size ||
       static_cast<quint64>(treeBytes.size()) != tree.size) {
     return nullptr;
-  }
-  const int recordCount = recordBytes.size() / (8 + 2 * kEntriesPerRecord);
-  reader->m_records.reserve(recordCount);
-  for (int index = 0; index < recordCount; ++index) {
-    const char* r = recordBytes.constData() + index * (8 + 2 * kEntriesPerRecord);
-    OffsetRecord record;
-    record.baseOffset = qFromBigEndian<quint64>(r);
-    for (int entry = 0; entry < kEntriesPerRecord; ++entry) {
-      record.sizes[entry] = qFromBigEndian<quint16>(r + 8 + entry * 2);
-    }
-    reader->m_records.append(record);
   }
   const int nodeCount = treeBytes.size() / 16;
   reader->m_nodes.reserve(nodeCount);
@@ -133,8 +133,8 @@ int ZArchiveReader::lookup(const QString& path) const {
       return -1;
     }
     int match = -1;
-    for (quint32 child = node.firstChild;
-         child < node.firstChild + node.childCount && child < static_cast<quint32>(m_nodes.size()); ++child) {
+    const quint64 end = qMin<quint64>(quint64(node.firstChild) + node.childCount, quint64(m_nodes.size()));
+    for (quint64 child = node.firstChild; child < end; ++child) {
       if (m_nodes.at(static_cast<int>(child)).name.compare(part, Qt::CaseInsensitive) == 0) {
         match = static_cast<int>(child);
         break;
@@ -155,8 +155,8 @@ QStringList ZArchiveReader::list(const QString& directory) const {
     return names;
   }
   const Node& node = m_nodes.at(index);
-  for (quint32 child = node.firstChild;
-       child < node.firstChild + node.childCount && child < static_cast<quint32>(m_nodes.size()); ++child) {
+  const quint64 end = qMin<quint64>(quint64(node.firstChild) + node.childCount, quint64(m_nodes.size()));
+  for (quint64 child = node.firstChild; child < end; ++child) {
     names.append(m_nodes.at(static_cast<int>(child)).name);
   }
   return names;
@@ -175,20 +175,28 @@ qint64 ZArchiveReader::fileSize(const QString& path) const {
 bool ZArchiveReader::readBlock(quint64 blockIndex, QByteArray* block) {
   const quint64 recordIndex = blockIndex / kEntriesPerRecord;
   const int subIndex = static_cast<int>(blockIndex % kEntriesPerRecord);
-  if (recordIndex >= static_cast<quint64>(m_records.size())) {
+  if (recordIndex >= static_cast<quint64>(m_records.size()) / kRecordBytes) {
     return false;
   }
-  const OffsetRecord& record = m_records.at(static_cast<int>(recordIndex));
-  quint64 offset = record.baseOffset;
+  const char* record = m_records.constData() + recordIndex * kRecordBytes;
+  const auto blockSize = [record](int entry) {
+    return static_cast<quint64>(qFromBigEndian<quint16>(record + 8 + entry * 2)) + 1;
+  };
+  quint64 offset = qFromBigEndian<quint64>(record);
+  // The base offset comes from the file; check it before adding to it so it cannot wrap.
+  if (offset > m_dataSize) {
+    return false;
+  }
   for (int index = 0; index < subIndex; ++index) {
-    offset += static_cast<quint64>(record.sizes[index]) + 1;
+    offset += blockSize(index);
   }
-  const quint32 compressedSize = static_cast<quint32>(record.sizes[subIndex]) + 1;
-  if (offset + compressedSize > m_dataSize || !m_file.seek(static_cast<qint64>(m_dataOffset + offset))) {
+  const quint64 compressedSize = blockSize(subIndex);
+  if (offset > m_dataSize || compressedSize > m_dataSize - offset ||
+      !m_file.seek(static_cast<qint64>(m_dataOffset + offset))) {
     return false;
   }
-  const QByteArray raw = m_file.read(compressedSize);
-  if (static_cast<quint32>(raw.size()) != compressedSize) {
+  const QByteArray raw = m_file.read(static_cast<qint64>(compressedSize));
+  if (static_cast<quint64>(raw.size()) != compressedSize) {
     return false;
   }
   if (compressedSize == kBlockBytes) {
