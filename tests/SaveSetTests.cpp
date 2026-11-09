@@ -524,6 +524,27 @@ private slots:
     put(f.root + "/.restore/manifest.json", "{");
     QVERIFY(f.store.pending());
     QVERIFY(f.store.pendingAffects(f.home + "/other.gbc", f.layout));
+    const QString elsewhere = f.home + "/elsewhere/other.srm";
+    const auto journal = [&](const QJsonObject& scope, const QJsonArray& before) {
+      put(f.root + "/.restore/manifest.json",
+          QJsonDocument(QJsonObject{{"format", 2},
+                                    {"game", f.home + "/other.gbc"},
+                                    {"scope", scope},
+                                    {"before", before},
+                                    {"after", QJsonArray{}}})
+              .toJson());
+    };
+    const QJsonObject separate{{"files", QJsonArray{elsewhere}}, {"trees", QJsonArray{}}};
+    journal(separate, QJsonArray{QJsonObject{{"path", elsewhere}}});
+    QVERIFY(!f.store.pendingAffects(f.game, f.layout));
+    // Same file spelled differently still overlaps.
+    SaveLayout doubled{{f.home + "//elsewhere/./other.srm"}, {}, "Doubled slash", {}, false};
+    QVERIFY(f.store.pendingAffects(f.game, doubled));
+    // A scope with a missing list, or files recorded outside it, is not trusted.
+    journal(QJsonObject{{"files", QJsonArray{elsewhere}}}, QJsonArray{});
+    QVERIFY(f.store.pendingAffects(f.game, f.layout));
+    journal(separate, QJsonArray{QJsonObject{{"path", f.home + "/game.srm"}}});
+    QVERIFY(f.store.pendingAffects(f.game, f.layout));
     QString folder;
     QVERIFY(f.store.archiveRecovery(&folder, &f.error));
     QVERIFY(!f.store.pending());

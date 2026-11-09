@@ -706,19 +706,40 @@ bool SaveSetStore::pendingAffects(const QString& game, const SaveLayout& layout)
     return false;
   const auto m = json(m_root + "/.restore/manifest.json");
   const QString owner = m["game"].toString();
-  if (owner.isEmpty() || owner == game || !m["scope"].isObject() || !layout.valid())
-    return true;
   const auto journalScope = m["scope"].toObject();
-  QStringList journal;
-  for (const auto& list : {journalScope.value("files"), journalScope.value("trees")})
-    for (const auto& path : list.toArray())
-      journal << path.toString();
-  const QStringList launch = layout.files + layout.trees;
+  if (owner.isEmpty() || owner == game || !layout.valid() || !m["scope"].isObject() ||
+      !journalScope.value("files").isArray() || !journalScope.value("trees").isArray() ||
+      !m["before"].isArray() || !m["after"].isArray())
+    return true;
+  // Compare normalized absolute paths; anything else counts as overlapping.
+  const auto clean = [](const QJsonValue& value) {
+    const QString path = value.toString();
+    return value.isString() && QDir::isAbsolutePath(path) ? QDir::cleanPath(path) : QString();
+  };
+  QStringList files, trees, launch;
+  for (const auto& path : journalScope.value("files").toArray())
+    files << clean(path);
+  for (const auto& path : journalScope.value("trees").toArray())
+    trees << clean(path);
+  for (const auto& path : layout.files + layout.trees)
+    launch << clean(path);
+  const QStringList journal = files + trees;
   if (journal.isEmpty() || launch.isEmpty())
     return true;
+  // A journal whose recorded files fall outside its own scope cannot be trusted.
+  for (const auto& list : {m["before"], m["after"]})
+    for (const auto& entry : list.toArray()) {
+      const QString path = clean(entry.toObject().value("path"));
+      bool inside = !path.isEmpty() && files.contains(path);
+      for (const auto& tree : trees)
+        inside = inside || (!path.isEmpty() && path.startsWith(tree + '/'));
+      if (!inside)
+        return true;
+    }
   for (const auto& a : journal)
     for (const auto& b : launch)
-      if (a.isEmpty() || b.isEmpty() || a == b || a.startsWith(b + '/') || b.startsWith(a + '/'))
+      if (a.isEmpty() || b.isEmpty() || a == "/" || b == "/" || a == b ||
+          a.startsWith(b + '/') || b.startsWith(a + '/'))
         return true;
   return false;
 }
