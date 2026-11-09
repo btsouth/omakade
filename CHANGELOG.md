@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The app and package are about 80 MB smaller. Console cards are now bundled as 768x1152
+  WebP, only for consoles Omakade supports, instead of every full-size PNG master, and they
+  decode faster. The Nintendo DS card now shows its console art instead of a plain gradient.
 - A favorite now looks like one: the game details and Game Mode favorite button shows a
   filled accent heart with the selected fill and says FAVORITED, and screen readers hear it
   as checked. Library and Game Mode cards mark favorites with a filled heart on an accent

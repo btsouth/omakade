@@ -18,6 +18,8 @@ public:
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
   [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+  // The bundled card art for a console, as a qrc URL, or empty when the build has none.
+  [[nodiscard]] static QString coverUrl(const QString& systemId);
 
 private:
   struct Portal {

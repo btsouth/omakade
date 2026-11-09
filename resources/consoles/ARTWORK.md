@@ -1,6 +1,8 @@
 # Console artwork
 
-45 portrait PNGs, named after system IDs. All 15 current ConsoleCatalog systems have PNGs; 30 additional IDs reserve artwork for future catalog support. A file alone does not add scanning, launching, or a console card.
+45 portrait PNG masters, named after system IDs. 20 of the 21 ConsoleCatalog systems have one (`nds.png` is the master for the catalog's `ds`); PlayStation 5 has no artwork yet and its card shows a generated gradient. The other 25 masters reserve artwork for future catalog support. A file alone does not add scanning, launching, or a console card.
+
+The app bundles only the WebP cards in [cards](cards), not these masters. See [Bundled cards](#bundled-cards).
 
 ## Credits and license
 
@@ -8,7 +10,7 @@ Hardware photographs by [Evan-Amos](https://commons.wikimedia.org/wiki/User:Evan
 
 The Omakade PNGs are adaptations made using the built-in OpenAI image_gen tool. Changes include background replacement, lighting, composition, and portrait framing. They are illustrative covers based on hardware references, not archival product photographs.
 
-The adapted PNGs in this directory are offered under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). Where the original is public domain, that status remains unchanged; this license covers any copyrightable additions. Keep this attribution and license notice when redistributing the artwork. This notice applies to the PNG artwork, not the application code or pre-existing SVG files. Product names and marks belong to their respective owners; no endorsement is implied.
+The adapted PNGs in this directory, and the WebP cards made from them in `cards`, are offered under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). Where the original is public domain, that status remains unchanged; this license covers any copyrightable additions. Keep this attribution and license notice when redistributing the artwork. This notice applies to the PNG and WebP artwork, not the application code or pre-existing SVG files. Product names and marks belong to their respective owners; no endorsement is implied.
 
 ## Files
 
@@ -33,7 +35,7 @@ The adapted PNGs in this directory are offered under [CC BY-SA 3.0](https://crea
 | `intellivision` | Reserve | [Intellivision-Console-Set.jpg](https://commons.wikimedia.org/wiki/File:Intellivision-Console-Set.jpg) | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) |
 | `mastersystem` | Reserve | [Sega-Master-System-Set.jpg](https://commons.wikimedia.org/wiki/File:Sega-Master-System-Set.jpg) | Public domain (author dedication) |
 | `n64` | Current | [N64-Console-Set.png](https://commons.wikimedia.org/wiki/File:N64-Console-Set.png) | Public domain (author dedication) |
-| `nds` | Reserve | [Nintendo-DS-Lite-Black-Open.jpg](https://commons.wikimedia.org/wiki/File:Nintendo-DS-Lite-Black-Open.jpg) | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) |
+| `nds` (catalog `ds`) | Current | [Nintendo-DS-Lite-Black-Open.jpg](https://commons.wikimedia.org/wiki/File:Nintendo-DS-Lite-Black-Open.jpg) | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) |
 | `neogeo` | Reserve | [Neo-Geo-AES-Console-Set.jpg](https://commons.wikimedia.org/wiki/File:Neo-Geo-AES-Console-Set.jpg) | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) |
 | `neogeocd` | Reserve | [Neo-Geo-CD-TopLoader-wController-FL.jpg](https://commons.wikimedia.org/wiki/File:Neo-Geo-CD-TopLoader-wController-FL.jpg) | Public domain (author dedication) |
 | `nes` | Current | [NES-Console-Set.jpg](https://commons.wikimedia.org/wiki/File:NES-Console-Set.jpg) | Public domain (author dedication) |
@@ -42,9 +44,9 @@ The adapted PNGs in this directory are offered under [CC BY-SA 3.0](https://crea
 | `pcengine` | Reserve | [PC-Engine-Console-Set.jpg](https://commons.wikimedia.org/wiki/File:PC-Engine-Console-Set.jpg) | Public domain (author dedication) |
 | `pcenginecd` | Reserve | [NEC-TurboDuo-Console-wController-L.jpg](https://commons.wikimedia.org/wiki/File:NEC-TurboDuo-Console-wController-L.jpg) | Public domain (author dedication) |
 | `ps2` | Current | [Sony-PlayStation-2-30001-wController-L.jpg](https://commons.wikimedia.org/wiki/File:Sony-PlayStation-2-30001-wController-L.jpg) | Public domain (author dedication) |
-| `ps3` | Reserve | [Sony-PlayStation-3-CECHA01-wController-L.jpg](https://commons.wikimedia.org/wiki/File:Sony-PlayStation-3-CECHA01-wController-L.jpg) | Public domain (author dedication) |
+| `ps3` | Current | [Sony-PlayStation-3-CECHA01-wController-L.jpg](https://commons.wikimedia.org/wiki/File:Sony-PlayStation-3-CECHA01-wController-L.jpg) | Public domain (author dedication) |
 | `ps4` | Current | [Sony-PlayStation-4-wController.jpg](https://commons.wikimedia.org/wiki/File:Sony-PlayStation-4-wController.jpg) | Public domain (author dedication) |
-| `psp` | Reserve | [Psp-1000.jpg](https://commons.wikimedia.org/wiki/File:Psp-1000.jpg) | Public domain (author dedication) |
+| `psp` | Current | [Psp-1000.jpg](https://commons.wikimedia.org/wiki/File:Psp-1000.jpg) | Public domain (author dedication) |
 | `psvita` | Reserve | [PlayStation-Vita-1101-FL.jpg](https://commons.wikimedia.org/wiki/File:PlayStation-Vita-1101-FL.jpg) | Public domain (author dedication) |
 | `psx` | Current | [PlayStation-SCPH-1000-with-Controller.jpg](https://commons.wikimedia.org/wiki/File:PlayStation-SCPH-1000-with-Controller.jpg) | Public domain (author dedication) |
 | `saturn` | Reserve | [Sega-Saturn-Console-Set-Mk2.jpg](https://commons.wikimedia.org/wiki/File:Sega-Saturn-Console-Set-Mk2.jpg) | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) |
@@ -57,8 +59,8 @@ The adapted PNGs in this directory are offered under [CC BY-SA 3.0](https://crea
 | `wii` | Current | [Wii-console.jpg](https://commons.wikimedia.org/wiki/File:Wii-console.jpg) | Public domain (author dedication) |
 | `wiiu` | Current | [Nintendo-Wii-U-Console-FL.jpg](https://commons.wikimedia.org/wiki/File:Nintendo-Wii-U-Console-FL.jpg) | Public domain (author dedication) |
 | `wonderswancolor` | Reserve | [WonderSwan-Color-Blue-Left.jpg](https://commons.wikimedia.org/wiki/File:WonderSwan-Color-Blue-Left.jpg) | Public domain (author dedication) |
-| `xbox` | Reserve | [Xbox-console.jpg](https://commons.wikimedia.org/wiki/File:Xbox-console.jpg) | Public domain (author dedication) |
-| `xbox360` | Reserve | [Microsoft-Xbox-360-Pro-Flat-wController-L.jpg](https://commons.wikimedia.org/wiki/File:Microsoft-Xbox-360-Pro-Flat-wController-L.jpg) | Public domain (author dedication) |
+| `xbox` | Current | [Xbox-console.jpg](https://commons.wikimedia.org/wiki/File:Xbox-console.jpg) | Public domain (author dedication) |
+| `xbox360` | Current | [Microsoft-Xbox-360-Pro-Flat-wController-L.jpg](https://commons.wikimedia.org/wiki/File:Microsoft-Xbox-360-Pro-Flat-wController-L.jpg) | Public domain (author dedication) |
 
 `pcenginecd` depicts the TurboDuo, the combined cartridge/CD system. `segacd` and `sega32x` depict the respective add-on attached to a Genesis Model 2. Regional hardware variants are intentional.
 
@@ -66,4 +68,14 @@ The adapted PNGs in this directory are offered under [CC BY-SA 3.0](https://crea
 
 One reference-based generation per asset, with rejected drafts kept outside this directory. The prompt set and source mapping are in [GENERATION.json](GENERATION.json). Review covers at both full resolution and the app card size. Small printed lettering is illustrative; the review focuses on recognizable casing, controls, ports, and the absence of invented accessories.
 
-The build uses the existing CMake image glob. PNGs take precedence over JPG and SVG in ConsolePortalModel. No source change is needed to bundle these files.
+## Bundled cards
+
+The masters are 1024x1536 and about 2 MB each, so the build does not bundle them. It bundles `cards/<id>.webp`, one 768x1152 WebP per ConsoleCatalog system, the size of the largest card Omakade draws (the Game Mode cover on a 4K screen). ConsolePortalModel looks up `:/consoles/<id>.webp`, and a test checks that every catalog console has a card that decodes and that the cards stay under 12 MB together.
+
+After adding or changing a master, or adding a console to ConsoleCatalog, regenerate the cards with Pillow (with WebP support) installed:
+
+```bash
+python3 scripts/generate-console-cards.py
+```
+
+The script reads the catalog IDs from `src/library/ConsoleCatalog.cpp`, writes a card for each one that has a master, removes cards for IDs no longer in the catalog, and names any catalog console without a master. Commit the cards with the master.

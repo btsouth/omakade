@@ -26,14 +26,15 @@ qt_add_resources(omakade "omakade_ui_icons"
   FILES ${omakade_ui_icons}
 )
 
-# Console card art: any PNG, JPG, or SVG dropped into resources/consoles named
-# after a ConsoleCatalog id (snes.png, n64.svg, ...) is bundled automatically.
-file(GLOB omakade_console_art CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_LIST_DIR}/consoles/*.png"
-  "${CMAKE_CURRENT_LIST_DIR}/consoles/*.jpg"
-  "${CMAKE_CURRENT_LIST_DIR}/consoles/*.svg")
-qt_add_resources(omakade "omakade_consoles"
-  PREFIX "/consoles"
-  BASE "${CMAKE_CURRENT_LIST_DIR}/consoles"
-  FILES ${omakade_console_art}
-)
+# Console card art: the WebP cards in resources/consoles/cards, one per ConsoleCatalog id,
+# written from the PNG masters by scripts/generate-console-cards.py. The masters are not
+# bundled. A function so the console art test bundles exactly the same files.
+function(omakade_add_console_art target)
+  file(GLOB console_art CONFIGURE_DEPENDS "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/consoles/cards/*.webp")
+  qt_add_resources(${target} "omakade_consoles"
+    PREFIX "/consoles"
+    BASE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/consoles/cards"
+    FILES ${console_art}
+  )
+endfunction()
+omakade_add_console_art(omakade)
