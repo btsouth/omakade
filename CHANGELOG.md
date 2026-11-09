@@ -3,7 +3,8 @@
 ## Unreleased
 
 - OmaStore installs can now use the controller Home button. OmaStore sets up its service,
-  which stays off until it is turned on in Settings > Controls.
+  which stays off until it is turned on in Settings > Controls. Its service starts before
+  Hyprland at login, so it usually needs turning off and on again after each login.
 - The installed `omakade-sessiond` and `omakade-guide-button` user services now start the
   binaries from the install prefix, so a build installed under `/usr/local` no longer looks
   for them in `/usr/bin`.

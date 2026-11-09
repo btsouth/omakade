@@ -23,7 +23,10 @@ enable = true
 start = true
 restart = "on-failure"
 
-# The controller Home button stays off until it is turned on in Settings > Controls.
+# The controller Home button stays off until it is turned on in Settings > Controls. Once on,
+# it usually starts before Hyprland at login and stops; restarting does not help because the
+# session starts Hyprland later, so it has to be turned off and on again after each login.
+# restart stays on-failure so a crash later in the session is still recovered.
 [services.guide-button]
 type = "systemd-user"
 unit = "omakade-guide-button.service"
