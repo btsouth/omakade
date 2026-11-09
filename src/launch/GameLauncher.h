@@ -62,6 +62,24 @@ public:
   Q_INVOKABLE qint64 lastLaunchedPid() const { return m_lastLaunchedPid; }
   // Starts a detached process and follows it through gameRunning() until it exits.
   bool startTracked(const LaunchCommand& command, const QString& workingDirectory = {});
+  // Games Omakade starts itself, whose own process is the game: emulators, manual games,
+  // Kyty, native ports and GOG games run through Wine or Proton. Their output goes to a
+  // log, and closing right after starting is reported. Launchers that hand the game off,
+  // such as Steam, Heroic, Lutris or Faugus, are not.
+  [[nodiscard]] static bool watchesEarlyExit(const QString& source);
+  // Where a game's output is kept: one log per game under the state folder, appended at
+  // each launch and cut to its newest part once it grows past kLaunchLogCap.
+  [[nodiscard]] static QString launchLogDirectory();
+  [[nodiscard]] static QString launchLogPath(const QString& source, const QString& appId);
+  static constexpr qint64 kLaunchLogCap = 2 * 1024 * 1024;
+  // Keeps the newest half of a log above the cap, from a line start. True when it cut.
+  static bool trimLaunchLog(const QString& path, qint64 cap = kLaunchLogCap);
+  Q_INVOKABLE bool openLaunchLog(const QString& path) const;
+  // How soon after it starts a game's exit counts as closing right away.
+  void setEarlyExitWindow(int milliseconds) { m_earlyExitWindowMs = milliseconds; }
+  // Removes MangoHud settings left by games that are no longer running, such as after
+  // Omakade was closed during a game. Returns how many were removed.
+  static int sweepStaleMangoConfigs();
   [[nodiscard]] static LaunchCommand lutrisCommand(const QString& id, bool flatpak);
   [[nodiscard]] static LaunchCommand heroicCommand(const QString& id, const QString& runner,
                                                    bool flatpak);
@@ -130,6 +148,9 @@ signals:
   void lastErrorChanged();
   void setupChanged();
   void gameRunningChanged();
+  // A game in watchesEarlyExit() closed within the early exit window. `game` carries its
+  // source, appId and path, and logPath when its output was kept.
+  void gameClosedEarly(const QVariantMap& game);
 
 private:
   struct EmulatorPlan {
@@ -170,13 +191,16 @@ private:
   void setError(const QString& error);
   bool startCommand(const LaunchCommand& command, bool track, const QString& workingDirectory = {},
                     const QProcessEnvironment& environment = QProcessEnvironment());
-  void trackProcess(qint64 pid);
+  void trackProcess(qint64 pid, bool watchEarlyExit, const QString& logPath);
   void pollTrackedProcesses();
   struct TrackedProcess {
     qint64 pid = 0;
     qint64 startTime = -1;
     QVariantMap installation;
     qint64 startedAt = 0;
+    qint64 startedMs = 0;
+    QString logPath;
+    bool watchEarlyExit = false;
   };
   SaveBackups* m_saveBackups = nullptr;
   QString m_lastError;
@@ -188,5 +212,6 @@ private:
   QList<TrackedProcess> m_trackedProcesses;
   QVariantMap m_launchIdentity;
   qint64 m_lastLaunchedPid = 0;
+  int m_earlyExitWindowMs = 5000;
   QTimer m_trackTimer;
 };

@@ -511,6 +511,28 @@ auto redirectPath(const QString& path) {
   });
 }
 
+auto redirectVariable(const char* name, const QByteArray& value) {
+  const bool wasSet = qEnvironmentVariableIsSet(name);
+  const QByteArray previous = qgetenv(name);
+  qputenv(name, value);
+  return qScopeGuard([name, wasSet, previous] {
+    if (wasSet) {
+      qputenv(name, previous);
+    } else {
+      qunsetenv(name);
+    }
+  });
+}
+
+// A manual game entry that runs `script` from `directory`.
+QString manualLaunchTarget(const QString& id, const QString& script, const QString& directory) {
+  return QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("id"), id},
+                                                     {QStringLiteral("executable"), script},
+                                                     {QStringLiteral("directory"), directory},
+                                                     {QStringLiteral("arguments"), QJsonArray{}}})
+                               .toJson(QJsonDocument::Compact));
+}
+
 QByteArray sampleTheme(const QByteArray& accent = "#7aa2f7") {
   return "mode = \"dark\"\n"
          "accent = \"" +
@@ -1102,6 +1124,9 @@ private slots:
   void organizationPersistsAndFilters();
   void lutrisLauncherBuildsSafeCommands();
   void launcherTracksRunningGames();
+  void launcherReportsGamesThatCloseRightAway();
+  void launchLogKeepsNewestOutputUnderCap();
+  void staleMangoConfigsAreSweptOnlyWhenUnused();
   void heroicScannerImportsEpicGogAndAmazon();
   void heroicOwnedLibrariesImportWithoutInstalledInventories();
   void heroicOwnedAvailabilityPersistsAndTracksUninstall();
@@ -3686,6 +3711,185 @@ void CoreTests::launcherTracksRunningGames() {
   QCOMPARE(running.count(), 1);  // A second game does not toggle the flag.
   QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 10000);
   QCOMPARE(running.count(), 2);
+}
+
+void CoreTests::launcherReportsGamesThatCloseRightAway() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const auto state = redirectVariable("XDG_STATE_HOME", directory.filePath("state").toUtf8());
+  const auto data = redirectVariable("XDG_DATA_HOME", directory.filePath("data").toUtf8());
+  // A stand-in MangoHud, so the launch writes the per-launch settings it would use.
+  const QString mangohud = directory.filePath("bin/mangohud");
+  writeFile(mangohud, "#!/bin/sh\nexec \"$@\"\n");
+  QVERIFY(QFile::setPermissions(mangohud, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto path = redirectPath(directory.filePath("bin") + QLatin1Char(':') + qEnvironmentVariable("PATH"));
+
+  QVERIFY(GameLauncher::watchesEarlyExit(QStringLiteral("Manual")));
+  QVERIFY(GameLauncher::watchesEarlyExit(QStringLiteral("Ports")));
+  QVERIFY(GameLauncher::watchesEarlyExit(QStringLiteral("RetroArch")));
+  QVERIFY(GameLauncher::watchesEarlyExit(QStringLiteral("GOG")));
+  for (const QString& handoff : {QStringLiteral("Steam"), QStringLiteral("Heroic"), QStringLiteral("Lutris"),
+                                 QStringLiteral("Faugus"), QStringLiteral("Xodus Nexus"),
+                                 QStringLiteral("Battle.net"), QString{}})
+    QVERIFY2(!GameLauncher::watchesEarlyExit(handoff), qPrintable(handoff));
+
+  const QString script = directory.filePath("closes-fast.sh");
+  writeFile(script, "#!/bin/sh\necho 'starting up'\necho 'missing library' >&2\nsleep 0.4\nexit 3\n");
+  QVERIFY(QFile::setPermissions(script, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const QString id = QStringLiteral("closes-fast");
+  const QString target = manualLaunchTarget(id, script, directory.path());
+  const QString log = GameLauncher::launchLogPath(QStringLiteral("Manual"), id);
+  QVERIFY(log.startsWith(directory.filePath("state")));
+
+  GameLauncher launcher;
+  QSignalSpy closed(&launcher, &GameLauncher::gameClosedEarly);
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), id, false, {}, {}, target));
+  QCOMPARE(launcher.trackedGames().size(), 1);
+  const QString socket = launcher.trackedGames().first().toMap().value("mangoSocket").toString();
+  QVERIFY(!socket.isEmpty());
+  QString config;
+  QDirIterator configs(directory.filePath("data"), {socket + QStringLiteral(".conf")}, QDir::Files,
+                       QDirIterator::Subdirectories);
+  if (configs.hasNext()) config = configs.next();
+  QVERIFY2(!config.isEmpty(), "The launch wrote no MangoHud settings");
+
+  QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 1, 5000);
+  const QVariantMap game = closed.first().first().toMap();
+  QCOMPARE(game.value("source").toString(), QStringLiteral("Manual"));
+  QCOMPARE(game.value("appId").toString(), id);
+  QCOMPARE(game.value("logPath").toString(), log);
+  QVERIFY(!launcher.gameRunning());
+  QVERIFY2(!QFileInfo::exists(config), "MangoHud settings outlived the game");
+  const auto readLog = [&log] {
+    QFile file(log);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
+  };
+  QByteArray output = readLog();
+  QVERIFY(output.contains("Omakade started: " + script.toUtf8()));
+  QVERIFY(output.contains("starting up\n"));
+  QVERIFY(output.contains("missing library\n"));
+  QCOMPARE(QFileInfo(log).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup |
+                                           QFile::WriteOther),
+           QFile::Permissions{});
+
+  // A game that runs past the window is not reported, and its next run appends to the log.
+  launcher.setEarlyExitWindow(200);
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), id, false, {}, {}, target));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QCOMPARE(closed.count(), 1);
+  output = readLog();
+  QCOMPARE(output.count("Omakade started: "), 2);
+  QCOMPARE(output.count("missing library\n"), 2);
+
+  // Something that is not a game Omakade runs itself, such as a launcher handing off, is not.
+  launcher.setEarlyExitWindow(5000);
+  QVERIFY(launcher.startTracked(LaunchCommand{QStringLiteral("sleep"), {QStringLiteral("0.2")}}));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 1);
+
+  // A game that is gone before Omakade can follow it is reported too.
+  const QString instant = directory.filePath("exits.sh");
+  writeFile(instant, "#!/bin/sh\nexit 1\n");
+  QVERIFY(QFile::setPermissions(instant, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("exits"), false, {}, {},
+                          manualLaunchTarget(QStringLiteral("exits"), instant, directory.path())));
+  QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 2, 5000);
+  QCOMPARE(closed.last().first().toMap().value("appId").toString(), QStringLiteral("exits"));
+}
+
+void CoreTests::launchLogKeepsNewestOutputUnderCap() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath("game.log");
+  QByteArray contents;
+  for (int line = 0; line < 1000; ++line) contents += "line " + QByteArray::number(line) + '\n';
+  writeFile(path, contents);
+  QVERIFY(!GameLauncher::trimLaunchLog(path, contents.size()));
+  QCOMPARE(QFileInfo(path).size(), contents.size());
+  QVERIFY(!GameLauncher::trimLaunchLog(directory.filePath("missing.log"), 10));
+
+  QVERIFY(GameLauncher::trimLaunchLog(path, 4096));
+  const auto readAll = [](const QString& file) {
+    QFile input(file);
+    return input.open(QIODevice::ReadOnly) ? input.readAll() : QByteArray{};
+  };
+  const QByteArray trimmed = readAll(path);
+  QVERIFY(trimmed.size() <= 4096);
+  QVERIFY(trimmed.startsWith("--- Omakade removed older output"));
+  // The newest output is kept, from the start of a line.
+  const QByteArray kept = trimmed.mid(trimmed.indexOf('\n') + 1);
+  QVERIFY(kept.size() > 1000);
+  QVERIFY(kept.startsWith("line "));
+  QVERIFY(contents.endsWith(kept));
+
+  // Omakade cuts a running game's log as it polls, and a large log at the next launch.
+  const auto state = redirectVariable("XDG_STATE_HOME", directory.filePath("state").toUtf8());
+  const QString script = directory.filePath("noisy.sh");
+  writeFile(script, "#!/bin/sh\nyes 'a noisy line of game output' | head -c 3000000\nsleep 1.5\n");
+  QVERIFY(QFile::setPermissions(script, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const QString id = QStringLiteral("noisy");
+  const QString log = GameLauncher::launchLogPath(QStringLiteral("Manual"), id);
+  GameLauncher launcher;
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), id, false, {}, {},
+                          manualLaunchTarget(id, script, directory.path())));
+  QTRY_VERIFY_WITH_TIMEOUT(readAll(log).startsWith("--- Omakade removed older output"), 5000);
+  QVERIFY(QFileInfo(log).size() <= GameLauncher::kLaunchLogCap);
+  QVERIFY(readAll(log).contains("a noisy line of game output\n"));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+
+  QByteArray large(3 * 1024 * 1024, 'x');
+  for (qsizetype at = 99; at < large.size(); at += 100) large[at] = '\n';
+  writeFile(log, large);
+  const QString quiet = directory.filePath("quiet.sh");
+  writeFile(quiet, "#!/bin/sh\necho done\n");
+  QVERIFY(QFile::setPermissions(quiet, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), id, false, {}, {},
+                          manualLaunchTarget(id, quiet, directory.path())));
+  QVERIFY(QFileInfo(log).size() <= GameLauncher::kLaunchLogCap);
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+}
+
+void CoreTests::staleMangoConfigsAreSweptOnlyWhenUnused() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const auto data = redirectVariable("XDG_DATA_HOME", directory.filePath("data").toUtf8());
+  const QString folder =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/guide-mangohud");
+  QVERIFY(folder.startsWith(directory.filePath("data")));
+  QCOMPARE(GameLauncher::sweepStaleMangoConfigs(), 0);
+  const QDateTime old = QDateTime::currentDateTime().addSecs(-3600);
+  const auto write = [&folder](const QString& name, const QDateTime& modified) {
+    const QString config = folder + QLatin1Char('/') + name;
+    writeFile(config, "no_display\n");
+    QFile file(config);
+    if (modified.isValid() && (!file.open(QIODevice::ReadWrite) ||
+                               !file.setFileTime(modified, QFileDevice::FileModificationTime)))
+      return QString{};
+    return config;
+  };
+  const QString stale = write(QStringLiteral("omakade-stale.conf"), old);
+  const QString live = write(QStringLiteral("omakade-live.conf"), old);
+  const QString fresh = write(QStringLiteral("omakade-fresh.conf"), {});
+  const QString other = write(QStringLiteral("someone-else.conf"), old);
+  QVERIFY(!stale.isEmpty() && !live.isEmpty() && !fresh.isEmpty() && !other.isEmpty());
+
+  // A game still running from an earlier session keeps its settings.
+  QProcess game;
+  auto environment = QProcessEnvironment::systemEnvironment();
+  environment.insert(QStringLiteral("MANGOHUD_CONFIGFILE"), live);
+  game.setProcessEnvironment(environment);
+  game.start(QStringLiteral("sleep"), {QStringLiteral("30")});
+  QVERIFY(game.waitForStarted());
+  const auto stop = qScopeGuard([&game] {
+    game.kill();
+    game.waitForFinished();
+  });
+  QCOMPARE(GameLauncher::sweepStaleMangoConfigs(), 1);
+  QVERIFY(!QFileInfo::exists(stale));
+  QVERIFY(QFileInfo::exists(live));
+  QVERIFY(QFileInfo::exists(fresh));
+  QVERIFY(QFileInfo::exists(other));
 }
 
 void CoreTests::lutrisLauncherBuildsSafeCommands() {

@@ -10,6 +10,7 @@
 #include "sources/battlenet/BattleNetScanner.h"
 #include "sources/heroic/HeroicScanner.h"
 
+#include <QCryptographicHash>
 #include <QDesktopServices>
 #include <QDateTime>
 #include <QScopeGuard>
@@ -20,6 +21,7 @@
 #include <QProcessEnvironment>
 #include "guide/GuideActions.h"
 #include <QSaveFile>
+#include <QSet>
 #include <QSettings>
 #include <QUuid>
 #include <QRegularExpression>
@@ -324,7 +326,125 @@ qint64 processStartTime(qint64 pid) {
   return okay ? startTime : -1;
 }
 
+QString mangoDirectory() {
+  return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+         QStringLiteral("/guide-mangohud");
+}
+
+// The MangoHud settings one launch wrote, named after the control socket it recorded.
+void removeMangoConfig(const QVariantMap& identity) {
+  const QString socket = identity.value(QStringLiteral("mangoSocket")).toString();
+  if (!socket.startsWith(QStringLiteral("omakade-")) || socket.contains(QLatin1Char('/'))) return;
+  QFile::remove(mangoDirectory() + QLatin1Char('/') + socket + QStringLiteral(".conf"));
+}
+
+// Readies a game's log for this launch: cuts it if it grew too large, keeps it private and
+// marks where this run's output begins. Empty when the log cannot be written.
+QString prepareLaunchLog(const QString& source, const QString& appId, const LaunchCommand& command) {
+  const QString directory = GameLauncher::launchLogDirectory();
+  if (!QDir().mkpath(directory)) return {};
+  QFile::setPermissions(directory, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+  const QString path = GameLauncher::launchLogPath(source, appId);
+  GameLauncher::trimLaunchLog(path);
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) return {};
+  file.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
+  static const QRegularExpression space(QStringLiteral("\\s"));
+  QStringList words{command.program};
+  words.append(command.arguments);
+  for (QString& word : words) {
+    if (word.isEmpty() || word.contains(space)) word = QLatin1Char('"') + word + QLatin1Char('"');
+  }
+  const QByteArray header = "\n--- " +
+                            QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8() +
+                            " Omakade started: " + words.join(QLatin1Char(' ')).toUtf8() + " ---\n";
+  return file.write(header) == header.size() ? path : QString{};
+}
+
+QVariantMap earlyExitGame(const QVariantMap& identity, const QString& logPath) {
+  QVariantMap game{{QStringLiteral("source"), identity.value(QStringLiteral("source"))},
+                   {QStringLiteral("appId"), identity.value(QStringLiteral("appId"))},
+                   {QStringLiteral("path"), identity.value(QStringLiteral("path"))}};
+  if (!logPath.isEmpty()) game.insert(QStringLiteral("logPath"), logPath);
+  return game;
+}
+
 }  // namespace
+
+bool GameLauncher::watchesEarlyExit(const QString& source) {
+  return isDirectSourceName(source) || isEmulatorSourceName(source) ||
+         source == QLatin1String("Xenia") || source == QLatin1String("GOG");
+}
+
+QString GameLauncher::launchLogDirectory() {
+  return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation)) +
+         QStringLiteral("/omakade/launch-logs");
+}
+
+QString GameLauncher::launchLogPath(const QString& source, const QString& appId) {
+  static const QRegularExpression unsafe(QStringLiteral("[^a-z0-9]+"));
+  QString name = source.toLower().replace(unsafe, QStringLiteral("-"));
+  while (name.startsWith(QLatin1Char('-'))) name.remove(0, 1);
+  while (name.endsWith(QLatin1Char('-'))) name.chop(1);
+  if (name.isEmpty()) name = QStringLiteral("game");
+  const QByteArray hash = QCryptographicHash::hash((source + QLatin1Char('\n') + appId).toUtf8(),
+                                                   QCryptographicHash::Sha256)
+                              .toHex()
+                              .left(16);
+  return launchLogDirectory() + QLatin1Char('/') + name + QLatin1Char('-') +
+         QString::fromLatin1(hash) + QStringLiteral(".log");
+}
+
+bool GameLauncher::trimLaunchLog(const QString& path, qint64 cap) {
+  QFile file(path);
+  if (cap <= 0 || !file.exists() || file.size() <= cap) return false;
+  if (!file.open(QIODevice::ReadWrite)) return false;
+  // The game appends after whatever this leaves, so its newest output stays last.
+  const qint64 keep = cap / 2;
+  if (!file.seek(file.size() - keep)) return false;
+  QByteArray tail = file.read(keep);
+  const qsizetype lineStart = tail.indexOf('\n');
+  if (lineStart >= 0) tail.remove(0, lineStart + 1);
+  tail.prepend("--- Omakade removed older output to keep this log small ---\n");
+  return file.resize(0) && file.seek(0) && file.write(tail) == tail.size();
+}
+
+bool GameLauncher::openLaunchLog(const QString& path) const {
+  const QFileInfo log(path);
+  if (!log.isFile() || QDir::cleanPath(log.absolutePath()) != launchLogDirectory()) return false;
+  return QDesktopServices::openUrl(QUrl::fromLocalFile(log.absoluteFilePath()));
+}
+
+int GameLauncher::sweepStaleMangoConfigs() {
+  const QFileInfoList configs =
+      QDir(mangoDirectory()).entryInfoList({QStringLiteral("omakade-*.conf")}, QDir::Files);
+  if (configs.isEmpty()) return 0;
+  // A game keeps the path in its environment for as long as it runs.
+  QSet<QString> inUse;
+  const QByteArray key = "MANGOHUD_CONFIGFILE=";
+  const QStringList processes =
+      QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+  for (const QString& pid : processes) {
+    if (pid.isEmpty() || !pid.front().isDigit()) continue;
+    QFile environment(QStringLiteral("/proc/") + pid + QStringLiteral("/environ"));
+    if (!environment.open(QIODevice::ReadOnly)) continue;
+    const QList<QByteArray> entries = environment.read(1024 * 1024).split('\0');
+    for (const QByteArray& entry : entries) {
+      if (entry.startsWith(key))
+        inUse.insert(QDir::cleanPath(QString::fromLocal8Bit(entry.mid(key.size()))));
+    }
+  }
+  // A game starting right now may not have its process yet.
+  const QDateTime settled = QDateTime::currentDateTime().addSecs(-60);
+  int removed = 0;
+  for (const QFileInfo& config : configs) {
+    if (inUse.contains(QDir::cleanPath(config.absoluteFilePath())) ||
+        config.lastModified() > settled)
+      continue;
+    if (QFile::remove(config.absoluteFilePath())) ++removed;
+  }
+  return removed;
+}
 
 bool GameLauncher::gameRunning() const {
   return !m_trackedProcesses.isEmpty();
@@ -345,6 +465,15 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   }
   auto launchEnvironment = environment.isEmpty() ? QProcessEnvironment::systemEnvironment() : environment;
   const auto source = m_launchIdentity.value("source").toString();
+  const bool watchEarlyExit = track && watchesEarlyExit(source);
+  QString logPath;
+  if (watchEarlyExit) {
+    logPath = prepareLaunchLog(source, m_launchIdentity.value("appId").toString(), command);
+    if (!logPath.isEmpty()) {
+      process.setStandardOutputFile(logPath, QIODevice::Append);
+      process.setStandardErrorFile(logPath, QIODevice::Append);
+    }
+  }
   if (track && (isDirectSourceName(source) || isEmulatorSourceName(source)) && !QStandardPaths::findExecutable("mangohud").isEmpty()) {
     const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/guide-mangohud";
     const auto socket = "omakade-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -362,22 +491,33 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   process.setProcessEnvironment(launchEnvironment);
   qint64 pid = 0;
   if (!process.startDetached(&pid)) {
+    removeMangoConfig(m_launchIdentity);
+    m_launchIdentity.remove("mangoSocket");
     return false;
   }
   m_lastLaunchedPid = pid;
   if (track && pid > 0) {
-    trackProcess(pid);
+    trackProcess(pid, watchEarlyExit, logPath);
   }
   return true;
 }
 
-void GameLauncher::trackProcess(qint64 pid) {
+void GameLauncher::trackProcess(qint64 pid, bool watchEarlyExit, const QString& logPath) {
   const qint64 startTime = processStartTime(pid);
   if (startTime < 0) {
-    return;  // Already gone: a launcher stub that handed off and exited.
+    // Already gone. A game Omakade runs itself closed at once; anything else was a
+    // launcher stub that handed the game off and exited.
+    removeMangoConfig(m_launchIdentity);
+    if (watchEarlyExit) {
+      QMetaObject::invokeMethod(
+          this, [this, game = earlyExitGame(m_launchIdentity, logPath)] { emit gameClosedEarly(game); },
+          Qt::QueuedConnection);
+    }
+    return;
   }
   const bool wasRunning = gameRunning();
-  m_trackedProcesses.append({pid, startTime, m_launchIdentity, QDateTime::currentSecsSinceEpoch()});
+  m_trackedProcesses.append({pid, startTime, m_launchIdentity, QDateTime::currentSecsSinceEpoch(),
+                             QDateTime::currentMSecsSinceEpoch(), logPath, watchEarlyExit});
   if (!m_trackTimer.isActive()) {
     m_trackTimer.start();
   }
@@ -401,15 +541,30 @@ QVariantList GameLauncher::trackedGames() const {
 
 void GameLauncher::pollTrackedProcesses() {
   const bool wasRunning = gameRunning();
-  const auto removed = m_trackedProcesses.removeIf([](const TrackedProcess& process) {
-    return processStartTime(process.pid) != process.startTime;
+  const qint64 now = QDateTime::currentMSecsSinceEpoch();
+  QList<TrackedProcess> ended;
+  m_trackedProcesses.removeIf([&ended](const TrackedProcess& process) {
+    if (processStartTime(process.pid) == process.startTime) return false;
+    ended.append(process);
+    return true;
   });
-  if (removed > 0) repairRetroArchHome();
+  for (const auto& process : std::as_const(m_trackedProcesses)) {
+    if (!process.logPath.isEmpty()) trimLaunchLog(process.logPath);
+  }
+  for (const auto& process : std::as_const(ended)) {
+    if (!process.logPath.isEmpty()) trimLaunchLog(process.logPath);
+    removeMangoConfig(process.installation);
+  }
+  if (!ended.isEmpty()) repairRetroArchHome();
   if (m_trackedProcesses.isEmpty()) {
     m_trackTimer.stop();
   }
   if (wasRunning != gameRunning()) {
     emit gameRunningChanged();
+  }
+  for (const auto& process : std::as_const(ended)) {
+    if (process.watchEarlyExit && now - process.startedMs <= m_earlyExitWindowMs)
+      emit gameClosedEarly(earlyExitGame(process.installation, process.logPath));
   }
 }
 
