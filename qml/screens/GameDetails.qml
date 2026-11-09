@@ -1183,7 +1183,7 @@ Item {
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
                             font.pixelSize: UiMetrics.label
-                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(76)
+                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(90)
                             Layout.columnSpan: statusLayout.columns === 2 ? 2 : 1
                         }
                         Repeater {
@@ -1216,7 +1216,7 @@ Item {
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
                             font.pixelSize: UiMetrics.label
-                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(76)
+                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(90)
                         }
                         TextField {
                             id: tagsField
@@ -1281,7 +1281,7 @@ Item {
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
                             font.pixelSize: UiMetrics.label
-                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(76)
+                            Layout.preferredWidth: statusLayout.columns === 1 ? -1 : UiMetrics.scaled(90)
                         }
                         ScrollView {
                             Layout.fillWidth: true
@@ -1349,7 +1349,7 @@ Item {
                             color: Theme.mutedText
                             font.family: Theme.fontFamily
                             font.pixelSize: UiMetrics.label
-                            Layout.preferredWidth: UiMetrics.scaled(76)
+                            Layout.preferredWidth: UiMetrics.scaled(90)
                             Layout.columnSpan: collectionEditor.columns === 2 ? 2 : 1
                         }
                         TextField {
@@ -1549,7 +1549,7 @@ Item {
                     }
                 }
 
-                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; visible: root.shownReviewReasons.length > 0; text: "Needs review: " + root.shownReviewReasons.map(reason => reason.label).join(", "); color: Theme.mutedText }
+                Text { Layout.fillWidth: true; wrapMode: Text.Wrap; visible: root.shownReviewReasons.length > 0; text: "Needs review: " + root.shownReviewReasons.map(reason => reason.label).join(", "); color: Theme.mutedText; font.family: Theme.fontFamily; font.pixelSize: UiMetrics.supporting }
                 LaunchSetupPanel {
                     id: launchSetup
                     Layout.fillWidth: true

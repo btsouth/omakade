@@ -3418,6 +3418,7 @@ ApplicationWindow {
         width: Math.min(540, root.width - 48)
         initialFocus: allSourcesButton
         Text {
+            font.pixelSize: UiMetrics.supporting
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             text: "Select a source. Shift+Enter or the controller favorite button adds or removes a source."

@@ -23,7 +23,7 @@ ColumnLayout {
         Layout.fillWidth: true
         visible: root.expanded
         spacing: 10
-        Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.mutedText; text: "Browse RomM games from a locally mounted library. Use a Client API Token with roms.read access. Omakade never downloads or changes server files." }
+        Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.mutedText; text: "Browse RomM games from a locally mounted library. Use a Client API Token with roms.read access. Omakade never downloads or changes server files."; font.pixelSize: UiMetrics.supporting }
         ThemedTextField {
             id: server; objectName: "rommServerField"; Layout.fillWidth: true
             text: Preferences.rommUrl; placeholderText: "https://romm.example"; Accessible.name: "RomM server address"
@@ -36,6 +36,7 @@ ColumnLayout {
             onTextChanged: root.confirmHttp = false
         }
         Text {
+            font.pixelSize: UiMetrics.supporting
             objectName: "rommTransport"; Layout.fillWidth: true; wrapMode: Text.Wrap
             color: server.text.trim().toLowerCase().startsWith("https:") ? Theme.mutedText : Theme.yellow
             text: { Preferences.rommUrl; Preferences.rommHttpApproved; return root.service ? root.service.transportText(server.text) : "" }
@@ -74,15 +75,15 @@ ColumnLayout {
         }
         ColumnLayout {
             objectName: "rommHttpConfirmation"; Layout.fillWidth: true; spacing: 8; visible: root.confirmHttp
-            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.yellow; text: "This server uses plain HTTP and is not on your local network. Anyone on the network path could read your RomM token. Use https if the server supports it." }
+            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.yellow; text: "This server uses plain HTTP and is not on your local network. Anyone on the network path could read your RomM token. Use https if the server supports it."; font.pixelSize: UiMetrics.supporting }
             Flow {
                 Layout.fillWidth: true; spacing: 8
                 GlassButton { id: confirmHttpButton; objectName: "rommConfirmHttp"; text: "SEND TOKEN OVER HTTP"; destructive: true; enabled: root.service && !root.service.scanning; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus(); if(root.service.connectServer(server.text,folder.text,token.text,true)) token.clear() } }
                 GlassButton { text: "CANCEL"; onClicked: { root.confirmHttp = false; connectButton.forceActiveFocus() } }
             }
         }
-        Text { objectName: "rommConnectionStatus"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.foreground; text: root.service ? root.service.statusText : "Unavailable in demo mode" }
-        Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.mutedText; text: root.service ? root.service.errorText : ""; visible: text.length > 0 }
+        Text { objectName: "rommConnectionStatus"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.foreground; text: root.service ? root.service.statusText : "Unavailable in demo mode"; font.pixelSize: UiMetrics.supporting }
+        Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.mutedText; text: root.service ? root.service.errorText : ""; visible: text.length > 0; font.pixelSize: UiMetrics.supporting }
     }
     FolderDialog { id: folderPicker; title: "Select the mounted RomM library"; onAccepted: folder.text = decodeURIComponent(selectedFolder.toString().replace(/^file:\/\//,"")) }
 }
