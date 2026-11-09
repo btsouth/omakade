@@ -2,13 +2,15 @@
 
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <csignal>
 #include <unistd.h>
 
 namespace {
-// Parses the fields after the command name from /proc/<pid>/stat: state first,
-// start time the twentieth, exactly like the launcher's own process tracking.
-qint64 statStartTime(QFile& stat, char* state) {
+// Parses the fields after the command name from /proc/<pid>/stat: state first, the
+// parent pid second, start time the twentieth, exactly like the launcher's own process
+// tracking.
+qint64 statStartTime(QFile& stat, char* state, qint64* parentPid = nullptr) {
   if (!stat.open(QIODevice::ReadOnly)) {
     return -1;
   }
@@ -22,6 +24,7 @@ qint64 statStartTime(QFile& stat, char* state) {
     return -1;
   }
   *state = fields.at(0).isEmpty() ? '?' : fields.at(0).at(0);
+  if (parentPid != nullptr) *parentPid = fields.at(1).toLongLong();
   bool okay = false;
   const qint64 startTime = fields.at(19).toLongLong(&okay);
   return okay ? startTime : -1;
@@ -60,7 +63,8 @@ QVector<ProcessSnapshot> listProcesses(bool includeScopes) {
       continue;
     QFile stat(base + QStringLiteral("/stat"));
     char state = '?';
-    const qint64 procStart = statStartTime(stat, &state);
+    qint64 parentPid = 0;
+    const qint64 procStart = statStartTime(stat, &state, &parentPid);
     if (procStart < 0 || state == 'Z' || state == 'X') {
       continue;
     }
@@ -85,7 +89,8 @@ QVector<ProcessSnapshot> listProcesses(bool includeScopes) {
                              .exePath = executablePath(base),
                              .winePrefix = {},
                              .flatpakAppId = {},
-                             .steamAppId = {}};
+                             .steamAppId = {},
+                             .parentPid = parentPid};
     // Wine programs keep their prefix even without scopes: it is what tells one
     // launcher's games apart when they all run under the same loader.
     if (includeScopes || isWindowsProgram(arguments.first())) {
@@ -115,6 +120,26 @@ bool processAlive(qint64 pid, qint64 procStart) {
   char state = '?';
   const qint64 current = statStartTime(stat, &state);
   return current == procStart && state != 'Z' && state != 'X';
+}
+
+QSet<qint64> processTree(const QVector<ProcessSnapshot>& processes, qint64 pid) {
+  QHash<qint64, QVector<qint64>> children;
+  for (const ProcessSnapshot& process : processes)
+    if (process.parentPid > 0 && process.parentPid != process.pid)
+      children[process.parentPid].append(process.pid);
+  QSet<qint64> tree{pid};
+  QVector<qint64> pending{pid};
+  while (!pending.isEmpty()) {
+    const qint64 parent = pending.takeLast();
+    for (const qint64 child : children.value(parent)) {
+      // The set doubles as the visited list, so a pid seen twice cannot loop.
+      if (!tree.contains(child)) {
+        tree.insert(child);
+        pending.append(child);
+      }
+    }
+  }
+  return tree;
 }
 
 bool processRunning(qint64 pid) {

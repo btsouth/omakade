@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSet>
 #include <QString>
 #include <QVector>
 
@@ -40,5 +41,9 @@ struct Window {
 // no window at all is not unfocused: it just is not on screen, and reporting it as
 // unfocused would pause a run whose window has not appeared yet.
 [[nodiscard]] bool isUnfocused(const QVector<Window>& windows, qint64 pid);
+
+// The same for a process tree, such as a launcher and the game it started: unfocused when
+// the tree owns a window and none of its windows is the focused one.
+[[nodiscard]] bool isUnfocused(const QVector<Window>& windows, const QSet<qint64>& pids);
 
 } // namespace HyprlandWindows

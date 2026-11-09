@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -22,6 +23,9 @@ struct ProcessSnapshot {
   QString flatpakAppId;
   // Steam's exact app identity, read from the process environment when present.
   QString steamAppId;
+  // The parent's pid from procfs, so a launcher's process tree can be followed, such as
+  // the windows of the game Steam's reaper started. 0 when unknown.
+  qint64 parentPid = 0;
 };
 
 namespace ProcFs {
@@ -35,6 +39,10 @@ namespace ProcFs {
 [[nodiscard]] QVector<ProcessSnapshot> listProcesses(bool includeScopes = false);
 
 [[nodiscard]] bool processAlive(qint64 pid, qint64 procStart);
+
+// The pid and every descendant of it in one snapshot, followed through parentPid. A pid that
+// is not in the snapshot still gives itself, so a caller can ask about it either way.
+[[nodiscard]] QSet<qint64> processTree(const QVector<ProcessSnapshot>& processes, qint64 pid);
 
 // True when a process with this pid exists, belongs to this user, and is not a
 // zombie. This is deliberately weaker than processAlive: it cannot tell a reused
