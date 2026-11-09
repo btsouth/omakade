@@ -146,6 +146,13 @@ systemctl --user enable --now omakade-guide-button
 systemctl --user disable --now omakade-guide-button
 ```
 
+When OmaStore installed Omakade, it writes this service's unit itself, and that unit
+starts with your user session rather than with the desktop. On Omarchy the user session
+starts before Hyprland, so after each login the service usually starts too early, stops and
+is not retried. Settings then says the service is not running: turn the button off and on
+again in Settings > Controls after you log in. Turn it off before removing Omakade in
+OmaStore, which will not remove a service it did not turn on itself.
+
 The button-detection service only reads controllers. While the in-game guide is
 open, Omakade separately grabs controller evdev nodes and can pause the game
 process tree. Closing releases the grabs and resumes processes it paused.

@@ -11,11 +11,26 @@ exec = "usr/bin/omakade"
 asset = "omakade-{version}-1-aarch64.pkg.tar.zst"
 exec = "usr/bin/omakade"
 
-# OmaStore installs into $HOME, so it writes its own unit for the session recorder.
+# OmaStore installs into $HOME, so it writes its own units for these services instead of
+# using the packaged ones. Its units cannot order after the desktop session or sessiond, or
+# skip restarts on exit status 78; docs/GAME-MODE.md explains what that means for the
+# controller Home button.
 [services.sessiond]
 type = "systemd-user"
 unit = "omakade-sessiond.service"
 exec = "usr/bin/omakade-sessiond"
 enable = true
 start = true
+restart = "on-failure"
+
+# The controller Home button stays off until it is turned on in Settings > Controls. Once on,
+# it usually starts before Hyprland at login and stops; restarting does not help because the
+# session starts Hyprland later, so it has to be turned off and on again after each login.
+# restart stays on-failure so a crash later in the session is still recovered.
+[services.guide-button]
+type = "systemd-user"
+unit = "omakade-guide-button.service"
+exec = "usr/bin/omakade-guide-button"
+enable = false
+start = false
 restart = "on-failure"

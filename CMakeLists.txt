@@ -60,9 +60,13 @@ install(TARGETS omakade-sessiond omakade-guide-button omakade-guide-guard
 install(FILES resources/sessiond-profiles.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade
 )
-install(FILES packaging/omakade-sessiond.service packaging/omakade-guide-button.service
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user
-)
+# The units start the installed binaries, so their paths follow the install prefix.
+foreach(omakade_unit omakade-sessiond omakade-guide-button)
+  configure_file(packaging/${omakade_unit}.service.in packaging/${omakade_unit}.service @ONLY)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/packaging/${omakade_unit}.service"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user
+  )
+endforeach()
 # No .wants link here: that would start the service for every account on the machine.
 # On Omarchy, Omakade enables it for each user the first time they open it.
 install(FILES packaging/io.github.tsouth89.Omakade.desktop

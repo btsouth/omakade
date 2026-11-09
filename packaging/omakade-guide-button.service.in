@@ -6,7 +6,7 @@ Wants=omakade-sessiond.service
 After=graphical-session.target omakade-sessiond.service
 
 [Service]
-ExecStart=/usr/bin/omakade-guide-button
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/omakade-guide-button
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=78

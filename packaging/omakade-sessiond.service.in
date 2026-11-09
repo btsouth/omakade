@@ -5,7 +5,7 @@ After=graphical-session.target
 Documentation=https://github.com/btsouth/omakade
 
 [Service]
-ExecStart=/usr/bin/omakade-sessiond
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/omakade-sessiond
 Restart=on-failure
 RestartSec=10
 

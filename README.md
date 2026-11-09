@@ -86,7 +86,8 @@ gh attestation verify omakade-1.18.0-1-aarch64.pkg.tar.zst -R btsouth/omakade
 Omakade is also listed in [OmaStore](https://github.com/KitsuneForgering/OmaStore),
 a community app store that installs it into your home directory. OmaStore 0.4
 and newer also set up the `omakade-sessiond` service, so playtime recording works
-there too.
+there too, and the controller Home button service, which stays off until you turn
+it on in Settings.
 
 ## Getting started
 
