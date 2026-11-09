@@ -2278,6 +2278,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: sourcesMenuButton
                         text: "ALL"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 0
                         onClicked: {
                             Library.mode = 0
@@ -2289,6 +2290,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: filtersMenuButton
                         text: "FAVORITES"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 1
                         onClicked: {
                             Library.mode = 1
@@ -2301,6 +2303,7 @@ ApplicationWindow {
                         property Item controllerRightTarget: searchField
                         text: "RECENT"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 2
                         onClicked: {
                             Library.mode = 2
@@ -2318,6 +2321,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: root.width < 720 ? searchField : sourcesMenuButton
                         text: "ALL"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 0
                         onClicked: {
                             Library.mode = 0
@@ -2329,6 +2333,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: root.width < 720 ? searchField : filtersMenuButton
                         text: "FAVORITES"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 1
                         onClicked: {
                             Library.mode = 1
@@ -2341,6 +2346,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: root.width < 720 ? searchField : sortButton
                         text: "RECENT"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 2
                         onClicked: {
                             Library.mode = 2
@@ -3209,6 +3215,7 @@ ApplicationWindow {
                         required property int index
                         width: pickerList.width
                         compact: true
+                        selectable: true
                         selected: modelData === root.filterPickerCurrent()
                         text: modelData === ""
                               ? (root.filterPickerKind === "status" ? "ANY STATUS"
@@ -3288,6 +3295,7 @@ ApplicationWindow {
                 objectName: "allSourcesButton"
                 text: "ALL SOURCES"
                 compact: true
+                selectable: true
                 selected: Library.sourceFilters.length === 0
                 onClicked: {
                     Library.sourceFilters = []
@@ -3300,6 +3308,7 @@ ApplicationWindow {
                 text: "EMULATED"
                 compact: true
                 property string sourceName: "Emulated"
+                selectable: true
                 selected: Library.emulatorSources.every(source => Library.sourceFilters.indexOf(source) >= 0)
                 onClicked: {
                     Library.sourceFilters = Library.emulatorSources
@@ -3317,6 +3326,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.steamEnabled
                 property string sourceName: "Steam"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Steam") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Steam"]
@@ -3334,6 +3344,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.battleNetEnabled
                 property string sourceName: "Battle.net"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Battle.net") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Battle.net"]
@@ -3351,6 +3362,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected
                 property string sourceName: "Xodus Nexus"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Xodus Nexus") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Xodus Nexus"]
@@ -3368,6 +3380,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.lutrisEnabled
                 property string sourceName: "Lutris"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Lutris") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Lutris"]
@@ -3385,6 +3398,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.heroicEnabled
                 property string sourceName: "Heroic"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Heroic") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Heroic"]
@@ -3402,6 +3416,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.gogEnabled
                 property string sourceName: "GOG"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("GOG") >= 0
                 onClicked: {
                     Library.sourceFilters = ["GOG"]
@@ -3419,6 +3434,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.faugusEnabled
                 property string sourceName: "Faugus"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Faugus") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Faugus"]
@@ -3433,6 +3449,7 @@ ApplicationWindow {
                 objectName: "rommSourceButton"
                 text: "ROMM"; compact: true; visible: Preferences.rommEnabled
                 property string sourceName: "RomM"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("RomM") >= 0
                 onClicked: { Library.sourceFilters = ["RomM"]; libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1 }
                 onSecondaryClicked: Library.toggleSource("RomM")
@@ -3444,6 +3461,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.retroArchEnabled
                 property string sourceName: "RetroArch"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("RetroArch") >= 0
                 onClicked: {
                     Library.sourceFilters = ["RetroArch"]
@@ -3461,6 +3479,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.pcsx2Enabled
                 property string sourceName: "PCSX2"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("PCSX2") >= 0
                 onClicked: {
                     Library.sourceFilters = ["PCSX2"]
@@ -3478,6 +3497,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.rpcs3Enabled
                 property string sourceName: "RPCS3"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("RPCS3") >= 0
                 onClicked: {
                     if (Rpcs3Library) Rpcs3Library.refresh()
@@ -3497,6 +3517,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.ppssppEnabled
                 property string sourceName: "PPSSPP"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("PPSSPP") >= 0
                 onClicked: {
                     if (PpssppLibrary) PpssppLibrary.refresh()
@@ -3516,6 +3537,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.ryujinxEnabled
                 property string sourceName: "Ryujinx"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Ryujinx") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Ryujinx"]
@@ -3533,6 +3555,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.shadps4Enabled
                 property string sourceName: "shadPS4"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("shadPS4") >= 0
                 onClicked: {
                     Library.sourceFilters = ["shadPS4"]
@@ -3550,6 +3573,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.cemuEnabled
                 property string sourceName: "Cemu"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Cemu") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Cemu"]
@@ -3567,6 +3591,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.melondsEnabled
                 property string sourceName: "melonDS"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("melonDS") >= 0
                 onClicked: {
                     if (MelondsLibrary) MelondsLibrary.refresh()
@@ -3586,6 +3611,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.xeniaEnabled
                 property string sourceName: "Xenia"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Xenia") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Xenia"]
@@ -3603,6 +3629,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.kytyEnabled
                 property string sourceName: "Kyty"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Kyty") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Kyty"]
@@ -3620,6 +3647,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.nativePortsEnabled
                 property string sourceName: "Ports"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Ports") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Ports"]
@@ -3637,6 +3665,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.dolphinEnabled
                 property string sourceName: "Dolphin"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Dolphin") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Dolphin"]
@@ -3654,6 +3683,7 @@ ApplicationWindow {
                 compact: true
                 visible: ManualLibrary.count > 0
                 property string sourceName: "Manual"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Manual") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Manual"]
@@ -3680,6 +3710,7 @@ ApplicationWindow {
             visible: !DemoMode
             compact: true
             text: "HIDDEN GAMES"
+            selectable: true
             selected: Library.mode === 3
             onClicked: Library.mode = Library.mode === 3 ? 0 : 3
         }
@@ -3700,6 +3731,7 @@ ApplicationWindow {
                 objectName: "installedAvailabilityButton"
                 compact: true
                 text: "INSTALLED"
+                selectable: true
                 selected: Library.availability === 0
                 onClicked: {
                     Library.availability = 0
@@ -3708,6 +3740,7 @@ ApplicationWindow {
             GlassButton {
                 compact: true
                 text: "ALL GAMES"
+                selectable: true
                 selected: Library.availability === 1
                 onClicked: {
                     Library.availability = 1
@@ -3718,6 +3751,7 @@ ApplicationWindow {
                 objectName: "readyAvailabilityButton"
                 compact: true
                 text: "READY TO INSTALL"
+                selectable: true
                 selected: Library.availability === 2
                 onClicked: {
                     Library.availability = 2
@@ -3845,6 +3879,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 compact: true
                 text: modelData
+                selectable: true
                 selected: Library.sortMode === index
                 onClicked: {
                     Library.sortMode = index
@@ -3865,6 +3900,7 @@ ApplicationWindow {
             // Every console system follows this view unless explicitly overridden.
             visible: Library.hasConsoleCards || Library.expandConsoles
             compact: true
+            selectable: true
             selected: Library.expandConsoles
             text: Library.expandConsoles ? "CONSOLE VIEW: GAMES" : "CONSOLE VIEW: CONSOLES"
             onClicked: {

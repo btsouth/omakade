@@ -83,6 +83,7 @@ RowLayout {
         id: homeTab
         objectName: header.homeName
         text: "HOME"
+        selectable: true
         selected: header.current === "home"
         onClicked: header.homeRequested()
     }
@@ -90,6 +91,7 @@ RowLayout {
         id: libraryTab
         objectName: header.libraryName
         text: "LIBRARY"
+        selectable: true
         selected: header.current === "library"
         onClicked: header.libraryRequested()
     }
@@ -97,6 +99,7 @@ RowLayout {
         id: statsTab
         objectName: header.statsName
         text: "STATS"
+        selectable: true
         selected: header.current === "stats"
         onClicked: header.statsRequested()
     }

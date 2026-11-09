@@ -169,6 +169,7 @@ Rectangle {
                     }
                     ToolTip.visible: hovered
                     ToolTip.text: modelData.name
+                    selectable: true
                     selected: editor.selectedId === modelData.id
                     displayScale: editor.uiScale
                     onClicked: {

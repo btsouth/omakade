@@ -17,9 +17,10 @@ import QtQuick.Layouts
                 id: connectionText
                 text: connectionButton.text
                 wrapMode: Text.Wrap
-                color: Theme.foreground
+                color: connectionButton.selected ? Theme.brightForeground : Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: UiMetrics.supporting * connectionButton.displayScale
+                font.weight: connectionButton.selected ? Font.DemiBold : Font.Normal
                 verticalAlignment: Text.AlignVCenter
             }
         }
@@ -196,7 +197,7 @@ import QtQuick.Layouts
                         required property var modelData
                         objectName: "settingsSection" + modelData.section
                         Layout.fillWidth: true; compact: true
-                        text: modelData.label.toUpperCase(); selected: settingsOverlay.section === modelData.section
+                        text: modelData.label.toUpperCase(); selectable: true; selected: settingsOverlay.section === modelData.section
                         onClicked: settingsOverlay.chooseSection(modelData.section)
                         property Item controllerRightTarget: null
 
@@ -237,6 +238,7 @@ import QtQuick.Layouts
                             required property var modelData
                             objectName: "compactSettingsSection" + modelData.section
                             text: modelData.label.toUpperCase()
+                            selectable: true
                             selected: settingsOverlay.section === modelData.section
                             onClicked: settingsOverlay.chooseSection(modelData.section)
                         }
@@ -272,8 +274,8 @@ import QtQuick.Layouts
                     objectName: "settingsSourceTabs"
                     Layout.fillWidth: true
                     GlassButton { id: sourceBack; visible: settingsOverlay.sourceDetail !== ""; text: "BACK TO SOURCES"; compact: true; onClicked: { settingsOverlay.sourceDetail = ""; settingsOverlay.pageChanged() } }
-                    GlassButton { visible: settingsOverlay.sourceDetail === ""; text: "IN USE"; selected: !settingsOverlay.availableSources; compact: true; onClicked: settingsOverlay.availableSources = false }
-                    GlassButton { visible: settingsOverlay.sourceDetail === ""; text: "AVAILABLE"; selected: settingsOverlay.availableSources; compact: true; onClicked: settingsOverlay.availableSources = true }
+                    GlassButton { visible: settingsOverlay.sourceDetail === ""; text: "IN USE"; selectable: true; selected: !settingsOverlay.availableSources; compact: true; onClicked: settingsOverlay.availableSources = false }
+                    GlassButton { visible: settingsOverlay.sourceDetail === ""; text: "AVAILABLE"; selectable: true; selected: settingsOverlay.availableSources; compact: true; onClicked: settingsOverlay.availableSources = true }
                 }
                 GlassButton {
                     objectName: "rescanEnabledSourcesButton"
@@ -434,6 +436,8 @@ import QtQuick.Layouts
                             GlassButton {
                                 compact: true
                                 text: modelData.enabled ? "ON" : "OFF"
+                                Accessible.name: modelData.name + " source"
+                                selectable: true
                                 selected: modelData.enabled
                                 onClicked: {
                                     let nowEnabled = false
@@ -849,6 +853,7 @@ import QtQuick.Layouts
                             GlassButton {
                                 compact: true
                                 text: modelData.layout === "card" ? "ALWAYS CONSOLE" : modelData.layout === "library" ? "ALWAYS GAMES" : "FOLLOW VIEW"
+                                Accessible.name: modelData.name + " layout: " + text
                                 selected: modelData.layout === "card"
                                 onClicked: Preferences.setConsoleLayout(modelData.id,
                                                                          modelData.layout === "follow" ? "card" : modelData.layout === "card" ? "library" : "follow")
@@ -882,6 +887,8 @@ import QtQuick.Layouts
                     GlassButton {
                         compact: true
                         text: Preferences.preferStandaloneEmulators ? "PREFERRED" : "RETROARCH FIRST"
+                        Accessible.name: "Prefer standalone emulators"
+                        selectable: true
                         selected: Preferences.preferStandaloneEmulators
                         onClicked: Preferences.preferStandaloneEmulators = !Preferences.preferStandaloneEmulators
                     }
@@ -930,12 +937,14 @@ import QtQuick.Layouts
                     GlassButton {
                         compact: true
                         text: "AUTO-CLOSE: " + (Preferences.closeAfterLaunch ? "ON" : "OFF")
+                        selectable: true
                         selected: Preferences.closeAfterLaunch
                         onClicked: Preferences.closeAfterLaunch = !Preferences.closeAfterLaunch
                     }
                     GlassButton {
                         compact: true
                         text: "RECORD PLAYTIME: " + (Preferences.trackPlaySessions ? "ON" : "OFF")
+                        selectable: true
                         selected: Preferences.trackPlaySessions
                         onClicked: Preferences.trackPlaySessions = !Preferences.trackPlaySessions
                     }
@@ -944,6 +953,7 @@ import QtQuick.Layouts
                         compact: true
                         visible: Preferences.trackPlaySessions
                         text: "PAUSE WHEN UNFOCUSED: " + (Preferences.pauseUnfocusedSessions ? "ON" : "OFF")
+                        selectable: true
                         selected: Preferences.pauseUnfocusedSessions
                         onClicked: Preferences.pauseUnfocusedSessions = !Preferences.pauseUnfocusedSessions
                     }
@@ -952,6 +962,7 @@ import QtQuick.Layouts
                         compact: true
                         visible: Preferences.trackPlaySessions
                         text: "DISCORD STATUS: " + (Preferences.discordPresence ? "ON" : "OFF")
+                        selectable: true
                         selected: Preferences.discordPresence
                         onClicked: Preferences.discordPresence = !Preferences.discordPresence
                     }
@@ -1024,6 +1035,7 @@ import QtQuick.Layouts
                     Layout.fillWidth: true
                     compact: true
                     text: "PROTONDB REPORTS: " + (Preferences.protonDbEnabled ? "ON" : "OFF")
+                    selectable: true
                     selected: Preferences.protonDbEnabled
                     onClicked: Preferences.protonDbEnabled = !Preferences.protonDbEnabled
                 }
@@ -1041,6 +1053,7 @@ import QtQuick.Layouts
                     compact: true
                     visible: Preferences.protonDbEnabled
                     text: "PROTONDB BADGES ON CARDS: " + (Preferences.protonDbBadges ? "ON" : "OFF")
+                    selectable: true
                     selected: Preferences.protonDbBadges
                     onClicked: Preferences.protonDbBadges = !Preferences.protonDbBadges
                 }
@@ -1591,6 +1604,9 @@ import QtQuick.Layouts
                         compact: true
                         enabled: (!GameMode.hasSession || GameMode.inPlace) && !GameMode.busy
                         text: GameMode.silenceNotifications ? "SILENCED" : "UNCHANGED"
+                        selectable: true
+                        selected: GameMode.silenceNotifications
+                        Accessible.name: "Silence notifications in Game Mode"
                         onClicked: GameMode.silenceNotifications = !GameMode.silenceNotifications
                     }
                 }
@@ -1608,6 +1624,9 @@ import QtQuick.Layouts
                         objectName: "gameModeWarmSteamButton"
                         compact: true
                         text: GameMode.warmSteam ? "ON" : "OFF"
+                        selectable: true
+                        selected: GameMode.warmSteam
+                        Accessible.name: "Start Steam in the background"
                         onClicked: GameMode.warmSteam = !GameMode.warmSteam
                     }
                 }
@@ -1634,6 +1653,9 @@ import QtQuick.Layouts
                         objectName: "gameModeHoldLaunchersButton"
                         compact: true
                         text: GameMode.holdLaunchers ? "ON" : "OFF"
+                        selectable: true
+                        selected: GameMode.holdLaunchers
+                        Accessible.name: "Hold launcher windows"
                         onClicked: GameMode.holdLaunchers = !GameMode.holdLaunchers
                     }
                 }
@@ -1817,6 +1839,8 @@ import QtQuick.Layouts
                     GlassButton {
                         compact: true
                         text: Preferences.reducedMotion ? "REDUCED" : "FULL"
+                        Accessible.name: "Reduced motion"
+                        selectable: true
                         selected: Preferences.reducedMotion
                         onClicked: Preferences.reducedMotion = !Preferences.reducedMotion
                     }
@@ -1932,6 +1956,7 @@ import QtQuick.Layouts
                         compact: true
                         enabled: Preferences.highlightRecorderInstalled || Preferences.highlights
                         text: "HIGHLIGHTS: " + (Preferences.highlights ? "ON" : "OFF")
+                        selectable: true
                         selected: Preferences.highlights
                         onClicked: Preferences.highlights = !Preferences.highlights
                     }
@@ -1940,6 +1965,7 @@ import QtQuick.Layouts
                         compact: true
                         visible: Preferences.highlights
                         text: "STEAM ACHIEVEMENT CLIPS: " + (Preferences.highlightAchievements ? "ON" : "OFF")
+                        selectable: true
                         selected: Preferences.highlightAchievements
                         onClicked: Preferences.highlightAchievements = !Preferences.highlightAchievements
                     }
@@ -1967,6 +1993,7 @@ import QtQuick.Layouts
                             objectName: "highlightLength" + modelData
                             compact: true
                             text: modelData + " S"
+                            selectable: true
                             selected: Preferences.highlightSeconds === modelData
                             onClicked: Preferences.highlightSeconds = modelData
                         }
@@ -2101,6 +2128,7 @@ import QtQuick.Layouts
                     objectName: "saveProtectionSettingsButton"
                     compact: true
                     text: "SAVE PROTECTION: " + (Preferences.protectRetroArchSaves ? "ON" : "OFF")
+                    selectable: true
                     selected: Preferences.protectRetroArchSaves
                     onClicked: Preferences.protectRetroArchSaves = !Preferences.protectRetroArchSaves
                 }

@@ -8,6 +8,9 @@ Button {
     property string iconText: ""
     property bool primary: false
     property bool selected: false
+    // Set on tabs, choices and on/off toggles so screen readers hear selected as checked.
+    // The call site's handler owns the state, so a click never flips it here.
+    property bool selectable: false
     property bool compact: false
     // Fired instead of clicked() for Shift or Ctrl clicks and Shift+Enter: the
     // "add to selection" gesture on filter chips that combine.
@@ -30,6 +33,10 @@ Button {
     spacing: 8 * displayScale
     focusPolicy: Qt.StrongFocus
     KeyNavigation.priority: KeyNavigation.BeforeItem
+    checkable: selectable
+    // Buttons that only use selected as a highlight must not report checked.
+    checked: selectable && selected
+    onToggled: checked = Qt.binding(() => root.selectable && root.selected)
 
     // Qt only presses a Button on Return or Enter when the platform theme says so. Controller
     // and keyboard confirm must work on every desktop, so handle both keys here.
@@ -71,22 +78,34 @@ Button {
     ToolTip.delay: 500
 
     background: Rectangle {
+        // Selected keeps its accent fill and bar while hovered, pressed or focused.
+        readonly property bool marked: root.selected && !root.primary
+        readonly property color tint: root.primary || marked ? Theme.accent : Theme.foreground
         radius: Math.max(4, Theme.cornerRadius)
         color: root.down
-               ? root.alpha(root.primary ? Theme.accent : Theme.foreground, 0.24)
+               ? root.alpha(tint, marked ? 0.42 : 0.24)
                : root.hovered || root.activeFocus
-                 ? root.alpha(root.primary ? Theme.accent : Theme.foreground, 0.14)
-                 : root.primary
-                   ? root.alpha(Theme.accent, 0.18)
-                   : root.selected
-                     ? root.alpha(Theme.foreground, 0.12)
-                     : root.alpha(Theme.foreground, 0.045)
+                 ? root.alpha(tint, marked ? 0.34 : 0.14)
+                 : root.alpha(tint, marked ? 0.26 : root.primary ? 0.18 : 0.045)
         border.width: root.activeFocus ? 2 : 1
         border.color: root.activeFocus
                       ? Theme.accent
-                      : root.primary
-                        ? root.alpha(Theme.accent, 0.58)
-                        : root.alpha(Theme.foreground, root.hovered ? 0.5 : 0.35)
+                      : marked
+                        ? root.alpha(Theme.accent, 0.8)
+                        : root.primary
+                          ? root.alpha(Theme.accent, 0.58)
+                          : root.alpha(Theme.foreground, root.hovered ? 0.5 : 0.35)
+
+        Rectangle {
+            objectName: "selectedIndicator"
+            visible: parent.marked
+            x: 4 * root.displayScale
+            y: Math.max(5, parent.height * 0.22)
+            width: 3 * root.displayScale
+            height: parent.height - 2 * y
+            radius: width / 2
+            color: Theme.accent
+        }
 
         Behavior on color {
             enabled: !Preferences.reducedMotion
@@ -120,7 +139,7 @@ Button {
             width: Math.min(implicitWidth, root.maximumLabelWidth)
             elide: Text.ElideRight
             text: root.text
-            color: root.enabled ? (root.primary ? Theme.brightForeground : Theme.foreground)
+            color: root.enabled ? (root.primary || root.selected ? Theme.brightForeground : Theme.foreground)
                                 : root.alpha(Theme.foreground, 0.35)
             font.family: Theme.fontFamily
             font.pixelSize: (root.compact ? UiMetrics.label : UiMetrics.body) * root.displayScale

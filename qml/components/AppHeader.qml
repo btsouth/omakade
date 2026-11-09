@@ -60,6 +60,7 @@ RowLayout {
         property Item controllerDownTarget: root.contentFocusTarget
         text: "HOME"
         compact: true
+        selectable: true
         selected: root.current === "home"
         KeyNavigation.right: libraryTab
         onClicked: root.homeRequested()
@@ -72,6 +73,7 @@ RowLayout {
         property Item controllerDownTarget: root.contentFocusTarget
         text: "LIBRARY"
         compact: true
+        selectable: true
         selected: root.current === "library"
         KeyNavigation.left: homeTab
         KeyNavigation.right: statsTab
@@ -85,6 +87,7 @@ RowLayout {
         property Item controllerDownTarget: root.contentFocusTarget
         text: "STATS"
         compact: true
+        selectable: true
         selected: root.current === "stats"
         KeyNavigation.left: libraryTab
         KeyNavigation.right: settingsTab

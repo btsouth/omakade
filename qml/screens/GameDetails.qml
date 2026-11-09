@@ -1190,6 +1190,7 @@ Item {
                                 compact: true
                                 Layout.fillWidth: true
                                 text: modelData.toUpperCase()
+                                selectable: true
                                 selected: (root.game.completionStatus || "") === modelData
                                 onClicked: root.completionStatusRequested(
                                                selected ? "" : modelData)
@@ -1288,6 +1289,7 @@ Item {
                                         required property string modelData
                                         compact: true
                                         text: modelData.toUpperCase()
+                                        selectable: true
                                         selected: root.game.collections
                                                   ? root.game.collections.indexOf(modelData) >= 0
                                                   : false
@@ -2117,6 +2119,7 @@ Item {
                                 text: (modelData.source || "LOCAL").toUpperCase()
                                       + (modelData.runner ? " · " + modelData.runner.toUpperCase() : "")
                                       + (modelData.preferred ? " · DEFAULT" : "")
+                                selectable: true
                                 selected: root.selectedInstallation.source === modelData.source
                                           && (root.selectedInstallation.runner || "") === (modelData.runner || "")
                                           && root.selectedInstallation.appId === modelData.appId
