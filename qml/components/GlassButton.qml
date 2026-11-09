@@ -34,8 +34,9 @@ Button {
     focusPolicy: Qt.StrongFocus
     KeyNavigation.priority: KeyNavigation.BeforeItem
     checkable: selectable
-    checked: selected
-    onToggled: checked = Qt.binding(() => root.selected)
+    // Buttons that only use selected as a highlight must not report checked.
+    checked: selectable && selected
+    onToggled: checked = Qt.binding(() => root.selectable && root.selected)
 
     // Qt only presses a Button on Return or Enter when the platform theme says so. Controller
     // and keyboard confirm must work on every desktop, so handle both keys here.

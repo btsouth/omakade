@@ -4,7 +4,7 @@ import QtQuick
 // same folder.
 Rectangle {
     id: page
-    width: 640
+    width: 800
     height: 120
     color: Theme.darkerBackground
     property string current: "first"
@@ -38,6 +38,11 @@ Rectangle {
         GlassButton {
             objectName: "plain"
             text: "PLAIN"
+        }
+        GlassButton {
+            objectName: "highlight"
+            text: "HIGHLIGHT"
+            selected: true
         }
     }
 }

@@ -74,7 +74,8 @@ private slots:
     QQuickItem* second = find(root, "secondTab");
     QQuickItem* toggle = find(root, "toggle");
     QQuickItem* plain = find(root, "plain");
-    QVERIFY(first && second && toggle && plain);
+    QQuickItem* highlight = find(root, "highlight");
+    QVERIFY(first && second && toggle && plain && highlight);
 
     // Tabs and toggles announce checked; ordinary buttons are not checkable at all.
     QVERIFY(state(first).checkable);
@@ -84,6 +85,10 @@ private slots:
     QVERIFY(state(toggle).checkable);
     QVERIFY(!state(toggle).checked);
     QVERIFY(!state(plain).checkable);
+    // A selected highlight on a button that is not selectable stays a plain button.
+    QVERIFY(!state(highlight).checkable);
+    QVERIFY(!state(highlight).checked);
+    QVERIFY(!highlight->property("checked").toBool());
 
     // Selected has an accent fill and indicator, unlike its unselected neighbour.
     const QColor accent = theme.property("accent").value<QColor>();
