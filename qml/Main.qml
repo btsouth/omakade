@@ -2278,6 +2278,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: sourcesMenuButton
                         text: "ALL"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 0
                         onClicked: {
                             Library.mode = 0
@@ -2289,6 +2290,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: filtersMenuButton
                         text: "FAVORITES"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 1
                         onClicked: {
                             Library.mode = 1
@@ -2301,6 +2303,7 @@ ApplicationWindow {
                         property Item controllerRightTarget: searchField
                         text: "RECENT"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 2
                         onClicked: {
                             Library.mode = 2
@@ -2318,6 +2321,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: root.width < 720 ? searchField : sourcesMenuButton
                         text: "ALL"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 0
                         onClicked: {
                             Library.mode = 0
@@ -2329,6 +2333,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: root.width < 720 ? searchField : filtersMenuButton
                         text: "FAVORITES"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 1
                         onClicked: {
                             Library.mode = 1
@@ -2341,6 +2346,7 @@ ApplicationWindow {
                         property Item controllerDownTarget: root.width < 720 ? searchField : sortButton
                         text: "RECENT"
                         compact: true
+                        selectable: true
                         selected: Library.mode === 2
                         onClicked: {
                             Library.mode = 2
@@ -3209,6 +3215,7 @@ ApplicationWindow {
                         required property int index
                         width: pickerList.width
                         compact: true
+                        selectable: true
                         selected: modelData === root.filterPickerCurrent()
                         text: modelData === ""
                               ? (root.filterPickerKind === "status" ? "ANY STATUS"
@@ -3288,6 +3295,7 @@ ApplicationWindow {
                 objectName: "allSourcesButton"
                 text: "ALL SOURCES"
                 compact: true
+                selectable: true
                 selected: Library.sourceFilters.length === 0
                 onClicked: {
                     Library.sourceFilters = []
@@ -3300,6 +3308,7 @@ ApplicationWindow {
                 text: "EMULATED"
                 compact: true
                 property string sourceName: "Emulated"
+                selectable: true
                 selected: Library.emulatorSources.every(source => Library.sourceFilters.indexOf(source) >= 0)
                 onClicked: {
                     Library.sourceFilters = Library.emulatorSources
@@ -3317,6 +3326,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.steamEnabled
                 property string sourceName: "Steam"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Steam") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Steam"]
@@ -3334,6 +3344,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.battleNetEnabled
                 property string sourceName: "Battle.net"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Battle.net") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Battle.net"]
@@ -3351,6 +3362,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.xodusEnabled && XodusLibrary && XodusLibrary.xodusDetected
                 property string sourceName: "Xodus Nexus"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Xodus Nexus") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Xodus Nexus"]
@@ -3368,6 +3380,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.lutrisEnabled
                 property string sourceName: "Lutris"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Lutris") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Lutris"]
@@ -3385,6 +3398,7 @@ ApplicationWindow {
                 compact: true
                 visible: Preferences.heroicEnabled
                 property string sourceName: "Heroic"
+                selectable: true
                 selected: Library.sourceFilters.indexOf("Heroic") >= 0
                 onClicked: {
                     Library.sourceFilters = ["Heroic"]

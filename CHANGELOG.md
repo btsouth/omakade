@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Selected tabs, choices and switched-on settings now have an accent fill and marker
+  that stay visible while hovered or focused. Screen readers hear them as checked, and
+  the bare ON/OFF settings say which setting they change.
 - Play time recording no longer stops for the whole session when its storage is
   unavailable at login. The recorder keeps retrying for about an hour and starts as soon
   as the storage is back.

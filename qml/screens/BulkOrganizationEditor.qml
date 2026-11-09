@@ -130,12 +130,11 @@ Rectangle {
                         property int bulkRow: index
                         width: games.width
                         displayScale: editor.uiScale
+                        selectable: true
                         selected: { Library.selectionRevision; return Library.isSelected(index) }
                         text: (selected ? "✓  " : "□  ") + title
                         implicitWidth: 100
                         Accessible.name: title
-                        Accessible.checkable: true
-                        Accessible.checked: selected
                         contentItem: Text {
                             text: gameButton.text
                             textFormat: Text.PlainText

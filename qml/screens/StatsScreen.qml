@@ -378,6 +378,7 @@ FocusScope {
             property Item controllerUpTarget: root.couchMode ? null : statsAppHeader.statsButton
             text: "THIS YEAR"
             compact: true
+            selectable: true
             selected: Stats.period !== "all"
             onClicked: Stats.period = "year"
             KeyNavigation.right: allTimeButton
@@ -391,6 +392,7 @@ FocusScope {
             property Item controllerUpTarget: root.couchMode ? null : statsAppHeader.statsButton
             text: "ALL TIME"
             compact: true
+            selectable: true
             selected: Stats.period === "all"
             onClicked: Stats.period = "all"
             KeyNavigation.left: thisYearButton
@@ -555,6 +557,7 @@ FocusScope {
                         objectName: "statsOverviewButton"
                         text: "OVERVIEW"
                         compact: true
+                        selectable: true
                         selected: root.currentView === 0
                         Accessible.name: "Stats overview"
                         onClicked: root.selectView(0)
@@ -566,6 +569,7 @@ FocusScope {
                         objectName: "statsPatternsButton"
                         text: "PLAY PATTERNS"
                         compact: true
+                        selectable: true
                         selected: root.currentView === 1
                         Accessible.name: "Play patterns"
                         onClicked: root.selectView(1)
@@ -577,6 +581,7 @@ FocusScope {
                         objectName: "statsLibrarySnapshotButton"
                         text: "LIBRARY SNAPSHOT"
                         compact: true
+                        selectable: true
                         selected: root.currentView === 2
                         Accessible.name: "Library snapshot, current and lifetime totals"
                         onClicked: root.selectView(2)
