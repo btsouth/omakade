@@ -50,7 +50,7 @@ skip a gap only when the maintainer explicitly accepts that for the release.
 
    ```bash
    QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
-     ./build/release/omakade --render-screenshot=/tmp/omakade.png \
+     ./build/release/omakade-uitest --render-screenshot=/tmp/omakade.png \
      --render-size=1380x880
    ```
 

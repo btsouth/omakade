@@ -1,4 +1,4 @@
-# The Omakade QML module. Included from src/CMakeLists.txt, where the omakade target is
+# The Omakade QML module. Included from src/CMakeLists.txt, where the omakade_app target is
 # created, rather than added as a subdirectory. Every .qml and .js file under qml/ is part of
 # the module, so a new component or screen needs no edit here.
 
@@ -45,7 +45,7 @@ if(NOT omakade_component_qmldir STREQUAL omakade_component_singletons)
   message(FATAL_ERROR "qml/components/qmldir must list exactly these singletons: ${omakade_component_singletons}")
 endif()
 
-qt_add_qml_module(omakade
+qt_add_qml_module(omakade_app
   URI Omakade
   VERSION 1.0
   # Where the module was built before src/ had its own CMakeLists.txt, next to the binary.

@@ -10,7 +10,7 @@ qt_add_resources(omakade_core "omakade_native_ports"
 )
 
 # The app icon. QML loads it as qrc:/icons/resources/icons/io.github.tsouth89.Omakade.svg.
-qt_add_resources(omakade "omakade_icons"
+qt_add_resources(omakade_app "omakade_icons"
   PREFIX "/icons"
   BASE "${PROJECT_SOURCE_DIR}"
   FILES
@@ -20,7 +20,7 @@ qt_add_resources(omakade "omakade_icons"
 # Interface icons: any SVG dropped into resources/icons/ui is bundled automatically and loads
 # as qrc:/icons/ui/<name>.svg.
 file(GLOB omakade_ui_icons CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/icons/ui/*.svg")
-qt_add_resources(omakade "omakade_ui_icons"
+qt_add_resources(omakade_app "omakade_ui_icons"
   PREFIX "/icons/ui"
   BASE "${CMAKE_CURRENT_LIST_DIR}/icons/ui"
   FILES ${omakade_ui_icons}
@@ -37,4 +37,4 @@ function(omakade_add_console_art target)
     FILES ${console_art}
   )
 endfunction()
-omakade_add_console_art(omakade)
+omakade_add_console_art(omakade_app)

@@ -24,11 +24,12 @@ set(OMAKADE_TEST_QML_ERRORS
   "Invalid write to global property")
 
 # omakade_app_test(<name> ARGS <omakade arguments>...)
-# Runs the omakade binary offscreen with software rendering. ENVIRONMENT adds to that.
+# Runs the app offscreen with software rendering, as omakade-uitest: the omakade window plus
+# the render paths, fixtures and self-tests in src/selftest. ENVIRONMENT adds to that.
 function(omakade_app_test name)
   cmake_parse_arguments(PARSE_ARGV 1 arg "RUN_SERIAL;WILL_FAIL" "TIMEOUT" "ENVIRONMENT;ARGS")
   omakade_check_test_arguments(omakade_app_test ${name})
-  add_test(NAME ${name} COMMAND omakade ${arg_ARGS})
+  add_test(NAME ${name} COMMAND omakade-uitest ${arg_ARGS})
   set(arg_ENVIRONMENT ${OMAKADE_TEST_UI_ENVIRONMENT} ${arg_ENVIRONMENT})
   omakade_set_test_properties(${name})
 endfunction()

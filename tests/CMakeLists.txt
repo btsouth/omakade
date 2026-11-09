@@ -14,7 +14,7 @@ target_compile_definitions(omakade_core_tests PRIVATE
   OMAKADE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
 add_test(NAME omakade_details_recovery_isolation COMMAND ${CMAKE_COMMAND}
-  -DOMAKADE=$<TARGET_FILE:omakade>
+  -DOMAKADE=$<TARGET_FILE:omakade-uitest>
   -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/details-recovery-isolation
   -P ${CMAKE_CURRENT_SOURCE_DIR}/DetailsRecoveryIsolation.cmake)
 set_tests_properties(omakade_details_recovery_isolation PROPERTIES TIMEOUT 20)
@@ -35,17 +35,17 @@ add_test(NAME omakade_backup_recovery_tests COMMAND omakade_backup_recovery_test
 set_tests_properties(omakade_backup_recovery_tests PROPERTIES TIMEOUT 60)
 
 foreach(preference_case IN ITEMS gog-settings linked-preference)
-  add_test(NAME omakade_${preference_case}_controls COMMAND omakade --${preference_case}-test)
-  add_test(NAME omakade_${preference_case}_couch_controls COMMAND omakade --${preference_case}-test --couch)
+  add_test(NAME omakade_${preference_case}_controls COMMAND omakade-uitest --${preference_case}-test)
+  add_test(NAME omakade_${preference_case}_couch_controls COMMAND omakade-uitest --${preference_case}-test --couch)
   set_tests_properties(omakade_${preference_case}_controls omakade_${preference_case}_couch_controls PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 20)
 endforeach()
 foreach(preference_overlay IN ITEMS gog-folders linked-preference linked-preference-missing)
-  add_test(NAME omakade_${preference_overlay}_desktop_render COMMAND omakade
+  add_test(NAME omakade_${preference_overlay}_desktop_render COMMAND omakade-uitest
     --render-overlay=${preference_overlay} --render-size=1000x850
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${preference_overlay}-desktop.png)
-  add_test(NAME omakade_${preference_overlay}_couch_render COMMAND omakade --couch
+  add_test(NAME omakade_${preference_overlay}_couch_render COMMAND omakade-uitest --couch
     --render-overlay=${preference_overlay} --render-size=1920x1080
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${preference_overlay}-couch.png)
   set_tests_properties(omakade_${preference_overlay}_desktop_render omakade_${preference_overlay}_couch_render PROPERTIES
@@ -54,35 +54,35 @@ foreach(preference_overlay IN ITEMS gog-folders linked-preference linked-prefere
 endforeach()
 
 # A game's saved highlight clips: listed on its page, and trashed only on a second press.
-add_test(NAME omakade_game_clips_desktop_render COMMAND omakade --render-overlay=game-clips
+add_test(NAME omakade_game_clips_desktop_render COMMAND omakade-uitest --render-overlay=game-clips
   --render-size=1400x1000 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-clips-desktop.png)
-add_test(NAME omakade_game_clips_couch_render COMMAND omakade --couch --render-overlay=game-clips
+add_test(NAME omakade_game_clips_couch_render COMMAND omakade-uitest --couch --render-overlay=game-clips
   --render-size=1920x1080 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-clips-couch.png)
-add_test(NAME omakade_highlight_settings_render COMMAND omakade --render-overlay=settings-highlights
+add_test(NAME omakade_highlight_settings_render COMMAND omakade-uitest --render-overlay=settings-highlights
   --render-size=1200x900 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/settings-highlights.png)
 set_tests_properties(omakade_game_clips_desktop_render omakade_game_clips_couch_render
   omakade_highlight_settings_render PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 30)
 
-add_test(NAME omakade_details_directions COMMAND omakade --details-direction-test
+add_test(NAME omakade_details_directions COMMAND omakade-uitest --details-direction-test
   --render-size=1400x1100)
-add_test(NAME omakade_details_directions_couch COMMAND omakade --couch --details-direction-test
+add_test(NAME omakade_details_directions_couch COMMAND omakade-uitest --couch --details-direction-test
   --render-size=1920x1080)
-add_test(NAME omakade_details_directions_single_column COMMAND omakade --details-direction-test
+add_test(NAME omakade_details_directions_single_column COMMAND omakade-uitest --details-direction-test
   --render-size=320x800)
-add_test(NAME omakade_details_directions_two_columns COMMAND omakade --details-direction-test
+add_test(NAME omakade_details_directions_two_columns COMMAND omakade-uitest --details-direction-test
   --render-size=600x800)
-add_test(NAME omakade_details_directions_four_columns COMMAND omakade --details-direction-test
+add_test(NAME omakade_details_directions_four_columns COMMAND omakade-uitest --details-direction-test
   --render-size=1200x900)
-add_test(NAME omakade_details_directions_five_columns COMMAND omakade --details-direction-test
+add_test(NAME omakade_details_directions_five_columns COMMAND omakade-uitest --details-direction-test
   --render-size=1920x1080)
 # Stop Game's scaled minimum width: a 2560x1440 display at 1.25 scale, then tiled halves of it.
-add_test(NAME omakade_details_directions_couch_scaled COMMAND omakade --couch --details-direction-test
+add_test(NAME omakade_details_directions_couch_scaled COMMAND omakade-uitest --couch --details-direction-test
   --render-size=2048x1152)
-add_test(NAME omakade_details_directions_couch_tiled COMMAND omakade --couch --details-direction-test
+add_test(NAME omakade_details_directions_couch_tiled COMMAND omakade-uitest --couch --details-direction-test
   --render-size=1019x1152)
-add_test(NAME omakade_details_directions_tiled COMMAND omakade --details-direction-test
+add_test(NAME omakade_details_directions_tiled COMMAND omakade-uitest --details-direction-test
   --render-size=1019x1152)
 set_tests_properties(omakade_details_directions omakade_details_directions_couch
   omakade_details_directions_single_column omakade_details_directions_two_columns
@@ -92,11 +92,11 @@ set_tests_properties(omakade_details_directions omakade_details_directions_couch
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 30)
 
-add_test(NAME omakade_backup_editor COMMAND omakade --backup-editor-test)
-add_test(NAME omakade_backup_editor_couch COMMAND omakade --backup-editor-test --couch)
-add_test(NAME omakade_backup_editor_render COMMAND omakade --render-overlay=backup-editor
+add_test(NAME omakade_backup_editor COMMAND omakade-uitest --backup-editor-test)
+add_test(NAME omakade_backup_editor_couch COMMAND omakade-uitest --backup-editor-test --couch)
+add_test(NAME omakade_backup_editor_render COMMAND omakade-uitest --render-overlay=backup-editor
   --render-size=900x720 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/backup-editor-desktop.png)
-add_test(NAME omakade_backup_editor_couch_render COMMAND omakade --couch --render-overlay=backup-editor
+add_test(NAME omakade_backup_editor_couch_render COMMAND omakade-uitest --couch --render-overlay=backup-editor
   --render-size=1920x1080 --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/backup-editor-couch.png)
 set_tests_properties(omakade_backup_editor omakade_backup_editor_couch
   omakade_backup_editor_render omakade_backup_editor_couch_render PROPERTIES
@@ -105,16 +105,16 @@ set_tests_properties(omakade_backup_editor omakade_backup_editor_couch
 
 foreach(restore_case IN ITEMS success retry undo close)
   add_test(NAME omakade_restore_startup_${restore_case}
-    COMMAND omakade --restore-startup-test=${restore_case})
+    COMMAND omakade-uitest --restore-startup-test=${restore_case})
   set_tests_properties(omakade_restore_startup_${restore_case} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 20)
 endforeach()
 add_test(NAME omakade_restore_startup_couch
-  COMMAND omakade --restore-startup-test=undo --couch --render-size=1920x1080
+  COMMAND omakade-uitest --restore-startup-test=undo --couch --render-size=1920x1080
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/restore-startup-couch.png)
 add_test(NAME omakade_restore_startup_desktop
-  COMMAND omakade --restore-startup-test=retry --render-size=900x620
+  COMMAND omakade-uitest --restore-startup-test=retry --render-size=900x620
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/restore-startup-desktop.png)
 set_tests_properties(omakade_restore_startup_couch omakade_restore_startup_desktop PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -148,7 +148,7 @@ set_tests_properties(omakade_controller_navigation PROPERTIES
 )
 
 add_test(NAME omakade_console_portal_view
-  COMMAND omakade --console-portal-test --render-size=1600x900
+  COMMAND omakade-uitest --console-portal-test --render-size=1600x900
 )
 set_tests_properties(omakade_console_portal_view PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -156,7 +156,7 @@ set_tests_properties(omakade_console_portal_view PROPERTIES
 )
 
 add_test(NAME omakade_controller_navigation_tiled
-  COMMAND omakade --controller-navigation-test --owned-layout-test --uninstalled-layout-test
+  COMMAND omakade-uitest --controller-navigation-test --owned-layout-test --uninstalled-layout-test
           --render-size=820x590
 )
 set_tests_properties(omakade_controller_navigation_tiled PROPERTIES
@@ -165,19 +165,19 @@ set_tests_properties(omakade_controller_navigation_tiled PROPERTIES
 )
 
 add_test(NAME omakade_controller_navigation_narrow
-  COMMAND omakade --controller-navigation-test --owned-layout-test --uninstalled-layout-test
+  COMMAND omakade-uitest --controller-navigation-test --owned-layout-test --uninstalled-layout-test
           --render-size=600x800)
 set_tests_properties(omakade_controller_navigation_narrow PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 30)
 
 add_test(NAME omakade_controller_navigation_wide
-  COMMAND omakade --controller-navigation-test --owned-layout-test --uninstalled-layout-test
+  COMMAND omakade-uitest --controller-navigation-test --owned-layout-test --uninstalled-layout-test
           --render-size=1600x900
 )
 
 add_test(NAME omakade_couch_navigation
-  COMMAND omakade --couch --couch-navigation-test --render-size=1920x1080
+  COMMAND omakade-uitest --couch --couch-navigation-test --render-size=1920x1080
 )
 set_tests_properties(omakade_couch_navigation PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config-couch-navigation"
@@ -188,7 +188,7 @@ set_tests_properties(omakade_couch_navigation PROPERTIES
 # The narrow case wraps the filter bar; the other cases cover TV and ultrawide layouts.
 foreach(size IN ITEMS 900x700 1280x720 1920x1080 2560x1080 3840x2160)
   add_test(NAME omakade_couch_navigation_contract_${size}
-    COMMAND omakade --couch --couch-navigation-contract --render-size=${size}
+    COMMAND omakade-uitest --couch --couch-navigation-contract --render-size=${size}
                    --reduced-motion
   )
   set_tests_properties(omakade_couch_navigation_contract_${size} PROPERTIES
@@ -200,10 +200,10 @@ endforeach()
 # Every direction from every control on each couch screen, and Back one screen at a time.
 foreach(size IN ITEMS 900x700 1280x720 1920x1080 3840x2160)
   add_test(NAME omakade_couch_navigation_sweep_${size}
-    COMMAND omakade --couch --couch-navigation-sweep --render-size=${size} --reduced-motion
+    COMMAND omakade-uitest --couch --couch-navigation-sweep --render-size=${size} --reduced-motion
   )
   add_test(NAME omakade_desktop_navigation_sweep_${size}
-    COMMAND omakade --couch-navigation-sweep --render-size=${size} --reduced-motion
+    COMMAND omakade-uitest --couch-navigation-sweep --render-size=${size} --reduced-motion
   )
   set_tests_properties(omakade_couch_navigation_sweep_${size} omakade_desktop_navigation_sweep_${size} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -279,9 +279,9 @@ foreach(benchmark_case IN ITEMS text empty missing nonpositive)
 endforeach()
 
 add_test(NAME omakade_cli_rejects_missing_play_value COMMAND omakade --play)
-add_test(NAME omakade_cli_rejects_missing_screenshot_path COMMAND omakade --render-screenshot)
+add_test(NAME omakade_cli_rejects_missing_screenshot_path COMMAND omakade-uitest --render-screenshot)
 add_test(NAME omakade_cli_rejects_invalid_render_size
-  COMMAND omakade --smoke-test --render-size=wide
+  COMMAND omakade-uitest --smoke-test --render-size=wide
 )
 set_tests_properties(
   omakade_cli_rejects_missing_play_value
@@ -294,7 +294,7 @@ set_tests_properties(
 )
 
 add_test(NAME omakade_couch_thousand_game_navigation
-  COMMAND omakade --couch --stress-test --couch-navigation-test --render-size=1920x1080
+  COMMAND omakade-uitest --couch --stress-test --couch-navigation-test --render-size=1920x1080
 )
 set_tests_properties(omakade_couch_thousand_game_navigation PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE=;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config-thousand-navigation"
@@ -303,7 +303,7 @@ set_tests_properties(omakade_couch_thousand_game_navigation PROPERTIES
 )
 
 add_test(NAME omakade_couch_owned_navigation
-  COMMAND omakade --couch --couch-navigation-test --owned-layout-test
+  COMMAND omakade-uitest --couch --couch-navigation-test --owned-layout-test
           --uninstalled-layout-test --render-size=1920x1080
 )
 set_tests_properties(omakade_couch_owned_navigation PROPERTIES
@@ -317,12 +317,12 @@ set_tests_properties(omakade_controller_navigation_wide PROPERTIES
 )
 
 add_test(NAME omakade_render_smoke
-  COMMAND omakade --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-render.png
+  COMMAND omakade-uitest --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-render.png
           --render-size=820x590
 )
 
 add_test(NAME omakade_couch_render
-  COMMAND omakade --couch
+  COMMAND omakade-uitest --couch
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch.png
           --render-size=1920x1080
 )
@@ -332,7 +332,7 @@ set_tests_properties(omakade_couch_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_reduced_motion_render
-  COMMAND omakade --couch --reduced-motion
+  COMMAND omakade-uitest --couch --reduced-motion
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-reduced-motion.png
           --render-size=1920x1080
 )
@@ -342,7 +342,7 @@ set_tests_properties(omakade_couch_reduced_motion_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_light_opaque_render
-  COMMAND omakade --couch
+  COMMAND omakade-uitest --couch
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-light-opaque.png
           --render-size=1920x1080
 )
@@ -362,7 +362,7 @@ foreach(couch_case IN ITEMS 720p 1440p ultrawide 4k)
     set(couch_size 3840x2160)
   endif()
   add_test(NAME omakade_couch_render_${couch_case}
-    COMMAND omakade --couch
+    COMMAND omakade-uitest --couch
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-${couch_case}.png
             --render-size=${couch_size}
   )
@@ -381,7 +381,7 @@ foreach(grid_size IN ITEMS 720p 1080p 4k)
     set(grid_dimensions 3840x2160)
   endif()
   add_test(NAME omakade_couch_grid_${grid_size}_render
-    COMMAND omakade --couch --owned-layout-test
+    COMMAND omakade-uitest --couch --owned-layout-test
             --render-overlay=couch-grid
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-grid-${grid_size}.png
             --render-size=${grid_dimensions}
@@ -395,7 +395,7 @@ endforeach()
 foreach(couch_overlay IN ITEMS couch-search couch-browse couch-settings-bottom)
   string(REPLACE "-" "_" couch_overlay_test ${couch_overlay})
   add_test(NAME omakade_${couch_overlay_test}_4k_render
-    COMMAND omakade --couch --owned-layout-test
+    COMMAND omakade-uitest --couch --owned-layout-test
             --render-overlay=${couch_overlay}
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-${couch_overlay}-4k.png
             --render-size=3840x2160
@@ -407,7 +407,7 @@ foreach(couch_overlay IN ITEMS couch-search couch-browse couch-settings-bottom)
 endforeach()
 
 add_test(NAME omakade_couch_detail_4k_render
-  COMMAND omakade --couch --uninstalled-layout-test
+  COMMAND omakade-uitest --couch --uninstalled-layout-test
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-detail-4k.png
           --render-size=3840x2160
 )
@@ -417,7 +417,7 @@ set_tests_properties(omakade_couch_detail_4k_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_render_200_percent
-  COMMAND omakade --couch
+  COMMAND omakade-uitest --couch
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-200-percent.png
           --render-size=1280x720
 )
@@ -427,7 +427,7 @@ set_tests_properties(omakade_couch_render_200_percent PROPERTIES
 )
 
 add_test(NAME omakade_couch_detail_render
-  COMMAND omakade --couch --uninstalled-layout-test
+  COMMAND omakade-uitest --couch --uninstalled-layout-test
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-detail.png
           --render-size=1920x1080
 )
@@ -437,7 +437,7 @@ set_tests_properties(omakade_couch_detail_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_keyboard_render
-  COMMAND omakade --couch
+  COMMAND omakade-uitest --couch
           --render-overlay=couch-search
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-keyboard.png
           --render-size=1920x1080
@@ -448,7 +448,7 @@ set_tests_properties(omakade_couch_keyboard_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_browse_render
-  COMMAND omakade --couch
+  COMMAND omakade-uitest --couch
           --render-overlay=couch-browse
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-browse.png
           --render-size=1920x1080
@@ -459,7 +459,7 @@ set_tests_properties(omakade_couch_browse_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_text_entry_render
-  COMMAND omakade --couch
+  COMMAND omakade-uitest --couch
           --render-overlay=couch-entry
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-text-entry.png
           --render-size=1920x1080
@@ -470,7 +470,7 @@ set_tests_properties(omakade_couch_text_entry_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_settings_render
-  COMMAND omakade --couch --owned-layout-test
+  COMMAND omakade-uitest --couch --owned-layout-test
           --render-overlay=couch-settings-top
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-settings.png
           --render-size=1920x1080
@@ -481,7 +481,7 @@ set_tests_properties(omakade_couch_settings_render PROPERTIES
 )
 
 add_test(NAME omakade_couch_settings_720p_render
-  COMMAND omakade --couch --owned-layout-test
+  COMMAND omakade-uitest --couch --owned-layout-test
           --render-overlay=couch-settings-bottom
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-couch-settings-720p.png
           --render-size=1280x720
@@ -496,7 +496,7 @@ set_tests_properties(omakade_render_smoke PROPERTIES
 )
 
 add_test(NAME omakade_render_space_separated_options
-  COMMAND omakade --render-screenshot ${CMAKE_CURRENT_BINARY_DIR}/omakade-render-spaced.png
+  COMMAND omakade-uitest --render-screenshot ${CMAKE_CURRENT_BINARY_DIR}/omakade-render-spaced.png
           --render-size 820x590
 )
 set_tests_properties(omakade_render_space_separated_options PROPERTIES
@@ -505,7 +505,7 @@ set_tests_properties(omakade_render_space_separated_options PROPERTIES
 )
 
 add_test(NAME omakade_owned_layout_render
-  COMMAND omakade --owned-layout-test
+  COMMAND omakade-uitest --owned-layout-test
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-owned-layout.png
           --render-size=820x590
 )
@@ -515,7 +515,7 @@ set_tests_properties(omakade_owned_layout_render PROPERTIES
 )
 
 add_test(NAME omakade_uninstalled_detail_render
-  COMMAND omakade --owned-layout-test --uninstalled-layout-test
+  COMMAND omakade-uitest --owned-layout-test --uninstalled-layout-test
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/omakade-uninstalled-detail.png
           --render-size=820x590
 )
@@ -526,7 +526,7 @@ set_tests_properties(omakade_uninstalled_detail_render PROPERTIES
 
 foreach(size_case IN ITEMS small large)
   add_test(NAME omakade_cover_size_${size_case}
-    COMMAND omakade --owned-layout-test --render-overlay=cover-size-${size_case}
+    COMMAND omakade-uitest --owned-layout-test --render-overlay=cover-size-${size_case}
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/cover-size-${size_case}.png
             --render-size=820x590)
   set_tests_properties(omakade_cover_size_${size_case} PROPERTIES
@@ -535,7 +535,7 @@ foreach(size_case IN ITEMS small large)
 endforeach()
 foreach(settings_section IN ITEMS sources library connections controls storage about)
   add_test(NAME omakade_settings_${settings_section}
-    COMMAND omakade --render-overlay=settings-${settings_section}
+    COMMAND omakade-uitest --render-overlay=settings-${settings_section}
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/settings-${settings_section}.png
             --render-size=820x590)
   set_tests_properties(omakade_settings_${settings_section} PROPERTIES
@@ -558,7 +558,7 @@ foreach(text_size_case IN ITEMS appearance-desktop-90 appearance-desktop-130 app
   endif()
   string(REPLACE "-" "_" text_size_name ${text_size_case})
   add_test(NAME omakade_text_size_settings_${text_size_name}
-    COMMAND omakade ${text_size_args} --text-size=${text_size_percent}
+    COMMAND omakade-uitest ${text_size_args} --text-size=${text_size_percent}
             --render-overlay=settings-${text_size_page}
             --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-settings-${text_size_case}.png
             --render-size=820x590)
@@ -567,13 +567,13 @@ foreach(text_size_case IN ITEMS appearance-desktop-90 appearance-desktop-130 app
     TIMEOUT 30)
 endforeach()
 add_test(NAME omakade_text_size_settings_appearance_narrow_150
-  COMMAND omakade --text-size=150 --render-size=380x800 --render-overlay=settings-appearance
+  COMMAND omakade-uitest --text-size=150 --render-size=380x800 --render-overlay=settings-appearance
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-settings-appearance-narrow-150.png)
 add_test(NAME omakade_text_size_library_150
-  COMMAND omakade --text-size=150 --render-size=820x590
+  COMMAND omakade-uitest --text-size=150 --render-size=820x590
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-library-150.png)
 add_test(NAME omakade_text_size_details_150
-  COMMAND omakade --owned-layout-test --uninstalled-layout-test --text-size=150
+  COMMAND omakade-uitest --owned-layout-test --uninstalled-layout-test --text-size=150
           --render-size=820x590
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-details-150.png)
 add_test(NAME omakade_cli_rejects_unknown_text_size
@@ -591,7 +591,7 @@ foreach(wheel_mode IN ITEMS animated reduced)
     list(APPEND wheel_options --reduced-motion)
   endif()
   add_test(NAME omakade_filtered_wheel_${wheel_mode}
-    COMMAND omakade --console-portal-test --render-size=1600x900 ${wheel_options})
+    COMMAND omakade-uitest --console-portal-test --render-size=1600x900 ${wheel_options})
   set_tests_properties(omakade_filtered_wheel_${wheel_mode} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30)
@@ -603,7 +603,7 @@ foreach(couch_grid_variant IN ITEMS normal small large)
     set(couch_grid_overlay couch-grid-${couch_grid_variant})
   endif()
   add_test(NAME omakade_couch_grid_centered_${couch_grid_variant}
-    COMMAND omakade --couch --owned-layout-test
+    COMMAND omakade-uitest --couch --owned-layout-test
       --render-overlay=${couch_grid_overlay}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/couch-grid-centered-${couch_grid_variant}.png
       --render-size=2048x1152)
@@ -619,7 +619,7 @@ foreach(launching_mode IN ITEMS desktop couch)
   else()
     list(APPEND launching_options --render-size=820x590)
   endif()
-  add_test(NAME omakade_launching_${launching_mode} COMMAND omakade ${launching_options})
+  add_test(NAME omakade_launching_${launching_mode} COMMAND omakade-uitest ${launching_options})
   set_tests_properties(omakade_launching_${launching_mode} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 30)
@@ -635,17 +635,17 @@ foreach(launching_mode IN ITEMS desktop couch couch_small)
     list(APPEND launching_navigation_options --couch)
   endif()
   add_test(NAME omakade_launching_navigation_${launching_mode}
-    COMMAND omakade ${launching_navigation_options})
+    COMMAND omakade-uitest ${launching_navigation_options})
   set_tests_properties(omakade_launching_navigation_${launching_mode} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
     TIMEOUT 30)
 endforeach()
-add_test(NAME omakade_manual_editor COMMAND omakade --manual-editor-test)
-add_test(NAME omakade_manual_editor_couch COMMAND omakade --manual-editor-test --couch)
-add_test(NAME omakade_manual_editor_render COMMAND omakade
+add_test(NAME omakade_manual_editor COMMAND omakade-uitest --manual-editor-test)
+add_test(NAME omakade_manual_editor_couch COMMAND omakade-uitest --manual-editor-test --couch)
+add_test(NAME omakade_manual_editor_render COMMAND omakade-uitest
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/manual-editor.png
   --render-overlay=manual-editor --render-size=820x590)
-add_test(NAME omakade_manual_editor_couch_render COMMAND omakade --couch
+add_test(NAME omakade_manual_editor_couch_render COMMAND omakade-uitest --couch
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/manual-editor-couch.png
   --render-overlay=manual-editor --render-size=1920x1080)
 set_tests_properties(omakade_manual_editor omakade_manual_editor_couch
@@ -653,15 +653,15 @@ set_tests_properties(omakade_manual_editor omakade_manual_editor_couch
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
-add_test(NAME omakade_artwork_editor COMMAND omakade --artwork-editor-test)
-add_test(NAME omakade_artwork_editor_couch COMMAND omakade --artwork-editor-test --couch)
-add_test(NAME omakade_artwork_editor_render COMMAND omakade
+add_test(NAME omakade_artwork_editor COMMAND omakade-uitest --artwork-editor-test)
+add_test(NAME omakade_artwork_editor_couch COMMAND omakade-uitest --artwork-editor-test --couch)
+add_test(NAME omakade_artwork_editor_render COMMAND omakade-uitest
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/artwork-editor.png
   --render-overlay=artwork-editor --render-size=820x590)
-add_test(NAME omakade_artwork_editor_couch_render COMMAND omakade --couch
+add_test(NAME omakade_artwork_editor_couch_render COMMAND omakade-uitest --couch
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/artwork-editor-couch.png
   --render-overlay=artwork-editor --render-size=1920x1080)
-add_test(NAME omakade_artwork_editor_narrow_render COMMAND omakade
+add_test(NAME omakade_artwork_editor_narrow_render COMMAND omakade-uitest
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/artwork-editor-narrow.png
   --render-overlay=artwork-editor --render-size=380x800)
 set_tests_properties(omakade_artwork_editor omakade_artwork_editor_couch
@@ -673,25 +673,25 @@ set_tests_properties(omakade_artwork_editor omakade_artwork_editor_couch
 # Narrowing the library leaves the grid holding delegates for the games that just left. Moving
 # down from the organize row must reach the game on screen, never one of those.
 add_test(NAME omakade_stale_selection
-  COMMAND omakade --stale-selection-test --owned-layout-test --render-size=1600x900)
+  COMMAND omakade-uitest --stale-selection-test --owned-layout-test --render-size=1600x900)
 set_tests_properties(omakade_stale_selection PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
 # Back walks out of a console, then a search, then a source, then anything else narrowing the
 # view, in both Desktop and Couch Mode.
-add_test(NAME omakade_filter_back COMMAND omakade --filter-back-test --render-size=1600x900)
+add_test(NAME omakade_filter_back COMMAND omakade-uitest --filter-back-test --render-size=1600x900)
 add_test(NAME omakade_filter_back_couch
-  COMMAND omakade --filter-back-test --couch --render-size=1920x1080)
+  COMMAND omakade-uitest --filter-back-test --couch --render-size=1920x1080)
 set_tests_properties(omakade_filter_back omakade_filter_back_couch PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
 # Game Mode keeps Couch Mode for its session and returns the window to the mode it had,
 # whether it was started from Desktop or from Couch Mode.
-add_test(NAME omakade_game_mode COMMAND omakade --game-mode-test --render-size=1600x900)
+add_test(NAME omakade_game_mode COMMAND omakade-uitest --game-mode-test --render-size=1600x900)
 add_test(NAME omakade_game_mode_couch
-  COMMAND omakade --game-mode-test --couch --render-size=1920x1080)
+  COMMAND omakade-uitest --game-mode-test --couch --render-size=1920x1080)
 set_tests_properties(omakade_game_mode omakade_game_mode_couch PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
@@ -703,9 +703,9 @@ foreach(shard RANGE 0 2)
   set_tests_properties(omakade_game_mode_startup_lifecycle_${shard} PROPERTIES TIMEOUT 60)
 endforeach()
 
-add_test(NAME omakade_random_selection COMMAND omakade --random-selection-test)
-add_test(NAME omakade_random_selection_couch COMMAND omakade --random-selection-test --couch)
-add_test(NAME omakade_random_selection_render COMMAND omakade
+add_test(NAME omakade_random_selection COMMAND omakade-uitest --random-selection-test)
+add_test(NAME omakade_random_selection_couch COMMAND omakade-uitest --random-selection-test --couch)
+add_test(NAME omakade_random_selection_render COMMAND omakade-uitest
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/random-selection.png
   --render-overlay=random-selection --render-size=820x590)
 set_tests_properties(omakade_random_selection omakade_random_selection_couch
@@ -713,12 +713,12 @@ set_tests_properties(omakade_random_selection omakade_random_selection_couch
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
-add_test(NAME omakade_saved_filters COMMAND omakade --saved-filter-test)
-add_test(NAME omakade_saved_filters_couch COMMAND omakade --saved-filter-test --couch)
-add_test(NAME omakade_saved_filters_render COMMAND omakade
+add_test(NAME omakade_saved_filters COMMAND omakade-uitest --saved-filter-test)
+add_test(NAME omakade_saved_filters_couch COMMAND omakade-uitest --saved-filter-test --couch)
+add_test(NAME omakade_saved_filters_render COMMAND omakade-uitest
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/saved-filters.png
   --render-overlay=saved-filters --render-size=820x590)
-add_test(NAME omakade_saved_filters_couch_render COMMAND omakade --couch
+add_test(NAME omakade_saved_filters_couch_render COMMAND omakade-uitest --couch
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/saved-filters-couch.png
   --render-overlay=saved-filters --render-size=1920x1080)
 set_tests_properties(omakade_saved_filters omakade_saved_filters_couch
@@ -726,12 +726,12 @@ set_tests_properties(omakade_saved_filters omakade_saved_filters_couch
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
   TIMEOUT 30)
 
-add_test(NAME omakade_bulk_editor COMMAND omakade --bulk-editor-test)
-add_test(NAME omakade_bulk_editor_couch COMMAND omakade --bulk-editor-test --couch)
-add_test(NAME omakade_bulk_editor_render COMMAND omakade
+add_test(NAME omakade_bulk_editor COMMAND omakade-uitest --bulk-editor-test)
+add_test(NAME omakade_bulk_editor_couch COMMAND omakade-uitest --bulk-editor-test --couch)
+add_test(NAME omakade_bulk_editor_render COMMAND omakade-uitest
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/bulk-editor.png
   --render-overlay=bulk-editor --render-size=820x590)
-add_test(NAME omakade_bulk_editor_couch_render COMMAND omakade --couch
+add_test(NAME omakade_bulk_editor_couch_render COMMAND omakade-uitest --couch
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/bulk-editor-couch.png
   --render-overlay=bulk-editor --render-size=1920x1080)
 set_tests_properties(omakade_bulk_editor omakade_bulk_editor_couch
@@ -747,7 +747,7 @@ foreach(editor_case IN ITEMS saved-filter bulk-editor manual-editor)
       list(APPEND editor_args --couch)
     endif()
     add_test(NAME omakade_${editor_case}_${editor_mode}_narrow
-      COMMAND omakade --${editor_case}-test ${editor_args} --render-size=380x800)
+      COMMAND omakade-uitest --${editor_case}-test ${editor_args} --render-size=380x800)
     set_tests_properties(omakade_${editor_case}_${editor_mode}_narrow PROPERTIES
       ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
       TIMEOUT 30)
@@ -761,7 +761,7 @@ foreach(settings_page IN ITEMS sources library connections controls storage appe
       list(APPEND settings_args --couch)
     endif()
     add_test(NAME omakade_settings_${settings_page}_${settings_mode}_narrow
-      COMMAND omakade ${settings_args} --render-size=380x800
+      COMMAND omakade-uitest ${settings_args} --render-size=380x800
       --render-overlay=settings-${settings_page}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/settings-${settings_page}-${settings_mode}-narrow.png)
     set_tests_properties(omakade_settings_${settings_page}_${settings_mode}_narrow PROPERTIES
@@ -779,14 +779,14 @@ foreach(info_case IN ITEMS game-info game-info-expanded game-info-empty game-inf
     else()
       list(APPEND info_args --render-size=900x720)
     endif()
-    add_test(NAME omakade_${info_case}_${info_mode} COMMAND omakade ${info_args}
+    add_test(NAME omakade_${info_case}_${info_mode} COMMAND omakade-uitest ${info_args}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${info_case}-${info_mode}.png)
     set_tests_properties(omakade_${info_case}_${info_mode} PROPERTIES
       ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
       TIMEOUT 20)
   endforeach()
 endforeach()
-add_test(NAME omakade_game_info_rating_only COMMAND omakade
+add_test(NAME omakade_game_info_rating_only COMMAND omakade-uitest
   --render-overlay=game-info-rating-only --render-size=900x720
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-info-rating-only.png)
 set_tests_properties(omakade_game_info_rating_only PROPERTIES
@@ -795,17 +795,17 @@ set_tests_properties(omakade_game_info_rating_only PROPERTIES
 
 # The real organization controls must remain navigable when detail rows wrap.
 add_test(NAME omakade_game_info_navigation_narrow
-  COMMAND omakade --render-overlay=game-info --render-size=600x800
+  COMMAND omakade-uitest --render-overlay=game-info --render-size=600x800
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-info-navigation-narrow.png)
 add_test(NAME omakade_game_info_navigation_couch_720p
-  COMMAND omakade --owned-layout-test --couch --render-overlay=game-info-expanded --render-size=1280x720
+  COMMAND omakade-uitest --owned-layout-test --couch --render-overlay=game-info-expanded --render-size=1280x720
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/game-info-navigation-couch-720p.png)
 set_tests_properties(omakade_game_info_navigation_narrow omakade_game_info_navigation_couch_720p
   PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
 
 foreach(discovery_size IN ITEMS 600x800 1280x720)
-  add_test(NAME omakade_metadata_filters_${discovery_size} COMMAND omakade
+  add_test(NAME omakade_metadata_filters_${discovery_size} COMMAND omakade-uitest
     --render-overlay=metadata-filters --render-size=${discovery_size}
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/metadata-filters-${discovery_size}.png)
   set_tests_properties(omakade_metadata_filters_${discovery_size} PROPERTIES
@@ -819,7 +819,7 @@ foreach(home_mode IN ITEMS desktop couch)
     list(APPEND home_args --couch)
   endif()
   foreach(home_size IN ITEMS 600x800 1280x720)
-    add_test(NAME omakade_home_${home_mode}_${home_size} COMMAND omakade ${home_args}
+    add_test(NAME omakade_home_${home_mode}_${home_size} COMMAND omakade-uitest ${home_args}
       --render-overlay=home --render-size=${home_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-${home_mode}-${home_size}.png)
     set_tests_properties(omakade_home_${home_mode}_${home_size} PROPERTIES
@@ -830,7 +830,7 @@ endforeach()
 
 foreach(hero_case IN ITEMS legacy screenshot custom)
   foreach(hero_size IN ITEMS 600x800 1920x1080)
-    add_test(NAME omakade_hero_${hero_case}_${hero_size} COMMAND omakade
+    add_test(NAME omakade_hero_${hero_case}_${hero_size} COMMAND omakade-uitest
       --render-overlay=game-info-hero-${hero_case} --render-size=${hero_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/hero-${hero_case}-${hero_size}.png)
     set_tests_properties(omakade_hero_${hero_case}_${hero_size} PROPERTIES
@@ -842,21 +842,21 @@ endforeach()
 # Responsive menu previews also validate QML loading on the installed candidate.
 foreach(nav_menu IN ITEMS library-sources library-filters library-view library-actions detail-manage)
   add_test(NAME omakade_menu_${nav_menu}
-    COMMAND omakade --owned-layout-test --render-size=600x800 --render-overlay=${nav_menu}
+    COMMAND omakade-uitest --owned-layout-test --render-size=600x800 --render-overlay=${nav_menu}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${nav_menu}.png)
   set_tests_properties(omakade_menu_${nav_menu} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 20)
 endforeach()
 add_test(NAME omakade_menu_detail_manage_4k
-  COMMAND omakade --couch --owned-layout-test --render-size=3840x2160 --render-overlay=detail-manage
+  COMMAND omakade-uitest --couch --owned-layout-test --render-size=3840x2160 --render-overlay=detail-manage
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/detail-manage-4k.png)
 set_tests_properties(omakade_menu_detail_manage_4k PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
 
 foreach(home_overview_size IN ITEMS 600x800 1280x720 2048x1152)
-  add_test(NAME omakade_home_overview_${home_overview_size} COMMAND omakade
+  add_test(NAME omakade_home_overview_${home_overview_size} COMMAND omakade-uitest
     --render-overlay=home-overview --render-size=${home_overview_size}
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-overview-${home_overview_size}.png)
   set_tests_properties(omakade_home_overview_${home_overview_size} PROPERTIES
@@ -864,7 +864,7 @@ foreach(home_overview_size IN ITEMS 600x800 1280x720 2048x1152)
     TIMEOUT 20)
 endforeach()
 
-add_test(NAME omakade_home_empty COMMAND omakade --render-overlay=home-empty --render-size=600x800
+add_test(NAME omakade_home_empty COMMAND omakade-uitest --render-overlay=home-empty --render-size=600x800
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-empty.png)
 set_tests_properties(omakade_home_empty PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1" TIMEOUT 20)
@@ -875,7 +875,7 @@ foreach(home_delayed_mode IN ITEMS desktop couch)
     list(APPEND home_delayed_args --couch)
   endif()
   foreach(home_delayed_size IN ITEMS 600x800 1280x720 1920x1080 3840x2160)
-    add_test(NAME omakade_home_delayed_${home_delayed_mode}_${home_delayed_size} COMMAND omakade ${home_delayed_args}
+    add_test(NAME omakade_home_delayed_${home_delayed_mode}_${home_delayed_size} COMMAND omakade-uitest ${home_delayed_args}
       --render-overlay=home-delayed --render-size=${home_delayed_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-delayed-${home_delayed_mode}-${home_delayed_size}.png)
     set_tests_properties(omakade_home_delayed_${home_delayed_mode}_${home_delayed_size} PROPERTIES
@@ -891,7 +891,7 @@ foreach(home_wheel_motion IN ITEMS animated reduced)
     list(APPEND home_wheel_args --reduced-motion)
   endif()
   foreach(home_wheel_size IN ITEMS 600x800 1920x1080)
-    add_test(NAME omakade_home_wheel_${home_wheel_motion}_${home_wheel_size} COMMAND omakade ${home_wheel_args}
+    add_test(NAME omakade_home_wheel_${home_wheel_motion}_${home_wheel_size} COMMAND omakade-uitest ${home_wheel_args}
       --render-overlay=home-wheel --render-size=${home_wheel_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-wheel-${home_wheel_motion}-${home_wheel_size}.png)
     set_tests_properties(omakade_home_wheel_${home_wheel_motion}_${home_wheel_size} PROPERTIES
@@ -901,7 +901,7 @@ foreach(home_wheel_motion IN ITEMS animated reduced)
 endforeach()
 
 foreach(home_stream_size IN ITEMS 600x800 1920x1080)
-  add_test(NAME omakade_home_wheel_stream_${home_stream_size} COMMAND omakade
+  add_test(NAME omakade_home_wheel_stream_${home_stream_size} COMMAND omakade-uitest
     --render-overlay=home-wheel-stream --render-size=${home_stream_size}
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-wheel-stream-${home_stream_size}.png)
   set_tests_properties(omakade_home_wheel_stream_${home_stream_size} PROPERTIES
@@ -917,7 +917,7 @@ foreach(detail_overview_mode IN ITEMS desktop couch)
   endif()
   foreach(detail_overview_size IN ITEMS 600x800 1280x720 1920x1080)
     add_test(NAME omakade_detail_overview_${detail_overview_mode}_${detail_overview_size}
-      COMMAND omakade --owned-layout-test ${detail_overview_args}
+      COMMAND omakade-uitest --owned-layout-test ${detail_overview_args}
         --render-overlay=game-info-overview-long --render-size=${detail_overview_size}
         --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/detail-overview-${detail_overview_mode}-${detail_overview_size}.png)
     set_tests_properties(omakade_detail_overview_${detail_overview_mode}_${detail_overview_size}
@@ -928,7 +928,7 @@ endforeach()
 
 foreach(identify_size IN ITEMS 600x800 1280x720)
   add_test(NAME omakade_identify_panel_${identify_size}
-    COMMAND omakade --owned-layout-test --render-overlay=game-info-identify --render-size=${identify_size}
+    COMMAND omakade-uitest --owned-layout-test --render-overlay=game-info-identify --render-size=${identify_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/identify-panel-${identify_size}.png)
   set_tests_properties(omakade_identify_panel_${identify_size} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -937,7 +937,7 @@ endforeach()
 
 foreach(panel_size IN ITEMS 600x800 1280x720)
   add_test(NAME omakade_artwork_matched_${panel_size}
-    COMMAND omakade --owned-layout-test --render-overlay=game-info-identify-matched --render-size=${panel_size}
+    COMMAND omakade-uitest --owned-layout-test --render-overlay=game-info-identify-matched --render-size=${panel_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/artwork-matched-${panel_size}.png)
   set_tests_properties(omakade_artwork_matched_${panel_size} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -946,7 +946,7 @@ endforeach()
 
 foreach(panel_size IN ITEMS 600x800 1280x720)
   add_test(NAME omakade_artwork_late_resize_${panel_size}
-    COMMAND omakade --owned-layout-test --render-overlay=game-info-identify-late-matched --render-size=${panel_size}
+    COMMAND omakade-uitest --owned-layout-test --render-overlay=game-info-identify-late-matched --render-size=${panel_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/artwork-late-${panel_size}.png)
   set_tests_properties(omakade_artwork_late_resize_${panel_size} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -965,7 +965,7 @@ foreach(tooltip_mode IN ITEMS desktop narrow couch)
   endif()
   foreach(tooltip_target IN ITEMS platform date rating missing)
     add_test(NAME omakade_rating_tooltip_${tooltip_mode}_${tooltip_target}
-      COMMAND omakade --owned-layout-test ${tooltip_args}
+      COMMAND omakade-uitest --owned-layout-test ${tooltip_args}
         --render-overlay=game-info-tooltip-${tooltip_target} --render-size=${tooltip_size}
         --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/tooltip-${tooltip_mode}-${tooltip_target}.png)
     set_tests_properties(omakade_rating_tooltip_${tooltip_mode}_${tooltip_target} PROPERTIES
@@ -975,14 +975,14 @@ foreach(tooltip_mode IN ITEMS desktop narrow couch)
 endforeach()
 
 add_test(NAME omakade_library_reflow
-  COMMAND omakade --owned-layout-test --render-overlay=library-reflow --render-size=1255x1000
+  COMMAND omakade-uitest --owned-layout-test --render-overlay=library-reflow --render-size=1255x1000
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/library-reflow.png)
 set_tests_properties(omakade_library_reflow PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError" TIMEOUT 45)
 
 add_test(NAME omakade_library_return_recent
-  COMMAND omakade --owned-layout-test --render-overlay=library-reflow-return --render-size=2024x1104
+  COMMAND omakade-uitest --owned-layout-test --render-overlay=library-reflow-return --render-size=2024x1104
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/library-return-recent.png)
 set_tests_properties(omakade_library_return_recent PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -993,14 +993,14 @@ foreach(launch_mode IN ITEMS desktop couch)
   if(launch_mode STREQUAL "couch")
     set(launch_args --couch --render-size=1280x720)
   endif()
-  add_test(NAME omakade_launch_feedback_${launch_mode} COMMAND omakade ${launch_args}
+  add_test(NAME omakade_launch_feedback_${launch_mode} COMMAND omakade-uitest ${launch_args}
     --render-overlay=launch-feedback
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/launch-feedback-${launch_mode}.png)
   set_tests_properties(omakade_launch_feedback_${launch_mode} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 20)
   # A game that closed right after starting is named, with its log offered first.
-  add_test(NAME omakade_launch_closed_${launch_mode} COMMAND omakade ${launch_args}
+  add_test(NAME omakade_launch_closed_${launch_mode} COMMAND omakade-uitest ${launch_args}
     --render-overlay=launch-closed
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/launch-closed-${launch_mode}.png)
   set_tests_properties(omakade_launch_closed_${launch_mode} PROPERTIES
@@ -1013,7 +1013,7 @@ foreach(queue_mode IN ITEMS desktop couch)
   if(queue_mode STREQUAL "couch")
     list(APPEND queue_args --couch)
   endif()
-  add_test(NAME omakade_home_full_queue_${queue_mode} COMMAND omakade ${queue_args}
+  add_test(NAME omakade_home_full_queue_${queue_mode} COMMAND omakade-uitest ${queue_args}
     --render-overlay=home-full-queue --render-size=1280x720
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/home-full-queue-${queue_mode}.png)
   set_tests_properties(omakade_home_full_queue_${queue_mode} PROPERTIES
@@ -1027,7 +1027,7 @@ foreach(recorder_overlay IN ITEMS recorder-details settings-recorder-on settings
     if(recorder_size STREQUAL "1920x1080")
       list(APPEND recorder_args --couch)
     endif()
-    add_test(NAME omakade_${recorder_overlay}_${recorder_size} COMMAND omakade ${recorder_args}
+    add_test(NAME omakade_${recorder_overlay}_${recorder_size} COMMAND omakade-uitest ${recorder_args}
       --render-overlay=${recorder_overlay} --render-size=${recorder_size}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${recorder_overlay}-${recorder_size}.png)
     set_tests_properties(omakade_${recorder_overlay}_${recorder_size} PROPERTIES
@@ -1058,14 +1058,14 @@ set_tests_properties(omakade_protondb_ui_tests PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software" TIMEOUT 30)
 
 foreach(review_size IN ITEMS 640x600 1280x900)
-  add_test(NAME omakade_review_filters_${review_size} COMMAND omakade
+  add_test(NAME omakade_review_filters_${review_size} COMMAND omakade-uitest
     --render-overlay=review-filters --render-size=${review_size}
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/review-filters-${review_size}.png)
   set_tests_properties(omakade_review_filters_${review_size} PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 20)
 endforeach()
-add_test(NAME omakade_review_filters_couch COMMAND omakade --couch
+add_test(NAME omakade_review_filters_couch COMMAND omakade-uitest --couch
   --render-overlay=review-filters --render-size=1920x1080
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/review-filters-couch.png)
 set_tests_properties(omakade_review_filters_couch PROPERTIES
@@ -1080,35 +1080,35 @@ set_tests_properties(omakade_automatic_launch_tests PROPERTIES TIMEOUT 30)
 add_executable(omakade_launch_audit EXCLUDE_FROM_ALL ../tools/LaunchAudit.cpp)
 target_link_libraries(omakade_launch_audit PRIVATE omakade_core Qt6::Core)
 
-add_test(NAME omakade_library_empty_review COMMAND omakade
+add_test(NAME omakade_library_empty_review COMMAND omakade-uitest
   --render-overlay=library-empty-review --render-size=640x600
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/library-empty-review.png)
 set_tests_properties(omakade_library_empty_review PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
 
-add_test(NAME omakade_session_history_desktop COMMAND omakade
+add_test(NAME omakade_session_history_desktop COMMAND omakade-uitest
   --render-overlay=session-history --render-size=640x600
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/session-history-desktop.png)
-add_test(NAME omakade_session_history_couch COMMAND omakade --couch
+add_test(NAME omakade_session_history_couch COMMAND omakade-uitest --couch
   --render-overlay=session-history --render-size=1920x1080
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/session-history-couch.png)
 set_tests_properties(omakade_session_history_desktop omakade_session_history_couch PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   TIMEOUT 20)
 
-add_test(NAME omakade_now_playing_desktop COMMAND omakade
+add_test(NAME omakade_now_playing_desktop COMMAND omakade-uitest
   --render-overlay=now-playing --render-size=900x700
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-desktop.png)
-add_test(NAME omakade_now_playing_couch COMMAND omakade --couch
+add_test(NAME omakade_now_playing_couch COMMAND omakade-uitest --couch
   --render-overlay=now-playing --render-size=1920x1080
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-couch.png)
 # The panel is where a couch player acts, so it has to hold together at the sizes
 # a TV actually reports, not only at 1080p.
-add_test(NAME omakade_now_playing_couch_720p COMMAND omakade --couch
+add_test(NAME omakade_now_playing_couch_720p COMMAND omakade-uitest --couch
   --render-overlay=now-playing --render-size=1280x720
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-couch-720p.png)
-add_test(NAME omakade_now_playing_couch_4k COMMAND omakade --couch
+add_test(NAME omakade_now_playing_couch_4k COMMAND omakade-uitest --couch
   --render-overlay=now-playing --render-size=3840x2160
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/now-playing-couch-4k.png)
 set_tests_properties(omakade_now_playing_desktop omakade_now_playing_couch
@@ -1120,11 +1120,11 @@ set_tests_properties(omakade_now_playing_desktop omakade_now_playing_couch
 # The stats screen renders against a fixture of recorded sessions, so the sections have real
 # figures to draw and any QML error in them fails the test rather than waiting for a person to
 # open the view.
-add_test(NAME omakade_stats_screen COMMAND omakade
+add_test(NAME omakade_stats_screen COMMAND omakade-uitest
   --render-overlay=stats --render-size=900x900
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-desktop.png)
 # The same overview in a taller window, with separate checks for the other views below.
-add_test(NAME omakade_stats_screen_full COMMAND omakade
+add_test(NAME omakade_stats_screen_full COMMAND omakade-uitest
   --render-overlay=stats --render-size=1100x1700
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-full.png)
 set_tests_properties(omakade_stats_screen omakade_stats_screen_full PROPERTIES
@@ -1132,26 +1132,26 @@ set_tests_properties(omakade_stats_screen omakade_stats_screen_full PROPERTIES
   FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError"
   TIMEOUT 20)
 foreach(stats_view IN ITEMS patterns library empty error)
-  add_test(NAME omakade_stats_${stats_view}_render COMMAND omakade
+  add_test(NAME omakade_stats_${stats_view}_render COMMAND omakade-uitest
     --render-overlay=stats-${stats_view} --render-size=900x900
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-${stats_view}.png)
   set_tests_properties(omakade_stats_${stats_view}_render PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
     FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError" TIMEOUT 20)
 endforeach()
-add_test(NAME omakade_stats_narrow_render COMMAND omakade
+add_test(NAME omakade_stats_narrow_render COMMAND omakade-uitest
   --render-overlay=stats --render-size=600x800
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-narrow.png)
 set_tests_properties(omakade_stats_narrow_render PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
   FAIL_REGULAR_EXPRESSION "Binding loop;TypeError;ReferenceError" TIMEOUT 20)
 # The card, open in its preview.
-add_test(NAME omakade_stats_card COMMAND omakade
+add_test(NAME omakade_stats_card COMMAND omakade-uitest
   --render-overlay=year-in-review --render-size=1200x1000
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-card-preview.png)
 # The card written out. The app exits with the outcome of the write, so a run that cannot produce
 # the file fails here rather than leaving an export path nobody ever exercised.
-add_test(NAME omakade_card_export COMMAND omakade --stats-fixture
+add_test(NAME omakade_card_export COMMAND omakade-uitest --stats-fixture
   --export-card=${CMAKE_CURRENT_BINARY_DIR}/stats-card.png)
 add_test(NAME omakade_card_export_dimensions COMMAND ${Python3_EXECUTABLE}
   ${CMAKE_CURRENT_SOURCE_DIR}/CheckPngSize.py
@@ -1160,7 +1160,7 @@ add_test(NAME omakade_card_export_dimensions COMMAND ${Python3_EXECUTABLE}
 set_tests_properties(omakade_card_export PROPERTIES FIXTURES_SETUP omakade_card_export_file)
 set_tests_properties(omakade_card_export_dimensions PROPERTIES FIXTURES_REQUIRED omakade_card_export_file)
 # The same screen in Couch Mode, which is how it reaches a television.
-add_test(NAME omakade_stats_couch COMMAND omakade --couch
+add_test(NAME omakade_stats_couch COMMAND omakade-uitest --couch
   --render-overlay=stats --render-size=1920x1080
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/stats-couch.png)
 set_tests_properties(omakade_stats_card omakade_card_export omakade_stats_couch PROPERTIES
@@ -1175,10 +1175,10 @@ set_tests_properties(omakade_save_backups_tests PROPERTIES TIMEOUT 30)
 
 foreach(save_overlay IN ITEMS save-backups save-backups-confirm save-backups-shared-confirm
                               save-backups-delete)
-  add_test(NAME omakade_${save_overlay}_desktop COMMAND omakade
+  add_test(NAME omakade_${save_overlay}_desktop COMMAND omakade-uitest
     --render-overlay=${save_overlay} --render-size=640x600
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${save_overlay}-desktop.png)
-  add_test(NAME omakade_${save_overlay}_couch COMMAND omakade --couch
+  add_test(NAME omakade_${save_overlay}_couch COMMAND omakade-uitest --couch
     --render-overlay=${save_overlay} --render-size=1920x1080
     --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${save_overlay}-couch.png)
   set_tests_properties(omakade_${save_overlay}_desktop omakade_${save_overlay}_couch PROPERTIES
@@ -1225,21 +1225,21 @@ foreach(feature_overlay IN ITEMS library-repair library-repair-controls library-
     if(feature_overlay STREQUAL "library-repair-controls")
       list(APPEND feature_args --repair-navigation-fixture)
     endif()
-    add_test(NAME omakade_${feature_overlay}_${feature_size} COMMAND omakade ${feature_args}
+    add_test(NAME omakade_${feature_overlay}_${feature_size} COMMAND omakade-uitest ${feature_args}
       --render-overlay=${feature_overlay} --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${feature_overlay}-${feature_size}.png)
     set_tests_properties(omakade_${feature_overlay}_${feature_size} PROPERTIES
       ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1" TIMEOUT 20)
   endforeach()
 endforeach()
 
-add_test(NAME omakade_library-repair_controls_380 COMMAND omakade
+add_test(NAME omakade_library-repair_controls_380 COMMAND omakade-uitest
   --render-size=380x700 --render-overlay=library-repair-controls
   --repair-navigation-fixture
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/library-repair-controls-380.png)
 set_tests_properties(omakade_library-repair_controls_380 PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1" TIMEOUT 20)
 
-add_test(NAME omakade_launch_setup_controller_entry COMMAND omakade --couch
+add_test(NAME omakade_launch_setup_controller_entry COMMAND omakade-uitest --couch
   --render-overlay=launch-setup-entry --render-size=1920x1080
   --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/launch-setup-entry.png)
 set_tests_properties(omakade_launch_setup_controller_entry PROPERTIES
@@ -1278,7 +1278,7 @@ foreach(stop_mode IN ITEMS desktop couch)
     set(stop_args --couch --render-size=1920x1080)
   endif()
   foreach(stop_case IN ITEMS stop-game stop-game-apply stop-game-refused stop-all)
-    add_test(NAME omakade_${stop_case}_${stop_mode} COMMAND omakade ${stop_args}
+    add_test(NAME omakade_${stop_case}_${stop_mode} COMMAND omakade-uitest ${stop_args}
       --owned-layout-test --render-overlay=${stop_case}
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/${stop_case}-${stop_mode}.png)
     set_tests_properties(omakade_${stop_case}_${stop_mode} PROPERTIES
@@ -1302,7 +1302,7 @@ foreach(history_mode IN ITEMS desktop couch)
   if(history_mode STREQUAL "couch")
     set(history_args --couch --render-size=1920x1080)
   endif()
-  add_test(NAME omakade_history_pages_${history_mode} COMMAND omakade ${history_args}
+  add_test(NAME omakade_history_pages_${history_mode} COMMAND omakade-uitest ${history_args}
     --render-overlay=session-history-pages --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/history-pages-${history_mode}.png)
   set_tests_properties(omakade_history_pages_${history_mode} PROPERTIES TIMEOUT 20
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -1310,7 +1310,7 @@ foreach(history_mode IN ITEMS desktop couch)
 endforeach()
 
 foreach(card_case IN ITEMS empty paused error)
-  add_test(NAME omakade_card_export_${card_case} COMMAND omakade --stats-fixture
+  add_test(NAME omakade_card_export_${card_case} COMMAND omakade-uitest --stats-fixture
     --render-overlay=year-in-review-${card_case}
     --export-card=${CMAKE_CURRENT_BINARY_DIR}/stats-card-${card_case}.png)
   set_tests_properties(omakade_card_export_${card_case} PROPERTIES TIMEOUT 20
@@ -1321,7 +1321,7 @@ endforeach()
 set_tests_properties(omakade_card_export_error PROPERTIES
   PASS_REGULAR_EXPRESSION "Card export: the card was not written")
 
-add_test(NAME omakade_card_export_requires_fixture_flag COMMAND omakade
+add_test(NAME omakade_card_export_requires_fixture_flag COMMAND omakade-uitest
   --export-card=${CMAKE_CURRENT_BINARY_DIR}/unmarked-demo-card.png)
 set_tests_properties(omakade_card_export_requires_fixture_flag PROPERTIES WILL_FAIL TRUE TIMEOUT 10
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1")
@@ -1334,7 +1334,7 @@ foreach(heroic_owned_mode IN ITEMS desktop couch)
     list(APPEND heroic_owned_args --couch)
   endif()
   add_test(NAME omakade_heroic_owned_${heroic_owned_mode}
-    COMMAND omakade ${heroic_owned_args} --render-overlay=heroic-owned
+    COMMAND omakade-uitest ${heroic_owned_args} --render-overlay=heroic-owned
       --render-size=1400x1000
       --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/heroic-owned-${heroic_owned_mode}.png)
   set_tests_properties(omakade_heroic_owned_${heroic_owned_mode} PROPERTIES

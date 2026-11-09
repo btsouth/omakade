@@ -7,7 +7,7 @@ building and testing.
 
 | Program | Source | Role |
 | --- | --- | --- |
-| `omakade` | `src/app/main.cpp`, `qml/` | The window: library, details, settings, Game Mode and the in-game guide host |
+| `omakade` | `src/app/`, `qml/` | The window: library, details, settings, Game Mode and the in-game guide host |
 | `omakade-sessiond` | `src/sessiond/main.cpp` | User service that records play sessions and hosts the resident in-game guide and highlight recorder, with or without the window open |
 | `omakade-guide-button` | `src/guidebutton/` | User service that reads controllers for the Home button and runs the Game Mode shortcut |
 | `omakade-guide-guard` | `src/guide/guard.cpp` | Pauses a game while the in-game guide is open and resumes it if Omakade exits or crashes |
@@ -22,7 +22,8 @@ downloaded art in `~/.cache/omakade/`. Credentials go to Secret Service.
 
 | Directory | Owns |
 | --- | --- |
-| `app/` | Start-up and wiring in `main.cpp`, settings (`AppSettings`), single-instance commands, card export, the idle inhibitor, and the UI self-test harness |
+| `app/` | Start-up and wiring in `OmakadeApp.cpp`, settings (`AppSettings`), single-instance commands, card export, the idle inhibitor, and the self-tests not yet moved to `selftest/` |
+| `selftest/` | `omakade-uitest`, the app the UI tests run: fixtures, render paths and self-tests, which the shipped `omakade` leaves out |
 | `sources/` | One folder per launcher or emulator. A scanner finds its roots and reads the launcher's files into plain records; caching and the UI live in `library/` |
 | `library/` | One model per source (`*GameModel`), the merged `UnifiedGameModel`, filtering and sorting (`LibraryFilterModel`), consoles, Home, stats, Repair Library and the library database |
 | `launch/` | Building and running the launch command for every source, launch setups, Steam URLs and RetroArch's home |
@@ -43,8 +44,11 @@ downloaded art in `~/.cache/omakade/`. Credentials go to Secret Service.
 The build splits these into static libraries in `CMakeLists.txt`. `omakade_tracking`
 holds the recording code shared with the recorder, `omakade_guide` and
 `omakade_guide_runtime` hold the guide button and guide, and `omakade_core` holds
-the rest. The `omakade` executable adds `main.cpp`, the QML module and the bundled
-images.
+the rest. `omakade_app` holds the window's wiring (`runOmakade` in `OmakadeApp.cpp`), the
+QML module and the bundled images. The `omakade` executable is `omakade_app` and
+`main.cpp`. With testing on, `omakade-uitest` links the same `omakade_app` and adds
+`src/selftest/`, which `runOmakade` calls at each point where a fixture, render path or
+self-test changes what it builds. It is never installed.
 
 ## `qml/`
 
@@ -57,7 +61,7 @@ images.
   views, Settings, Repair Library, launch setup, menus and themed controls.
   `UiMetrics.qml` and `TextEntry.qml` are singletons.
 
-C++ objects reach QML as context properties set in `src/app/main.cpp`, such as
+C++ objects reach QML as context properties set in `src/app/OmakadeApp.cpp`, such as
 `Library`, `Preferences`, `Launcher` and one `<Source>Library` per source. The colours
 come from `Theme`, which follows the Omarchy theme.
 
@@ -80,10 +84,14 @@ come from `Theme`, which follows the Omarchy theme.
 scans them. Larger features have their own executables, such as `GameModeTests`,
 `BackupRecoveryTests`, `SaveSetTests` and `XodusTests`.
 
-UI behaviour is tested by running `omakade` itself with a test flag, for example
-`omakade --couch-navigation-test` or `--smoke-test`. The test registrations set
-`QT_QPA_PLATFORM=offscreen` and the software Qt Quick backend, so the suite runs
-without a display, as it does in CI. Python tests cover Game Mode start-up, the guide recorder, the TV launcher
+UI behaviour is tested by running the app with a test flag. Most UI tests run
+`omakade-uitest`, the app plus `src/selftest/`, for example
+`omakade-uitest --render-overlay=settings --render-screenshot=settings.png` or
+`omakade-uitest --backup-editor-test`. A few still run `omakade` itself, such as
+`omakade --startup-navigation-test`, and `omakade --smoke-test` checks the shipped
+binary. Only `omakade-uitest` reads `--render-size`, so a render run at a set
+window size needs it rather than `omakade`. The test registrations set `QT_QPA_PLATFORM=offscreen` and the software Qt
+Quick backend, so the suite runs without a display, as it does in CI. Python tests cover Game Mode start-up, the guide recorder, the TV launcher
 helper, the native ports catalog and the SBOM generator.
 
 ### In-game guide
@@ -176,7 +184,7 @@ source; Kyty and native ports reuse the generic `LauncherGameModel`.
    list when a scan is incomplete, and expose `statusText`, `errorText`,
    `detectedPaths` and `lastScan` for Settings.
 3. **Build.** List the new files in `omakade_core` in `CMakeLists.txt`.
-4. **Wiring.** In `src/app/main.cpp`, create the model, add it to `UnifiedGameModel`,
+4. **Wiring.** In `src/app/OmakadeApp.cpp`, create the model, add it to `UnifiedGameModel`,
    apply its enabled setting, set its context property and schedule its start-up scan.
    Add the `<name>Enabled` setting to `AppSettings`.
 5. **Launching.** Add the launch route to `GameLauncher`, and its process names to

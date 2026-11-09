@@ -22,8 +22,9 @@ The helpers live in `tests/OmakadeTests.cmake`. Each takes `TIMEOUT <seconds>`,
 `RUN_SERIAL`, `WILL_FAIL` and `ENVIRONMENT <VAR=value>...`, which set the ctest property of
 the same name.
 
-`omakade_app_test(<name> ARGS <arguments>...)` runs the `omakade` binary offscreen with
-software rendering (`OMAKADE_TEST_UI_ENVIRONMENT`). `ENVIRONMENT` adds to that.
+`omakade_app_test(<name> ARGS <arguments>...)` runs the app offscreen with software rendering
+(`OMAKADE_TEST_UI_ENVIRONMENT`), as `omakade-uitest`: the `omakade` window plus the render
+paths, fixtures and self-tests in `src/selftest`. `ENVIRONMENT` adds to that.
 
 ```cmake
 omakade_app_test(omakade_source_rescan_enablement
