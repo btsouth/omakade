@@ -721,11 +721,12 @@ Item {
     onTriggered: root.now = new Date()
   }
 
-  // Printed button names for the connected pad, by position: south, east, north.
+  // Printed button names for the connected pad: select, back, screenshot. A Nintendo
+  // pad selects with A (east) and goes back with B (south), as in the library.
   readonly property var buttons: ({
     keyboard: ["Enter", "Esc", "Y"],
     playstation: ["✕", "○", "△"],
-    nintendo: ["B", "A", "X"]
+    nintendo: ["A", "B", "X"]
   })[root.family] || ["A", "B", "Y"]
 
   // What the buttons do, under the card: the button's glyph, then its action.

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- On a Nintendo controller the in-game guide now selects with A and goes back with B, as
+  the library does. It had them the other way round.
+
 ## 1.18.0
 
 Game Pass games, highlight clips and one Game Mode.

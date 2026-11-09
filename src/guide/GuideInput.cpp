@@ -38,6 +38,12 @@ QString button(int code) {
 bool direction(const QString& action) {
   return action == "up" || action == "down" || action == "left" || action == "right";
 }
+// As in the library, a Nintendo pad confirms with A (east) and goes back with B (south).
+// Latching stays by position; only the action the guide receives follows the labels.
+QString familyAction(const QString& action, const QString& family) {
+  if (family != "nintendo") return action;
+  return action == "a" ? "b" : action == "b" ? "a" : action;
+}
 } // namespace
 
 namespace {
@@ -520,7 +526,7 @@ void GuideInput::dispatch() {
             action == "y" ? BTN_NORTH : action == "guide" ? BTN_MODE : 0;
         if (key && (group.latched.contains(key) || (key == BTN_MODE && !group.homeArmed))) continue;
         if (key) group.latched.insert(key);
-        intents.append({action, device->family});
+        intents.append({familyAction(action, device->family), device->family});
       }
     }
     for (const int key : {BTN_SOUTH, BTN_EAST, BTN_WEST, BTN_NORTH, BTN_MODE}) {

@@ -47,6 +47,8 @@ private slots:
   void mirroredReportsAndRecovery();
   void nonXboxMirrors_data();
   void nonXboxMirrors();
+  void nintendoConfirmAndBack_data();
+  void nintendoConfirmAndBack();
   void families();
   void guardResumesOnOwnerDeath();
   void guardTreeAndIdentity();
@@ -546,6 +548,45 @@ void InGameGuideTests::nonXboxMirrors() {
   pads.removeFirst(); ::close(writers.take("event15")); QTest::qWait(20); input.rescan();
   report("event16", BTN_SOUTH, 1); QTest::qWait(20);
   QCOMPARE(actions.size(), 4); QCOMPARE(actions.last().at(1).toString(), "xbox");
+  input.release(); for (const int fd : writers) ::close(fd);
+}
+
+void InGameGuideTests::nintendoConfirmAndBack_data() {
+  QTest::addColumn<QString>("name"); QTest::addColumn<QString>("driver");
+  QTest::addColumn<QString>("south"); QTest::addColumn<QString>("east");
+  QTest::newRow("nintendo") << QString("Nintendo Switch Pro Controller") << QString("hid-nintendo") << QString("b") << QString("a");
+  QTest::newRow("xbox") << QString("Xbox Wireless Controller") << QString("xpadneo") << QString("a") << QString("b");
+  QTest::newRow("playstation") << QString("Sony DualSense") << QString("hid-playstation") << QString("a") << QString("b");
+}
+
+// The guide, and its quit question, take A and B the way the library does:
+// a Nintendo pad's A is east and confirms, its B is south and goes back.
+void InGameGuideTests::nintendoConfirmAndBack() {
+  QFETCH(QString, name); QFETCH(QString, driver); QFETCH(QString, south); QFETCH(QString, east);
+  GuideInput input; QHash<QString, int> writers;
+  GuideInput::Access access;
+  access.scan = [&] { return QList<GuideListener::Controller>{{"event15", "physical", name, false, driver}}; };
+  access.open = [&](const QString& node) { int fds[2]; if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC)) return -1; writers[node] = fds[1]; return fds[0]; };
+  access.grab = [](int) { return true; }; access.ungrab = [](int) {};
+  input.setAccess(access); input.grab("event15", nullptr, nullptr);
+  QSignalSpy actions(&input, &GuideInput::action);
+  const auto report = [&](int key, int value) {
+    input_event events[2]{}; events[0].type = EV_KEY; events[0].code = key; events[0].value = value;
+    events[1].type = EV_SYN; events[1].code = SYN_REPORT;
+    QCOMPARE(::write(writers["event15"], events, sizeof(events)), ssize_t(sizeof(events)));
+    QTest::qWait(20);
+  };
+  QTest::qWait(20);
+  report(BTN_SOUTH, 1); QTRY_COMPARE(actions.size(), 1);
+  QCOMPARE(actions.last().first().toString(), south);
+  QCOMPARE(actions.last().at(1).toString(), GuidePayload::padFamily(name));
+  report(BTN_SOUTH, 0);
+  report(BTN_EAST, 1); QTRY_COMPARE(actions.size(), 2);
+  QCOMPARE(actions.last().first().toString(), east);
+  // A held button still latches by position: no second action until it is released.
+  report(BTN_EAST, 2); QCOMPARE(actions.size(), 2);
+  report(BTN_EAST, 0); report(BTN_EAST, 1); QTRY_COMPARE(actions.size(), 3);
+  QCOMPARE(actions.last().first().toString(), east);
   input.release(); for (const int fd : writers) ::close(fd);
 }
 
