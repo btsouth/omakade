@@ -76,6 +76,7 @@ std::optional<int> Harness::start(AppContext& app) {
   o.startupNavigationTest = arguments.contains(QStringLiteral("--startup-navigation-test"));
   o.controllerNavigationTest = arguments.contains(QStringLiteral("--controller-navigation-test"));
   o.ownedLayoutTest = arguments.contains(QStringLiteral("--owned-layout-test"));
+  o.detailsDirectionTest = arguments.contains(QStringLiteral("--details-direction-test"));
   o.gogSettingsFixture = o.gogSettingsTest || o.renderOverlay == "gog-folders";
   o.linkedPreferenceFixture = o.linkedPreferenceTest || o.renderOverlay == "linked-preference" || o.renderOverlay == "linked-preference-missing";
   o.backupFixture = o.backupEditorTest || o.renderOverlay == QStringLiteral("backup-editor");

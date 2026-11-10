@@ -1872,6 +1872,9 @@ void startNavigation(Harness& harness, AppContext& app) {
       application.exit(runStartupNavigationContract(quickWindow, controller) ? EXIT_SUCCESS : EXIT_FAILURE);
     });
   }
+  // The app runs --details-direction-test itself. With that flag, neither drive starts, so
+  // only one driver moves focus in the window.
+  if (options.detailsDirectionTest) return;
   if (options.couchNavigationTest) {
     driveCouchNavigation(quickWindow, application, controller);
   } else if (options.controllerNavigationTest && !options.couchNavigationContract &&

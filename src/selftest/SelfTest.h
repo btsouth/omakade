@@ -54,6 +54,8 @@ struct Options {
   bool controllerNavigationTest = false;
   // The app's --owned-layout-test, which the controller navigation check follows too.
   bool ownedLayoutTest = false;
+  // The app's --details-direction-test. The couch and controller drives stay off with it.
+  bool detailsDirectionTest = false;
 };
 
 // What the fixtures write and keep for the render paths and self-tests to check. It outlives
