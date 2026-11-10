@@ -127,7 +127,7 @@ target_link_libraries(omakade_core_tests PRIVATE
   Qt6::Test
 )
 
-add_dependencies(omakade_core_tests omakade-sessiond)
+add_dependencies(omakade_core_tests omakade-sessiond omakade-uitest)
 add_test(NAME omakade_core_tests COMMAND omakade_core_tests)
 set_tests_properties(omakade_core_tests PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen"

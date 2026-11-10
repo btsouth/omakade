@@ -1215,7 +1215,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                                            startupTimer.elapsed());
   engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"),
                                            QCoreApplication::applicationVersion());
-  engine.rootContext()->setContextProperty(QStringLiteral("OwnedGameCountOverride"), 0);
+  engine.rootContext()->setContextProperty(QStringLiteral("OwnedGameCountOverride"), QVariant(0));
   engine.rootContext()->setContextProperty(QStringLiteral("CouchModeRequested"),
                                            startInCouchMode);
   engine.rootContext()->setContextProperty(QStringLiteral("ColdGameModeRequested"),
