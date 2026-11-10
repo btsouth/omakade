@@ -1,4 +1,4 @@
-#include "app/KeyboardTestInput.h"
+#include "selftest/KeyboardTestInput.h"
 
 #include <QEvent>
 #include <QWindow>

@@ -45,6 +45,17 @@ struct Options {
   bool artworkEditorTest = false;
   bool manualEditorTest = false;
   bool launchingNavigationTest = false;
+  // The navigation checks, in NavigationCases.cpp and CouchNavigationContract.cpp. They start
+  // once the window is up.
+  bool couchNavigationTest = false;
+  bool couchNavigationContract = false;
+  bool couchNavigationSweep = false;
+  bool startupNavigationTest = false;
+  bool controllerNavigationTest = false;
+  // The app's --owned-layout-test, which the controller navigation check follows too.
+  bool ownedLayoutTest = false;
+  // The app's --details-direction-test. The couch and controller drives stay off with it.
+  bool detailsDirectionTest = false;
 };
 
 // What the fixtures write and keep for the render paths and self-tests to check. It outlives
@@ -109,6 +120,10 @@ std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app);
 
 // --render-screenshot and --export-card: sets up the overlay, checks it and saves the image.
 std::optional<int> renderWindow(Harness& harness, AppContext& app);
+
+// --couch-navigation-test, --couch-navigation-contract, --couch-navigation-sweep,
+// --startup-navigation-test and --controller-navigation-test: starts the one asked for.
+void startNavigation(Harness& harness, AppContext& app);
 
 // The self-tests in cases().
 void driveLibraryPreferences(Harness& harness, AppContext& app);
