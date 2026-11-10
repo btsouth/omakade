@@ -6,8 +6,7 @@ class ControllerInput;
 class QQuickItem;
 class QQuickWindow;
 
-// Helpers shared by the self-tests still in OmakadeApp.cpp and the ones in src/selftest. They
-// move to src/selftest with the last of the in-app self-tests.
+// Helpers the self-tests and navigation checks share.
 
 // Adapter for table-driven pad self-tests. Keyboard checks use KeyboardTestInput directly.
 void requestControllerCommand(ControllerInput& controller, int key);

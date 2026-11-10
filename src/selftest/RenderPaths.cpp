@@ -3,7 +3,7 @@
 #include "achievements/AchievementModel.h"
 #include "app/AppSettings.h"
 #include "app/CommandLine.h"
-#include "app/SelfTestSupport.h"
+#include "selftest/SelfTestSupport.h"
 #include "backup/BackupManager.h"
 #include "input/ControllerInput.h"
 #include "launch/GameLauncher.h"

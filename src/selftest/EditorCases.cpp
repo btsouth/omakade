@@ -1,6 +1,6 @@
 #include "selftest/SelfTest.h"
 
-#include "app/SelfTestSupport.h"
+#include "selftest/SelfTestSupport.h"
 #include "backup/BackupManager.h"
 #include "input/ControllerInput.h"
 #include "library/GameRoles.h"

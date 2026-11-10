@@ -1,6 +1,6 @@
 #include "selftest/SelfTest.h"
 
-#include "app/SelfTestSupport.h"
+#include "selftest/SelfTestSupport.h"
 #include "input/ControllerInput.h"
 #include "library/LibraryFilterModel.h"
 #include "selftest/CouchNavigationContract.h"
@@ -1872,8 +1872,8 @@ void startNavigation(Harness& harness, AppContext& app) {
       application.exit(runStartupNavigationContract(quickWindow, controller) ? EXIT_SUCCESS : EXIT_FAILURE);
     });
   }
-  // The app runs --details-direction-test itself. With that flag, neither drive starts, so
-  // only one driver moves focus in the window.
+  // --details-direction-test starts after this, from windowReady. With that flag, neither
+  // drive starts, so only one driver moves focus in the window.
   if (options.detailsDirectionTest) return;
   if (options.couchNavigationTest) {
     driveCouchNavigation(quickWindow, application, controller);

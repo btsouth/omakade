@@ -45,6 +45,8 @@ struct Options {
   bool artworkEditorTest = false;
   bool manualEditorTest = false;
   bool launchingNavigationTest = false;
+  // --console-portal-test, on the console fixture.
+  bool consolePortalTest = false;
   // The navigation checks, in NavigationCases.cpp and CouchNavigationContract.cpp. They start
   // once the window is up.
   bool couchNavigationTest = false;
@@ -52,10 +54,21 @@ struct Options {
   bool couchNavigationSweep = false;
   bool startupNavigationTest = false;
   bool controllerNavigationTest = false;
-  // The app's --owned-layout-test, which the controller navigation check follows too.
+  // --owned-layout-test: the demo library looks like a library of owned games. The controller
+  // navigation check follows it too.
   bool ownedLayoutTest = false;
-  // The app's --details-direction-test. The couch and controller drives stay off with it.
+  // --uninstalled-layout-test: the demo library's first game is not installed, and the details
+  // of that game open at the start unless a navigation check drives the run.
+  bool uninstalledLayoutTest = false;
+  // --details-direction-test. The couch and controller drives stay off with it.
   bool detailsDirectionTest = false;
+  // --stress-test and --stress-count: a demo library of that many games.
+  bool stressTest = false;
+  int stressCount = 1000;
+  // --benchmark and --benchmark-max-ms: the run ends at its first frame, and fails when that
+  // took longer than the limit.
+  bool benchmark = false;
+  int benchmarkMaxMs = 0;
 };
 
 // What the fixtures write and keep for the render paths and self-tests to check. It outlives
@@ -77,6 +90,8 @@ struct Fixtures {
   std::shared_ptr<std::atomic<int>> portRefreshes = std::make_shared<std::atomic<int>>(0);
   std::unique_ptr<QTemporaryDir> relocationFixtureDirectory;
   std::unique_ptr<QStandardItemModel> relocationFixture;
+  std::unique_ptr<QTemporaryDir> consoleFixture;
+  std::unique_ptr<QTemporaryDir> navigationData;
   LibraryGameModeTestCompositor gameModeTestCompositor;
 };
 
@@ -111,12 +126,14 @@ bool parseRenderSize(const QString& value, QSize* result);
 std::optional<int> prepareBeforeSources(Harness& harness, AppContext& app);
 std::optional<int> prepareSourcesBuilt(Harness& harness, AppContext& app);
 std::optional<int> prepareLibraryFiltered(Harness& harness, AppContext& app);
+std::optional<int> prepareAchievements(Harness& harness, AppContext& app);
 std::optional<int> prepareSaveBackups(Harness& harness, AppContext& app);
 std::optional<int> prepareBackups(Harness& harness, AppContext& app);
 std::optional<int> prepareCardExport(Harness& harness, AppContext& app);
 std::optional<int> prepareSessions(Harness& harness, AppContext& app);
 std::optional<int> prepareClips(Harness& harness, AppContext& app);
 std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app);
+std::optional<int> prepareLoaded(Harness& harness, AppContext& app);
 
 // --render-screenshot and --export-card: sets up the overlay, checks it and saves the image.
 std::optional<int> renderWindow(Harness& harness, AppContext& app);
@@ -124,6 +141,8 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app);
 // --couch-navigation-test, --couch-navigation-contract, --couch-navigation-sweep,
 // --startup-navigation-test and --controller-navigation-test: starts the one asked for.
 void startNavigation(Harness& harness, AppContext& app);
+// --details-direction-test, in DetailsDirectionCase.cpp.
+void startDetailsDirection(Harness& harness, AppContext& app);
 
 // The self-tests in cases().
 void driveLibraryPreferences(Harness& harness, AppContext& app);
@@ -137,5 +156,6 @@ void driveGameMode(Harness& harness, AppContext& app);
 void driveFilterBack(Harness& harness, AppContext& app);
 void driveArtworkEditor(Harness& harness, AppContext& app);
 void driveManualEditor(Harness& harness, AppContext& app);
+void driveConsolePortal(Harness& harness, AppContext& app);
 
 } // namespace SelfTest

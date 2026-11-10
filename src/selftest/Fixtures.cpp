@@ -1,5 +1,6 @@
 #include "selftest/SelfTest.h"
 
+#include "achievements/AchievementModel.h"
 #include "app/AppSettings.h"
 #include "app/CardExport.h"
 #include "app/CommandLine.h"
@@ -7,10 +8,12 @@
 #include "gamemode/LaunchHold.h"
 #include "highlights/ClipLibrary.h"
 #include "highlights/HighlightClips.h"
+#include "library/ConsolePortalModel.h"
 #include "library/HeroicGameModel.h"
 #include "library/LauncherGameModel.h"
 #include "library/LibraryFilterModel.h"
 #include "library/ManualGameModel.h"
+#include "library/RetroArchGameModel.h"
 #include "library/UnifiedGameModel.h"
 #include "saves/SaveBackups.h"
 #include "tracking/PlaySessionStore.h"
@@ -32,7 +35,9 @@
 #include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSize>
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QThread>
@@ -43,6 +48,61 @@
 
 namespace SelfTest {
 
+namespace {
+
+// --console-portal-test: a few hundred cartridges behind one portal, next to the demo library.
+void makeConsoleFixture(Harness& harness, AppContext& app) {
+  harness.fixtures.consoleFixture = std::make_unique<QTemporaryDir>();
+  QTemporaryDir& consoleFixture = *harness.fixtures.consoleFixture;
+  std::unique_ptr<RetroArchGameModel>& retroArchGames = *app.retroArchGames;
+  const QString root = consoleFixture.filePath(QStringLiteral("retroarch"));
+  QDir().mkpath(root + QStringLiteral("/playlists"));
+  QDir().mkpath(consoleFixture.filePath(QStringLiteral("roms")));
+  const auto writeText = [](const QString& path, const QString& text) {
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      qFatal("Could not write console fixture %s", qPrintable(path));
+    }
+    file.write(text.toUtf8());
+  };
+  writeText(root + QStringLiteral("/retroarch.cfg"),
+            QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root));
+  QStringList items;
+  // A few sidecar covers in different shapes exercise the cover renderer:
+  // wide box art, tall box art, a square icon, and an exact 2:3 portrait.
+  const QList<QSize> coverShapes = {QSize(300, 200), QSize(120, 320), QSize(200, 200), QSize(200, 300)};
+  for (int index = 0; index < 400; ++index) {
+    const QString rom =
+        consoleFixture.filePath(QStringLiteral("roms/SNES Cart %1.sfc").arg(index, 3, 10, QLatin1Char('0')));
+    writeText(rom, QStringLiteral("sfc"));
+    if (index < coverShapes.size()) {
+      QImage cover(coverShapes.at(index), QImage::Format_RGB32);
+      cover.fill(QColor::fromHsl((index * 90) % 360, 160, 120));
+      QPainter painter(&cover);
+      painter.setPen(Qt::white);
+      painter.drawRect(2, 2, cover.width() - 5, cover.height() - 5);
+      painter.drawText(cover.rect(), Qt::AlignCenter, QStringLiteral("%1x%2").arg(cover.width()).arg(cover.height()));
+      painter.end();
+      cover.save(consoleFixture.filePath(QStringLiteral("roms/SNES Cart %1.png").arg(index, 3, 10, QLatin1Char('0'))));
+    }
+    items.append(QStringLiteral("{\"path\":\"%1\",\"label\":\"SNES Cart %2\",\"db_name\":\"Nintendo - SNES.lpl\"}")
+                     .arg(rom)
+                     .arg(index, 3, 10, QLatin1Char('0')));
+  }
+  writeText(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
+            QStringLiteral("{\"version\":\"1.5\",\"items\":[%1]}").arg(items.join(QLatin1Char(','))));
+  retroArchGames = std::make_unique<RetroArchGameModel>(
+      consoleFixture.filePath(QStringLiteral("omakade.sqlite3")), app.preferences);
+  RetroArchGameModel* retroArchLibrary = retroArchGames.get();
+  *app.retroArchLibrary = retroArchLibrary;
+  // Folder mode, like an EmuDeck layout: sidecar covers next to the dumps count.
+  retroArchLibrary->refreshFromSources({root}, {consoleFixture.filePath(QStringLiteral("roms")) + QStringLiteral("|snes")});
+  *app.consolePortals = std::make_unique<ConsolePortalModel>();
+  (*app.consolePortals)->addRomModel(retroArchGames.get());
+}
+
+} // namespace
+
 std::optional<int> prepareBeforeSources(Harness& harness, AppContext& app) {
   AppSettings& preferences = *app.preferences;
   std::unique_ptr<LauncherGameModel>& kytyGames = *app.kytyGames;
@@ -52,10 +112,20 @@ std::optional<int> prepareBeforeSources(Harness& harness, AppContext& app) {
   const bool& sourceRescanFixture = harness.options.sourceRescanFixture;
   std::shared_ptr<std::atomic<int>>& kytyRefreshes = harness.fixtures.kytyRefreshes;
   std::shared_ptr<std::atomic<int>>& portRefreshes = harness.fixtures.portRefreshes;
+  if (*app.isolatedTest && optionSupplied(app.application->arguments(), QStringLiteral("--text-size"))) {
+    // Renders and UI tests check layouts at a chosen Settings > Appearance text size.
+    const int textSize = optionValue(app.application->arguments(), QStringLiteral("--text-size")).toInt();
+    if (!AppSettings::textSizes().contains(textSize)) {
+      qCritical() << "--text-size requires one of" << AppSettings::textSizes();
+      return EXIT_FAILURE;
+    }
+    preferences.setTextSizePreference(textSize);
+  }
   if (harness.options.startupNavigationTest &&
       app.application->arguments().contains("--startup-grid")) {
     preferences.setCouchLibraryView(QStringLiteral("grid"));
   }
+  if (harness.options.consolePortalTest) makeConsoleFixture(harness, app);
   if (sourceRescanFixture) {
     preferences.setKytyEnabled(false);
     preferences.setNativePortsEnabled(false);
@@ -91,6 +161,9 @@ std::optional<int> prepareSourcesBuilt(Harness& harness, AppContext& app) {
   const bool& artworkEditorTest = harness.options.artworkEditorTest;
   QTemporaryDir& artworkFixture = harness.fixtures.artworkFixture;
   const QString& heroicOwnedDispatchLog = harness.fixtures.heroicOwnedDispatchLog;
+  if (app.modes.navigationTest) {
+    libraryDatabasePath = QStringLiteral(":memory:");
+  }
   if (renderOverlay.startsWith("library-reflow")) {
     libraryDatabasePath = QStringLiteral(":memory:");
   }
@@ -221,9 +294,62 @@ std::optional<int> prepareSourcesBuilt(Harness& harness, AppContext& app) {
 std::optional<int> prepareLibraryFiltered(Harness& harness, AppContext& app) {
   LibraryFilterModel& library = *app.library;
   const bool& heroicOwnedFixture = harness.options.heroicOwnedFixture;
-  if (heroicOwnedFixture) {
+  if (harness.options.uninstalledLayoutTest || heroicOwnedFixture) {
     library.setAvailability(LibraryFilterModel::Availability::AllGames);
   }
+  return std::nullopt;
+}
+
+std::optional<int> prepareAchievements(Harness& harness, AppContext& app) {
+  if (!app.modes.navigationTest) return std::nullopt;
+  // The navigation checks reach the achievement list, so the first demo game has one.
+  harness.fixtures.navigationData = std::make_unique<QTemporaryDir>();
+  QString& achievementDatabasePath = *app.achievementDatabasePath;
+  achievementDatabasePath = harness.fixtures.navigationData->filePath(QStringLiteral("achievements.sqlite3"));
+  const QString connectionName = QStringLiteral("omakade-navigation-fixture");
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+    database.setDatabaseName(achievementDatabasePath);
+    if (!database.open()) {
+      qFatal("Could not open controller navigation fixture database: %s",
+             qPrintable(database.lastError().text()));
+    }
+    QSqlQuery query(database);
+    const auto execute = [&query](const QString& statement) {
+      if (!query.exec(statement)) {
+        qFatal("Could not prepare controller navigation fixture: %s",
+               qPrintable(query.lastError().text()));
+      }
+    };
+    execute(QStringLiteral("CREATE TABLE achievement_summary (app_id TEXT PRIMARY KEY, "
+                           "unlocked INTEGER, total INTEGER, source TEXT)"));
+    execute(QStringLiteral(
+        "CREATE TABLE achievements (app_id TEXT, api_name TEXT, title TEXT, description TEXT, "
+        "icon_url TEXT, icon_path TEXT, unlocked INTEGER, unlock_time INTEGER, rarity REAL, "
+        "hidden INTEGER, current_progress REAL, maximum_progress REAL)"));
+    if (!query.exec(QStringLiteral(
+            "INSERT INTO achievement_summary VALUES ('demo-0', 6, 12, 'steam-local')"))) {
+      qFatal("Could not add controller achievement summary: %s",
+             qPrintable(query.lastError().text()));
+    }
+    query.prepare(QStringLiteral(
+        "INSERT INTO achievements VALUES ('demo-0', ?, ?, 'Controller navigation fixture', '', "
+        "'', "
+        "?, ?, ?, 0, 0, 0)"));
+    for (int index = 0; index < 12; ++index) {
+      query.bindValue(0, QStringLiteral("fixture-%1").arg(index));
+      query.bindValue(1, QStringLiteral("Achievement %1").arg(index + 1));
+      query.bindValue(2, index < 6 ? 1 : 0);
+      query.bindValue(3, index < 6 ? 1700000000 + index : 0);
+      query.bindValue(4, 10.0 + index);
+      if (!query.exec()) {
+        qFatal("Could not add controller achievement: %s",
+               qPrintable(query.lastError().text()));
+      }
+    }
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connectionName);
   return std::nullopt;
 }
 
@@ -534,6 +660,9 @@ std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app) {
   const bool& renderMode = harness.options.renderMode;
   const bool& heroicOwnedFixture = harness.options.heroicOwnedFixture;
   const bool& gogSettingsFixture = harness.options.gogSettingsFixture;
+  if (app.modes.navigationTest) {
+    app.achievements->load(QStringLiteral("demo-0"));
+  }
   if (harness.options.startupNavigationTest &&
       (application.arguments().contains("--startup-empty") ||
        application.arguments().contains("--startup-delayed"))) {
@@ -571,6 +700,11 @@ std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app) {
   if (heroicOwnedFixture || renderOverlay == "game-info-native-port") {
     engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"), false);
   }
+  if (harness.options.ownedLayoutTest) {
+    // --owned-layout-test: the demo library looks like a library of 250 owned games.
+    engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"), false);
+    engine.rootContext()->setContextProperty(QStringLiteral("OwnedGameCountOverride"), 250);
+  }
   engine.rootContext()->setContextProperty(
       QStringLiteral("StatsFixtureView"),
       renderOverlay == QStringLiteral("stats-patterns") ? 1
@@ -578,6 +712,17 @@ std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app) {
   engine.rootContext()->setContextProperty(
       QStringLiteral("CouchLibraryViewOverride"),
       renderOverlay.startsWith(QStringLiteral("couch-grid")) ? QStringLiteral("grid") : QString{});
+  return std::nullopt;
+}
+
+std::optional<int> prepareLoaded(Harness& harness, AppContext& app) {
+  if (harness.options.benchmark) {
+    qInfo() << "QML loaded in" << app.startupTimer->elapsed() << "ms";
+  }
+  if (harness.options.uninstalledLayoutTest && !app.modes.navigationTest) {
+    QMetaObject::invokeMethod(app.engine->rootObjects().constFirst(), "openGame",
+                              Q_ARG(QVariant, QVariant(0)));
+  }
   return std::nullopt;
 }
 

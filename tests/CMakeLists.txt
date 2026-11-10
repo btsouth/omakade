@@ -241,7 +241,7 @@ foreach(layout IN ITEMS desktop couch-detail couch-grid)
 endforeach()
 
 add_test(NAME omakade_couch_thousand_game_startup
-  COMMAND omakade --couch --stress-test --benchmark --benchmark-max-ms=500
+  COMMAND omakade-uitest --couch --stress-test --benchmark --benchmark-max-ms=500
 )
 set_tests_properties(omakade_couch_thousand_game_startup PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
@@ -250,7 +250,7 @@ set_tests_properties(omakade_couch_thousand_game_startup PROPERTIES
 )
 
 add_test(NAME omakade_couch_ten_thousand_game_startup
-  COMMAND omakade --couch --stress-test --stress-count=10000 --benchmark --benchmark-max-ms=1000
+  COMMAND omakade-uitest --couch --stress-test --stress-count=10000 --benchmark --benchmark-max-ms=1000
 )
 set_tests_properties(omakade_couch_ten_thousand_game_startup PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
@@ -269,7 +269,7 @@ foreach(benchmark_case IN ITEMS text empty missing nonpositive)
     set(benchmark_limit_argument --benchmark-max-ms=-1)
   endif()
   add_test(NAME omakade_benchmark_rejects_${benchmark_case}_limit
-    COMMAND omakade --benchmark ${benchmark_limit_argument}
+    COMMAND omakade-uitest --benchmark ${benchmark_limit_argument}
   )
   set_tests_properties(omakade_benchmark_rejects_${benchmark_case}_limit PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
@@ -577,7 +577,7 @@ add_test(NAME omakade_text_size_details_150
           --render-size=820x590
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-details-150.png)
 add_test(NAME omakade_cli_rejects_unknown_text_size
-  COMMAND omakade --smoke-test --text-size=120)
+  COMMAND omakade-uitest --smoke-test --text-size=120)
 set_tests_properties(omakade_cli_rejects_unknown_text_size PROPERTIES
   PASS_REGULAR_EXPRESSION "--text-size requires one of")
 set_tests_properties(omakade_text_size_settings_appearance_narrow_150 omakade_text_size_library_150
