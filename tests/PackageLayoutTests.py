@@ -10,8 +10,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
-CMAKE, BUILD, VERSION, LIBDIR, DATADIR, BINDIR, SOURCE = sys.argv[1:8]
-del sys.argv[1:8]
+CMAKE, BUILD, VERSION, LIBDIR, DATADIR, BINDIR, SOURCE, NM, HARNESS_OBJECTS = sys.argv[1:10]
+del sys.argv[1:10]
 
 LINK = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)|<img\s[^>]*src=\"([^\"]+)\"|^\[[^\]]+\]:\s*(\S+)",
                   re.MULTILINE)
@@ -120,8 +120,44 @@ class PackageLayoutTests(unittest.TestCase):
                    "--game-mode-test", "--filter-back-test", "--artwork-editor-test",
                    "--manual-editor-test", "--couch-navigation-test", "--couch-navigation-contract",
                    "--couch-navigation-sweep", "--controller-navigation-test", "--startup-navigation-test",
-                   "--startup-grid", "--startup-empty", "--startup-delayed", "--startup-controller"]
+                   "--startup-grid", "--startup-empty", "--startup-delayed", "--startup-controller",
+                   "--console-portal-test", "--expand-scroll-test", "--details-direction-test",
+                   "--owned-layout-test", "--uninstalled-layout-test", "--stress-test", "--stress-count",
+                   "--benchmark", "--text-size"]
         self.assertEqual([option for option in harness if mentions(option)], [])
+
+    def test_package_links_none_of_the_harness_code(self) -> None:
+        # omakade builds the same with BUILD_TESTING off: only omakade-uitest and the tests
+        # depend on it. So the omakade installed from this build is the one a package ships.
+        self.assertTrue(NM, "the toolchain has no nm to list the binaries' symbols")
+
+        def symbols(binary: Path) -> list[str]:
+            listing = subprocess.run([NM, "--demangle", "--defined-only", str(binary)],
+                                     check=True, capture_output=True, text=True).stdout
+            return [line.split(maxsplit=2)[-1] for line in listing.splitlines() if line.strip()]
+
+        def harness_code(names: list[str]) -> list[str]:
+            markers = ("SelfTest::", "runCouchNavigation", "runStartupNavigationContract",
+                       "deliverKeyboardTest", "verifyEditorTextFields", "clippedDetailAction")
+            return [name for name in names if any(marker in name for marker in markers)]
+
+        # The harness binary has the code, so an empty list for omakade means it really is gone.
+        self.assertNotEqual(harness_code(symbols(Path(BUILD) / "omakade-uitest")), [])
+        app = symbols(self.prefix / "bin" / "omakade")
+        self.assertEqual(harness_code(app), [])
+
+        # Nor any function or data defined in the src/selftest objects, whatever it is called.
+        # main, compiler made names and clones, and the inline and template code both binaries
+        # instantiate from Qt and the standard library are not harness code.
+        objects = [path for path in HARNESS_OBJECTS.split("|") if path]
+        self.assertNotEqual(objects, [], "no omakade-uitest objects to compare against")
+        listing = subprocess.run([NM, "--demangle", "--defined-only", *objects],
+                                 check=True, capture_output=True, text=True).stdout
+        shared = re.compile(r"^(main|_GLOBAL__.*|C\.\d.*)$|\[clone ")
+        harness = {fields[2] for fields in (line.split(maxsplit=2) for line in listing.splitlines())
+                   if len(fields) == 3 and fields[1] in "TtDdBbRr" and not shared.search(fields[2])}
+        self.assertNotEqual(harness, set())
+        self.assertEqual(sorted(harness.intersection(app)), [])
 
     def test_installed_documentation_names_no_private_machines(self) -> None:
         docs = self.prefix / DATADIR / "doc" / "omakade"

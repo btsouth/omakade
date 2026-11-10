@@ -6,7 +6,6 @@
 #include "app/CommandLine.h"
 #include "app/OmakadeApp.h"
 #include "app/RestoreStartup.h"
-#include "app/SelfTestSupport.h"
 #include "app/AppSettings.h"
 #include "app/CardExport.h"
 #include "app/IdleInhibitor.h"
@@ -80,14 +79,11 @@
 #include "saves/SaveBackups.h"
 
 #include <QAbstractItemModel>
-#include <QColor>
 #include <QDebug>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
-#include <QPainter>
 #include <QDir>
-#include <QSet>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QProcess>
@@ -100,11 +96,9 @@
 #include <QFont>
 #include <QJsonDocument>
 #include <QJsonArray>
-#include <QImage>
 #include <QKeyEvent>
 #include <QLockFile>
 #include <QMouseEvent>
-#include <functional>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
@@ -113,221 +107,16 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QScreen>
-#include <QSize>
 #include <QStandardItemModel>
 #include <QStandardPaths>
-#include <QSqlDatabase>
-#include <QSqlError>
-#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
 #include <QWindow>
-#include <QWheelEvent>
 
 #include <algorithm>
 #include <atomic>
 #include <memory>
-
-namespace {
-
-// Opens the Super Nintendo portal in the desktop grid and checks that every card the
-// user can see belongs to the console, that no card from the previous view is left
-// behind, and that leaving the console removes the cartridges again. The proxy is
-// covered by core tests; this guards the QML view, which recycles delegates.
-void runConsolePortalTest(QQuickWindow* window, QGuiApplication* application) {
-  const auto fail = [application](const QString& message) {
-    qCritical().noquote() << message;
-    application->exit(EXIT_FAILURE);
-  };
-  auto* library = qobject_cast<QAbstractItemModel*>(
-      qmlContext(window)->contextProperty(QStringLiteral("Library")).value<QObject*>());
-  auto* grid = window->findChild<QQuickItem*>(QStringLiteral("libraryGrid"));
-  if (library == nullptr || grid == nullptr) {
-    fail(QStringLiteral("Console portal test could not find the library grid"));
-    return;
-  }
-  struct VisibleCard {
-    QString title;
-    QString source;
-    QPointF position;
-  };
-  const auto visibleCards = [grid] {
-    QVector<VisibleCard> cards;
-    auto* content = grid->property("contentItem").value<QQuickItem*>();
-    if (content == nullptr) {
-      return cards;
-    }
-    const qreal top = grid->property("contentY").toReal();
-    const qreal bottom = top + grid->height();
-    for (QQuickItem* child : content->childItems()) {
-      if (!child->property("appId").isValid() || !child->isVisible() || child->opacity() <= 0 ||
-          child->y() + child->height() <= top || child->y() >= bottom) {
-        continue;
-      }
-      cards.append({child->property("title").toString(), child->property("source").toString(),
-                    child->position()});
-    }
-    return cards;
-  };
-  const auto portalRow = [library] {
-    int row = -1;
-    QMetaObject::invokeMethod(library, "indexOf", Q_RETURN_ARG(int, row),
-                              Q_ARG(QString, QStringLiteral("RetroArch")), Q_ARG(QString, QString{}),
-                              Q_ARG(QString, QStringLiteral("portal:snes")));
-    return row;
-  };
-  const auto checkConsoleView = [visibleCards, library, grid, fail](const QString& phase) {
-    const QVector<VisibleCard> cards = visibleCards();
-    if (cards.isEmpty()) {
-      qWarning() << "Grid diagnostics" << grid->property("count") << grid->property("contentY")
-                 << grid->property("originY") << grid->property("contentHeight") << grid->height();
-      auto* content = grid->property("contentItem").value<QQuickItem*>();
-      if (content) for (auto* child : content->childItems())
-        if (child->property("appId").isValid()) qWarning() << child->property("title") << child->y() << child->isVisible();
-      fail(QStringLiteral("%1: no cards are visible inside the console").arg(phase));
-      return false;
-    }
-    QSet<QString> positions;
-    for (const VisibleCard& card : cards) {
-      if (card.source != QStringLiteral("RetroArch") ||
-          !card.title.startsWith(QStringLiteral("SNES Cart"))) {
-        fail(QStringLiteral("%1: '%2' from %3 is visible under Super Nintendo")
-                 .arg(phase, card.title, card.source));
-        return false;
-      }
-      const QString key = QStringLiteral("%1,%2").arg(card.position.x()).arg(card.position.y());
-      if (positions.contains(key)) {
-        fail(QStringLiteral("%1: two cards overlap at %2 (stale delegate)").arg(phase, key));
-        return false;
-      }
-      positions.insert(key);
-    }
-    if (library->property("consoleFilter").toString() != QStringLiteral("snes")) {
-      fail(QStringLiteral("%1: the console filter is not set").arg(phase));
-      return false;
-    }
-    return true;
-  };
-  const int firstPortal = portalRow();
-  if (firstPortal < 0) {
-    fail(QStringLiteral("Console portal test could not find the Super Nintendo portal"));
-    return;
-  }
-  QElapsedTimer openTimer;
-  openTimer.start();
-  QMetaObject::invokeMethod(window, "openGame", Q_ARG(QVariant, QVariant(firstPortal)));
-  const qint64 openMs = openTimer.elapsed();
-  qInfo().noquote() << QStringLiteral("Opening the console took %1 ms").arg(openMs);
-  QTimer::singleShot(400, window, [=] {
-    if (openMs > 1000) {
-      fail(QStringLiteral("Opening the console blocked the interface for %1 ms").arg(openMs));
-      return;
-    }
-    if (!checkConsoleView(QStringLiteral("first open"))) {
-      return;
-    }
-    QMetaObject::invokeMethod(window, "leaveConsole");
-    QTimer::singleShot(400, window, [=] {
-      for (const VisibleCard& card : visibleCards()) {
-        if (card.title.startsWith(QStringLiteral("SNES Cart"))) {
-          fail(QStringLiteral("after leaving: cartridge '%1' is still visible").arg(card.title));
-          return;
-        }
-      }
-      const int secondPortal = portalRow();
-      if (secondPortal < 0) {
-        fail(QStringLiteral("after leaving: the Super Nintendo portal is gone"));
-        return;
-      }
-      QMetaObject::invokeMethod(window, "openGame", Q_ARG(QVariant, QVariant(secondPortal)));
-      QTimer::singleShot(400, window, [=] {
-        if (!checkConsoleView(QStringLiteral("second open"))) return;
-        QMetaObject::invokeMethod(window, "leaveConsole");
-        if (application->arguments().contains(QStringLiteral("--expand-scroll-test")))
-          library->setProperty("expandConsoles", true);
-        QTimer::singleShot(150, window, [=] {
-          // Removing the earlier non-emulated rows moves GridView's content origin.
-          QMetaObject::invokeMethod(grid, "positionViewAtEnd");
-          library->setProperty("sourceFilters", LibraryFilterModel::emulatorSources());
-          grid->setProperty("currentIndex", 0);
-          // Layout changes cancel a wheel scroll, and under parallel test load the filtered
-          // grid can still be laying out after a fixed delay. Wait until it holds still.
-          auto stablePolls = std::make_shared<int>(0);
-          auto settleAttempts = std::make_shared<int>(0);
-          auto lastShape = std::make_shared<QList<qreal>>();
-          auto settle = std::make_shared<std::function<void()>>();
-          *settle = [=] {
-            QMetaObject::invokeMethod(grid, "positionViewAtBeginning");
-            const QList<qreal> shape = {grid->property("count").toReal(),
-                                        grid->property("originY").toReal(),
-                                        grid->property("contentY").toReal(),
-                                        grid->property("contentHeight").toReal()};
-            *stablePolls = shape == *lastShape ? *stablePolls + 1 : 0;
-            *lastShape = shape;
-            if (*stablePolls < 2 && ++*settleAttempts < 60) {
-              QTimer::singleShot(50, window, *settle);
-              return;
-            }
-            const qreal origin = grid->property("originY").toReal();
-            qInfo() << "Filtered grid origin:" << origin;
-            if ((qFuzzyIsNull(origin) && !library->property("expandConsoles").toBool()) || visibleCards().isEmpty()) {
-              fail(QStringLiteral("Wheel regression fixture did not create a shifted visible grid"));
-              return;
-            }
-            const QPointF point = grid->mapToScene(QPointF(grid->width() / 2, grid->height() / 2));
-            QWheelEvent wheel(point, window->mapToGlobal(point), QPoint(), QPoint(0, -120),
-                              Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
-            QCoreApplication::sendEvent(window, &wheel);
-            // Poll for the scroll rather than guessing at a delay. The animated wheel can
-            // take longer than a fixed wait when the suite runs tests in parallel.
-            auto attempts = std::make_shared<int>(0);
-            auto check = std::make_shared<std::function<void()>>();
-            *check = [=] {
-              const qreal y = grid->property("contentY").toReal();
-              const qreal first = grid->property("originY").toReal();
-              const qreal last = first + qMax(0.0, grid->property("contentHeight").toReal() - grid->height());
-              if (visibleCards().isEmpty() || y < first - 1 || y > last + 1) {
-                fail(QStringLiteral("Wheel after source filtering hid the cards: y=%1, bounds=%2..%3")
-                         .arg(y).arg(first).arg(last));
-                return;
-              }
-              // Wait for the wheel animation to land too, or it would overwrite the scrollbar
-              // jump below.
-              const qreal target = grid->property("wheelTargetY").toReal();
-              if (last > first + 1 && (y <= first + 1 || qAbs(y - target) > 1)) {
-                if (++*attempts < 60) {
-                  QTimer::singleShot(50, window, *check);
-                  return;
-                }
-                fail(QStringLiteral("Wheel did not scroll the expanded collection: y=%1, target=%2")
-                         .arg(y).arg(target));
-                return;
-              }
-              auto* track = window->findChild<QQuickItem*>(QStringLiteral("libraryScrollTrack"));
-              if (last > first + 1 && track) {
-                QMetaObject::invokeMethod(track, "scrollTo", Q_ARG(QVariant, track->height()));
-                QTimer::singleShot(100, window, [=] {
-                  if (visibleCards().isEmpty() || qAbs(grid->property("contentY").toReal() - last) > 1) {
-                    fail(QStringLiteral("Scrollbar after filtering did not reach the visible last row"));
-                    return;
-                  }
-                  application->quit();
-                });
-              } else {
-                application->quit();
-              }
-            };
-            QTimer::singleShot(250, window, *check);
-          };
-          QTimer::singleShot(150, window, *settle);
-        });
-      });
-    });
-  });
-}
-
-} // namespace
 
 int runOmakade(int argc, char* argv[], AppHarness* harness) {
   QStringList rawArguments;
@@ -423,43 +212,15 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   }
   const bool renderMode = modes.renderMode;
   const bool gameModeTest = modes.gameModeCompositor != nullptr;
-  const bool detailsDirectionTest =
-      application.arguments().contains(QStringLiteral("--details-direction-test"));
   const bool smokeTest = modes.selfTest || application.arguments().contains(QStringLiteral("--smoke-test"));
   const bool startupNavigationTest = modes.startupNavigationTest;
   const bool navigationTest = modes.navigationTest;
-  const bool ownedLayoutTest =
-      application.arguments().contains(QStringLiteral("--owned-layout-test"));
-  const bool uninstalledLayoutTest =
-      application.arguments().contains(QStringLiteral("--uninstalled-layout-test"));
-  const bool consolePortalTest =
-      application.arguments().contains(QStringLiteral("--console-portal-test"));
-  const bool demoMode = smokeTest || renderMode || consolePortalTest ||
+  const bool demoMode = smokeTest || renderMode || modes.demoLibrary ||
                         application.arguments().contains(QStringLiteral("--demo"));
-  const bool benchmarkMode = application.arguments().contains(QStringLiteral("--benchmark"));
-  const QString benchmarkMaxOption = QStringLiteral("--benchmark-max-ms");
-  const bool benchmarkLimitSupplied = optionSupplied(application.arguments(), benchmarkMaxOption);
-  bool benchmarkLimitValid = false;
-  const int benchmarkMaxMs =
-      optionValue(application.arguments(), benchmarkMaxOption).toInt(&benchmarkLimitValid);
-  if (benchmarkLimitSupplied && (!benchmarkLimitValid || benchmarkMaxMs <= 0)) {
-    qCritical() << "--benchmark-max-ms requires a positive integer";
-    return EXIT_FAILURE;
-  }
-  const QString stressCountOption = QStringLiteral("--stress-count");
-  const bool stressCountSupplied = optionSupplied(application.arguments(), stressCountOption);
-  bool stressCountValid = false;
-  const int requestedStressCount =
-      optionValue(application.arguments(), stressCountOption).toInt(&stressCountValid);
-  if (stressCountSupplied &&
-      (!stressCountValid || requestedStressCount < 1 || requestedStressCount > 100000)) {
-    qCritical() << "--stress-count requires an integer between 1 and 100000";
-    return EXIT_FAILURE;
-  }
-  const bool stressMode = application.arguments().contains(QStringLiteral("--stress-test"));
-  const int stressGameCount = stressCountSupplied ? requestedStressCount : 1000;
-  const bool isolatedTest = smokeTest || renderMode || navigationTest || detailsDirectionTest ||
-                            consolePortalTest || benchmarkMode || stressMode;
+  // The demo library, and the harness's checks that use it without being the demo. None of
+  // them touch the user's library, services or saves.
+  const bool syntheticLibrary = demoMode || modes.testLibrary;
+  const bool isolatedTest = smokeTest || renderMode || modes.isolated;
   app.isolatedTest = &isolatedTest;
   if (isolatedTest) {
     // Test runs drive SDL's virtual pads, one posing as Steam Input's. Hide physical gamepads
@@ -470,9 +231,6 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
       application.arguments().contains(QStringLiteral("--reduced-motion"));
   const bool couchRequest = application.arguments().contains(QStringLiteral("--couch")) ||
                             SunshineIntegration::streaming() || fullscreenToggleRequest;
-  if (benchmarkMode) {
-    qInfo() << "Theme ready in" << startupTimer.elapsed() << "ms";
-  }
   if (quitRequest) {
     return SingleInstance::sendCommand({}, "quit") ? EXIT_SUCCESS : EXIT_FAILURE;
   }
@@ -549,7 +307,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                                           dataRoot + "/omakade/restore-recovery"};
   // All synthetic libraries skip recovery entirely. The normal path owns the
   // SingleInstance claim above before any source database or service is opened.
-  if (!demoMode && !stressMode && !navigationTest && !detailsDirectionTest &&
+  if (!syntheticLibrary &&
       !runRestoreStartup(application, theme, backupPaths, couchRequest)) return EXIT_FAILURE;
   AppSettings preferences(settingsPath);
   app.settingsPath = &settingsPath;
@@ -559,17 +317,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   } else if (!isolatedTest) {
     preferences.detectSystemReducedMotion();
   }
-  if (!isolatedTest) {
-    preferences.detectSystemTextSize();
-  } else if (optionSupplied(application.arguments(), QStringLiteral("--text-size"))) {
-    // Renders and UI tests check layouts at a chosen Settings > Appearance text size.
-    const int textSize = optionValue(application.arguments(), QStringLiteral("--text-size")).toInt();
-    if (!AppSettings::textSizes().contains(textSize)) {
-      qCritical() << "--text-size requires one of" << AppSettings::textSizes();
-      return EXIT_FAILURE;
-    }
-    preferences.setTextSizePreference(textSize);
-  }
+  if (!isolatedTest) preferences.detectSystemTextSize();
   const bool startInCouchMode = couchRequest || preferences.couchModeEnabled();
   ControllerInput controller;
   app.controller = &controller;
@@ -616,62 +364,16 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   app.nativePortGames = &nativePortGames;
   app.kytyLibrary = &kytyLibrary;
   app.nativePortLibrary = &nativePortLibrary;
+  app.retroArchGames = &retroArchGames;
+  app.retroArchLibrary = &retroArchLibrary;
+  app.consolePortals = &consolePortals;
   if (harness) {
     if (auto exit = harness->prepare(AppHarness::Stage::BeforeSources, app)) return *exit;
   }
   QString libraryDatabasePath;
-  std::unique_ptr<QTemporaryDir> consoleFixture;
-  if (demoMode || stressMode || navigationTest || detailsDirectionTest) {
-    games =
-        std::make_unique<MockGameModel>(nullptr, stressMode ? stressGameCount : 100,
-                                        uninstalledLayoutTest, modes.demoStatsFixture);
-    if (consolePortalTest) {
-      // A few hundred cartridges behind one portal, next to the demo library.
-      consoleFixture = std::make_unique<QTemporaryDir>();
-      const QString root = consoleFixture->filePath(QStringLiteral("retroarch"));
-      QDir().mkpath(root + QStringLiteral("/playlists"));
-      QDir().mkpath(consoleFixture->filePath(QStringLiteral("roms")));
-      const auto writeText = [](const QString& path, const QString& text) {
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-          qFatal("Could not write console fixture %s", qPrintable(path));
-        }
-        file.write(text.toUtf8());
-      };
-      writeText(root + QStringLiteral("/retroarch.cfg"),
-                QStringLiteral("playlist_directory = \"%1/playlists\"\n").arg(root));
-      QStringList items;
-      // A few sidecar covers in different shapes exercise the cover renderer:
-      // wide box art, tall box art, a square icon, and an exact 2:3 portrait.
-      const QList<QSize> coverShapes = {QSize(300, 200), QSize(120, 320), QSize(200, 200), QSize(200, 300)};
-      for (int index = 0; index < 400; ++index) {
-        const QString rom =
-            consoleFixture->filePath(QStringLiteral("roms/SNES Cart %1.sfc").arg(index, 3, 10, QLatin1Char('0')));
-        writeText(rom, QStringLiteral("sfc"));
-        if (index < coverShapes.size()) {
-          QImage cover(coverShapes.at(index), QImage::Format_RGB32);
-          cover.fill(QColor::fromHsl((index * 90) % 360, 160, 120));
-          QPainter painter(&cover);
-          painter.setPen(Qt::white);
-          painter.drawRect(2, 2, cover.width() - 5, cover.height() - 5);
-          painter.drawText(cover.rect(), Qt::AlignCenter, QStringLiteral("%1x%2").arg(cover.width()).arg(cover.height()));
-          painter.end();
-          cover.save(consoleFixture->filePath(QStringLiteral("roms/SNES Cart %1.png").arg(index, 3, 10, QLatin1Char('0'))));
-        }
-        items.append(QStringLiteral("{\"path\":\"%1\",\"label\":\"SNES Cart %2\",\"db_name\":\"Nintendo - SNES.lpl\"}")
-                         .arg(rom)
-                         .arg(index, 3, 10, QLatin1Char('0')));
-      }
-      writeText(root + QStringLiteral("/playlists/Nintendo - SNES.lpl"),
-                QStringLiteral("{\"version\":\"1.5\",\"items\":[%1]}").arg(items.join(QLatin1Char(','))));
-      retroArchGames = std::make_unique<RetroArchGameModel>(
-          consoleFixture->filePath(QStringLiteral("omakade.sqlite3")), &preferences);
-      retroArchLibrary = retroArchGames.get();
-      // Folder mode, like an EmuDeck layout: sidecar covers next to the dumps count.
-      retroArchLibrary->refreshFromSources({root}, {consoleFixture->filePath(QStringLiteral("roms")) + QStringLiteral("|snes")});
-      consolePortals = std::make_unique<ConsolePortalModel>();
-      consolePortals->addRomModel(retroArchGames.get());
-    }
+  if (syntheticLibrary) {
+    games = std::make_unique<MockGameModel>(nullptr, modes.demoGameCount,
+                                            modes.demoFirstUninstalled, modes.demoStatsFixture);
   } else {
     auto steam = std::make_unique<SteamGameModel>(QString{}, &preferences);
     steamLibrary = steam.get();
@@ -772,9 +474,6 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                      [&preferences, portals = consolePortals.get()] {
                        portals->setCardSystems(preferences.cardSystems());
                      });
-  }
-  if (navigationTest) {
-    libraryDatabasePath = QStringLiteral(":memory:");
   }
   app.games = &games;
   app.heroicLibrary = &heroicLibrary;
@@ -1050,76 +749,23 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   QObject::connect(&library, &LibraryFilterModel::sortModeChanged, &preferences, [&]() {
     preferences.setLibrarySortMode(static_cast<int>(library.sortMode()));
   });
-  if (uninstalledLayoutTest) {
-    library.setAvailability(LibraryFilterModel::Availability::AllGames);
-  }
   app.library = &library;
   if (harness) {
     if (auto exit = harness->prepare(AppHarness::Stage::LibraryFiltered, app)) return *exit;
   }
-  std::unique_ptr<QTemporaryDir> navigationData;
   QString achievementDatabasePath =
       steamLibrary == nullptr ? QStringLiteral(":memory:") : steamLibrary->databasePath();
-  if (navigationTest) {
-    navigationData = std::make_unique<QTemporaryDir>();
-    achievementDatabasePath = navigationData->filePath(QStringLiteral("achievements.sqlite3"));
-    const QString connectionName = QStringLiteral("omakade-navigation-fixture");
-    {
-      QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
-      database.setDatabaseName(achievementDatabasePath);
-      if (!database.open()) {
-        qFatal("Could not open controller navigation fixture database: %s",
-               qPrintable(database.lastError().text()));
-      }
-      QSqlQuery query(database);
-      const auto execute = [&query](const QString& statement) {
-        if (!query.exec(statement)) {
-          qFatal("Could not prepare controller navigation fixture: %s",
-                 qPrintable(query.lastError().text()));
-        }
-      };
-      execute(QStringLiteral("CREATE TABLE achievement_summary (app_id TEXT PRIMARY KEY, "
-                             "unlocked INTEGER, total INTEGER, source TEXT)"));
-      execute(QStringLiteral(
-          "CREATE TABLE achievements (app_id TEXT, api_name TEXT, title TEXT, description TEXT, "
-          "icon_url TEXT, icon_path TEXT, unlocked INTEGER, unlock_time INTEGER, rarity REAL, "
-          "hidden INTEGER, current_progress REAL, maximum_progress REAL)"));
-      if (!query.exec(QStringLiteral(
-              "INSERT INTO achievement_summary VALUES ('demo-0', 6, 12, 'steam-local')"))) {
-        qFatal("Could not add controller achievement summary: %s",
-               qPrintable(query.lastError().text()));
-      }
-      query.prepare(QStringLiteral(
-          "INSERT INTO achievements VALUES ('demo-0', ?, ?, 'Controller navigation fixture', '', "
-          "'', "
-          "?, ?, ?, 0, 0, 0)"));
-      for (int index = 0; index < 12; ++index) {
-        query.bindValue(0, QStringLiteral("fixture-%1").arg(index));
-        query.bindValue(1, QStringLiteral("Achievement %1").arg(index + 1));
-        query.bindValue(2, index < 6 ? 1 : 0);
-        query.bindValue(3, index < 6 ? 1700000000 + index : 0);
-        query.bindValue(4, 10.0 + index);
-        if (!query.exec()) {
-          qFatal("Could not add controller achievement: %s",
-                 qPrintable(query.lastError().text()));
-        }
-      }
-      database.close();
-    }
-    QSqlDatabase::removeDatabase(connectionName);
+  app.achievementDatabasePath = &achievementDatabasePath;
+  if (harness) {
+    if (auto exit = harness->prepare(AppHarness::Stage::Achievements, app)) return *exit;
   }
   AchievementModel achievements(achievementDatabasePath, &preferences);
   app.achievements = &achievements;
-  if (navigationTest) {
-    achievements.load(QStringLiteral("demo-0"));
-  }
   ProtonDbService protonDb(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
                           + QStringLiteral("/protondb/summaries.json"));
-  protonDb.setEnabled(!demoMode && !stressMode && !navigationTest && !detailsDirectionTest
-                      && preferences.protonDbEnabled());
+  protonDb.setEnabled(!syntheticLibrary && preferences.protonDbEnabled());
   QObject::connect(&preferences, &AppSettings::protonDbEnabledChanged, &protonDb,
-                   [&] { protonDb.setEnabled(!demoMode && !stressMode && !navigationTest
-                                            && !detailsDirectionTest && preferences.protonDbEnabled()); });
+                   [&] { protonDb.setEnabled(!syntheticLibrary && preferences.protonDbEnabled()); });
   std::unique_ptr<SteamAccountService> steamAccount;
   std::unique_ptr<GameInsightsService> gameInsights;
   std::unique_ptr<GameMetadata> gameMetadata;
@@ -1148,7 +794,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     gameMetadata->setAutomaticPass(preferences.metadataAutoIdentify());
     QObject::connect(&preferences, &AppSettings::metadataAutoIdentifyChanged, gameMetadata.get(), [&preferences, metadata = gameMetadata.get()] { metadata->setAutomaticPass(preferences.metadataAutoIdentify()); });
     unifiedGames.setMetadata(gameMetadata.get());
-  } else if (demoMode || stressMode || navigationTest || detailsDirectionTest) {
+  } else if (syntheticLibrary) {
     // The rating and cover art section only exists when there is a metadata service behind it.
     // Without one it is invisible in every automated mode, so nothing could reach it and the
     // controller chain was free to route around it unnoticed, which is exactly what happened.
@@ -1179,7 +825,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                      &achievements,
                      [&achievements] { achievements.load(achievements.appId()); });
   }
-  if (xodusLibrary != nullptr && steamLibrary != nullptr && !demoMode && !stressMode) {
+  if (xodusLibrary != nullptr && steamLibrary != nullptr && !demoMode) {
     xboxAchievements = std::make_unique<XodusAchievementsService>(steamLibrary->databasePath());
     QObject::connect(xboxAchievements.get(), &XodusAchievementsService::achievementsUpdated,
                      &achievements, [&achievements](const QString& key) {
@@ -1279,7 +925,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
       launcher.forgetEarlyExit(game.toMap().value(QStringLiteral("source")).toString(),
                                game.toMap().value(QStringLiteral("appId")).toString());
   });
-  if (!demoMode && !stressMode && !navigationTest && !detailsDirectionTest) launcher.setSaveBackups(&saveBackups);
+  if (!syntheticLibrary) launcher.setSaveBackups(&saveBackups);
   launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
   unifiedGames.setReviewPlanContext(preferences.rommLibraryRoot(),
                                     preferences.preferStandaloneEmulators());
@@ -1563,15 +1209,13 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   engine.rootContext()->setContextProperty(QStringLiteral("ClipShortcut"), &clipShortcut);
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeGuideButton"),
                                            &gameModeGuideButton);
-  engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"),
-                                           (demoMode || stressMode) && !ownedLayoutTest);
+  engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"), demoMode);
   engine.rootContext()->setContextProperty(QStringLiteral("StatsFixtureView"), 0);
   engine.rootContext()->setContextProperty(QStringLiteral("StartupMilliseconds"),
                                            startupTimer.elapsed());
   engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"),
                                            QCoreApplication::applicationVersion());
-  engine.rootContext()->setContextProperty(QStringLiteral("OwnedGameCountOverride"),
-                                           ownedLayoutTest ? 250 : 0);
+  engine.rootContext()->setContextProperty(QStringLiteral("OwnedGameCountOverride"), QVariant(0));
   engine.rootContext()->setContextProperty(QStringLiteral("CouchModeRequested"),
                                            startInCouchMode);
   engine.rootContext()->setContextProperty(QStringLiteral("ColdGameModeRequested"),
@@ -1589,23 +1233,12 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
       &engine, &QQmlApplicationEngine::objectCreationFailed, &application,
       [] { QCoreApplication::exit(EXIT_FAILURE); }, Qt::QueuedConnection);
   engine.loadFromModule(QStringLiteral("Omakade"), QStringLiteral("Main"));
-  if (benchmarkMode) {
-    qInfo() << "QML loaded in" << startupTimer.elapsed() << "ms";
-  }
   if (engine.rootObjects().isEmpty()) {
     qCritical() << "Omakade failed to create its QML root object";
     return EXIT_FAILURE;
   }
-  if (uninstalledLayoutTest && !navigationTest) {
-    QMetaObject::invokeMethod(engine.rootObjects().constFirst(), "openGame",
-                              Q_ARG(QVariant, QVariant(0)));
-  }
-  if (consolePortalTest) {
-    if (auto* testWindow = qobject_cast<QQuickWindow*>(engine.rootObjects().constFirst())) {
-      QTimer::singleShot(700, testWindow, [testWindow, &application] {
-        runConsolePortalTest(testWindow, &application);
-      });
-    }
+  if (harness) {
+    if (auto exit = harness->prepare(AppHarness::Stage::Loaded, app)) return *exit;
   }
 
   auto* rootWindow = qobject_cast<QWindow*>(engine.rootObjects().constFirst());
@@ -1677,404 +1310,13 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     }
     QObject::connect(
         quickWindow, &QQuickWindow::frameSwapped, &application,
-        [&application, &controller, &startupTimer, benchmarkMode, benchmarkLimitSupplied,
-         benchmarkMaxMs, isolatedTest, startupNavigationTest] {
-          const qint64 firstFrameMs = startupTimer.elapsed();
-          qInfo() << "First frame in" << firstFrameMs << "ms";
+        [&controller, &startupTimer, isolatedTest, startupNavigationTest] {
+          qInfo() << "First frame in" << startupTimer.elapsed() << "ms";
           if (!isolatedTest || startupNavigationTest) {
             controller.start();
           }
-          if (benchmarkMode) {
-            if (benchmarkLimitSupplied && firstFrameMs > benchmarkMaxMs) {
-              qCritical() << "First frame exceeded benchmark limit of" << benchmarkMaxMs << "ms";
-              application.exit(EXIT_FAILURE);
-            } else {
-              application.quit();
-            }
-          }
         },
         Qt::SingleShotConnection);
-
-    if (detailsDirectionTest) {
-      // Every direction out of the rating and cover art section, checked one control at a time.
-      // Left off "NOT THIS GAME" used to land on the cover sidebar four hundred pixels up, and
-      // up off "SEARCH IGDB" on the BACK button at the top of the page, because the spatial
-      // search took any candidate in the half plane over no candidate at all. Staying put is
-      // the right answer when nothing is really in that direction.
-      QTimer::singleShot(300, &application, [&application, rootWindow, &controller] {
-        QMetaObject::invokeMethod(rootWindow, "openGame", Q_ARG(QVariant, 0));
-        // Wait for the section to be laid out rather than guessing at a delay. Fixed timers
-        // pass alone and fail when the suite runs everything at once.
-        auto attempts = std::make_shared<int>(0);
-        auto step = std::make_shared<std::function<void()>>();
-        *step = [&application, rootWindow, &controller, attempts, step] {
-          auto* window = qobject_cast<QQuickWindow*>(rootWindow);
-          auto* editor = rootWindow->findChild<QQuickItem*>(QStringLiteral("metadataEditor"));
-          auto* identifyPanel = rootWindow->findChild<QObject*>("identifyGamePanel");
-          if (identifyPanel && !identifyPanel->property("opened").toBool())
-            QMetaObject::invokeMethod(identifyPanel, "open");
-          if (editor != nullptr) {
-            editor->setProperty("matchControlsOpen", true);
-            editor->setProperty("coverControlsOpen", true);
-            editor->setProperty("editing", true);
-          }
-          auto* opener =
-              rootWindow->findChild<QQuickItem*>(QStringLiteral("metadataArtworkButton"));
-          auto* lastRow =
-              rootWindow->findChild<QQuickItem*>(QStringLiteral("metadataClearCoverButton"));
-          auto* second =
-              rootWindow->findChild<QQuickItem*>(QStringLiteral("metadataIdentifyButton"));
-          // Sizes alone are not enough: mid layout the rows briefly sit on top of one another,
-          // and left off the first control then finds the second beside it. Wait until the rows
-          // are actually stacked, which is the arrangement every expectation here is about.
-          const auto rect = [](QQuickItem* item) {
-            return item->mapRectToScene(QRectF(0, 0, item->width(), item->height()));
-          };
-          const bool present = window != nullptr && editor != nullptr && editor->isVisible() &&
-                               opener != nullptr && opener->isVisible() && opener->width() > 0 &&
-                               second != nullptr && second->isVisible() && second->width() > 0 &&
-                               lastRow != nullptr && lastRow->isVisible() && lastRow->width() > 0;
-          const bool ready = present && rect(second).top() >= rect(opener).bottom() - 1 &&
-                             rect(lastRow).top() >= rect(second).bottom() - 1;
-          if (!ready) {
-            if (++(*attempts) > 80) {
-              qCritical("Direction test could not find the cover art section");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            QTimer::singleShot(50, &application, [step] { (*step)(); });
-            return;
-          }
-          {
-            const auto item = [rootWindow](const char* name) {
-              return rootWindow->findChild<QQuickItem*>(QString::fromLatin1(name));
-            };
-            // Several of these are gated on credentials the demo library has none of. The
-            // question here is where focus goes, not whether they would do anything.
-            const char* controls[] = {"metadataArtworkButton", "metadataIdentifyButton",
-                                      "metadataRejectButton", "metadataChoosePortraitButton",
-                                      "metadataClearCoverButton"};
-            for (const char* name : controls) {
-              if (auto* control = item(name))
-                control->setProperty("enabled", true);
-            }
-            struct Move {
-              const char* from;
-              Qt::Key key;
-              const char* to; // nullptr means focus must not move
-            };
-            const Move moves[] = {
-                {"metadataArtworkButton", Qt::Key_Down, "metadataIdentifyButton"},
-                {"metadataArtworkButton", Qt::Key_Left, nullptr},
-                {"metadataArtworkButton", Qt::Key_Right, nullptr},
-                {"metadataIdentifyButton", Qt::Key_Up, "metadataArtworkButton"},
-                {"metadataIdentifyButton", Qt::Key_Down, "metadataRejectButton"},
-                // The field beside it is a navigation target once the controller is what is
-                // being used, which this test is by definition. On a desktop being driven by a
-                // mouse and keyboard the field stays out of the arrow order and focus would not
-                // move here at all.
-                {"metadataIdentifyButton", Qt::Key_Left, "metadataTitleField"},
-                {"metadataIdentifyButton", Qt::Key_Right, nullptr},
-                {"metadataRejectButton", Qt::Key_Up, "metadataIdentifyButton"},
-                {"metadataRejectButton", Qt::Key_Left, nullptr},
-                {"metadataRejectButton", Qt::Key_Right, "metadataChoosePortraitButton"},
-                {"metadataChoosePortraitButton", Qt::Key_Up, "metadataIdentifyButton"},
-                {"metadataChoosePortraitButton", Qt::Key_Left, "metadataRejectButton"},
-                {"metadataChoosePortraitButton", Qt::Key_Right, "metadataClearCoverButton"},
-                {"metadataClearCoverButton", Qt::Key_Up, "metadataIdentifyButton"},
-                {"metadataClearCoverButton", Qt::Key_Left, "metadataChoosePortraitButton"},
-                {"metadataClearCoverButton", Qt::Key_Right, nullptr},
-            };
-            const auto describe = [](QQuickItem* focused) {
-              if (focused == nullptr)
-                return QStringLiteral("nothing");
-              return focused->objectName().isEmpty()
-                         ? QString::fromLatin1(focused->metaObject()->className())
-                         : focused->objectName();
-            };
-            for (const Move& move : moves) {
-              auto* from = item(move.from);
-              if (from == nullptr || !from->isVisible()) {
-                qCritical().noquote() << QStringLiteral("Direction test could not reach %1")
-                                             .arg(QString::fromLatin1(move.from));
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-              from->forceActiveFocus();
-              controller.focusDirectionRequested(move.key);
-              auto* landed = window->activeFocusItem();
-              auto* wanted = move.to == nullptr ? from : item(move.to);
-              if (landed != wanted) {
-                qCritical().noquote()
-                    << QStringLiteral("%1 %2 went to %3, expected %4")
-                           .arg(QString::fromLatin1(move.from),
-                                move.key == Qt::Key_Up     ? QStringLiteral("up")
-                                : move.key == Qt::Key_Down ? QStringLiteral("down")
-                                : move.key == Qt::Key_Left ? QStringLiteral("left")
-                                                           : QStringLiteral("right"),
-                                describe(landed),
-                                move.to == nullptr ? QStringLiteral("no movement")
-                                                   : QString::fromLatin1(move.to));
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-            }
-            // The clear button sits inside its field's own rectangle, so no amount of geometry
-            // finds it: right never enters the field it is already inside, and left prefers the
-            // field itself. The field points at it, and from there right carries on.
-            auto* titleField = item("metadataTitleField");
-            auto* titleClear = item("metadataTitleFieldClearButton");
-            if (titleField == nullptr || titleClear == nullptr) {
-              qCritical("Metadata title field or clear button is missing");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            titleField->setProperty("text", "Clear control test");
-            {
-              titleField->forceActiveFocus();
-              controller.focusDirectionRequested(Qt::Key_Right);
-              if (window->activeFocusItem() != titleClear) {
-                qCritical().noquote()
-                    << QStringLiteral("Right from a text field did not reach its clear button, "
-                                      "it went to %1")
-                           .arg(describe(window->activeFocusItem()));
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-              controller.focusDirectionRequested(Qt::Key_Left);
-              if (window->activeFocusItem() != titleField) {
-                qCritical("Left from a clear button did not return to its field");
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-              // And it has to actually empty the field, then hand focus back rather than
-              // leaving it on a button that has just disappeared.
-              titleClear->forceActiveFocus();
-              QMetaObject::invokeMethod(titleClear, "clearField");
-              if (titleField->property("length").toInt() != 0) {
-                qCritical("The clear button did not empty the field");
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-              if (titleClear->isVisible()) {
-                qCritical("The clear button stayed visible over an empty field");
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-            }
-            // Pressing the controller's primary button on a field has to offer a keyboard, on
-            // the desktop as well as the couch. Every field used to test couch mode itself, so
-            // changing the rule in the shared function reached two fields and missed seven.
-            if (titleField != nullptr) {
-              rootWindow->setProperty("couchTextEntryOpen", false);
-              titleField->forceActiveFocus();
-              controller.acceptRequested();
-              if (!rootWindow->property("couchTextEntryOpen").toBool()) {
-                qCritical("The controller reached a text field and no keyboard opened");
-                application.exit(EXIT_FAILURE);
-                return;
-              }
-              rootWindow->setProperty("couchTextEntryOpen", false);
-            }
-            controller.backRequested();
-            auto* coverInvoker = item("coverEditButton");
-            auto* manageInvoker = coverInvoker && coverInvoker->isVisible()
-                                      ? coverInvoker : item("detailManageButton");
-            if (identifyPanel->property("opened").toBool() || !manageInvoker || !manageInvoker->hasActiveFocus()) {
-              qCritical() << "Closing artwork did not restore the visible Manage control focus";
-              application.exit(EXIT_FAILURE); return;
-            }
-            // Closing the on-screen keyboard and popup schedules layout polish. Check the
-            // underlying page after that polish, not its intermediate row positions.
-            QTimer::singleShot(50, &application, [rootWindow, &application, item] {
-            auto* statusLayout = item("statusLayout");
-            if (statusLayout && statusLayout->property("columns").toInt() == 5) {
-              qreal rowY = -1;
-              for (auto* child : statusLayout->childItems()) {
-                if (!child->property("modelData").isValid()) continue;
-                if (rowY < 0) rowY = child->y();
-                if (qAbs(child->y() - rowY) > 1) {
-                  qCritical("Status buttons do not share one row at wide widths");
-                  application.exit(EXIT_FAILURE);
-                  return;
-                }
-              }
-            }
-            auto* collectionsScroll = item("collectionsScroll");
-            auto* newCollection = item("newCollectionButton");
-            if (!collectionsScroll || !newCollection ||
-                newCollection->height() > collectionsScroll->height()) {
-              qCritical("Collection controls are clipped vertically");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            auto* scroll = item("detailsScroll");
-            auto* wiki = item("detailsBackButton");
-            auto* details = item("gameDetails");
-            auto* flickable = scroll ? scroll->property("navigationFlickable").value<QObject*>() : nullptr;
-            if (!flickable || !wiki || !wiki->isVisible() || !details) {
-              qCritical("Details title visibility fixture is missing");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            flickable->setProperty("contentY", flickable->property("originY").toReal() + 100);
-            wiki->forceActiveFocus();
-            QMetaObject::invokeMethod(rootWindow, "revealNavigationItem",
-                                     Q_ARG(QVariant, QVariant::fromValue(details)),
-                                     Q_ARG(QVariant, QVariant::fromValue(wiki)));
-            if (qAbs(flickable->property("contentY").toReal() - flickable->property("originY").toReal()) > 1) {
-              qCritical("Returning to the top details control left the title scrolled away");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            QObject* preferences =
-                qmlContext(rootWindow)->contextProperty(QStringLiteral("Preferences")).value<QObject*>();
-            auto* gameStop = qobject_cast<GameStopService*>(
-                qmlContext(rootWindow)->contextProperty(QStringLiteral("GameStop")).value<QObject*>());
-            if (!preferences || !gameStop) {
-              qCritical("Details direction test could not inspect playtime or stop services");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            auto stopProcesses = std::make_shared<QVector<ProcessSnapshot>>();
-            gameStop->setSnapshotProvider([stopProcesses] { return *stopProcesses; });
-            preferences->setProperty("trackPlaySessions", true);
-            QVariantMap installation = details->property("selectedInstallation").toMap();
-            const QString emulatorPath = QStringLiteral("/fixtures/details-direction.sfc");
-            installation.insert(QStringLiteral("source"), QStringLiteral("RetroArch"));
-            installation.insert(QStringLiteral("system"), QStringLiteral("snes"));
-            installation.insert(QStringLiteral("installPath"), emulatorPath);
-            details->setProperty("selectedInstallation", installation);
-            details->setProperty("runningSessionsOverride", QVariantList{});
-            QCoreApplication::processEvents();
-            auto* actionGrid = item("gameActions");
-            auto* stop = item("stopGameButton");
-            auto* content = item("detailsContent");
-            if (!actionGrid || !stop || !content || stop->isVisible() ||
-                actionGrid->property("actionCount").toInt() != 4) {
-              qCritical() << "An emulator game without an active session showed Stop Game"
-                          << "button" << (stop ? stop->isVisible() : false)
-                          << "available" << details->property("stopGameAvailable")
-                          << "override" << details->property("runningSessionsOverride")
-                          << "sessions" << details->property("runningSessions")
-                          << "action count" << (actionGrid ? actionGrid->property("actionCount") : QVariant{});
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            const auto expectedColumns = [content, details](bool running) {
-              return expectedDetailActionColumns(content->width(),
-                                                 details->property("uiScale").toReal(), running);
-            };
-            if (actionGrid->property("columns").toInt() != expectedColumns(false)) {
-              qCritical() << "The hidden Stop Game state used the wrong action columns"
-                          << actionGrid->property("columns") << content->width();
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            details->setProperty(
-                "runningSessionsOverride",
-                QVariantList{QVariantMap{{QStringLiteral("source"), QStringLiteral("RetroArch")},
-                                        {QStringLiteral("path"), emulatorPath},
-                                        {QStringLiteral("stoppable"), true}}});
-            QCoreApplication::processEvents();
-            if (!stop->isVisible() || actionGrid->property("actionCount").toInt() != 5 ||
-                actionGrid->property("columns").toInt() != expectedColumns(true)) {
-              qCritical() << "An active emulator session did not expose the five-button action layout"
-                          << stop->isVisible() << actionGrid->property("actionCount")
-                          << actionGrid->property("columns") << content->width();
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            {
-              QEventLoop actionLayout;
-              QTimer::singleShot(50, &actionLayout, &QEventLoop::quit);
-              actionLayout.exec();
-            }
-            if (const QString clipped = clippedDetailAction(content, actionGrid); !clipped.isEmpty()) {
-              qCritical() << "The five-button action layout clipped" << clipped
-                          << "at width" << content->width() << "scale" << details->property("uiScale")
-                          << "columns" << actionGrid->property("columns");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            details->setProperty(
-                "runningSessionsOverride",
-                QVariantList{QVariantMap{{QStringLiteral("source"), QStringLiteral("RetroArch")},
-                                        {QStringLiteral("path"), emulatorPath},
-                                        {QStringLiteral("stoppable"), false}}});
-            QCoreApplication::processEvents();
-            if (stop->isVisible()) {
-              qCritical("A running session without a safe stop identity showed Stop Game");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            details->setProperty("runningSessionsOverride", QVariantList{});
-            installation.insert(QStringLiteral("source"), QStringLiteral("Steam"));
-            installation.insert(QStringLiteral("installPath"), QStringLiteral("/fixtures/steam-game"));
-            details->setProperty("selectedInstallation", installation);
-            QCoreApplication::processEvents();
-            if (stop->isVisible() || actionGrid->property("actionCount").toInt() != 4 ||
-                actionGrid->property("columns").toInt() != expectedColumns(false)) {
-              qCritical("An idle Steam game showed Stop Game without a recorder session");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            ProcessSnapshot runningSteam;
-            runningSteam.pid = 4242;
-            runningSteam.procStart = 424200;
-            runningSteam.comm = QStringLiteral("game");
-            runningSteam.exePath = QStringLiteral("/fixtures/steam-game/bin/game");
-            runningSteam.arguments = {runningSteam.exePath};
-            stopProcesses->append(runningSteam);
-            QMetaObject::invokeMethod(details, "refreshStopTarget");
-            QCoreApplication::processEvents();
-            if (!stop->isVisible() || actionGrid->property("actionCount").toInt() != 5 ||
-                actionGrid->property("columns").toInt() != expectedColumns(true)) {
-              qCritical("A detected Steam game did not show Stop Game");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            stop->forceActiveFocus();
-            preferences->setProperty("trackPlaySessions", false);
-            QCoreApplication::processEvents();
-            if (!stop->isVisible()) {
-              qCritical("Disabling recording hid Stop Game for a detected Steam game");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            stopProcesses->clear();
-            QMetaObject::invokeMethod(details, "refreshStopTarget");
-            QCoreApplication::processEvents();
-            auto* manage = item("detailManageButton");
-            if (stop->isVisible() || actionGrid->property("actionCount").toInt() != 4 ||
-                !manage || !manage->hasActiveFocus()) {
-              qCritical("Stop Game stayed visible or focus was lost after the Steam process exited");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            installation.insert(QStringLiteral("source"), QStringLiteral("RetroArch"));
-            installation.insert(QStringLiteral("installPath"), emulatorPath);
-            details->setProperty("selectedInstallation", installation);
-            QCoreApplication::processEvents();
-            if (stop->isVisible()) {
-              qCritical("An idle emulator showed Stop Game with recording disabled");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            preferences->setProperty("trackPlaySessions", true);
-            QCoreApplication::processEvents();
-            if (stop->isVisible() || actionGrid->property("actionCount").toInt() != 4) {
-              qCritical("Stop Game remained visible after restoring recording with no session");
-              application.exit(EXIT_FAILURE);
-              return;
-            }
-            application.exit(EXIT_SUCCESS);
-            });
-          }
-        };
-        (*step)();
-      });
-    }
   }
   QObject::connect(&singleInstance, &SingleInstance::activationRequested, &application,
                    [rootWindow, &gameMode](bool fullscreen) {
@@ -2371,7 +1613,8 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   if (faugusLibrary != nullptr && preferences.faugusEnabled()) {
     scheduleStartupScan(450, faugusLibrary, &FaugusGameModel::refresh);
   }
-  if (retroArchLibrary != nullptr && preferences.retroArchEnabled() && !consolePortalTest) {
+  // A demo library's RetroArch games are a harness fixture, scanned when it made them.
+  if (retroArchLibrary != nullptr && preferences.retroArchEnabled() && !syntheticLibrary) {
     scheduleStartupScan(600, retroArchLibrary, &RetroArchGameModel::refresh);
   }
   // Sources start disabled and switch on once their emulator is detected, unless

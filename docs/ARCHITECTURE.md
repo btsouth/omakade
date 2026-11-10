@@ -22,7 +22,7 @@ downloaded art in `~/.cache/omakade/`. Credentials go to Secret Service.
 
 | Directory | Owns |
 | --- | --- |
-| `app/` | Start-up and wiring in `OmakadeApp.cpp`, settings (`AppSettings`), single-instance commands, card export, the idle inhibitor, and the self-tests not yet moved to `selftest/` |
+| `app/` | Start-up and wiring in `OmakadeApp.cpp`, settings (`AppSettings`), single-instance commands, card export and the idle inhibitor |
 | `selftest/` | `omakade-uitest`, the app the UI tests run: fixtures, render paths and self-tests, which the shipped `omakade` leaves out |
 | `sources/` | One folder per launcher or emulator. A scanner finds its roots and reads the launcher's files into plain records; caching and the UI live in `library/` |
 | `library/` | One model per source (`*GameModel`), the merged `UnifiedGameModel`, filtering and sorting (`LibraryFilterModel`), consoles, Home, stats, Repair Library and the library database |
@@ -84,13 +84,13 @@ come from `Theme`, which follows the Omarchy theme.
 scans them. Larger features have their own executables, such as `GameModeTests`,
 `BackupRecoveryTests`, `SaveSetTests` and `XodusTests`.
 
-UI behaviour is tested by running the app with a test flag. Most UI tests run
+UI behaviour is tested by running the app with a test flag. The UI tests run
 `omakade-uitest`, the app plus `src/selftest/`, for example
-`omakade-uitest --render-overlay=settings --render-screenshot=settings.png` or
-`omakade-uitest --backup-editor-test`. A few still run `omakade` itself, such as
-the `omakade --benchmark` start-up timings, and `omakade --smoke-test` checks the shipped
-binary. Only `omakade-uitest` reads `--render-size`, so a render run at a set
-window size needs it rather than `omakade`. The test registrations set `QT_QPA_PLATFORM=offscreen` and the software Qt
+`omakade-uitest --render-overlay=settings --render-screenshot=settings.png`,
+`omakade-uitest --backup-editor-test` or the start-up timings in
+`omakade-uitest --stress-test --benchmark`. Tests of the shipped binary's own commands,
+such as `omakade --smoke-test` and the Game Mode start-up tests, run `omakade`, which reads
+none of the test flags. The test registrations set `QT_QPA_PLATFORM=offscreen` and the software Qt
 Quick backend, so the suite runs without a display, as it does in CI. Python tests cover Game Mode start-up, the guide recorder, the TV launcher
 helper, the native ports catalog and the SBOM generator.
 

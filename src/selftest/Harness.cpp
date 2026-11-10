@@ -3,6 +3,7 @@
 #include "app/CommandLine.h"
 
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QQuickWindow>
 
@@ -24,6 +25,7 @@ const std::vector<Case>& cases() {
       {"--filter-back-test", &Options::filterBackTest, driveFilterBack},
       {"--artwork-editor-test", &Options::artworkEditorTest, driveArtworkEditor},
       {"--manual-editor-test", &Options::manualEditorTest, driveManualEditor},
+      {"--console-portal-test", &Options::consolePortalTest, driveConsolePortal},
   };
   return all;
 }
@@ -32,6 +34,29 @@ std::optional<int> Harness::start(AppContext& app) {
   QGuiApplication& application = *app.application;
   const QStringList arguments = application.arguments();
   Options& o = options;
+  o.benchmark = arguments.contains(QStringLiteral("--benchmark"));
+  const QString benchmarkMaxOption = QStringLiteral("--benchmark-max-ms");
+  if (optionSupplied(arguments, benchmarkMaxOption)) {
+    bool valid = false;
+    o.benchmarkMaxMs = optionValue(arguments, benchmarkMaxOption).toInt(&valid);
+    if (!valid || o.benchmarkMaxMs <= 0) {
+      qCritical() << "--benchmark-max-ms requires a positive integer";
+      return EXIT_FAILURE;
+    }
+  }
+  const QString stressCountOption = QStringLiteral("--stress-count");
+  if (optionSupplied(arguments, stressCountOption)) {
+    bool valid = false;
+    o.stressCount = optionValue(arguments, stressCountOption).toInt(&valid);
+    if (!valid || o.stressCount < 1 || o.stressCount > 100000) {
+      qCritical() << "--stress-count requires an integer between 1 and 100000";
+      return EXIT_FAILURE;
+    }
+  }
+  o.stressTest = arguments.contains(QStringLiteral("--stress-test"));
+  if (o.benchmark) {
+    qInfo() << "Theme ready in" << app.startupTimer->elapsed() << "ms";
+  }
   o.screenshotPath = optionValue(arguments, QStringLiteral("--render-screenshot"));
   o.renderSize = optionValue(arguments, QStringLiteral("--render-size"));
   o.renderOverlay = optionValue(arguments, QStringLiteral("--render-overlay"));
@@ -76,6 +101,7 @@ std::optional<int> Harness::start(AppContext& app) {
   o.startupNavigationTest = arguments.contains(QStringLiteral("--startup-navigation-test"));
   o.controllerNavigationTest = arguments.contains(QStringLiteral("--controller-navigation-test"));
   o.ownedLayoutTest = arguments.contains(QStringLiteral("--owned-layout-test"));
+  o.uninstalledLayoutTest = arguments.contains(QStringLiteral("--uninstalled-layout-test"));
   o.detailsDirectionTest = arguments.contains(QStringLiteral("--details-direction-test"));
   o.gogSettingsFixture = o.gogSettingsTest || o.renderOverlay == "gog-folders";
   o.linkedPreferenceFixture = o.linkedPreferenceTest || o.renderOverlay == "linked-preference" || o.renderOverlay == "linked-preference-missing";
@@ -91,6 +117,11 @@ std::optional<int> Harness::start(AppContext& app) {
                          o.couchNavigationSweep || o.startupNavigationTest ||
                          o.controllerNavigationTest;
   modes.startupNavigationTest = o.startupNavigationTest;
+  modes.testLibrary = modes.navigationTest || o.detailsDirectionTest;
+  modes.demoLibrary = o.stressTest;
+  modes.isolated = modes.testLibrary || o.stressTest || o.benchmark;
+  if (o.stressTest) modes.demoGameCount = o.stressCount;
+  modes.demoFirstUninstalled = o.uninstalledLayoutTest;
   modes.metadataInLibraryDatabase = o.renderOverlay == "library-repair-controls" || o.statsFixture;
   modes.backupFixture = o.backupFixture;
   modes.cardExport = !o.cardExportPath.isEmpty();
@@ -103,12 +134,14 @@ std::optional<int> Harness::prepare(Stage stage, AppContext& app) {
   case Stage::BeforeSources: return prepareBeforeSources(*this, app);
   case Stage::SourcesBuilt: return prepareSourcesBuilt(*this, app);
   case Stage::LibraryFiltered: return prepareLibraryFiltered(*this, app);
+  case Stage::Achievements: return prepareAchievements(*this, app);
   case Stage::SaveBackups: return prepareSaveBackups(*this, app);
   case Stage::Backups: return prepareBackups(*this, app);
   case Stage::CardExport: return prepareCardExport(*this, app);
   case Stage::Sessions: return prepareSessions(*this, app);
   case Stage::Clips: return prepareClips(*this, app);
   case Stage::BeforeLoad: return prepareBeforeLoad(*this, app);
+  case Stage::Loaded: return prepareLoaded(*this, app);
   }
   return std::nullopt;
 }
@@ -122,6 +155,21 @@ std::optional<int> Harness::windowReady(AppContext& app) {
     if (auto exit = renderWindow(*this, app)) return exit;
   }
   startNavigation(*this, app);
+  if (options.detailsDirectionTest) startDetailsDirection(*this, app);
+  if (options.benchmark) {
+    QGuiApplication& application = *app.application;
+    QObject::connect(
+        app.quickWindow, &QQuickWindow::frameSwapped, &application,
+        [&application, startupTimer = app.startupTimer, limit = options.benchmarkMaxMs] {
+          if (limit > 0 && startupTimer->elapsed() > limit) {
+            qCritical() << "First frame exceeded benchmark limit of" << limit << "ms";
+            application.exit(EXIT_FAILURE);
+          } else {
+            application.quit();
+          }
+        },
+        Qt::SingleShotConnection);
+  }
   return std::nullopt;
 }
 

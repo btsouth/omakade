@@ -11,6 +11,7 @@ class AchievementModel;
 class AppSettings;
 class BackupManager;
 class CardExport;
+class ConsolePortalModel;
 class ControllerInput;
 class GameLauncher;
 class GameMetadata;
@@ -34,6 +35,7 @@ class QGuiApplication;
 class QQmlApplicationEngine;
 class QQuickWindow;
 class QWindow;
+class RetroArchGameModel;
 class SaveBackups;
 class SaveProtection;
 class UnifiedGameModel;
@@ -45,6 +47,17 @@ struct AppHarnessModes {
   bool renderMode = false;
   // A harness self-test drives the run. It starts like --smoke-test, on the demo library.
   bool selfTest = false;
+  // The run is a test: settings go to a scratch file, and it claims no single instance and
+  // leaves the user's storage, desktop and Steam alone.
+  bool isolated = false;
+  // The run opens the demo library, as --demo does.
+  bool demoLibrary = false;
+  // The run opens the demo library without being the demo, for checks that need it to look
+  // like the user's own library.
+  bool testLibrary = false;
+  // How many games the demo library has, and whether its first one is not installed.
+  int demoGameCount = 100;
+  bool demoFirstUninstalled = false;
   // A navigation check drives the run, on the demo library with an in-memory library
   // database and a seeded achievement list.
   bool navigationTest = false;
@@ -81,6 +94,9 @@ struct AppContext {
   std::unique_ptr<QAbstractItemModel>* games = nullptr;
   std::unique_ptr<LauncherGameModel>* kytyGames = nullptr;
   std::unique_ptr<LauncherGameModel>* nativePortGames = nullptr;
+  std::unique_ptr<RetroArchGameModel>* retroArchGames = nullptr;
+  RetroArchGameModel** retroArchLibrary = nullptr;
+  std::unique_ptr<ConsolePortalModel>* consolePortals = nullptr;
   std::unique_ptr<PlaySessionStore>* playSessionStore = nullptr;
   HeroicGameModel** heroicLibrary = nullptr;
   LauncherGameModel** kytyLibrary = nullptr;
@@ -89,6 +105,7 @@ struct AppContext {
   ManualGameModel* manualGames = nullptr;
   UnifiedGameModel* unifiedGames = nullptr;
   LibraryFilterModel* library = nullptr;
+  QString* achievementDatabasePath = nullptr;
   AchievementModel* achievements = nullptr;
   std::unique_ptr<GameMetadata>* gameMetadata = nullptr;
   std::unique_ptr<SaveBackups>* saveBackupsOwner = nullptr;
@@ -124,6 +141,8 @@ public:
     SourcesBuilt,
     // The filtered library exists.
     LibraryFiltered,
+    // Before AchievementModel is made from achievementDatabasePath.
+    Achievements,
     // Before the app makes its own SaveBackups, which it skips when the harness made one.
     SaveBackups,
     // Before BackupManager is made from managerPaths.
@@ -136,6 +155,8 @@ public:
     Clips,
     // Every context property is set; the QML is not loaded yet.
     BeforeLoad,
+    // The QML root object exists; its window is not set up yet.
+    Loaded,
   };
 
   virtual ~AppHarness() = default;

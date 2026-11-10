@@ -1,7 +1,7 @@
 #include "selftest/SelfTest.h"
 
 #include "app/AppSettings.h"
-#include "app/SelfTestSupport.h"
+#include "selftest/SelfTestSupport.h"
 #include "gamemode/LaunchHold.h"
 #include "input/ControllerInput.h"
 #include "library/LibraryFilterModel.h"

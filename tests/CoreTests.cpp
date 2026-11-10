@@ -14372,7 +14372,7 @@ void CoreTests::startupBenchmarkDoesNotActivateAnotherInstance() {
   environment.insert("DBUS_SESSION_BUS_ADDRESS", "unix:path=" + temp.filePath("no-session-bus"));
   benchmark.setProcessEnvironment(environment);
   benchmark.setProcessChannelMode(QProcess::MergedChannels);
-  benchmark.start(QCoreApplication::applicationDirPath() + "/../omakade",
+  benchmark.start(QCoreApplication::applicationDirPath() + "/../omakade-uitest",
                   {"--couch", "--stress-test", "--benchmark"});
   QVERIFY(benchmark.waitForFinished(10000));
   const QByteArray output = benchmark.readAll();
