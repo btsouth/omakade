@@ -2,11 +2,10 @@
 
 ## Unreleased
 
-- The installed `omakade` no longer carries the screenshot render paths, test fixtures,
-  the editor, filter, restore and Game Mode self-tests, and the controller, keyboard and
-  startup navigation checks. They moved to `omakade-uitest`,
-  which is built with the tests and never installed. `omakade --smoke-test` still checks
-  the installed app.
+- The installed `omakade` no longer carries the UI test harness: the screenshot render
+  paths, test fixtures, self-tests, navigation and layout checks, and the stress and
+  start-up timing runs. They moved to `omakade-uitest`, which is built with the tests and
+  never installed. `omakade --smoke-test` still checks the installed app.
 - OmaStore installs can now use the controller Home button. OmaStore sets up its service,
   which stays off until it is turned on in Settings > Controls. Its service starts before
   Hyprland at login, so it usually needs turning off and on again after each login.
