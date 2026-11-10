@@ -10,8 +10,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
-CMAKE, BUILD, VERSION, LIBDIR, DATADIR, BINDIR, SOURCE, NM = sys.argv[1:9]
-del sys.argv[1:9]
+CMAKE, BUILD, VERSION, LIBDIR, DATADIR, BINDIR, SOURCE, NM, HARNESS_OBJECTS = sys.argv[1:10]
+del sys.argv[1:10]
 
 LINK = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)|<img\s[^>]*src=\"([^\"]+)\"|^\[[^\]]+\]:\s*(\S+)",
                   re.MULTILINE)
@@ -143,7 +143,21 @@ class PackageLayoutTests(unittest.TestCase):
 
         # The harness binary has the code, so an empty list for omakade means it really is gone.
         self.assertNotEqual(harness_code(symbols(Path(BUILD) / "omakade-uitest")), [])
-        self.assertEqual(harness_code(symbols(self.prefix / "bin" / "omakade")), [])
+        app = symbols(self.prefix / "bin" / "omakade")
+        self.assertEqual(harness_code(app), [])
+
+        # Nor any function or data defined in the src/selftest objects, whatever it is called.
+        # main, compiler made names and clones, and the inline and template code both binaries
+        # instantiate from Qt and the standard library are not harness code.
+        objects = [path for path in HARNESS_OBJECTS.split("|") if path]
+        self.assertNotEqual(objects, [], "no omakade-uitest objects to compare against")
+        listing = subprocess.run([NM, "--demangle", "--defined-only", *objects],
+                                 check=True, capture_output=True, text=True).stdout
+        shared = re.compile(r"^(main|_GLOBAL__.*|C\.\d.*)$|\[clone ")
+        harness = {fields[2] for fields in (line.split(maxsplit=2) for line in listing.splitlines())
+                   if len(fields) == 3 and fields[1] in "TtDdBbRr" and not shared.search(fields[2])}
+        self.assertNotEqual(harness, set())
+        self.assertEqual(sorted(harness.intersection(app)), [])
 
     def test_installed_documentation_names_no_private_machines(self) -> None:
         docs = self.prefix / DATADIR / "doc" / "omakade"
