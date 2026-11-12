@@ -163,6 +163,13 @@ public:
     rows[row][role] = value;
     emit dataChanged(index(row), index(row), {role});
   }
+  // A rescan that finds the same games: the source resets with new values, as
+  // SteamGameModel::loadDatabase does, and reports no dataChanged.
+  void rescan(int row, int role, const QVariant& value) {
+    beginResetModel();
+    rows[row][role] = value;
+    endResetModel();
+  }
 };
 
 // Lets queued background work land without asserting on wall time.
@@ -368,6 +375,36 @@ private slots:
     stats.setActive(true);
     QTRY_COMPARE(stats.achievements().value("unlockedTotal").toLongLong(), qint64(3));
     QTRY_VERIFY(!stats.pending());
+  }
+
+  void reopeningAfterASameGamesRescanRereadsTheLibrary() {
+    Database data;
+    FixtureSource source;
+    source.add("a", "/games/a.nsp", at(2026, 4, 1, 12));
+    UnifiedGameModel games(data.path);
+    games.addSourceModel(&source);
+    PlayStats stats(&games, data.path);
+    stats.setPeriod("all");
+    stats.setActive(true);
+    QCOMPARE(stats.headline().value("librarySeconds").toLongLong(), qint64(600));
+    stats.setActive(false);
+
+    // Steam updates its playtime after a game exits and Omakade rescans the same games. The
+    // unified model keeps its rows and says nothing, so only reopening can pick it up.
+    QSignalSpy reset(&games, &QAbstractItemModel::modelReset);
+    source.rescan(0, GameRoles::PlaytimeSeconds, qint64(4200));
+    settle([&] { return games.index(0).data(GameRoles::PlaytimeSeconds).toLongLong() == 4200; });
+    QCOMPARE(games.index(0).data(GameRoles::PlaytimeSeconds).toLongLong(), qint64(4200));
+    QCOMPARE(reset.size(), 0);
+
+    stats.setActive(true);
+    QTRY_COMPARE(stats.headline().value("librarySeconds").toLongLong(), qint64(4200));
+    QTRY_VERIFY(!stats.pending());
+    // An explicit refresh reads the library again as well.
+    stats.setActive(false);
+    source.rescan(0, GameRoles::PlaytimeSeconds, qint64(5400));
+    stats.refresh();
+    QCOMPARE(stats.headline().value("librarySeconds").toLongLong(), qint64(5400));
   }
 
   void periodChangeDropsAStaleRun() {

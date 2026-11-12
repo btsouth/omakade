@@ -191,9 +191,11 @@ void PlayStats::setActive(bool value) {
   // in place so the screen and a one-shot card export never see empty figures; after that the
   // previous figures stay on screen while fresh ones are computed in the background. Every
   // opening recomputes, because some figures come from the database or today's date rather
-  // than from the library model.
+  // than from the library model. The library rows are read again too: a rescan that finds the
+  // same games can change their playtime without the unified model saying so.
   if (!value)
     return;
+  m_libraryStale = true;
   if (!m_hasFigures) {
     refresh();
     return;
@@ -282,6 +284,7 @@ void PlayStats::startBackground() {
 void PlayStats::refresh() {
   QElapsedTimer timer;
   timer.start();
+  m_libraryStale = true;
   const Snapshot input = snapshot();
   m_dirty = false;
   // Supersedes any background run still in flight: its figures describe an older state.
