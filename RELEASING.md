@@ -126,8 +126,8 @@ gh api repos/omacom/omarchy-pkgs/contents/pkgbuilds/omakade/PKGBUILD \
 
 If `depends`, `optdepends`, `makedepends`, `install`, `build()` or `package()`
 differ, open a pull request there with the same changes. The `install` line needs
-`packaging/arch/omakade.install` beside the PKGBUILD there too. OPR moves packages from edge to rc
-to stable. Once stable carries the release, confirm its package runs on
+the release's `omakade.install` asset beside the PKGBUILD there too. OPR moves
+packages from edge to rc to stable. Once stable carries the release, confirm its package runs on
 stable's Qt, since OPR builds it in its own environment.
 
 ### OmaStore
