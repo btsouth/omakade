@@ -5,6 +5,7 @@
 #include "artwork/SwitchTitleReader.h"
 #include "artwork/ZArchiveReader.h"
 #include "library/DolphinGameModel.h"
+#include "saves/SaveLayouts.h"
 #include "sources/cemu/CemuScanner.h"
 
 #include <QBuffer>
@@ -203,6 +204,7 @@ private slots:
   void zarchiveRejectsTooManyNodes();
   void zarchiveListsDirectoriesAsLookupFindsThem();
   void cemuScanReadsArchiveWithManyAddOnFolders();
+  void cemuSaveLayoutReadsArchiveWithManyBaseNamedFiles();
   void switchReaderRejectsWrappedEntryOffset();
   void switchReaderRejectsHugePartitionOffset();
   void switchReaderRejectsHugeRomfsOffsets();
@@ -456,6 +458,42 @@ void ParserHardeningTests::cemuScanReadsArchiveWithManyAddOnFolders() {
   QCOMPARE(scan.games.first().titleId, QStringLiteral("00050000ABCDEF12"));
   // One pass takes well under a second, even in a debug build on a busy machine.
   QVERIFY2(elapsed < 5000, qPrintable(QStringLiteral("scan took %1 ms").arg(elapsed)));
+}
+
+// Launching a .wua with no title ID reads the title from its base folder. A crafted archive can
+// put a hundred thousand files with base-folder names ahead of it; that has to take one pass too.
+void ParserHardeningTests::cemuSaveLayoutReadsArchiveWithManyBaseNamedFiles() {
+  constexpr int kFiles = 100'000;
+  QList<QByteArray> rootNames;
+  rootNames.reserve(kFiles + 1);
+  for (int index = 0; index < kFiles; ++index) {
+    rootNames.append(QByteArray("00050000") +
+                     QByteArray::number(index, 16).rightJustified(8, '0').toUpper() +
+                     QByteArray("_v0"));
+  }
+  rootNames.append(QByteArrayLiteral("00050000ABCDEF12_v0"));
+  QList<quint32> offsets;
+  const QByteArray names = nameTable(rootNames, &offsets);
+  QByteArray tree =
+      be32(0) + be32(1) + be32(static_cast<quint32>(rootNames.size())) + be32(0);
+  for (int index = 0; index < kFiles; ++index) tree += emptyFile(offsets[index]);
+  tree += emptyDirectory(offsets.last());
+
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QString path = temp.filePath(QStringLiteral("game.wua"));
+  QVERIFY(writeArchive(path, 64 * 1024, 40, names, tree));
+
+  QElapsedTimer timer;
+  timer.start();
+  const SaveLayout layout = resolveSaveLayout(
+      {{"source", "Cemu"}, {"id", "path:" + path}, {"game", path}}, temp.path(), {});
+  const qint64 elapsed = timer.elapsed();
+  QVERIFY2(layout.error.isEmpty(), qPrintable(layout.error));
+  const QString saves = temp.path() + "/.local/share/Cemu/mlc01/usr/save/00050000/abcdef12";
+  QCOMPARE(layout.trees, QStringList{saves});
+  // One pass takes well under a second, even in a debug build on a busy machine.
+  QVERIFY2(elapsed < 5000, qPrintable(QStringLiteral("resolve took %1 ms").arg(elapsed)));
 }
 
 // The PFS0 entry offset is added to the data base. One that wraps around to point back at the

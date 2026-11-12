@@ -16,8 +16,9 @@ public:
   [[nodiscard]] static std::unique_ptr<ZArchiveReader> open(const QString& path);
 
   [[nodiscard]] QStringList list(const QString& directory) const;  // names in a directory
-  // The names in a directory that isDirectory() would call directories, in one pass. A name that
-  // appears more than once, ignoring case, opens as the first of them, as every lookup here does.
+  // The names in a directory that are directories, in one pass. For a non-empty name with no
+  // slash or backslash, that is exactly what isDirectory() would say. A name that appears more
+  // than once, ignoring case, opens as the first of them, as every lookup here does.
   [[nodiscard]] QStringList listDirectories(const QString& directory) const;
   [[nodiscard]] bool isDirectory(const QString& path) const;
   [[nodiscard]] qint64 fileSize(const QString& path) const;

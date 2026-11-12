@@ -27,8 +27,9 @@
   Recheck in Repair Library rescans Steam, so a drive that is plugged back in clears there.
 - A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes of
   memory by giving thousands of files the same long name. Such archives are skipped.
-- A Wii U `.wua` archive with a huge number of update or DLC folders no longer stalls a Cemu
-  scan. Its folders are now checked in one pass instead of one search per folder.
+- A Wii U `.wua` archive with a huge number of entries in its top folder no longer stalls a
+  Cemu scan or the start of a game from it. Those entries are now checked in one pass instead of
+  one search per entry.
 - Omakade's library database, settings and cache folders are now private to your user.
   Other accounts on the same computer can no longer read your play history, game paths or
   account names, and folders an earlier version created are tightened on the next start.
