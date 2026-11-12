@@ -381,10 +381,13 @@ SaveLayout resolveSaveLayout(const QJsonObject& c, const QString& home, const QS
       title = xml(QFileInfo(game).absolutePath() + "/../meta/meta.xml", "title_id").toLower();
     if (!QRegularExpression("^[0-9a-f]{16}$").match(title).hasMatch() &&
         game.endsWith(".wua", Qt::CaseInsensitive)) {
+      static const QRegularExpression baseFolder("^(00050000[0-9a-fA-F]{8})_v[0-9]+$");
+      // One pass over the root: checking each name with isDirectory() would search the whole
+      // root again for every one of them.
       if (auto archive = ZArchiveReader::open(game))
-        for (const auto& entry : archive->list({})) {
-          const auto match = QRegularExpression("^(00050000[0-9a-fA-F]{8})_v[0-9]+$").match(entry);
-          if (match.hasMatch() && archive->isDirectory(entry)) {
+        for (const auto& entry : archive->listDirectories({})) {
+          const auto match = baseFolder.match(entry);
+          if (match.hasMatch()) {
             title = match.captured(1).toLower();
             break;
           }
