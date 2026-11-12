@@ -2921,6 +2921,42 @@ private slots:
     QVERIFY(m_compositor.log.contains(QStringLiteral("return 0x9a01 3")));
   }
 
+  // A killed Omakade leaves focus on the empty Game Mode workspace. Recovery puts the
+  // recorded desktop back there, so the next window and its session start from it, and
+  // leaves focus alone once the user has moved on.
+  void recoveryAfterAKillReturnsFocusFromTheGameModeWorkspace_data() {
+    QTest::addColumn<QString>("focused");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("left on Game Mode") << GameModeController::workspace() << QStringLiteral("3");
+    QTest::newRow("moved on") << QStringLiteral("7") << QStringLiteral("7");
+  }
+  void recoveryAfterAKillReturnsFocusFromTheGameModeWorkspace() {
+    QFETCH(QString, focused);
+    QFETCH(QString, expected);
+    deskAndTv(false);
+    m_compositor.currentFocus = {kDesk, focused, {}};
+    GameModeState state;
+    state.ownerPid = 4242;
+    state.output = kDesk;
+    state.focusedOutput = kDesk;
+    state.focusedWorkspace = QStringLiteral("3");
+    state.outputWorkspace = QStringLiteral("3");
+    state.windowWorkspace = QStringLiteral("3");
+    state.windowPlaced = true;
+    state.desktopPending = true;
+    QFile file(statePath());
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QJsonDocument(state.toJson()).toJson());
+    file.close();
+
+    GameModeController game = controller(false);
+    const auto recovered = game.recover();
+    QVERIFY2(recovered.ok, qPrintable(recovered.error));
+    QCOMPARE(m_compositor.currentFocus.workspace, expected);
+    QCOMPARE(m_compositor.log.contains(QStringLiteral("focus-workspace 3")), expected != focused);
+    QVERIFY(!QFile::exists(statePath()));
+  }
+
   void workspaceSelectorsMatchDispatchers() {
     using Compositor = HyprlandGameModeCompositor;
     QCOMPARE(Compositor::workspaceSelector({{"id", 3}, {"name", "3"}}), QStringLiteral("3"));
