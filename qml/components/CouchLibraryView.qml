@@ -758,7 +758,7 @@ FocusScope {
                 objectName: "couchFavoriteButton"
                 selectable: true
                 selected: !!root.currentGame.favorite
-                text: root.currentGame.favorite ? "FAVORITED" : "ADD TO FAVORITES"
+                text: root.currentGame.favorite ? "FAVORITED" : "ADD FAVORITE"
                 Accessible.description: root.currentGame.favorite ? "Press to remove from favorites" : ""
                 iconDelegate: HeartIcon {
                     filled: favoriteButton.selected
