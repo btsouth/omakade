@@ -43,6 +43,16 @@ QtObject {
         message = ""
     }
 
+    // The launch already ended, such as a game that closed right after starting.
+    function cancel() {
+        if (dispatch.running) return
+        cooldown.stop()
+        waiting = false
+        pending = false
+        failed = false
+        message = ""
+    }
+
     function finish(success, text) {
         dispatch.stop()
         cooldown.stop()

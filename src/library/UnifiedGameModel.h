@@ -65,6 +65,9 @@ public:
   Q_INVOKABLE QVariantList linkCandidates(int row, const QString& search) const;
   Q_INVOKABLE bool recordLaunch(int row, const QString& source, const QString& runner,
                                 const QString& appId);
+  // Takes back the last launch recordLaunch() wrote for this game while it is still the
+  // newest, for a game that closed right after starting. True when it did.
+  bool forgetLaunch(const QString& source, const QString& appId);
   Q_INVOKABLE bool linkGames(int row, const QString& source, const QString& runner,
                              const QString& appId);
   Q_INVOKABLE bool unlinkGames(int row);
@@ -179,6 +182,13 @@ private:
   QHash<QString, QString> m_primaryForGroup;
   QHash<QString, QString> m_preferredForGroup;
   QHash<QString, qint64> m_lastLaunchForGame;
+  struct RecordedLaunch {
+    QString source, runner, appId;
+    qint64 previous = 0;
+    qint64 launchedAt = 0;
+  };
+  // This session's last recorded launch of each game, by source and app id.
+  QHash<QString, RecordedLaunch> m_recordedLaunches;
   QHash<QString, OrganizationState> m_organizationForGame;
   QHash<QString, QVariantMap> m_userFlags;
   QHash<QString, QStringList> m_collectionsForGame;

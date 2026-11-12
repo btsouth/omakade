@@ -40,7 +40,11 @@ ApplicationWindow {
     property string pendingSaveWarning: ""
     Connections {
         target: SaveBackups
-        function onWarning(message) { root.pendingSaveWarning = message }
+        function onWarning(message) {
+            root.pendingSaveWarning = message
+            // A save warning keeps Omakade open after the launch, so its log is kept.
+            Launcher.setKeepLaunchLogs(true)
+        }
     }
 
     Connections {
@@ -1755,6 +1759,12 @@ ApplicationWindow {
     Connections {
         target: Launcher
         function onGameClosedEarly(game) {
+            // That launch is over, so Play and the toast stop saying it is opening.
+            const launched = launchFeedback.request.installation || {}
+            if (launchFeedback.pending && launched.source === game.source && launched.appId === game.appId) {
+                if (toastTimer.running && toast.message === launchFeedback.message) toastTimer.stop()
+                launchFeedback.cancel()
+            }
             root.showLaunchClosed(root.launchTitles[root.launchTitleKey(game.source, game.appId)] || "",
                                   game.logPath || "")
         }
@@ -1829,10 +1839,14 @@ ApplicationWindow {
         GameMode.endSteamHold(!holding)
         if (!DemoMode) {
             root.launchTitles[root.launchTitleKey(choice.source, choice.appId)] = request.title
+            // Omakade closes right after this launch, and nothing would keep a log small then.
+            Launcher.setKeepLaunchLogs(!(Preferences.closeAfterLaunch && !GameMode.hasSession))
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
                                   choice.runner || "", choice.installPath || "", choice.launchTarget || "", choice.system || "")
+            // Only this launch went without a log; later ones, such as a --play request, keep it.
+            Launcher.setKeepLaunchLogs(true)
         }
         if (holding && okay) LaunchHold.launched(Launcher.lastLaunchedPid())
         else if (holding) LaunchHold.cancel()
@@ -3406,6 +3420,7 @@ ApplicationWindow {
 
     Timer {
         id: toastTimer
+        objectName: "toastTimer"
         interval: 2400
     }
 

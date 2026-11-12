@@ -164,7 +164,8 @@ std::optional<int> prepareSourcesBuilt(Harness& harness, AppContext& app) {
   if (app.modes.navigationTest) {
     libraryDatabasePath = QStringLiteral(":memory:");
   }
-  if (renderOverlay.startsWith("library-reflow")) {
+  // These record launches, so they need a library database.
+  if (renderOverlay.startsWith("library-reflow") || renderOverlay == QStringLiteral("launch-closed")) {
     libraryDatabasePath = QStringLiteral(":memory:");
   }
   if (gogSettingsFixture || linkedPreferenceFixture || backupFixture || artworkEditorTest ||

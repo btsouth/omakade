@@ -1153,6 +1153,7 @@ bool UnifiedGameModel::recordLaunch(int row, const QString& sourceName, const QS
     return false;
   }
   const qint64 launchedAt = QDateTime::currentSecsSinceEpoch();
+  const qint64 previous = m_lastLaunchForGame.value(key);
   QSqlQuery query(m_database);
   query.prepare(QStringLiteral(
       "INSERT INTO launch_activity(source, runner, app_id, last_launched, launch_count) "
@@ -1166,7 +1167,36 @@ bool UnifiedGameModel::recordLaunch(int row, const QString& sourceName, const QS
     return false;
   }
   m_lastLaunchForGame.insert(key, launchedAt);
+  m_recordedLaunches.insert(sourceName + QLatin1Char('\n') + appId,
+                            {sourceName, normalizedRunner, appId, previous, launchedAt});
   emit dataChanged(index(row), index(row), {GameRoles::Recent, GameRoles::LastPlayed});
+  return true;
+}
+
+bool UnifiedGameModel::forgetLaunch(const QString& sourceName, const QString& appId) {
+  const RecordedLaunch launch = m_recordedLaunches.take(sourceName + QLatin1Char('\n') + appId);
+  const QString key = launch.source + QChar::Null + launch.runner + QChar::Null + launch.appId;
+  if (launch.launchedAt == 0 || !m_database.isOpen() ||
+      m_lastLaunchForGame.value(key) != launch.launchedAt)
+    return false;
+  QSqlQuery query(m_database);
+  if (launch.previous > 0) {
+    query.prepare(QStringLiteral(
+        "UPDATE launch_activity SET last_launched = ?, launch_count = MAX(1, launch_count - 1) "
+        "WHERE source = ? AND runner = ? AND app_id = ?"));
+    query.addBindValue(launch.previous);
+  } else {
+    query.prepare(QStringLiteral(
+        "DELETE FROM launch_activity WHERE source = ? AND runner = ? AND app_id = ?"));
+  }
+  query.addBindValue(launch.source);
+  query.addBindValue(launch.runner);
+  query.addBindValue(launch.appId);
+  if (!query.exec()) return false;
+  if (launch.previous > 0) m_lastLaunchForGame.insert(key, launch.previous);
+  else m_lastLaunchForGame.remove(key);
+  const int row = rowForGame(launch.source, launch.appId);
+  if (row >= 0) emit dataChanged(index(row), index(row), {GameRoles::Recent, GameRoles::LastPlayed});
   return true;
 }
 

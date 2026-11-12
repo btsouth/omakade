@@ -32,12 +32,16 @@
   account names, and folders an earlier version created are tightened on the next start.
 - When an emulator, manual game, native port or GOG game closes within a few seconds of
   starting, Omakade now says it closed right after starting and offers Open Log, on the
-  desktop and in Game Mode, instead of only having said it was opening. A game closed with
-  Stop is not reported. What these games print goes to a log per game, cut above 2 MiB
-  while Omakade follows the game, at its next launch and when Omakade starts. Steam,
-  Heroic and other launchers that hand the game off are not affected. MangoHud settings
-  written for a launch are removed when the game closes, and ones left from earlier runs
-  at startup.
+  desktop and in Game Mode, instead of only having said it was opening. Such a launch no
+  longer counts as recently played. A game closed with Stop is not reported. Neither is a
+  launch that leaves something running, or a manual game or port that starts a script or
+  a wrapper such as env or flatpak, or hands a program a link, since those may only pass
+  the game to a launcher. What these games print goes to a log per game, cut above 2 MiB
+  while Omakade follows the game, at its next launch and when Omakade starts. No log is
+  kept for a launch Auto-close closes Omakade after, or for a game `omakade --play`
+  starts while Omakade is closed. Steam, Heroic and other launchers that hand the game off
+  are not affected. MangoHud settings written for a launch are removed when the game
+  closes, and ones left from earlier runs at startup.
 - The Year in Review card preview now opens on its own panel, like Settings, so its title
   and Save image and Close buttons no longer draw over the Omakade logo and header buttons.
 - Settings > Backup & Storage now uses the same text sizes and section headings as the

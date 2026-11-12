@@ -527,11 +527,13 @@ auto redirectVariable(const char* name, const QByteArray& value) {
 }
 
 // A manual game entry that runs `script` from `directory`.
-QString manualLaunchTarget(const QString& id, const QString& script, const QString& directory) {
+QString manualLaunchTarget(const QString& id, const QString& script, const QString& directory,
+                           const QStringList& arguments = {}) {
   return QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("id"), id},
                                                      {QStringLiteral("executable"), script},
                                                      {QStringLiteral("directory"), directory},
-                                                     {QStringLiteral("arguments"), QJsonArray{}}})
+                                                     {QStringLiteral("arguments"),
+                                                      QJsonArray::fromStringList(arguments)}})
                                .toJson(QJsonDocument::Compact));
 }
 
@@ -1125,6 +1127,7 @@ private slots:
   void artworkSlotsMigratePersistAndResetIndependently();
   void explicitLinksPersistAndPreserveInstallations();
   void launchActivityPersistsAndSortsExactly();
+  void launchThatClosedRightAwayIsForgotten();
   void organizationPersistsAndFilters();
   void lutrisLauncherBuildsSafeCommands();
   void launcherTracksRunningGames();
@@ -3797,6 +3800,83 @@ void CoreTests::launchActivityPersistsAndSortsExactly() {
            QStringLiteral("demo-10"));
 }
 
+void CoreTests::launchThatClosedRightAwayIsForgotten() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString database = directory.path() + QStringLiteral("/omakade.sqlite3");
+  const auto rowOf = [](const LibraryFilterModel& library, const QString& appId) {
+    for (int row = 0; row < library.rowCount(); ++row) {
+      if (library.get(row).value(QStringLiteral("appId")).toString() == appId) return row;
+    }
+    return -1;
+  };
+  const QString connection = QStringLiteral("forget-launch");
+  const auto onDatabase = [&database, &connection](const auto& use) {
+    {
+      QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+      db.setDatabaseName(database);
+      QVERIFY(db.open());
+      QSqlQuery query(db);
+      use(query);
+    }
+    QSqlDatabase::removeDatabase(connection);
+  };
+  {
+    MockGameModel demo(nullptr, 20);
+    UnifiedGameModel games(database);
+    games.addSourceModel(&demo);
+  }
+  // demo-12 was launched before, three times.
+  onDatabase([](QSqlQuery& query) {
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO launch_activity(source, runner, app_id, last_launched, launch_count) "
+        "VALUES('Demo', '', 'demo-12', 1000, 3)")));
+  });
+
+  {
+    MockGameModel demo(nullptr, 20);
+    UnifiedGameModel games(database);
+    games.addSourceModel(&demo);
+    LibraryFilterModel library;
+    library.setSourceModel(&games);
+    library.setMode(LibraryFilterModel::Mode::Recent);
+    QCOMPARE(library.rowCount(), 10);
+    QCOMPARE(rowOf(library, QStringLiteral("demo-10")), -1);
+
+    // A game launched for the first time that closed right away is not recent.
+    QVERIFY(library.recordLaunchByIdentity(QStringLiteral("Demo"), QString{},
+                                           QStringLiteral("demo-10")));
+    QCOMPARE(library.rowCount(), 11);
+    QVERIFY(!games.forgetLaunch(QStringLiteral("Demo"), QStringLiteral("demo-11")));
+    QVERIFY(games.forgetLaunch(QStringLiteral("Demo"), QStringLiteral("demo-10")));
+    QCOMPARE(library.rowCount(), 10);
+    QCOMPARE(rowOf(library, QStringLiteral("demo-10")), -1);
+    // Only once, for the launch that was recorded.
+    QVERIFY(!games.forgetLaunch(QStringLiteral("Demo"), QStringLiteral("demo-10")));
+
+    // A game launched before goes back to when it was last launched.
+    const int launchRow = rowOf(library, QStringLiteral("demo-12"));
+    QVERIFY(launchRow >= 0);
+    QCOMPARE(library.get(launchRow).value(QStringLiteral("lastPlayed")).toLongLong(), 1000);
+    QVERIFY(library.recordLaunch(launchRow, QStringLiteral("Demo"), QString{},
+                                 QStringLiteral("demo-12")));
+    library.setMode(LibraryFilterModel::Mode::All);
+    const int playedRow = rowOf(library, QStringLiteral("demo-12"));
+    QVERIFY(library.get(playedRow).value(QStringLiteral("lastPlayed")).toLongLong() > 1000);
+    QVERIFY(games.forgetLaunch(QStringLiteral("Demo"), QStringLiteral("demo-12")));
+    QCOMPARE(library.get(playedRow).value(QStringLiteral("lastPlayed")).toLongLong(), 1000);
+  }
+
+  onDatabase([](QSqlQuery& query) {
+    QVERIFY(query.exec(QStringLiteral("SELECT app_id, last_launched, launch_count FROM launch_activity")));
+    QVERIFY(query.next());
+    QCOMPARE(query.value(0).toString(), QStringLiteral("demo-12"));
+    QCOMPARE(query.value(1).toLongLong(), 1000);
+    QCOMPARE(query.value(2).toInt(), 3);
+    QVERIFY(!query.next());
+  });
+}
+
 void CoreTests::organizationPersistsAndFilters() {
   QTemporaryDir directory;
   QVERIFY(directory.isValid());
@@ -3904,11 +3984,14 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
                                  QStringLiteral("Battle.net"), QString{}})
     QVERIFY2(!GameLauncher::watchesEarlyExit(handoff), qPrintable(handoff));
 
-  const QString script = directory.filePath("closes-fast.sh");
-  writeFile(script, "#!/bin/sh\necho 'starting up'\necho 'missing library' >&2\nsleep 0.4\nexit 3\n");
-  QVERIFY(QFile::setPermissions(script, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  // A program that is the game itself and closes within the window is reported, with what
+  // it printed. timeout prints to stderr as it ends sleep, and exits 124.
+  const QString timeout = QStandardPaths::findExecutable(QStringLiteral("timeout"));
+  QVERIFY(!timeout.isEmpty());
   const QString id = QStringLiteral("closes-fast");
-  const QString target = manualLaunchTarget(id, script, directory.path());
+  const QString target = manualLaunchTarget(id, timeout, directory.path(),
+                                            {QStringLiteral("-v"), QStringLiteral("0.4"),
+                                             QStringLiteral("sleep"), QStringLiteral("5")});
   const QString log = GameLauncher::launchLogPath(QStringLiteral("Manual"), id);
   QVERIFY(log.startsWith(directory.filePath("state")));
 
@@ -3931,14 +4014,13 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
   QCOMPARE(game.value("logPath").toString(), log);
   QVERIFY(!launcher.gameRunning());
   QVERIFY2(!QFileInfo::exists(config), "MangoHud settings outlived the game");
-  const auto readLog = [&log] {
-    QFile file(log);
+  const auto readLog = [](const QString& path) {
+    QFile file(path);
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray{};
   };
-  QByteArray output = readLog();
-  QVERIFY(output.contains("Omakade started: " + script.toUtf8()));
-  QVERIFY(output.contains("starting up\n"));
-  QVERIFY(output.contains("missing library\n"));
+  QByteArray output = readLog(log);
+  QVERIFY(output.contains("Omakade started: " + timeout.toUtf8()));
+  QVERIFY(output.contains("timeout: "));
   QCOMPARE(QFileInfo(log).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup |
                                            QFile::WriteOther),
            QFile::Permissions{});
@@ -3948,9 +4030,9 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
   QVERIFY(launcher.launch(QStringLiteral("Manual"), id, false, {}, {}, target));
   QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
   QCOMPARE(closed.count(), 1);
-  output = readLog();
+  output = readLog(log);
   QCOMPARE(output.count("Omakade started: "), 2);
-  QCOMPARE(output.count("missing library\n"), 2);
+  QCOMPARE(output.count("timeout: "), 2);
 
   // Something that is not a game Omakade runs itself, such as a launcher handing off, is not.
   launcher.setEarlyExitWindow(5000);
@@ -3960,13 +4042,68 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
   QCOMPARE(closed.count(), 1);
 
   // A game that exits at once is reported, whether Omakade saw it running or not.
-  const QString instant = directory.filePath("exits.sh");
-  writeFile(instant, "#!/bin/sh\nexit 1\n");
-  QVERIFY(QFile::setPermissions(instant, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const QString falseProgram = QStandardPaths::findExecutable(QStringLiteral("false"));
+  QVERIFY(!falseProgram.isEmpty());
   QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("exits"), false, {}, {},
-                          manualLaunchTarget(QStringLiteral("exits"), instant, directory.path())));
+                          manualLaunchTarget(QStringLiteral("exits"), falseProgram, directory.path())));
   QTRY_COMPARE_WITH_TIMEOUT(closed.count(), 2, 5000);
   QCOMPARE(closed.last().first().toMap().value("appId").toString(), QStringLiteral("exits"));
+
+  // A script can hand its game to a launcher that is already open, such as with
+  // `steam steam://rungameid/...`, and exit at once. That is not reported, and what it
+  // printed is still kept.
+  const QString handoff = directory.filePath("hands-off.sh");
+  writeFile(handoff, "#!/bin/sh\necho 'handing the game over'\necho 'to a launcher' >&2\nexit 0\n");
+  QVERIFY(QFile::setPermissions(handoff, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("hands-off"), false, {}, {},
+                          manualLaunchTarget(QStringLiteral("hands-off"), handoff, directory.path())));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 2);
+  output = readLog(GameLauncher::launchLogPath(QStringLiteral("Manual"), QStringLiteral("hands-off")));
+  QVERIFY(output.contains("handing the game over\n"));
+  QVERIFY(output.contains("to a launcher\n"));
+
+  // Neither is a program given a link to open.
+  const QString trueProgram = QStandardPaths::findExecutable(QStringLiteral("true"));
+  QVERIFY(!trueProgram.isEmpty());
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("link"), false, {}, {},
+                          manualLaunchTarget(QStringLiteral("link"), trueProgram, directory.path(),
+                                             {QStringLiteral("steam://rungameid/620")})));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 2);
+
+  // Nor is a wrapper such as env or flatpak, which may start a launcher that hands off.
+  const QString envProgram = QStandardPaths::findExecutable(QStringLiteral("env"));
+  QVERIFY(!envProgram.isEmpty());
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("env-wrapper"), false, {}, {},
+                          manualLaunchTarget(QStringLiteral("env-wrapper"), envProgram,
+                                             directory.path(),
+                                             {QStringLiteral("OMAKADE_TEST=1"), falseProgram})));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 2);
+
+  // A wrapper that starts the game and exits is not reported while the game runs, and the
+  // game keeps its MangoHud settings.
+  const QString shell = QStandardPaths::findExecutable(QStringLiteral("sh"));
+  QVERIFY(!shell.isEmpty());
+  const auto mangoConfigs = [&directory] {
+    QStringList found;
+    QDirIterator configs(directory.filePath("data"), {QStringLiteral("omakade-*.conf")},
+                         QDir::Files, QDirIterator::Subdirectories);
+    while (configs.hasNext()) found.append(configs.next());
+    return found;
+  };
+  QCOMPARE(mangoConfigs().size(), 0);
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("wrapper"), false, {}, {},
+                          manualLaunchTarget(QStringLiteral("wrapper"), shell, directory.path(),
+                                             {QStringLiteral("-c"), QStringLiteral("sleep 3 & exit 0")})));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 2);
+  QCOMPARE(mangoConfigs().size(), 1);
 
   // A game already gone when Omakade goes to follow it is reported once, without ever
   // counting as running. No process can have the kernel's pid limit as its id.
@@ -3987,10 +4124,9 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
   QCOMPARE(running.count(), 0);
 
   // A game the user stops is not reported as having closed by itself.
-  const QString waits = directory.filePath("waits.sh");
-  writeFile(waits, "#!/bin/sh\nexec sleep 3\n");
-  QVERIFY(QFile::setPermissions(waits, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
-  const QString waitsTarget = manualLaunchTarget(QStringLiteral("waits"), waits, directory.path());
+  const QString waitsTarget =
+      manualLaunchTarget(QStringLiteral("waits"), QStandardPaths::findExecutable(QStringLiteral("sleep")),
+                         directory.path(), {QStringLiteral("3")});
   const auto stopLaunched = [&launcher] {
     QVERIFY(launcher.lastLaunchedPid() > 0);
     QCOMPARE(::kill(static_cast<pid_t>(launcher.lastLaunchedPid()), SIGTERM), 0);

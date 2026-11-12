@@ -369,6 +369,52 @@ QVariantMap earlyExitGame(const QVariantMap& identity, const QString& logPath) {
   return game;
 }
 
+// True while a process is left in the session a launch started. A launch whose early exit
+// is watched starts as a session leader, so the game a wrapper script started, or a
+// launcher it handed off to, keeps that session after the wrapper exits.
+bool sessionHasProcesses(qint64 session) {
+  const QStringList processes =
+      QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+  for (const QString& pid : processes) {
+    if (pid.isEmpty() || !pid.front().isDigit()) continue;
+    QFile stat(QStringLiteral("/proc/") + pid + QStringLiteral("/stat"));
+    if (!stat.open(QIODevice::ReadOnly)) continue;
+    const QByteArray contents = stat.readAll();
+    const qsizetype commEnd = contents.lastIndexOf(')');
+    if (commEnd < 0) continue;
+    // Fields after the command name: state, parent, process group, session.
+    const QList<QByteArray> fields = contents.mid(commEnd + 2).simplified().split(' ');
+    if (fields.size() < 4) continue;
+    const char state = fields.at(0).isEmpty() ? '?' : fields.at(0).at(0);
+    if (state != 'Z' && state != 'X' && fields.at(3).toLongLong() == session) return true;
+  }
+  return false;
+}
+
+// A manual game, Kyty game or port runs whatever its entry names. A program given no link
+// is the game itself. A script, a wrapper that starts another program such as env or
+// flatpak, or a program given a link such as steam://, may only hand the game to a
+// launcher that is already open and exit, so its exit says nothing.
+bool runsTheGameItself(const LaunchCommand& command) {
+  const QString program = QDir::isAbsolutePath(command.program)
+                              ? command.program
+                              : QStandardPaths::findExecutable(command.program);
+  QFile file(program);
+  if (program.isEmpty() || !file.open(QIODevice::ReadOnly) ||
+      file.read(4) != QByteArrayLiteral("\x7f" "ELF"))
+    return false;
+  static const QRegularExpression wrapper(QStringLiteral(
+      "^(env|flatpak|flatpak-spawn|gamemoderun|mangohud|prime-run|steam-run|systemd-run|nice|"
+      "ionice|chrt|taskset|setsid|nohup|stdbuf|busybox|toybox|xterm|uxterm|"
+      "alacritty|kitty|foot|ghostty|wezterm|konsole|gnome-terminal|xfce4-terminal|urxvt)$"));
+  if (wrapper.match(QFileInfo(program).fileName()).hasMatch()) return false;
+  static const QRegularExpression link(QStringLiteral("^[A-Za-z][A-Za-z0-9+.-]*:"));
+  for (const QString& argument : command.arguments) {
+    if (link.match(argument).hasMatch()) return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool GameLauncher::watchesEarlyExit(const QString& source) {
@@ -487,7 +533,9 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   const auto source = m_launchIdentity.value("source").toString();
   const bool watchEarlyExit = track && watchesEarlyExit(source);
   QString logPath;
-  if (watchEarlyExit) {
+  // Its own session, so what it leaves running can be told apart from it having ended.
+  if (watchEarlyExit) process.setUnixProcessParameters(QProcess::UnixProcessFlag::CreateNewSession);
+  if (watchEarlyExit && m_keepLaunchLogs) {
     logPath = prepareLaunchLog(source, m_launchIdentity.value("appId").toString(), command);
     if (!logPath.isEmpty()) {
       process.setStandardOutputFile(logPath, QIODevice::Append);
@@ -517,7 +565,8 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
   }
   m_lastLaunchedPid = pid;
   if (track && pid > 0) {
-    trackProcess(pid, watchEarlyExit, logPath);
+    trackProcess(pid, watchEarlyExit && (!isDirectSourceName(source) || runsTheGameItself(command)),
+                 logPath);
   }
   return true;
 }
@@ -525,10 +574,13 @@ bool GameLauncher::startCommand(const LaunchCommand& command, bool track,
 void GameLauncher::trackProcess(qint64 pid, bool watchEarlyExit, const QString& logPath) {
   const qint64 startTime = processStartTime(pid);
   if (startTime < 0) {
-    // Already gone. A game Omakade runs itself closed at once; anything else was a
-    // launcher stub that handed the game off and exited.
-    removeMangoConfig(m_launchIdentity);
-    if (watchEarlyExit) {
+    // Already gone. A wrapper that left the game running, or anything else that was a
+    // launcher stub handing the game off, is not reported; a game Omakade runs itself
+    // that left nothing running closed at once. Settings a running game may still read
+    // are left for the startup sweep.
+    const bool handedOff = sessionHasProcesses(pid);
+    if (!handedOff) removeMangoConfig(m_launchIdentity);
+    if (watchEarlyExit && !handedOff) {
       QMetaObject::invokeMethod(
           this, [this, game = earlyExitGame(m_launchIdentity, logPath)] { emit gameClosedEarly(game); },
           Qt::QueuedConnection);
@@ -571,9 +623,13 @@ void GameLauncher::pollTrackedProcesses() {
   for (const auto& process : std::as_const(m_trackedProcesses)) {
     if (!process.logPath.isEmpty()) trimLaunchLog(process.logPath);
   }
+  // A wrapper's game, or a launcher it handed off to, can outlive the process Omakade
+  // started. It may still read its MangoHud settings, which the startup sweep removes later.
+  QList<bool> handedOff;
   for (const auto& process : std::as_const(ended)) {
     if (!process.logPath.isEmpty()) trimLaunchLog(process.logPath);
-    removeMangoConfig(process.installation);
+    handedOff.append(sessionHasProcesses(process.pid));
+    if (!handedOff.last()) removeMangoConfig(process.installation);
   }
   if (!ended.isEmpty()) repairRetroArchHome();
   if (m_trackedProcesses.isEmpty()) {
@@ -582,8 +638,9 @@ void GameLauncher::pollTrackedProcesses() {
   if (wasRunning != gameRunning()) {
     emit gameRunningChanged();
   }
-  for (const auto& process : std::as_const(ended)) {
-    if (process.watchEarlyExit && now - process.startedMs <= m_earlyExitWindowMs)
+  for (qsizetype at = 0; at < ended.size(); ++at) {
+    const auto& process = ended.at(at);
+    if (process.watchEarlyExit && !handedOff.at(at) && now - process.startedMs <= m_earlyExitWindowMs)
       emit gameClosedEarly(earlyExitGame(process.installation, process.logPath));
   }
 }
