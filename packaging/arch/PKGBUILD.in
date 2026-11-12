@@ -13,6 +13,7 @@ optdepends=('libpulse: switch Game Mode sound outputs with pactl'
             'ffmpeg: stills for highlight clips and clips that end where the guide was summoned')
 makedepends=('cmake' 'ninja' 'pkgconf' 'wayland-protocols')
 options=('!debug')
+install=omakade.install
 source=("$pkgname-$pkgver.tar.gz::https://github.com/btsouth/omakade/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
 sha256sums=('@SOURCE_SHA256@')
 

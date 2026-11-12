@@ -98,7 +98,7 @@ ApplicationWindow {
             text: Recovery.busy
                   ? "Keep Omakade open. Your library will open when the restore finishes."
                   : Recovery.recorderRunning
-                  ? "The play-session recorder is using your library. Stop it to apply the backup. On Omarchy the library starts it again when it opens."
+                  ? "The play-session recorder is using your library. Stop it to apply the backup. Omakade starts it again when the restore finishes."
                   : "Your library will stay closed until recovery finishes. Retry after fixing the problem, or undo the pending restore. The recovery folder contains your saved copies."
             wrapMode: Text.Wrap
             color: Theme.mutedText

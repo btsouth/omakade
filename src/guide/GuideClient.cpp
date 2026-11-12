@@ -56,6 +56,16 @@ void GuideClient::enableResidentOnce(QObject* owner, std::function<void()> done)
   });
 }
 
+// Off Omarchy. Enables the service once, as above, and while playtime or Highlights recording
+// is on also starts it for this login. Otherwise a login that began before Omakade first
+// opened, such as the first one after updating from 1.18, would record nothing until the next.
+void GuideClient::setUpRecorder(QObject* owner, bool recording, std::function<void()> done) {
+  enableResidentOnce(owner, [owner, recording, done] {
+    if (!recording) { if (done) done(); return; }
+    runSystemctl(owner, {"start", "omakade-sessiond.service"}, [done](bool, const QByteArray&) { if (done) done(); });
+  });
+}
+
 void GuideClient::ensureResident(QObject* owner) {
   if (owner->property("guideStarting").toBool()) return;
   owner->setProperty("guideStarting", true);

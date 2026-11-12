@@ -27,6 +27,7 @@ private slots:
   void upgradeAndMergedRequests();
   void enablesServiceOnce();
   void enablesServiceOffOmarchy();
+  void startsRecorderOffOmarchy();
   void reconnectRefreshesEnvironment();
   void preparingDeadlineOwnsDecision();
   void failedProvisionRetries();
@@ -434,7 +435,7 @@ void ResidentGuideTests::enablesServiceOnce() {
 }
 
 void ResidentGuideTests::enablesServiceOffOmarchy() {
-  // Off Omarchy, Omakade only sets the service to start at login, once, and never starts it.
+  // Enabling alone only sets the service to start at login, once, and never starts it.
   Fixture fixture;
   const auto state = fixture.root.filePath("state"), marker = state + "/omakade/sessiond-enabled";
   const auto oldPath = qgetenv("PATH"), oldState = qgetenv("XDG_STATE_HOME");
@@ -449,6 +450,33 @@ void ResidentGuideTests::enablesServiceOffOmarchy() {
   QFile::remove(log); done = false;
   GuideClient::enableResidentOnce(this, [&] { done = true; }); QVERIFY(done);
   QVERIFY(calls().isEmpty());
+}
+
+void ResidentGuideTests::startsRecorderOffOmarchy() {
+  // Opening Omakade off Omarchy with recording on also starts the recorder for this login,
+  // such as the first login after updating from 1.18, and on every later open too.
+  Fixture fixture;
+  const auto state = fixture.root.filePath("state"), marker = state + "/omakade/sessiond-enabled";
+  const auto oldPath = qgetenv("PATH"), oldState = qgetenv("XDG_STATE_HOME");
+  qputenv("PATH", fixture.environment.value("PATH").toUtf8()); qputenv("XDG_STATE_HOME", state.toUtf8());
+  const auto cleanup = qScopeGuard([&] { qputenv("PATH", oldPath); qputenv("XDG_STATE_HOME", oldState); });
+  const auto log = fixture.root.filePath("systemctl.log");
+  const auto calls = [&] { QFile file(log); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); };
+  QVERIFY(writeTestFile(fixture.bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() + "'\nexit 0\n", true));
+  bool done = false;
+  GuideClient::setUpRecorder(this, true, [&] { done = true; }); QTRY_VERIFY(done);
+  QCOMPARE(calls(), QByteArray("--user enable omakade-sessiond.service\n--user start omakade-sessiond.service\n"));
+  QVERIFY(QFileInfo::exists(marker));
+  QFile::remove(log); done = false;
+  GuideClient::setUpRecorder(this, true, [&] { done = true; }); QTRY_VERIFY(done);
+  QCOMPARE(calls(), QByteArray("--user start omakade-sessiond.service\n"));
+  // With recording off nothing is started.
+  QFile::remove(log); done = false;
+  GuideClient::setUpRecorder(this, false, [&] { done = true; }); QVERIFY(done);
+  QVERIFY(calls().isEmpty());
+  QVERIFY(QFile::remove(marker)); done = false;
+  GuideClient::setUpRecorder(this, false, [&] { done = true; }); QTRY_VERIFY(done);
+  QCOMPARE(calls(), QByteArray("--user enable omakade-sessiond.service\n"));
 }
 
 void ResidentGuideTests::reconnectRefreshesEnvironment() {

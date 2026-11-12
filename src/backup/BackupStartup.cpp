@@ -26,10 +26,15 @@ BackupStartup::BackupStartup(BackupRecovery::Paths paths, QObject* parent)
     m_busy = false;
     m_canUndo = result.canUndo;
     m_recorderRunning = result.recorderRunning;
+    m_stoppedRecorder = m_stoppedRecorder || result.stoppedRecorder;
     m_message = result.message;
     emit changed();
-    if (result.okay)
+    if (result.okay) {
+      // The library is consistent again, so start the recorder this screen stopped.
+      if (m_stoppedRecorder)
+        QProcess::startDetached("systemctl", {"--user", "start", "omakade-sessiond.service"});
       emit resolved();
+    }
   });
 }
 BackupStartup::~BackupStartup() { m_watcher.waitForFinished(); }
@@ -55,8 +60,10 @@ void BackupStartup::run(bool undo, bool stop) {
   m_watcher.setFuture(QtConcurrent::run([paths, undo, stop] {
     BackupRecovery recovery(paths);
     Result result;
-    if (stop)
+    if (stop) {
+      result.stoppedRecorder = true;
       result.message = stopRecorder();
+    }
     if (result.message.isEmpty())
       result.okay = undo ? recovery.undo(&result.message) : recovery.resume(&result.message);
     result.recorderRunning = !result.okay && result.message == BackupDatabase::RecorderRunning;

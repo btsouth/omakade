@@ -23,7 +23,7 @@ public:
   QUrl recoveryFolder() const { return QUrl::fromLocalFile(m_paths.state); }
   Q_INVOKABLE void retry();
   Q_INVOKABLE void undo();
-  // Stops omakade-sessiond.service, then retries. Nothing starts it again here.
+  // Stops omakade-sessiond.service, then retries. It starts again once the restore resolves.
   Q_INVOKABLE void stopRecorderAndRetry();
 signals:
   void changed();
@@ -34,6 +34,7 @@ private:
     bool okay = false;
     bool canUndo = false;
     bool recorderRunning = false;
+    bool stoppedRecorder = false;
     QString message;
   };
   void run(bool undo, bool stopRecorder = false);
@@ -41,6 +42,7 @@ private:
   bool m_busy = false;
   bool m_canUndo = false;
   bool m_recorderRunning = false;
+  bool m_stoppedRecorder = false;
   QString m_message;
   QFutureWatcher<Result> m_watcher;
 };
