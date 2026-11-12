@@ -31,6 +31,15 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.19.0" date="2026-11-12">
+      <description>
+        <p>Steam games installed in the library are recorded while they run and show in Stats, Year in Review and Play History.</p>
+        <p>A Text size setting sizes text, buttons and fields on the desktop, and focus rings, selected states and buttons are clearer on every theme.</p>
+        <p>An empty library offers Set Up Sources, and the Sources picker lists only sources that have games.</p>
+        <p>Games on an unplugged Steam library drive stay in the library, and a game that closes right after starting offers its log.</p>
+        <p>The recorder no longer starts for every account at login. After updating, open Omakade once so it starts for yours.</p>
+      </description>
+    </release>
     <release version="1.18.0" date="2026-10-25">
       <description>
         <p>Microsoft Store and PC Game Pass games installed through Xodus Nexus appear in the library, launch from Omakade and Game Mode, show that they are starting, record play time and show Xbox achievements.</p>

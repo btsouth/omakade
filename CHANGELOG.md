@@ -1,186 +1,118 @@
 # Changelog
 
-## Unreleased
+## 1.19.0
 
-- In the Game Mode library, the large game shown above the cards now always matches the
-  focused card. After a sort, a filter or a return from a game's page, it could show the
-  first game while focus stayed on another. The large cover also shrinks to fit above
-  the cards on small displays, such as 1920x1080 at scale 1.6, instead of covering them.
-- If Omakade is closed by force during Game Mode, its next start puts back the workspace
-  you were on before Game Mode when the screen was left on the empty Game Mode
-  workspace. Leaving the next Game Mode session then returns there instead of to that
-  empty workspace.
-- The installed `omakade` no longer carries the UI test harness: the screenshot render
-  paths, test fixtures, self-tests, navigation and layout checks, and the stress and
-  start-up timing runs. They moved to `omakade-uitest`, which is built with the tests and
-  never installed. `omakade --smoke-test` still checks the installed app.
-- OmaStore installs can now use the controller Home button. OmaStore sets up its service,
-  which stays off until it is turned on in Settings > Controls. Its service starts before
-  Hyprland at login, so it usually needs turning off and on again after each login.
-- The installed `omakade-sessiond` and `omakade-guide-button` user services now start the
-  binaries from the install prefix, so a build installed under `/usr/local` no longer looks
-  for them in `/usr/bin`.
-- Settings > Appearance has a Text size choice: 90%, 100%, 115%, 130% or 150%. It sizes
-  text, buttons and fields on the desktop, and by default follows the desktop's text
-  scaling factor. Game Mode keeps sizing its text to the display. The small 8 to 11 px
-  labels and explanations in Settings, game details and the library now use the shared
-  text sizes, so they are easier to read and match each other. Above 100%, the Settings
-  window and its category list widen with the text, within the window, with the compact
-  category button in windows too narrow for both, and the library shows fewer, wider
-  cards so the details under each cover still fit.
-- The package now installs Troubleshooting, the in-game guide page, Architecture and the
-  README's screenshots, so every link in the installed docs opens. Troubleshooting now
-  says a source that is on but not found is listed under Available, and the user guides
-  no longer carry test checklists.
-- Games on a Steam library drive that is unplugged or unreadable now stay in the library,
-  marked as on a disconnected drive, instead of disappearing until the drive is back.
-  Settings > Sources > Steam lists such libraries with Forget for one that is gone for good.
-  Recheck in Repair Library rescans Steam, so a drive that is plugged back in clears there.
-- A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes of
-  memory by giving thousands of files the same long name. Such archives are skipped.
-- A Wii U `.wua` archive with a huge number of entries in its top folder no longer stalls a
-  Cemu scan or the start of a game from it. Those entries are now checked in one pass instead of
-  one search per entry.
-- Omakade's library database, settings and cache folders are now private to your user.
-  Other accounts on the same computer can no longer read your play history, game paths or
-  account names, and folders an earlier version created are tightened on the next start.
+Steam play recording, a Text size setting and an easier first run.
+
+### Upgrading
+
+- The package no longer starts `omakade-sessiond` for every account at login. If you
+  record playtime or Highlights, open Omakade once after updating, or run
+  `systemctl --user enable --now omakade-sessiond.service`, so the recorder starts again.
+  The package prints this when it updates from an earlier version.
+- Opening Omakade enables the recorder for your account and starts it right away, on
+  Omarchy always and elsewhere while Record Playtime or Highlights is on.
+  `systemctl --user disable omakade-sessiond` keeps it from starting at login.
+
+### Play recording and Stats
+
+- Steam games installed in your library are recorded while they run, whether started from
+  Omakade or from Steam, and show in Stats, Year in Review and Play History. Recording
+  starts about ten seconds after launch while the Steam source is on. Steam's own total
+  is unchanged. Discord Status shows Steam games too.
+- An empty Stats says when recording is off and offers Turn On Recording.
+- Stats no longer counts paused time in its hour, weekday and day charts. Stats and Home
+  do their work in the background.
+- If its storage is unavailable at login, the recorder keeps retrying for about an hour
+  instead of stopping for the session.
+
+### Look and feel
+
+- Settings > Appearance has a Text size choice from 90% to 150%, which follows the
+  desktop's text scaling by default. Small labels are easier to read, and Settings and
+  library cards widen to fit larger text.
+- Reduced motion follows the desktop by default, with System, Reduced and Full in
+  Settings > Appearance.
+- Keyboard and controller focus has its own thicker ring that stands out on every theme.
+  Selected tabs, choices and switches have an accent fill and marker.
+- Button labels are centered. The main action on a screen is a solid accent button, and
+  confirmations that cannot be undone are solid red.
+- Favorites show a filled heart on the favorite button and on library, Home and Game Mode
+  cards.
+- Status pills on library cards are larger and readable on light themes too.
+- Counts read correctly for one item, such as "1 GAME".
+- Settings > Backup & Storage matches the other Settings pages, and the Year in Review
+  preview no longer draws over the header.
+- Screen readers hear a card's favorite, completion and install state, and hidden
+  achievements no longer reveal their names.
+- The app is about 80 MB smaller, and the Nintendo DS card shows its console art.
+
+### Library and launching
+
+- An empty Library or Home has **Set Up Sources**, which opens Settings > Sources, and a
+  link to the guide. When filters hide everything, the
+  message names them.
+- The Sources picker lists only sources that have games, with one Emulated chip.
+  Settings > Sources lists a source as In use only once it is found.
+- Games on an unplugged Steam library drive stay in the library, marked as on a
+  disconnected drive. Settings > Sources offers Forget for a drive that is gone for good.
 - When an emulator, manual game, native port or GOG game closes within a few seconds of
-  starting, Omakade now says it closed right after starting and offers Open Log, on the
-  desktop and in Game Mode, instead of only having said it was opening. Such a launch no
-  longer counts as recently played. A game closed with Stop is not reported. Neither is a
-  launch that leaves something running, or a manual game or port that starts a script or
-  a wrapper such as env or flatpak, or hands a program a link, since those may only pass
-  the game to a launcher. What these games print goes to a log per game, cut above 2 MiB
-  while Omakade follows the game, at its next launch and when Omakade starts. No log is
-  kept for a launch Auto-close closes Omakade after, or for a game `omakade --play`
-  starts while Omakade is closed. Steam, Heroic and other launchers that hand the game off
-  are not affected. MangoHud settings written for a launch are removed when the game
-  closes, and ones left from earlier runs at startup.
-- The Year in Review card preview now opens on its own panel, like Settings, so its title
-  and Save image and Close buttons no longer draw over the Omakade logo and header buttons.
-- Settings > Backup & Storage now uses the same text sizes and section headings as the
-  other Settings pages, grouped as Save protection, Backup & restore and Downloaded artwork.
-- Button labels, including menu and popup rows and the Settings > Connections rows, now
-  sit in the middle of their buttons instead of at the left edge. The main action on a
-  screen, such as Play or Set Up Sources, is a solid accent button with text picked to
-  stay readable on every theme, so it stands out from selected toggles like Favorited.
-  Delete and other confirmations that cannot be undone are solid red, with a fixed red on
-  themes whose red is not red or sits too close to the accent.
-- Screen readers now hear a game card's favorite, completion status and install state in
-  the library, Home and Game Mode, and can open the game from the card. Hidden achievements
-  no longer reveal their name to screen readers before they are unlocked.
-- The controller favorite button no longer favorites the game behind an open editor or
-  dialog, such as the artwork editor opened from the game details.
-- Reduced motion now follows the desktop by default. Omakade reduces motion when
-  Hyprland animations or GTK animations are off, and Settings > Appearance offers System,
-  Reduced and Full. An earlier Reduced choice is kept. The library grid selection also
-  stops sliding when motion is reduced.
-- The app and package are about 80 MB smaller. Console cards are now bundled as 768x1152
-  WebP, only for consoles Omakade supports, instead of every full-size PNG master, and they
-  decode faster. The Nintendo DS card now shows its console art instead of a plain gradient.
-- Play recording now covers Steam. A Steam game installed in your library gets dated
-  play sessions while it runs, whether it was started from Omakade or from Steam, so it
-  shows in Stats, Year in Review and the game's Play History. Steam's own total is
-  unchanged. Non-Steam shortcuts are not recorded, an emulator started from Steam is
-  recorded once as the emulator, and Pause When Unfocused follows the game's window.
-  Recording starts about ten seconds after launch and only while the Steam source is on.
-  Discord Status now shows Steam games too, by their Steam title. The recording text in
-  Settings and a game's Play History now mention Steam.
-- A favorite now looks like one: the game details and Game Mode favorite button shows a
-  filled accent heart with the selected fill and says FAVORITED, and screen readers hear it
-  as checked. Library, Home and Game Mode cards mark favorites with a filled heart on an
-  accent badge. The theme fonts drew both hearts as outlines before.
-- Counts read correctly for a single item, such as "1 GAME" in the library toolbar
-  instead of "1 GAMES", and the same on Home, Settings, game details and save panels.
-  Scan results in Settings > Sources say "Imported 32 installed games" instead of
-  "game(s)".
-- An empty Stats now says when play recording is off, which it is on new installations,
-  and offers Turn On Recording with a line on what is recorded and which emulators give
-  dated sessions. With recording on, it still says nothing has been recorded yet.
-- Restoring a save backup is now refused while PPSSPP runs as PPSSPPSDL or PPSSPPQt, as it
-  already was for other emulators, so a restore no longer writes under a running game.
-- The restore preview lists every manual game launch command a backup adds or changes,
-  with its program, full arguments and working folder, and warns when a shell or
-  interpreter is told to run code from its arguments, including through wrappers
-  like gamemoderun or a terminal. Merge and Replace confirmations
-  say these commands will be able to run when you choose Play.
-- Choosing a Settings category, or opening Settings on one as Connect in game details
-  does, now puts focus on its first control instead of the second. On Home, Down from
-  Play and the buttons beside it goes to the first card on the shelf below rather than
-  the nearest one.
-- Settings > Connections explains that a connected IGDB or SteamGridDB looks up the
-  whole library in the background, and a new Identify Library Automatically switch
-  turns that off. Privacy now describes these lookups as they really happen.
-- The Sources picker lists only sources that have games, and choosing Emulated shows one
-  Emulated chip instead of one per emulator. Settings > Sources lists a source as In use
-  only once it is found; sources that are on but not found move to Available.
-- An empty Library or Home, as on a first run, now has **Set Up Sources**, which opens
-  Settings > Sources, and a link to the guide, next to Rescan. When no source is in use
-  yet, it opens on Available with focus on the first source. When two or more filters
-  together leave nothing to show, the message names them instead of only the search, with
-  the chosen sources counted as one filter. A search with no results in Favorites or
-  Recent names that view.
-- Keyboard and controller focus now has its own thicker ring around buttons, fields,
-  checkboxes, lists and library cards, in a color that stands out on every theme. Hover only changes the fill,
-  and the current card keeps a quieter outline while focus is elsewhere, such as the
-  search field.
-- Selected tabs, choices and switched-on settings now have an accent fill and marker
-  that stay visible while hovered or focused. Screen readers hear them as checked, and
-  the bare ON/OFF settings say which setting they change.
-- Play time recording no longer stops for the whole session when its storage is
-  unavailable at login. The recorder keeps retrying for about an hour and starts as soon
-  as the storage is back.
-- Game Mode reports an interrupted session it could not fully undo as a failure and
-  tries again later, instead of saying it was undone. A damaged recovery record is set
-  aside with a note on what to check, so Game Mode can start again. A record from a newer
-  Omakade is kept for that version.
-- Big libraries stay responsive while covers and metadata load. A change to one game, such
-  as a finished cover download, now updates only that game's card instead of checking
-  every game, and the in-game guide no longer scans the whole library every second
-  while a game runs.
-- An unfinished save restore no longer stops every emulator game from launching. Only the
-  game it belongs to waits, nothing waits with save protection off (the rollback is still
-  tried), and Save Backups now offers Keep Current Saves, which asks first and moves the
-  recovery copies to a dated folder.
-- A backup can be restored over a library database that is damaged and cannot be read.
-  Omakade keeps an exact copy of the damaged file in the recovery folder, and Undo puts
-  it back.
-- When the play-session recorder blocks a restore, the startup screen offers **Stop
-  Recorder and Restore** instead of asking you to run systemctl. Omakade starts the
-  recorder again when the restore finishes.
-- The package no longer starts `omakade-sessiond` for every account on the computer.
-  Omakade enables it for your account the first time it opens, on Omarchy or not, so
-  after updating, open Omakade once to keep the recorder and guide starting at login.
-  The package says so when it updates from an earlier version. Opening Omakade also
-  starts the recorder right away, on Omarchy always and elsewhere while Record Playtime
-  or Highlights is on, so play is recorded before the next login. Disabling it with
-  `systemctl --user disable omakade-sessiond` keeps it from starting at login, though
-  opening Omakade still starts it, and so does the guide button service while that
-  service is enabled.
-- The bundled in-game guide plugin is licensed GPL-3.0-or-later like the rest of Omakade,
-  and its manifest carries the Omakade version instead of 0.1.0.
-- Omakade's single-instance socket now lives in your owner-only runtime directory
-  instead of the shared temp directory, so another user on the same machine cannot
-  claim it first. A window opened before the update still gets the command.
-- On a Nintendo controller the in-game guide now selects with A and goes back with B, as
-  the library does. It had them the other way round.
-- RomM settings show whether the server connection is encrypted. Plain HTTP works
-  without asking for local network and loopback addresses; for any other server,
-  Omakade asks before it sends the token unencrypted.
-- Status pills on library cards are larger and readable on every theme. Their label
-  color is picked by contrast against the pill, so Catppuccin Latte and other light
-  themes no longer show dark text on a saturated fill. On the smallest covers the label
-  shrinks so the pill stays clear of the favorite heart.
-- Game titles, achievement names, launch window titles and other library text on Home, Stats
-  and elsewhere show as typed. A title holding markup, such as one from a RomM server, is no
-  longer drawn as rich text and can no longer make Omakade fetch an image it names.
-- Removing a library filter by its chip moves focus back to the Filters button, as Clear All
-  does, instead of leaving it nowhere.
-- Stats places play by the intervals the recorder keeps, so time a game spent paused no
-  longer shows up in the hour, weekday and day charts. Sessions recorded before intervals
-  were kept are still spread over their start and end, and the note says how many are
-  estimated. Stats and Home also do their work in the background, and Stats no longer
-  computes anything while it is closed.
+  starting, Omakade says so and offers Open Log. Launches that hand the game to a
+  launcher, script or wrapper are not reported.
+- Big libraries stay responsive while covers and metadata load.
+- Settings > Connections explains that IGDB and SteamGridDB look up the whole library in
+  the background, and Identify Library Automatically turns that off.
+
+### Game Mode and controllers
+
+- The large game above the Game Mode library cards always matches the focused card, and
+  it shrinks to fit on small displays.
+- If Omakade is closed by force during Game Mode, its next start returns you to the
+  workspace you were on before.
+- Game Mode reports an interrupted session it could not fully undo and tries again later.
+  A damaged recovery record is set aside so Game Mode can start again.
+- On a Nintendo controller, the in-game guide selects with A and goes back with B.
+- The favorite button no longer favorites the game behind an open editor or dialog.
+- Opening a Settings category focuses its first control, and removing a filter chip moves
+  focus to Filters.
+- OmaStore installs can use the controller Home button. Turn it on in Settings > Controls;
+  it usually needs turning off and on again after each login.
+
+### Saves and backups
+
+- An unfinished save restore only holds back its own game, and Save Backups offers Keep
+  Current Saves.
+- A backup can be restored over a damaged library database. Omakade keeps a copy, and
+  Undo puts it back.
+- When the recorder blocks a restore, the startup screen offers **Stop Recorder and
+  Restore** and starts the recorder again afterwards.
+- Restoring is refused while PPSSPP runs as PPSSPPSDL or PPSSPPQt.
+- The restore preview lists every launch command a backup adds or changes and warns about
+  ones that run code from their arguments.
+
+### Security and privacy
+
+- Library database, settings and cache folders are private to your user, including ones
+  an earlier version created.
+- The single-instance socket lives in your private runtime folder instead of the shared
+  temp folder.
+- RomM settings show whether the connection is encrypted, and Omakade asks before
+  sending the token over plain HTTP to a server outside your network.
+- Game titles and other library text show as typed and can no longer make Omakade fetch
+  an image.
+- A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes
+  of memory or stall a scan or launch.
+
+### Packaging
+
+- The UI test harness moved out of the installed `omakade`. `omakade --smoke-test` still
+  checks the installed app.
+- The user services start the binaries from the install prefix, so a `/usr/local` build
+  works.
+- The package installs Troubleshooting, the in-game guide page, Architecture and the
+  README screenshots, so every link in the installed docs opens.
+- The in-game guide plugin is GPL-3.0-or-later like the rest of Omakade, and its manifest
+  carries the Omakade version.
 
 ## 1.18.0
 

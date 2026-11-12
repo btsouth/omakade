@@ -64,10 +64,10 @@ newer version early, run `omarchy update` and then `sudo pacman -S btsouth/omaka
 You can also download and verify a release package directly:
 
 ```bash
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.18.0/omakade-1.18.0-1-x86_64.pkg.tar.zst
-curl -fLO https://github.com/btsouth/omakade/releases/download/v1.18.0/SHA256SUMS
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.19.0/omakade-1.19.0-1-x86_64.pkg.tar.zst
+curl -fLO https://github.com/btsouth/omakade/releases/download/v1.19.0/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-sudo pacman -U ./omakade-1.18.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./omakade-1.19.0-1-x86_64.pkg.tar.zst
 ```
 
 For ARM64, replace `x86_64` with `aarch64`. Packages are also available under
@@ -79,8 +79,8 @@ download. To check that a package was built by this repository's release workflo
 verify its GitHub build attestation with the [GitHub CLI](https://cli.github.com/):
 
 ```bash
-gh attestation verify omakade-1.18.0-1-x86_64.pkg.tar.zst -R btsouth/omakade
-gh attestation verify omakade-1.18.0-1-aarch64.pkg.tar.zst -R btsouth/omakade
+gh attestation verify omakade-1.19.0-1-x86_64.pkg.tar.zst -R btsouth/omakade
+gh attestation verify omakade-1.19.0-1-aarch64.pkg.tar.zst -R btsouth/omakade
 ```
 
 Omakade is also listed in [OmaStore](https://github.com/KitsuneForgering/OmaStore),
