@@ -41,8 +41,8 @@ Steam play recording, a Text size setting and an easier first run.
   cards.
 - Status pills on library cards are larger and readable on light themes too.
 - Counts read correctly for one item, such as "1 GAME".
-- Settings > Backup & Storage matches the other Settings pages, and the Year in Review
-  preview no longer draws over the header.
+- Settings > Backup & Storage uses the same text sizes as the other Settings pages, and
+  the Year in Review preview no longer draws over the header.
 - Screen readers hear a card's favorite, completion and install state, and hidden
   achievements no longer reveal their names.
 - The app is about 80 MB smaller, and the Nintendo DS card shows its console art.
@@ -67,8 +67,9 @@ Steam play recording, a Text size setting and an easier first run.
 
 - The large game above the Game Mode library cards always matches the focused card, and
   it shrinks to fit on small displays.
-- If Omakade is closed by force during Game Mode, its next start returns you to the
-  workspace you were on before.
+- If Omakade is closed by force during Game Mode, it opens in Game Mode again next time,
+  and leaving Game Mode returns you to the workspace you were on before instead of Game
+  Mode's own.
 - Game Mode reports an interrupted session it could not fully undo and tries again later.
   A damaged recovery record is set aside so Game Mode can start again.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.

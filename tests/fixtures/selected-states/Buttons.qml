@@ -39,7 +39,7 @@ Rectangle {
         GlassButton {
             id: favoriteToggle
             objectName: "favoriteToggle"
-            text: page.favorite ? "FAVORITED" : "ADD TO FAVORITES"
+            text: page.favorite ? "FAVORITED" : "ADD FAVORITE"
             selectable: true
             selected: page.favorite
             iconDelegate: HeartIcon {

@@ -806,7 +806,7 @@ Item {
                         // A toggle: favorites get the selected fill and read as checked.
                         selectable: true
                         selected: !!root.game.favorite
-                        text: root.game.favorite ? "FAVORITED" : "ADD TO FAVORITES"
+                        text: root.game.favorite ? "FAVORITED" : "ADD FAVORITE"
                         Accessible.description: root.game.favorite ? "Press to remove from favorites" : ""
                         iconDelegate: HeartIcon {
                             objectName: "favoriteHeart"

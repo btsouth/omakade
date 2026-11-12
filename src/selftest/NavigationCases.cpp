@@ -1373,7 +1373,7 @@ void driveControllerNavigation(QQuickWindow* quickWindow, QGuiApplication& appli
                              favorite->property("checked").toBool() == on &&
                              favorite->property("text").toString() ==
                                  (on ? QStringLiteral("FAVORITED")
-                                     : QStringLiteral("ADD TO FAVORITES")) &&
+                                     : QStringLiteral("ADD FAVORITE")) &&
                              favoriteHeart->property("filled").toBool() == on &&
                              (heartColor == accent) == on;
                     };
