@@ -181,9 +181,11 @@ ArchiveMeta readArchiveMeta(const QString& archivePath) {
   }
   QString baseFolder;
   QString firstFolder;
-  for (const QString& name : reader->list(QString{})) {
+  // One pass over the root: an archive can hold a great many add-on folders, and checking each
+  // name with isDirectory() would search the whole root again for every one of them.
+  for (const QString& name : reader->listDirectories(QString{})) {
     const QRegularExpressionMatch match = folder.match(name);
-    if (!match.hasMatch() || !reader->isDirectory(name)) {
+    if (!match.hasMatch()) {
       continue;
     }
     const QString id = match.captured(1).toUpper();

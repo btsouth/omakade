@@ -5,14 +5,19 @@
 #include "artwork/SwitchTitleReader.h"
 #include "artwork/ZArchiveReader.h"
 #include "library/DolphinGameModel.h"
+#include "sources/cemu/CemuScanner.h"
 
 #include <QBuffer>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
 #include <QNetworkAccessManager>
 #include <QNetworkProxy>
 #include <QRandomGenerator>
+#include <QScopeGuard>
+#include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -196,6 +201,8 @@ private slots:
   void zarchiveCapsExpandedNames_data();
   void zarchiveCapsExpandedNames();
   void zarchiveRejectsTooManyNodes();
+  void zarchiveListsDirectoriesAsLookupFindsThem();
+  void cemuScanReadsArchiveWithManyAddOnFolders();
   void switchReaderRejectsWrappedEntryOffset();
   void switchReaderRejectsHugePartitionOffset();
   void switchReaderRejectsHugeRomfsOffsets();
@@ -370,6 +377,85 @@ void ParserHardeningTests::zarchiveRejectsTooManyNodes() {
   const auto reader = ZArchiveReader::open(path);
   QVERIFY(reader != nullptr);
   QVERIFY(reader->list(QString{}).isEmpty());
+}
+
+namespace {
+// The root's empty name and then the given names, each behind a one-byte length.
+QByteArray nameTable(const QList<QByteArray>& names, QList<quint32>* offsets) {
+  QByteArray table(1, '\0');
+  for (const QByteArray& name : names) {
+    offsets->append(static_cast<quint32>(table.size()));
+    table += char(name.size()) + name;
+  }
+  return table;
+}
+QByteArray emptyDirectory(quint32 nameOffset) { return be32(nameOffset) + be32(0) + be32(0) + be32(0); }
+QByteArray emptyFile(quint32 nameOffset) { return be32(0x80000000u | nameOffset) + be32(0) + be32(0) + be32(0); }
+}  // namespace
+
+// A path finds the first entry with its name, ignoring case, so a later entry with the same name
+// is a directory exactly when that first one is. The one-pass listing agrees with isDirectory().
+void ParserHardeningTests::zarchiveListsDirectoriesAsLookupFindsThem() {
+  QList<quint32> offsets;
+  const QByteArray names = nameTable({"A", "a", "b", "B", "c", "D"}, &offsets);
+  const QByteArray tree = be32(0) + be32(1) + be32(6) + be32(0) + emptyDirectory(offsets[0]) + emptyFile(offsets[1]) +
+                          emptyFile(offsets[2]) + emptyDirectory(offsets[3]) + emptyFile(offsets[4]) +
+                          emptyDirectory(offsets[5]);
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QString path = temp.filePath(QStringLiteral("game.wua"));
+  QVERIFY(writeArchive(path, 64 * 1024, 40, names, tree));
+  const auto reader = ZArchiveReader::open(path);
+  QVERIFY(reader != nullptr);
+  QStringList expected;
+  for (const QString& name : reader->list(QString{})) {
+    if (reader->isDirectory(name)) expected.append(name);
+  }
+  QCOMPARE(expected, (QStringList{QStringLiteral("A"), QStringLiteral("a"), QStringLiteral("D")}));
+  QCOMPARE(reader->listDirectories(QString{}), expected);
+  QVERIFY(reader->listDirectories(QStringLiteral("c")).isEmpty());
+}
+
+// An archive can name a hundred thousand add-on folders ahead of its game. Checking each one by
+// searching the root again took billions of name comparisons; it has to take one pass.
+void ParserHardeningTests::cemuScanReadsArchiveWithManyAddOnFolders() {
+  constexpr int kAddOns = 100'000;
+  QList<QByteArray> folderNames;
+  folderNames.reserve(kAddOns + 1);
+  for (int index = 0; index < kAddOns; ++index) {
+    folderNames.append(QByteArray("0005000C") + QByteArray::number(index, 16).rightJustified(8, '0').toUpper() +
+                       QByteArray("_v0"));
+  }
+  folderNames.append(QByteArrayLiteral("00050000ABCDEF12_v0"));
+  QList<quint32> offsets;
+  const QByteArray names = nameTable(folderNames, &offsets);
+  QByteArray tree = be32(0) + be32(1) + be32(static_cast<quint32>(folderNames.size())) + be32(0);
+  for (const quint32 offset : offsets) tree += emptyDirectory(offset);
+
+  QTemporaryDir temp;
+  QVERIFY(temp.isValid());
+  const QString path = temp.filePath(QStringLiteral("game.wua"));
+  QVERIFY(writeArchive(path, 64 * 1024, 40, names, tree));
+  const auto reader = ZArchiveReader::open(path);
+  QVERIFY(reader != nullptr);
+  QCOMPARE(reader->listDirectories(QString{}).size(), kAddOns + 1);
+
+  QStandardPaths::setTestModeEnabled(true);
+  const auto restoreCache = qScopeGuard([] { QStandardPaths::setTestModeEnabled(false); });
+  const QString cemuRoot = temp.filePath(QStringLiteral("cemu"));
+  QVERIFY(QDir().mkpath(cemuRoot));
+  QVERIFY(writeFile(cemuRoot + QStringLiteral("/settings.xml"),
+                    QStringLiteral("<content><GamePaths><Entry>%1</Entry></GamePaths></content>")
+                        .arg(temp.path())
+                        .toUtf8()));
+  QElapsedTimer timer;
+  timer.start();
+  const CemuScanResult scan = CemuScanner::scan({cemuRoot});
+  const qint64 elapsed = timer.elapsed();
+  QCOMPARE(scan.games.size(), 1);
+  QCOMPARE(scan.games.first().titleId, QStringLiteral("00050000ABCDEF12"));
+  // One pass takes well under a second, even in a debug build on a busy machine.
+  QVERIFY2(elapsed < 5000, qPrintable(QStringLiteral("scan took %1 ms").arg(elapsed)));
 }
 
 // The PFS0 entry offset is added to the data base. One that wraps around to point back at the

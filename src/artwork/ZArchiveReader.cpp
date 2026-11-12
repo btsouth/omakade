@@ -1,6 +1,7 @@
 #include "artwork/ZArchiveReader.h"
 
 #include <QFileInfo>
+#include <QHash>
 #include <QRegularExpression>
 #include <QtEndian>
 
@@ -168,6 +169,30 @@ QStringList ZArchiveReader::list(const QString& directory) const {
   const quint64 end = qMin<quint64>(quint64(node.firstChild) + node.childCount, quint64(m_nodes.size()));
   for (quint64 child = node.firstChild; child < end; ++child) {
     names.append(m_nodes.at(static_cast<int>(child)).name);
+  }
+  return names;
+}
+
+QStringList ZArchiveReader::listDirectories(const QString& directory) const {
+  const int index = lookup(directory);
+  QStringList names;
+  if (index < 0 || m_nodes.at(index).isFile) {
+    return names;
+  }
+  const Node& node = m_nodes.at(index);
+  const quint64 end = qMin<quint64>(quint64(node.firstChild) + node.childCount, quint64(m_nodes.size()));
+  // Whether the first child with each name, ignoring case, is a directory: lookup() stops there.
+  QHash<QString, bool> firstIsDirectory;
+  for (quint64 child = node.firstChild; child < end; ++child) {
+    const Node& entry = m_nodes.at(static_cast<int>(child));
+    const QString key = entry.name.toCaseFolded();
+    auto first = firstIsDirectory.constFind(key);
+    if (first == firstIsDirectory.cend()) {
+      first = firstIsDirectory.insert(key, !entry.isFile);
+    }
+    if (first.value()) {
+      names.append(entry.name);
+    }
   }
   return names;
 }
