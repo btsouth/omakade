@@ -3103,6 +3103,14 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
         auto* sectionList =
             quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsSectionNavigation"));
         if (textScale > 1 && sectionList && sectionList->isVisible()) {
+          // The wider list never leaves the page less room than it has beside the list at 100%.
+          auto* panel = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsPanel"));
+          const qreal layoutScale = panel ? panel->property("layoutScale").toReal() : 0;
+          if (!panel || panel->width() - sectionList->width() < 850 - 190 * layoutScale - 1) {
+            qCritical() << "Settings category list leaves the page too little room at text size"
+                        << textScale << (panel ? panel->width() : -1) << sectionList->width();
+            okay = false;
+          }
           for (auto* button : sectionList->childItems()) {
             if (!button->objectName().startsWith(QStringLiteral("settingsSection"))) continue;
             auto* label = button->property("contentItem").value<QQuickItem*>();

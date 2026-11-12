@@ -10,6 +10,6 @@ function text(value, singular, plural) {
 // Source scanners report counts as "Imported 32 installed game(s)". This reads
 // "1 installed game" or "32 installed games" instead.
 function inStatus(status) {
-    return String(status || "").replace(/(\d+) ([^()\d]*?)game\(s\)/g,
+    return String(status || "").replace(/(\d+) ([^()]*?)game\(s\)/g,
                                         (match, count, words) => text(count, words + "game"))
 }

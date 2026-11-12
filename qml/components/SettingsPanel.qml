@@ -60,11 +60,14 @@ import "Counts.js" as Counts
             settingsOverlay.reveal(gogLibraryPathField)
         }
         // Set Up Sources on a first run, with no source in use yet, opens Available on its
-        // first source instead of an empty In Use list.
+        // first source instead of an empty In Use list. Once a source is in use it opens In Use.
         function startSourceSetup() {
             for (let index = 0; index < sourceRows.count; ++index) {
                 const row = sourceRows.itemAt(index)
-                if (row && row.inUse) return
+                if (row && row.inUse) {
+                    availableSources = false
+                    return
+                }
             }
             availableSources = true
             Qt.callLater(focusFirstSource)
@@ -232,7 +235,9 @@ import "Counts.js" as Counts
             ColumnLayout {
                 id: sectionNavigation
                 objectName: "settingsSectionNavigation"
-                visible: settingsPanel.width >= 850
+                // The page keeps at least the room it has beside the list at 100% text. Narrower
+                // panels use the compact CHANGE CATEGORY button.
+                visible: settingsPanel.width >= 850 + 190 * settingsPanel.layoutScale * (Math.max(1, UiMetrics.textScale) - 1)
                 anchors.left: parent.left; anchors.top: settingsHeader.bottom; anchors.margins: 24
                 // Grows with the text size, so labels such as LIBRARY & LAUNCHING stay on one line.
                 width: 190 * settingsPanel.layoutScale * Math.max(1, UiMetrics.textScale)

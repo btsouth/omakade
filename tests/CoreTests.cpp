@@ -7723,6 +7723,9 @@ QtObject {
   property string scanOne: Counts.inStatus("Imported 1 installed game(s)")
   property string scanMany: Counts.inStatus("Imported 32 installed game(s) with warnings")
   property string scanNamed: Counts.inStatus("Found 3 Xodus Nexus game(s)")
+  property string scanDigitName: Counts.inStatus("Imported 1 PCSX2 game(s)")
+  property string scanDigitNameToo: Counts.inStatus("Imported 1 RPCS3 game(s)")
+  property string scanDigitNameMany: Counts.inStatus("Imported 32 PCSX2 game(s)")
   property string scanPlain: Counts.inStatus("Steam was not found")
 })qml",
                     QUrl::fromLocalFile(QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/")));
@@ -7738,6 +7741,10 @@ QtObject {
   QCOMPARE(labels->property("scanMany").toString(),
            QString("Imported 32 installed games with warnings"));
   QCOMPARE(labels->property("scanNamed").toString(), QString("Found 3 Xodus Nexus games"));
+  // A digit in the source name is not the count.
+  QCOMPARE(labels->property("scanDigitName").toString(), QString("Imported 1 PCSX2 game"));
+  QCOMPARE(labels->property("scanDigitNameToo").toString(), QString("Imported 1 RPCS3 game"));
+  QCOMPARE(labels->property("scanDigitNameMany").toString(), QString("Imported 32 PCSX2 games"));
   QCOMPARE(labels->property("scanPlain").toString(), QString("Steam was not found"));
 
   // The labels themselves go through the helper rather than gluing a plural to the count.

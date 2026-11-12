@@ -25,8 +25,9 @@
   scaling factor. Game Mode keeps sizing its text to the display. The small 8 to 11 px
   labels and explanations in Settings, game details and the library now use the shared
   text sizes, so they are easier to read and match each other. Above 100%, the Settings
-  window and its category list widen with the text, within the window, and the library
-  shows fewer, wider cards so the details under each cover still fit.
+  window and its category list widen with the text, within the window, with the compact
+  category button in windows too narrow for both, and the library shows fewer, wider
+  cards so the details under each cover still fit.
 - The package now installs Troubleshooting, the in-game guide page, Architecture and the
   README's screenshots, so every link in the installed docs opens. Troubleshooting now
   says a source that is on but not found is listed under Available, and the user guides

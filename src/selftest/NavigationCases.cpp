@@ -153,7 +153,7 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
         fail(QStringLiteral("First-run Set Up Sources did not open Available"));
         return;
       }
-      QTimer::singleShot(80, window, [window, application, fail] {
+      QTimer::singleShot(80, window, [window, application, fail, settings, preferences] {
         const bool demoMode =
             qmlContext(window)->contextProperty(QStringLiteral("DemoMode")).toBool();
         auto* focused = window->activeFocusItem();
@@ -162,6 +162,15 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
             (focused == nullptr || focused->objectName() != QStringLiteral("sourceToggle_STEAM"))) {
           fail(QStringLiteral("First-run Set Up Sources focused %1, not the first source")
                    .arg(focused ? focused->objectName() : QStringLiteral("nothing")));
+          return;
+        }
+        window->setProperty("diagnosticsOpen", false);
+        // After first-run setup turns a source on, Set Up Sources opens In Use again.
+        preferences->setProperty("steamEnabled", true);
+        QMetaObject::invokeMethod(window, "openSourceSettings");
+        if (!window->property("diagnosticsOpen").toBool() ||
+            settings->property("availableSources").toBool()) {
+          fail(QStringLiteral("Set Up Sources stayed on Available after a source was turned on"));
           return;
         }
         window->setProperty("diagnosticsOpen", false);
