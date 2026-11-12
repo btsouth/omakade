@@ -1210,7 +1210,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeGuideButton"),
                                            &gameModeGuideButton);
   engine.rootContext()->setContextProperty(QStringLiteral("DemoMode"), demoMode);
-  engine.rootContext()->setContextProperty(QStringLiteral("StatsFixtureView"), 0);
+  engine.rootContext()->setContextProperty(QStringLiteral("StatsFixtureView"), QVariant(0));
   engine.rootContext()->setContextProperty(QStringLiteral("StartupMilliseconds"),
                                            startupTimer.elapsed());
   engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"),
