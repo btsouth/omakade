@@ -7712,7 +7712,7 @@ void CoreTests::countLabelsUseSingularForOne() {
   // Count labels such as the library toolbar's read "1 GAME", not "1 GAMES".
   QQmlEngine engine;
   QQmlComponent component(&engine);
-  component.setData(R"(import QtQml
+  component.setData(R"qml(import QtQml
 import "Counts.js" as Counts
 QtObject {
   property string one: Counts.text(1, "GAME", "GAMES")
@@ -7720,7 +7720,14 @@ QtObject {
   property string many: Counts.text(12, "game")
   property string single: Counts.text(1, "older backup")
   property string missing: Counts.text(undefined, "report")
-})",
+  property string scanOne: Counts.inStatus("Imported 1 installed game(s)")
+  property string scanMany: Counts.inStatus("Imported 32 installed game(s) with warnings")
+  property string scanNamed: Counts.inStatus("Found 3 Xodus Nexus game(s)")
+  property string scanDigitName: Counts.inStatus("Imported 1 PCSX2 game(s)")
+  property string scanDigitNameToo: Counts.inStatus("Imported 1 RPCS3 game(s)")
+  property string scanDigitNameMany: Counts.inStatus("Imported 32 PCSX2 game(s)")
+  property string scanPlain: Counts.inStatus("Steam was not found")
+})qml",
                     QUrl::fromLocalFile(QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/")));
   QScopedPointer<QObject> labels(component.create());
   QVERIFY2(labels, qPrintable(component.errorString()));
@@ -7729,6 +7736,16 @@ QtObject {
   QCOMPARE(labels->property("many").toString(), QString("12 games"));
   QCOMPARE(labels->property("single").toString(), QString("1 older backup"));
   QCOMPARE(labels->property("missing").toString(), QString("0 reports"));
+  // Source scan results in Settings > Sources read the same way.
+  QCOMPARE(labels->property("scanOne").toString(), QString("Imported 1 installed game"));
+  QCOMPARE(labels->property("scanMany").toString(),
+           QString("Imported 32 installed games with warnings"));
+  QCOMPARE(labels->property("scanNamed").toString(), QString("Found 3 Xodus Nexus games"));
+  // A digit in the source name is not the count.
+  QCOMPARE(labels->property("scanDigitName").toString(), QString("Imported 1 PCSX2 game"));
+  QCOMPARE(labels->property("scanDigitNameToo").toString(), QString("Imported 1 RPCS3 game"));
+  QCOMPARE(labels->property("scanDigitNameMany").toString(), QString("Imported 32 PCSX2 games"));
+  QCOMPARE(labels->property("scanPlain").toString(), QString("Steam was not found"));
 
   // The labels themselves go through the helper rather than gluing a plural to the count.
   const QString root = QDir(QString::fromUtf8(OMAKADE_SOURCE_DIR)).filePath("qml");
@@ -7736,6 +7753,9 @@ QtObject {
   QVERIFY(main.open(QIODevice::ReadOnly));
   QVERIFY(QString::fromUtf8(main.readAll())
               .contains(R"(Counts.text(libraryView.count, "GAME", "GAMES"))"));
+  QFile settings(QDir(root).filePath("components/SettingsPanel.qml"));
+  QVERIFY(settings.open(QIODevice::ReadOnly));
+  QVERIFY(QString::fromUtf8(settings.readAll()).contains(QStringLiteral("Counts.inStatus(modelData.status)")));
   const QRegularExpression gluedPlural(R"re([cC]ount\b[^"\n]{0,8}\+\s*"\s+[A-Za-z][A-Za-z ]*[sS]")re");
   QDirIterator files(root, {"*.qml"}, QDir::Files, QDirIterator::Subdirectories);
   while (files.hasNext()) {

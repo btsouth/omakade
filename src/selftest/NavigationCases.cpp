@@ -97,6 +97,19 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
         return;
       }
       library->setProperty("completionFilter", QString{});
+      // Favorites and Recent have no chip, so a search with no results names them.
+      library->setProperty("mode", 1);
+      library->setProperty("searchText", QStringLiteral("zz-no-match"));
+      const QString favoritesTitle = libraryView->property("emptyTitle").toString();
+      const QString favoritesMessage = libraryView->property("emptyMessage").toString();
+      library->setProperty("searchText", QString{});
+      library->setProperty("mode", 0);
+      if (favoritesTitle != QStringLiteral("No favorites match \"zz-no-match\"") ||
+          !favoritesMessage.contains(QStringLiteral("choose All"))) {
+        fail(QStringLiteral("A Favorites search with no results did not name Favorites: %1 / %2")
+                 .arg(favoritesTitle, favoritesMessage));
+        return;
+      }
       // A library that has games never asks to set up sources, even when this view is empty.
       if (window->property("librarySetupAvailable").toBool()) {
         fail(QStringLiteral("A library with games offered to set up sources"));
@@ -114,12 +127,55 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
       QMetaObject::invokeMethod(window, "openSourceSettings");
       if (!window->property("diagnosticsOpen").toBool() ||
           settings->property("section").toInt() != 0 ||
-          !settings->property("sourceDetail").toString().isEmpty()) {
-        fail(QStringLiteral("Set Up Sources did not open Settings on Sources"));
+          !settings->property("sourceDetail").toString().isEmpty() ||
+          settings->property("availableSources").toBool()) {
+        fail(QStringLiteral("Set Up Sources did not open Settings on Sources in use"));
         return;
       }
       window->setProperty("diagnosticsOpen", false);
-      application->quit();
+      // On a first run no source is in use, so Set Up Sources opens Available on its first
+      // source instead of an empty In Use list.
+      auto* preferences =
+          qmlContext(window)->contextProperty(QStringLiteral("Preferences")).value<QObject*>();
+      if (preferences == nullptr) {
+        fail(QStringLiteral("Navigation test could not find Preferences"));
+        return;
+      }
+      for (const char* source :
+           {"steamEnabled", "battleNetEnabled", "xodusEnabled", "lutrisEnabled", "heroicEnabled",
+            "gogEnabled", "faugusEnabled", "retroArchEnabled", "pcsx2Enabled", "rpcs3Enabled",
+            "ppssppEnabled", "ryujinxEnabled", "shadps4Enabled", "cemuEnabled", "melondsEnabled",
+            "xeniaEnabled", "kytyEnabled", "nativePortsEnabled", "dolphinEnabled", "rommEnabled"})
+        preferences->setProperty(source, false);
+      QMetaObject::invokeMethod(window, "openSourceSettings");
+      if (!window->property("diagnosticsOpen").toBool() ||
+          !settings->property("availableSources").toBool()) {
+        fail(QStringLiteral("First-run Set Up Sources did not open Available"));
+        return;
+      }
+      QTimer::singleShot(80, window, [window, application, fail, settings, preferences] {
+        const bool demoMode =
+            qmlContext(window)->contextProperty(QStringLiteral("DemoMode")).toBool();
+        auto* focused = window->activeFocusItem();
+        // Demo sources cannot be switched, so there is nothing to focus there.
+        if (!demoMode &&
+            (focused == nullptr || focused->objectName() != QStringLiteral("sourceToggle_STEAM"))) {
+          fail(QStringLiteral("First-run Set Up Sources focused %1, not the first source")
+                   .arg(focused ? focused->objectName() : QStringLiteral("nothing")));
+          return;
+        }
+        window->setProperty("diagnosticsOpen", false);
+        // After first-run setup turns a source on, Set Up Sources opens In Use again.
+        preferences->setProperty("steamEnabled", true);
+        QMetaObject::invokeMethod(window, "openSourceSettings");
+        if (!window->property("diagnosticsOpen").toBool() ||
+            settings->property("availableSources").toBool()) {
+          fail(QStringLiteral("Set Up Sources stayed on Available after a source was turned on"));
+          return;
+        }
+        window->setProperty("diagnosticsOpen", false);
+        application->quit();
+      });
     });
   });
 }

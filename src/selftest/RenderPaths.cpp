@@ -3055,6 +3055,11 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
           }
           if (item->isVisible() && item->property("connectionStatusButton").toBool()) {
             auto* text = item->property("contentItem").value<QQuickItem*>();
+            // Connection rows center their labels like every other button.
+            if (text && text->property("horizontalAlignment").toInt() != Qt::AlignHCenter) {
+              qCritical() << "Connection status label is not centered" << item->property("text");
+              okay = false;
+            }
             if (!text || text->implicitHeight() > text->height() + 1 ||
                 text->property("contentWidth").toReal() > text->width() + 1) {
               qCritical() << "Connection status label is clipped" << item->property("text")
@@ -3093,6 +3098,30 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
                       << (metrics ? metrics->property("textScale").toReal() : -1) << role("body")
                       << role("label") << role("controlHeight");
           okay = false;
+        }
+        // Above 100% the category list widens with the text, so no category label wraps.
+        auto* sectionList =
+            quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsSectionNavigation"));
+        if (textScale > 1 && sectionList && sectionList->isVisible()) {
+          // The wider list never leaves the page less room than it has beside the list at 100%.
+          auto* panel = quickWindow->findChild<QQuickItem*>(QStringLiteral("settingsPanel"));
+          const qreal layoutScale = panel ? panel->property("layoutScale").toReal() : 0;
+          if (!panel || panel->width() - sectionList->width() < 850 - 190 * layoutScale - 1) {
+            qCritical() << "Settings category list leaves the page too little room at text size"
+                        << textScale << (panel ? panel->width() : -1) << sectionList->width();
+            okay = false;
+          }
+          for (auto* button : sectionList->childItems()) {
+            if (!button->objectName().startsWith(QStringLiteral("settingsSection"))) continue;
+            auto* label = button->property("contentItem").value<QQuickItem*>();
+            if (!label || label->property("lineCount").toInt() != 1) {
+              qCritical() << "Settings category label wraps at text size" << textScale
+                          << button->property("text").toString()
+                          << (label ? label->property("lineCount").toInt() : -1)
+                          << sectionList->width();
+              okay = false;
+            }
+          }
         }
         if (renderOverlay == QStringLiteral("settings-appearance")) {
           const int preference =
@@ -3229,6 +3258,27 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
           }
         }
         if (!okay) { application.exit(EXIT_FAILURE); return; }
+      }
+      // Above 100% text the library grid gives each card the room it has at 100%, scaled by the
+      // text size, so the source, playtime and rating under the cover are not cut short.
+      if (renderOverlay.isEmpty() && !quickWindow->property("couchMode").toBool()) {
+        auto* grid = quickWindow->findChild<QQuickItem*>(QStringLiteral("libraryGrid"));
+        auto* preferences = qmlContext(quickWindow)
+                                ->contextProperty(QStringLiteral("Preferences"))
+                                .value<QObject*>();
+        const qreal textScale =
+            preferences ? preferences->property("textSize").toInt() / 100.0 : 1.0;
+        if (textScale > 1 && grid && grid->isVisible()) {
+          const int columns = grid->property("columns").toInt();
+          const qreal cellWidth = grid->property("cellWidth").toReal();
+          const qreal wanted = 210 * preferences->property("coverSize").toInt() / 100.0 * textScale;
+          qInfo() << "Library grid at text size" << textScale << columns << "columns" << cellWidth;
+          if (columns > 1 && cellWidth < wanted - 1) {
+            qCritical() << "Library cards do not widen with the text size" << textScale
+                        << columns << cellWidth << wanted;
+            application.exit(EXIT_FAILURE); return;
+          }
+        }
       }
       if (renderOverlay == "home-delayed") {
         auto* feature = quickWindow->findChild<QQuickItem*>("homeFeaturedSection");

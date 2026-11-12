@@ -1611,6 +1611,7 @@ ApplicationWindow {
         panel.sourceDetail = ""
         panel.section = 0
         root.diagnosticsOpen = true
+        panel.startSourceSetup()
     }
     // The search, the sources and each other filter. Sources widen each other, so all of
     // them together count as one filter.
@@ -1660,7 +1661,10 @@ ApplicationWindow {
             return "No games match these filters"
         }
         if (Library.searchText !== "") {
-            return "No games match \"" + Library.searchText + "\""
+            // Favorites and Recent have no chip, so the title names them.
+            return (Library.mode === 1 ? "No favorites match \""
+                    : Library.mode === 2 ? "No recently played games match \""
+                    : "No games match \"") + Library.searchText + "\""
         }
         const active = [Library.completionFilter, Library.collectionFilter, Library.tagFilter, Library.genreFilter, Library.decadeFilter, Library.platformFilter, Library.reviewFilter]
                        .filter(value => value !== "").length
@@ -2728,6 +2732,8 @@ ApplicationWindow {
                               : "No installed games"
                 emptyMessage: root.combinedFiltersEmpty
                               ? root.combinedFiltersMessage()
+                              : Library.searchText !== "" && (Library.mode === 1 || Library.mode === 2)
+                              ? "Try a different search, or choose All to search the whole library."
                               : Library.searchText !== ""
                               ? "Try a different search, or clear it to see the whole library."
                               : root.organizationFiltersActive

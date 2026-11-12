@@ -6,3 +6,10 @@ function text(value, singular, plural) {
     const count = Number(value) || 0
     return count + " " + (count === 1 ? singular : (plural || singular + "s"))
 }
+
+// Source scanners report counts as "Imported 32 installed game(s)". This reads
+// "1 installed game" or "32 installed games" instead.
+function inStatus(status) {
+    return String(status || "").replace(/(\d+) ([^()]*?)game\(s\)/g,
+                                        (match, count, words) => text(count, words + "game"))
+}

@@ -10,6 +10,8 @@ import "Counts.js" as Counts
             id: connectionButton
             Layout.fillWidth: true
             compact: true
+            // The category list keeps a left label column. Connection rows center like other buttons.
+            labelAlignment: Qt.AlignLeft
             implicitWidth: 100
             implicitHeight: Math.max(34 * displayScale, connectionText.implicitHeight + topPadding + bottomPadding)
             Layout.minimumHeight: implicitHeight
@@ -18,6 +20,7 @@ import "Counts.js" as Counts
                 id: connectionText
                 text: connectionButton.text
                 wrapMode: Text.Wrap
+                horizontalAlignment: connectionButton.labelAlignment === Qt.AlignHCenter ? Text.AlignHCenter : Text.AlignLeft
                 color: connectionButton.selected ? Theme.brightForeground : Theme.foreground
                 font.family: Theme.fontFamily
                 font.pixelSize: UiMetrics.supporting * connectionButton.displayScale
@@ -25,7 +28,10 @@ import "Counts.js" as Counts
                 verticalAlignment: Text.AlignVCenter
             }
         }
-        component ConnectionButton: WrappingButton { readonly property bool connectionStatusButton: true }
+        component ConnectionButton: WrappingButton {
+            readonly property bool connectionStatusButton: true
+            labelAlignment: Qt.AlignHCenter
+        }
         // Left from a page control with nothing beside it goes back to the page's entry in
         // the section list, wherever the page is scrolled.
         function navigateFallback(current, key) {
@@ -52,6 +58,29 @@ import "Counts.js" as Counts
             settingsOverlay.sourceDetail = ""
             gogLibraryPathField.forceActiveFocus()
             settingsOverlay.reveal(gogLibraryPathField)
+        }
+        // Set Up Sources on a first run, with no source in use yet, opens Available on its
+        // first source instead of an empty In Use list. Once a source is in use it opens In Use.
+        function startSourceSetup() {
+            for (let index = 0; index < sourceRows.count; ++index) {
+                const row = sourceRows.itemAt(index)
+                if (row && row.inUse) {
+                    availableSources = false
+                    return
+                }
+            }
+            availableSources = true
+            Qt.callLater(focusFirstSource)
+        }
+        function focusFirstSource() {
+            for (let index = 0; index < sourceRows.count; ++index) {
+                const row = sourceRows.itemAt(index)
+                if (row && row.visible && row.enabled) {
+                    row.sourceToggle.forceActiveFocus(Qt.TabFocusReason)
+                    reveal(row.sourceToggle)
+                    return
+                }
+            }
         }
         function focusCollections() {
             chooseSection(1)
@@ -185,7 +214,8 @@ import "Counts.js" as Counts
                                                                           host.height / 1080))
                                                     : 1
             readonly property real uiScale: host.couchMode ? 1.25 * layoutScale : 1
-            width: Math.min(host.couchMode ? 1280 * layoutScale : 1120,
+            // Larger text sizes widen the panel, within the window, so the pages keep their room.
+            width: Math.min(host.couchMode ? 1280 * layoutScale : 1120 * Math.max(1, UiMetrics.textScale),
                             parent.width - (narrow ? 24 : host.couchMode ? 96 : 48))
             height: Math.min(host.couchMode ? 900 * layoutScale : 760,
                              parent.height - (narrow ? 24 : host.couchMode ? 72 : 48))
@@ -205,9 +235,12 @@ import "Counts.js" as Counts
             ColumnLayout {
                 id: sectionNavigation
                 objectName: "settingsSectionNavigation"
-                visible: settingsPanel.width >= 850
+                // The page keeps at least the room it has beside the list at 100% text. Narrower
+                // panels use the compact CHANGE CATEGORY button.
+                visible: settingsPanel.width >= 850 + 190 * settingsPanel.layoutScale * (Math.max(1, UiMetrics.textScale) - 1)
                 anchors.left: parent.left; anchors.top: settingsHeader.bottom; anchors.margins: 24
-                width: 190 * settingsPanel.layoutScale
+                // Grows with the text size, so labels such as LIBRARY & LAUNCHING stay on one line.
+                width: 190 * settingsPanel.layoutScale * Math.max(1, UiMetrics.textScale)
                 spacing: 8
                 Repeater {
                     id: sectionButtons
@@ -334,6 +367,7 @@ import "Counts.js" as Counts
                     FieldClearButton { id: sourceSearchFieldClear; field: sourceSearchField }
                 }
                 Repeater {
+                    id: sourceRows
                     model: [
                         { name: "STEAM", enabled: Preferences.steamEnabled,
                           status: SteamLibrary ? SteamLibrary.statusText : "Unavailable",
@@ -438,8 +472,10 @@ import "Counts.js" as Counts
                         required property var modelData
                         enabled: !DemoMode
                         readonly property bool detail: settingsOverlay.sourceDetail === modelData.name
+                        readonly property Item sourceToggle: sourceSwitch
+                        // Scanners report "Imported 32 installed game(s)"; this reads 1 game or 32 games.
                         readonly property string displayStatus: modelData.enabled
-                            && modelData.status === "Unavailable" ? "Not detected" : modelData.status
+                            && modelData.status === "Unavailable" ? "Not detected" : Counts.inStatus(modelData.status)
                         // In use means switched on and found, by a scan or by games in the library.
                         // A source that is on but was not found is listed under Available. Without a
                         // scanner (demo and test libraries) the status reads Unavailable and only the
@@ -466,6 +502,8 @@ import "Counts.js" as Counts
                                 font.weight: Font.Bold
                             }
                             GlassButton {
+                                id: sourceSwitch
+                                objectName: "sourceToggle_" + modelData.name
                                 compact: true
                                 text: modelData.enabled ? "ON" : "OFF"
                                 Accessible.name: modelData.name + " source"

@@ -47,7 +47,8 @@ class SelectedStateUiTests : public QObject {
     const QString components = dir.filePath("components");
     QVERIFY(QDir().mkpath(components));
     for (const QString& file : {QStringLiteral("GlassButton.qml"), QStringLiteral("FocusRing.qml"),
-                                QStringLiteral("UiMetrics.qml"), QStringLiteral("HeartIcon.qml")})
+                                QStringLiteral("UiMetrics.qml"), QStringLiteral("HeartIcon.qml"),
+                                QStringLiteral("MenuAction.qml")})
       QVERIFY(QFile::copy(QStringLiteral(OMAKADE_SOURCE_DIR "/qml/components/") + file,
                           components + "/" + file));
     QVERIFY(
@@ -56,7 +57,8 @@ class SelectedStateUiTests : public QObject {
     QFile qmldir(components + "/qmldir");
     QVERIFY(qmldir.open(QIODevice::WriteOnly));
     qmldir.write("singleton UiMetrics 1.0 UiMetrics.qml\nGlassButton 1.0 GlassButton.qml\n"
-                 "FocusRing 1.0 FocusRing.qml\nHeartIcon 1.0 HeartIcon.qml\n");
+                 "FocusRing 1.0 FocusRing.qml\nHeartIcon 1.0 HeartIcon.qml\n"
+                 "MenuAction 1.0 MenuAction.qml\n");
     qmldir.close();
 
     view.rootContext()->setContextProperty("Theme", &theme);
@@ -206,8 +208,9 @@ private slots:
     QQuickItem* secondary = find(root, "secondary");
     QQuickItem* destructive = find(root, "destructive");
     QQuickItem* narrow = find(root, "narrow");
+    QQuickItem* menuRow = find(root, "menuRow");
     QVERIFY(wide && leftAligned && primary && primarySelected && selected && secondary &&
-            destructive && narrow);
+            destructive && narrow && menuRow);
 
     // The icon and label together are centred in the button, not started at its left edge.
     const QRectF wideButton = sceneRect(wide);
@@ -216,7 +219,13 @@ private slots:
     QVERIFY2(
         std::abs(wideContent.center().x() - wideButton.center().x()) <= 1,
         qPrintable(QString("%1 vs %2").arg(wideContent.center().x()).arg(wideButton.center().x())));
-    // Menu rows can still keep a left label column.
+    // Menu and popup rows, such as Hidden Games, Close and Open Log, center their labels too.
+    const QRectF menuContent = sceneRect(find(menuRow, "buttonContent"));
+    QVERIFY2(std::abs(menuContent.center().x() - sceneRect(menuRow).center().x()) <= 1,
+             qPrintable(QString("%1 vs %2")
+                            .arg(menuContent.center().x())
+                            .arg(sceneRect(menuRow).center().x())));
+    // A button can still keep a left label column.
     const QRectF leftContent = sceneRect(find(leftAligned, "buttonContent"));
     QVERIFY(std::abs(leftContent.left() - sceneRect(leftAligned).left() -
                      leftAligned->property("leftPadding").toReal()) <= 1);

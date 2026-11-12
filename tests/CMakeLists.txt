@@ -576,6 +576,28 @@ add_test(NAME omakade_text_size_details_150
   COMMAND omakade-uitest --owned-layout-test --uninstalled-layout-test --text-size=150
           --render-size=820x590
           --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-details-150.png)
+# With the category list showing, its labels stay on one line and library cards widen with
+# the text, so their details still fit.
+foreach(text_size_percent IN ITEMS 130 150)
+  add_test(NAME omakade_text_size_settings_sidebar_${text_size_percent}
+    COMMAND omakade-uitest --text-size=${text_size_percent} --render-size=1280x800
+            --render-overlay=settings-appearance
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-settings-sidebar-${text_size_percent}.png)
+  # A mid-size window, such as half of a 1080p screen, keeps the page wide enough beside
+  # the category list or switches to the compact category button.
+  add_test(NAME omakade_text_size_settings_mid_${text_size_percent}
+    COMMAND omakade-uitest --text-size=${text_size_percent} --render-size=960x800
+            --render-overlay=settings-sources
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-settings-mid-${text_size_percent}.png)
+  add_test(NAME omakade_text_size_library_wide_${text_size_percent}
+    COMMAND omakade-uitest --text-size=${text_size_percent} --render-size=1600x900
+            --render-screenshot=${CMAKE_CURRENT_BINARY_DIR}/text-size-library-wide-${text_size_percent}.png)
+  set_tests_properties(omakade_text_size_settings_sidebar_${text_size_percent}
+                       omakade_text_size_settings_mid_${text_size_percent}
+                       omakade_text_size_library_wide_${text_size_percent} PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1;HYPRLAND_INSTANCE_SIGNATURE="
+    TIMEOUT 30)
+endforeach()
 add_test(NAME omakade_cli_rejects_unknown_text_size
   COMMAND omakade-uitest --smoke-test --text-size=120)
 set_tests_properties(omakade_cli_rejects_unknown_text_size PROPERTIES
