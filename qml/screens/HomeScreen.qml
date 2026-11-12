@@ -528,6 +528,37 @@ FocusScope {
                             anchors.margins: 3
                             source: tile.game.coverPath || ""
                         }
+                        // The same heart badge the library cards use, so a favorite looks
+                        // like one on Home too.
+                        Rectangle {
+                            objectName: "homeFavoriteBadge"
+                            visible: !!tile.game.favorite
+                            width: 28 * root.scaleFactor
+                            height: width
+                            radius: width / 2
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 9 * root.scaleFactor
+                            color: Theme.accent
+                            border.color: Qt.alpha(Theme.brightForeground, 0.20)
+
+                            // Only favorites build the heart, as on the library cards.
+                            Loader {
+                                active: !!tile.game.favorite
+                                anchors.centerIn: parent
+                                sourceComponent: HeartIcon {
+                                    filled: true
+                                    size: 14 * root.scaleFactor
+                                    // readableOn reads theme colors the binding cannot see,
+                                    // so name them here.
+                                    color: {
+                                        Theme.brightForeground
+                                        Theme.darkerBackground
+                                        return Theme.readableOn(Theme.accent)
+                                    }
+                                }
+                            }
+                        }
                         Rectangle {
                             visible: !tile.game.available
                             anchors.bottom: parent.bottom

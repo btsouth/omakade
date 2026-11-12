@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- In the Game Mode library, the large game shown above the cards now always matches the
+  focused card. After a sort, a filter or a return from a game's page, it could show the
+  first game while focus stayed on another. The large cover also shrinks to fit above
+  the cards on small displays, such as 1920x1080 at scale 1.6, instead of covering them.
+- If Omakade is closed by force during Game Mode, its next start puts back the workspace
+  you were on before Game Mode when the screen was left on the empty Game Mode
+  workspace. Leaving the next Game Mode session then returns there instead of to that
+  empty workspace.
 - The installed `omakade` no longer carries the UI test harness: the screenshot render
   paths, test fixtures, self-tests, navigation and layout checks, and the stress and
   start-up timing runs. They moved to `omakade-uitest`, which is built with the tests and
@@ -69,8 +77,8 @@
   Settings and a game's Play History now mention Steam.
 - A favorite now looks like one: the game details and Game Mode favorite button shows a
   filled accent heart with the selected fill and says FAVORITED, and screen readers hear it
-  as checked. Library and Game Mode cards mark favorites with a filled heart on an accent
-  badge. The theme fonts drew both hearts as outlines before.
+  as checked. Library, Home and Game Mode cards mark favorites with a filled heart on an
+  accent badge. The theme fonts drew both hearts as outlines before.
 - Counts read correctly for a single item, such as "1 GAME" in the library toolbar
   instead of "1 GAMES", and the same on Home, Settings, game details and save panels.
 - An empty Stats now says when play recording is off, which it is on new installations,

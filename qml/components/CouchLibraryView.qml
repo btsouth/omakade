@@ -308,7 +308,23 @@ FocusScope {
         })
     }
 
-    onCurrentIndexChanged: refreshCurrentGame()
+    // A view stops following its currentIndex binding once anything assigns it, so a
+    // selection set here (a sort, a filter, a return from details) is handed to the view.
+    // Otherwise the hero shows one game while the focused card is another.
+    function syncViewIndex() {
+        const view = root.activeGameView()
+        if (!view.model || view.currentIndex === root.currentIndex)
+            return
+        root.updatingGameViews = true
+        view.currentIndex = root.currentIndex
+        root.updatingGameViews = false
+    }
+
+    onCurrentIndexChanged: {
+        refreshCurrentGame()
+        syncViewIndex()
+    }
+    onVisibleChanged: if (visible) syncViewIndex()
     onLibraryModelChanged: {
         syncGameViews()
         refreshCurrentGame()
@@ -340,6 +356,7 @@ FocusScope {
                                                         root.libraryModel.rowCount() - 1))
                                   : -1
             root.refreshCurrentGame()
+            root.syncViewIndex()
             if (needsInitialFocus && root.currentIndex >= 0 && root.visible
                     && root.gridFocused && !root.searchOpen && !root.browseOpen) {
                 Qt.callLater(root.focusGrid)
@@ -573,7 +590,10 @@ FocusScope {
         anchors.topMargin: 44 * root.uiScale
         anchors.right: parent.right
         anchors.rightMargin: 116 * root.uiScale
-        width: 330 * root.uiScale
+        // Shrinks to the space above the card strip, which the toolbar leaves short on a
+        // small display, such as 1200x675 at scale 1.6.
+        width: Math.min(330 * root.uiScale,
+                        Math.max(0, gameStrip.y - y - 24 * root.uiScale) / 1.5)
         height: width * 1.5
         visible: root.detailView && gameStrip.count > 0 && root.width >= 1200
 

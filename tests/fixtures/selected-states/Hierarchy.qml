@@ -4,7 +4,7 @@ import QtQuick
 // same folder.
 Rectangle {
     width: 700
-    height: 320
+    height: 380
     color: Theme.darkerBackground
 
     Column {
@@ -55,6 +55,21 @@ Rectangle {
             objectName: "narrow"
             width: 110
             text: "A LABEL MUCH WIDER THAN ITS BUTTON"
+        }
+        // Sized to their labels at the Game Mode library's 1080p scale.
+        Row {
+            objectName: "fittedChips"
+            spacing: 7
+            Repeater {
+                model: ["SHOW: ALL", "SOURCE: ALL", "SORT: TITLE", "CONSOLES"]
+                GlassButton {
+                    required property string modelData
+                    text: modelData
+                    compact: true
+                    displayScale: 1.18
+                    selected: modelData === "CONSOLES"
+                }
+            }
         }
     }
 }

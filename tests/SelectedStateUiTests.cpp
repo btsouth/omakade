@@ -224,6 +224,19 @@ private slots:
     QQuickItem* narrowLabel = find(narrow, "buttonLabel");
     QVERIFY(narrowLabel->property("truncated").toBool());
     QVERIFY(sceneRect(narrowLabel).right() <= sceneRect(narrow).right());
+    // A button sized to its own label shows all of it at a fractional scale.
+    QQuickItem* fittedChips = find(root, "fittedChips");
+    QVERIFY(fittedChips);
+    int fitted = 0;
+    for (QQuickItem* chip : fittedChips->childItems()) {
+      QQuickItem* label = find(chip, "buttonLabel");
+      if (!label)
+        continue;
+      ++fitted;
+      QVERIFY2(!label->property("truncated").toBool(),
+               qPrintable(chip->property("text").toString()));
+    }
+    QCOMPARE(fitted, 4);
 
     // Primary is the solid accent with text that reads on it at WCAG AA.
     const QColor accent = theme.property("accent").value<QColor>();

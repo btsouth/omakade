@@ -1374,6 +1374,13 @@ bool GameModeController::restore(GameModeState& state, qint64 windowPid, bool ow
       note(QStringLiteral("The previously focused window is no longer available."));
     }
   }
+  // An Omakade that was killed leaves focus on the empty Game Mode workspace, where the
+  // next window opens and which its own session would then record as the desktop. Put
+  // the recorded desktop back in that case only; focus anywhere else is the user's.
+  GameModeDesktopFocus focus;
+  if (compositor && putFocusBack && ownerGone && !retained && !state.windowPlaced &&
+      m_compositor->desktopFocus(&focus, nullptr) && focus.workspace == workspace())
+    (void)focusDesktop(state, nullptr);
   if (compositor && putFocusBack && !state.windowPlaced) {
     if (complete) {
       state.desktopPending = false;

@@ -241,6 +241,24 @@ void driveCouchNavigation(QQuickWindow* quickWindow, QGuiApplication& applicatio
           return;
         }
       }
+      // A selection the library sets itself, such as the first game after a sort or one
+      // set while Home or details covered the library, moves the focused card with the
+      // hero, so the two never show different games.
+      QMetaObject::invokeMethod(couch, "selectMode", Q_ARG(QVariant, 0));
+      if (strip->property("currentIndex").toInt() != 0 ||
+          couch->property("currentIndex").toInt() != 0) {
+        fail(QStringLiteral("Couch hero and focused card disagree after the library reset the selection"));
+        return;
+      }
+      quickWindow->setProperty("homeOpen", true);
+      QCoreApplication::processEvents();
+      couch->setProperty("currentIndex", 5);
+      quickWindow->setProperty("homeOpen", false);
+      QCoreApplication::processEvents();
+      if (strip->property("currentIndex").toInt() != 5) {
+        fail(QStringLiteral("Couch library came back with the focused card away from the hero"));
+        return;
+      }
       // The empty state follows the view's count, and a view only announces a new
       // count when it lays out on its next polish. The model has already changed
       // by then, so the check waits for that layout instead of reading the state

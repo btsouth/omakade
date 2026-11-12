@@ -191,8 +191,10 @@ Button {
                 id: buttonLabel
                 objectName: "buttonLabel"
                 textFormat: Text.PlainText
+                // The half pixel absorbs rounding error: a button sized to its label gets a
+                // hair less back at fractional scales, which elided labels in Game Mode.
                 width: Math.max(0, Math.min(implicitWidth, root.maximumLabelWidth,
-                                            contentHolder.width - contentHolder.iconWidth))
+                                            contentHolder.width - contentHolder.iconWidth + 0.5))
                 elide: Text.ElideRight
                 text: root.text
                 color: root.labelColor

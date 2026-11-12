@@ -1799,6 +1799,24 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
           qCritical() << "Home Tab traversal skipped its game tiles";
           application.exit(EXIT_FAILURE); return;
         }
+        // Favorites carry the library's heart badge on Home cards, in Game Mode too.
+        int favoriteTiles = 0;
+        bool badgeWrong = false;
+        std::function<void(QQuickItem*)> checkBadges = [&](QQuickItem* item) {
+          const QVariant game = item->property("game");
+          if (game.isValid() && item->property("openControl").isValid()) {
+            const bool favorite = game.toMap().value("favorite").toBool();
+            auto* badge = findVisualItem(item, QStringLiteral("homeFavoriteBadge"));
+            if (!badge || badge->isVisible() != favorite) badgeWrong = true;
+            if (favorite) ++favoriteTiles;
+          }
+          for (auto* child : item->childItems()) checkBadges(child);
+        };
+        checkBadges(screen);
+        if (badgeWrong || favoriteTiles == 0) {
+          qCritical() << "Home cards did not mark favorites with a heart" << favoriteTiles;
+          application.exit(EXIT_FAILURE); return;
+        }
         if (home.recent().size() > 1 && !home.queue().isEmpty()) {
           const QVariantMap card = home.recent().at(1).toMap();
           const QString identity = card.value("identity").toString();
