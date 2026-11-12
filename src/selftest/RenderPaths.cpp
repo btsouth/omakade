@@ -843,21 +843,45 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
       // its log first, and gives focus back to Play when it closes.
       QMetaObject::invokeMethod(quickWindow, "openGame", Q_ARG(QVariant, 0));
       // After the details page has put focus on Play itself.
-      QTimer::singleShot(200, quickWindow, [quickWindow, &application, &launcher] {
+      QTimer::singleShot(200, quickWindow, [quickWindow, &application, &launcher, &unifiedGames] {
         auto* play = quickWindow->findChild<QQuickItem*>("playButton");
-        if (!play || quickWindow->activeFocusItem() != play) {
+        auto* feedback = quickWindow->findChild<QObject*>("launchFeedback");
+        if (!play || !feedback || quickWindow->activeFocusItem() != play) {
           qCritical() << "Details did not focus Play before the closed game notice";
           application.exit(EXIT_FAILURE); return;
         }
-        const QString appId = QStringLiteral("fixture-closed");
-        const QString title = quickWindow->property("selectedGame").toMap().value("title").toString();
-        quickWindow->setProperty("launchTitles",
-                                 QVariantMap{{QStringLiteral("Manual\n") + appId, title}});
-        const QVariantMap game{{QStringLiteral("source"), QStringLiteral("Manual")},
+        const QVariantMap selected = quickWindow->property("selectedGame").toMap();
+        const QVariantMap installation = quickWindow->property("selectedInstallation").toMap();
+        const QString title = selected.value("title").toString();
+        const QString source = installation.value("source").toString();
+        const QString appId = installation.value("appId").toString();
+        quickWindow->setProperty("launchTitles", QVariantMap{{source + QLatin1Char('\n') + appId, title}});
+        // The launch went out and was recorded: Play and the toast say it is opening.
+        QVariant gameKey;
+        QMetaObject::invokeMethod(quickWindow, "launchIdentity", Q_RETURN_ARG(QVariant, gameKey),
+                                  Q_ARG(QVariant, selected));
+        feedback->setProperty("request", QVariantMap{{QStringLiteral("gameKey"), gameKey},
+                                                     {QStringLiteral("title"), title},
+                                                     {QStringLiteral("installation"), installation}});
+        const QString opening = QStringLiteral("Opening ") + title;
+        QMetaObject::invokeMethod(feedback, "finish", Q_ARG(QVariant, true), Q_ARG(QVariant, opening));
+        QMetaObject::invokeMethod(quickWindow, "showToast", Q_ARG(QVariant, opening));
+        const int row = unifiedGames.rowForGame(source, appId);
+        const qint64 lastPlayed = unifiedGames.data(unifiedGames.index(row), GameRoles::LastPlayed).toLongLong();
+        const bool recorded =
+            row >= 0 && unifiedGames.recordLaunch(row, source, installation.value("runner").toString(), appId);
+        if (!recorded || unifiedGames.data(unifiedGames.index(row), GameRoles::LastPlayed).toLongLong() <= lastPlayed ||
+            play->property("text").toString() != QStringLiteral("OPENING...")) {
+          qCritical() << "Could not set up an opening launch" << source << appId << row << recorded << lastPlayed
+                      << unifiedGames.data(unifiedGames.index(row), GameRoles::LastPlayed) << play->property("text");
+          application.exit(EXIT_FAILURE); return;
+        }
+        const QVariantMap game{{QStringLiteral("source"), source},
                                {QStringLiteral("appId"), appId},
-                               {QStringLiteral("logPath"), GameLauncher::launchLogPath(QStringLiteral("Manual"), appId)}};
+                               {QStringLiteral("logPath"), GameLauncher::launchLogPath(source, appId)}};
         emit launcher.gameClosedEarly(game);
-        QTimer::singleShot(200, quickWindow, [quickWindow, play, title, &application] {
+        QTimer::singleShot(200, quickWindow, [quickWindow, play, feedback, title, row, lastPlayed,
+                                              &unifiedGames, &application] {
           auto* notice = quickWindow->findChild<QObject*>("launchClosedNotice");
           auto* text = quickWindow->findChild<QQuickItem*>("launchClosedText");
           auto* openLog = quickWindow->findChild<QQuickItem*>("launchClosedOpenLog");
@@ -868,6 +892,18 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
                         << (notice ? notice->property("opened") : QVariant())
                         << (text ? text->property("text") : QVariant())
                         << (openLog ? openLog->isVisible() : false) << quickWindow->activeFocusItem();
+            application.exit(EXIT_FAILURE); return;
+          }
+          // The launch is over: nothing still says it is opening, and it is not a recent game.
+          auto* toast = quickWindow->findChild<QObject*>("toastTimer");
+          if (feedback->property("pending").toBool() || !feedback->property("message").toString().isEmpty() ||
+              play->property("text").toString() == QStringLiteral("OPENING...") || !toast ||
+              toast->property("running").toBool() ||
+              unifiedGames.data(unifiedGames.index(row), GameRoles::LastPlayed).toLongLong() != lastPlayed) {
+            qCritical() << "A game that closed right after starting still looked opening or recent"
+                        << feedback->property("pending") << play->property("text")
+                        << (toast ? toast->property("running") : QVariant())
+                        << unifiedGames.data(unifiedGames.index(row), GameRoles::LastPlayed) << lastPlayed;
             application.exit(EXIT_FAILURE); return;
           }
           QMetaObject::invokeMethod(notice, "close");

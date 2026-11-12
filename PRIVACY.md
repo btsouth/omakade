@@ -46,8 +46,10 @@ Omakade retains:
 - What emulators, manual games, native ports and GOG games that Omakade starts print
   while they run, one log per game in `$XDG_STATE_HOME/omakade/launch-logs/`, readable
   only by you. Above 2 MiB a log is cut to its newest part while Omakade follows the
-  game, at the game's next launch and when Omakade starts. Something a game leaves
-  running after it exits can keep writing to the log until then.
+  game, at the game's next launch and when Omakade starts. A game that keeps running after
+  Omakade is closed, or something a game leaves running after it exits, can keep writing
+  to the log until then. No log is kept with Auto-close on outside Game Mode, or for a
+  game `omakade --play` starts while Omakade is closed.
 - Downloaded covers and achievement icons in `$XDG_CACHE_HOME/omakade/`
 - SteamGridDB portraits in `$XDG_DATA_HOME/omakade/portrait-covers/`
 - Copies of covers, heroes, and logos selected by the user in

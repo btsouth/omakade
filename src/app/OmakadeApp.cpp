@@ -575,6 +575,8 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     SaveBackups headlessBackups;
     headlessBackups.setEnabled(preferences.protectRetroArchSaves());
     GameLauncher headlessLauncher;
+    // This process exits once the game is out, and nothing would keep a log small then.
+    headlessLauncher.setKeepLaunchLogs(false);
     headlessLauncher.setSaveBackups(&headlessBackups);
     headlessLauncher.setSetupDatabase(libraryDatabasePath);
     headlessLauncher.setRommLibraryRoot(preferences.rommLibraryRoot());
@@ -925,6 +927,12 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
       launcher.forgetEarlyExit(game.toMap().value(QStringLiteral("source")).toString(),
                                game.toMap().value(QStringLiteral("appId")).toString());
   });
+  // A game that closed right after starting was not played, so it does not lead Home.
+  QObject::connect(&launcher, &GameLauncher::gameClosedEarly, &unifiedGames,
+                   [&unifiedGames](const QVariantMap& game) {
+                     unifiedGames.forgetLaunch(game.value(QStringLiteral("source")).toString(),
+                                               game.value(QStringLiteral("appId")).toString());
+                   });
   if (!syntheticLibrary) launcher.setSaveBackups(&saveBackups);
   launcher.setPreferStandaloneEmulators(preferences.preferStandaloneEmulators());
   unifiedGames.setReviewPlanContext(preferences.rommLibraryRoot(),

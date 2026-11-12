@@ -267,7 +267,10 @@ never moved.
    Details** and paste it into the report. It replaces your home folder with `~`.
    When an emulator, manual game, native port or GOG game closes right after
    starting, Omakade says so and offers **Open Log**, with what the game printed.
-   These logs are in `~/.local/state/omakade/launch-logs/`, one per game.
+   These logs are in `~/.local/state/omakade/launch-logs/`, one per game. A manual
+   game or port that starts a script is not reported, since the script may only hand
+   the game to a launcher, but its log is still kept. With Auto-close on outside Game
+   Mode, no log is kept.
 3. **Settings → About & help** shows the version, the database path and the
    controller in use.
 4. To capture Omakade's own messages, close it with `omakade --quit`, start it from a

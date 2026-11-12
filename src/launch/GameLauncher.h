@@ -65,8 +65,12 @@ public:
   // Games Omakade starts itself, whose own process is the game: emulators, manual games,
   // Kyty, native ports and GOG games run through Wine or Proton. Their output goes to a
   // log, and closing right after starting is reported. Launchers that hand the game off,
-  // such as Steam, Heroic, Lutris or Faugus, are not.
+  // such as Steam, Heroic, Lutris or Faugus, are not. A manual game, Kyty game or port is
+  // reported only when its entry starts a program, not a script, and gives it no link,
+  // and no launch is reported while something it started is still running.
   [[nodiscard]] static bool watchesEarlyExit(const QString& source);
+  // Off when Omakade closes right after this launch: nothing would keep the log small.
+  Q_INVOKABLE void setKeepLaunchLogs(bool keep) { m_keepLaunchLogs = keep; }
   // Where a game's output is kept: one log per game under the state folder, appended at
   // each launch and cut to its newest part once it grows past kLaunchLogCap.
   [[nodiscard]] static QString launchLogDirectory();
@@ -153,8 +157,9 @@ signals:
   void lastErrorChanged();
   void setupChanged();
   void gameRunningChanged();
-  // A game in watchesEarlyExit() closed within the early exit window. `game` carries its
-  // source, appId and path, and logPath when its output was kept.
+  // A game in watchesEarlyExit() closed within the early exit window, and nothing its
+  // launch started is still running. `game` carries its source, appId and path, and
+  // logPath when its output was kept.
   void gameClosedEarly(const QVariantMap& game);
 
 private:
@@ -219,5 +224,6 @@ private:
   QVariantMap m_launchIdentity;
   qint64 m_lastLaunchedPid = 0;
   int m_earlyExitWindowMs = 5000;
+  bool m_keepLaunchLogs = true;
   QTimer m_trackTimer;
 };

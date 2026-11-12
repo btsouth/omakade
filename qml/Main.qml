@@ -1755,6 +1755,12 @@ ApplicationWindow {
     Connections {
         target: Launcher
         function onGameClosedEarly(game) {
+            // That launch is over, so Play and the toast stop saying it is opening.
+            const launched = launchFeedback.request.installation || {}
+            if (launchFeedback.pending && launched.source === game.source && launched.appId === game.appId) {
+                if (toastTimer.running && toast.message === launchFeedback.message) toastTimer.stop()
+                launchFeedback.cancel()
+            }
             root.showLaunchClosed(root.launchTitles[root.launchTitleKey(game.source, game.appId)] || "",
                                   game.logPath || "")
         }
@@ -1829,6 +1835,8 @@ ApplicationWindow {
         GameMode.endSteamHold(!holding)
         if (!DemoMode) {
             root.launchTitles[root.launchTitleKey(choice.source, choice.appId)] = request.title
+            // Omakade closes right after this launch, and nothing would keep a log small then.
+            Launcher.setKeepLaunchLogs(!(Preferences.closeAfterLaunch && !GameMode.hasSession))
             okay = installing ? Launcher.install(choice.source, choice.appId)
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
@@ -3406,6 +3414,7 @@ ApplicationWindow {
 
     Timer {
         id: toastTimer
+        objectName: "toastTimer"
         interval: 2400
     }
 
