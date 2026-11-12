@@ -70,7 +70,7 @@ with:
 | Imported or found *N* games | The scan worked | Nothing, unless a game is still missing; check the filters above |
 | *Source* was not found, No *source* games were found, or Not detected | None of the usual folders exist | Compare with the paths below, open the launcher once, and rescan |
 | Scan interrupted; kept the cached library | A folder or file could not be read, so the previous list was kept | Read the yellow warning, reconnect the drive or fix the file, then rescan |
-| Imported *N* installed game(s) with warnings | The scan worked but skipped something | Read the yellow warning |
+| Imported *N* installed games with warnings | The scan worked but skipped something | Read the yellow warning |
 | Could not update *source* games, or *source* cache unavailable | Omakade could not save the scan to its library database | See [the Xodus Nexus entry](#xodus-nexus-says-could-not-update-xodus-nexus-games); the same steps apply to every source |
 
 ## Where Omakade looks for each launcher

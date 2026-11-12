@@ -24,7 +24,9 @@
   text, buttons and fields on the desktop, and by default follows the desktop's text
   scaling factor. Game Mode keeps sizing its text to the display. The small 8 to 11 px
   labels and explanations in Settings, game details and the library now use the shared
-  text sizes, so they are easier to read and match each other.
+  text sizes, so they are easier to read and match each other. Above 100%, the Settings
+  window and its category list widen with the text, within the window, and the library
+  shows fewer, wider cards so the details under each cover still fit.
 - The package now installs Troubleshooting, the in-game guide page, Architecture and the
   README's screenshots, so every link in the installed docs opens. Troubleshooting now
   says a source that is on but not found is listed under Available, and the user guides
@@ -54,11 +56,12 @@
   and Save image and Close buttons no longer draw over the Omakade logo and header buttons.
 - Settings > Backup & Storage now uses the same text sizes and section headings as the
   other Settings pages, grouped as Save protection, Backup & restore and Downloaded artwork.
-- Button labels now sit in the middle of their buttons instead of at the left edge. The
-  main action on a screen, such as Play or Set Up Sources, is a solid accent button with
-  text picked to stay readable on every theme, so it stands out from selected toggles like
-  Favorited. Delete and other confirmations that cannot be undone are solid red, with a
-  fixed red on themes whose red is not red or sits too close to the accent.
+- Button labels, including menu and popup rows and the Settings > Connections rows, now
+  sit in the middle of their buttons instead of at the left edge. The main action on a
+  screen, such as Play or Set Up Sources, is a solid accent button with text picked to
+  stay readable on every theme, so it stands out from selected toggles like Favorited.
+  Delete and other confirmations that cannot be undone are solid red, with a fixed red on
+  themes whose red is not red or sits too close to the accent.
 - Screen readers now hear a game card's favorite, completion status and install state in
   the library, Home and Game Mode, and can open the game from the card. Hidden achievements
   no longer reveal their name to screen readers before they are unlocked.
@@ -85,6 +88,8 @@
   accent badge. The theme fonts drew both hearts as outlines before.
 - Counts read correctly for a single item, such as "1 GAME" in the library toolbar
   instead of "1 GAMES", and the same on Home, Settings, game details and save panels.
+  Scan results in Settings > Sources say "Imported 32 installed games" instead of
+  "game(s)".
 - An empty Stats now says when play recording is off, which it is on new installations,
   and offers Turn On Recording with a line on what is recorded and which emulators give
   dated sessions. With recording on, it still says nothing has been recorded yet.
@@ -106,9 +111,11 @@
   Emulated chip instead of one per emulator. Settings > Sources lists a source as In use
   only once it is found; sources that are on but not found move to Available.
 - An empty Library or Home, as on a first run, now has **Set Up Sources**, which opens
-  Settings > Sources, and a link to the guide, next to Rescan. When two or more filters
+  Settings > Sources, and a link to the guide, next to Rescan. When no source is in use
+  yet, it opens on Available with focus on the first source. When two or more filters
   together leave nothing to show, the message names them instead of only the search, with
-  the chosen sources counted as one filter.
+  the chosen sources counted as one filter. A search with no results in Favorites or
+  Recent names that view.
 - Keyboard and controller focus now has its own thicker ring around buttons, fields,
   checkboxes, lists and library cards, in a color that stands out on every theme. Hover only changes the fill,
   and the current card keeps a quieter outline while focus is elsewhere, such as the

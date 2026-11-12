@@ -15,7 +15,7 @@ Button {
     property bool primary: false
     // Confirms something that cannot be undone, such as a delete, drawn as a solid red fill.
     property bool destructive: false
-    // Labels sit in the middle of the button. Menu rows set Qt.AlignLeft to keep a label column.
+    // Labels sit in the middle of the button. Qt.AlignLeft keeps a label column where one is needed.
     property int labelAlignment: Qt.AlignHCenter
     readonly property bool filled: root.primary || root.destructive
     readonly property color fillColor: root.destructive ? Theme.destructive : Theme.accent

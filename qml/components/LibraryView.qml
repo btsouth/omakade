@@ -215,7 +215,8 @@ Item {
             }
         }
 
-        readonly property int columns: Math.max(1, Math.min(Math.floor(8 * 100 / Preferences.coverSize), Math.floor(width / (210 * Preferences.coverSize / 100))))
+        // Larger text sizes need wider cards, so the source, playtime and rating still fit.
+        readonly property int columns: Math.max(1, Math.min(Math.floor(8 * 100 / Preferences.coverSize), Math.floor(width / (210 * Preferences.coverSize / 100 * Math.max(1, UiMetrics.textScale)))))
         onColumnsChanged: Qt.callLater(function() { if (grid.currentIndex >= 0) grid.positionViewAtIndex(grid.currentIndex, GridView.Contain) })
         cellWidth: width / columns
         // Room for the caption under the cover, which grows with the text size.

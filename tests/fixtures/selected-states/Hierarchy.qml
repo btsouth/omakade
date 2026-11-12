@@ -4,7 +4,7 @@ import QtQuick
 // same folder.
 Rectangle {
     width: 700
-    height: 380
+    height: 430
     color: Theme.darkerBackground
 
     Column {
@@ -16,6 +16,11 @@ Rectangle {
             width: 320
             text: "PLAY"
             iconText: "▶"
+        }
+        MenuAction {
+            objectName: "menuRow"
+            width: 320
+            text: "HIDDEN GAMES"
         }
         GlassButton {
             objectName: "leftAligned"
