@@ -136,6 +136,7 @@ private slots:
   void changedArchiveAndJournal();
   void missingSettingsAndFreshLibrary();
   void damagedLibraryIsSetAside();
+  void stoppedRecorderStartsAfterRestore();
   void hotRollbackJournalIsNotDamage();
   void failedSettingsWriteKeepsRecoveryPending();
   void damagedRecoveryBlocksReplay();
@@ -682,6 +683,58 @@ void BackupRecoveryTests::damagedLibraryIsSetAside() {
   QCOMPARE(collections(p.database), QStringList{"Imported"});
   QVERIFY(!BackupSnapshot::damaged(p.database));
   QVERIFY(AppSettings(p.settings).couchModeEnabled());
+}
+
+void BackupRecoveryTests::stoppedRecorderStartsAfterRestore() {
+  // Stop Recorder and Restore starts the recorder again once the restore finishes, and a
+  // restore that never stopped it starts nothing.
+  QTemporaryDir temp;
+  const auto p = paths(temp.path());
+  QString error;
+  QVERIFY(BackupDatabase::restore(p.database, payload("Original", false),
+                                  BackupDatabase::Mode::Replace, &error));
+  const QString bin = temp.filePath("bin"), log = temp.filePath("systemctl.log");
+  const QString lock = p.database + ".sessiond.lock";
+  QVERIFY(QDir().mkpath(bin));
+  // Stopping the service releases its lock on the library.
+  QVERIFY(write(bin + "/systemctl", "#!/bin/sh\necho \"$@\" >> '" + log.toUtf8() +
+                                        "'\n[ \"$2\" = stop ] && rm -f '" + lock.toUtf8() +
+                                        "'\nexit 0\n"));
+  QVERIFY(QFile::setPermissions(bin + "/systemctl", QFile::ReadOwner | QFile::WriteOwner |
+                                                        QFile::ExeOwner));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", bin.toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([&] { qputenv("PATH", oldPath); });
+
+  BackupRecovery recovery(p);
+  QVERIFY(recovery.stage(historyPayload("Imported", true), BackupDatabase::Mode::Replace, &error));
+  QLockFile recorder(lock);
+  QVERIFY(recorder.tryLock(0));
+  BackupStartup startup(p);
+  QSignalSpy resolved(&startup, &BackupStartup::resolved);
+  startup.retry();
+  QTRY_VERIFY_WITH_TIMEOUT(!startup.busy(), 5000);
+  QVERIFY(startup.recorderRunning());
+  QVERIFY(read(log).isEmpty());
+  startup.stopRecorderAndRetry();
+  QTRY_VERIFY_WITH_TIMEOUT(!startup.busy(), 5000);
+  QCOMPARE(resolved.count(), 1);
+  QCOMPARE(recovery.status(), "complete");
+  QCOMPARE(collections(p.database), QStringList{"Imported"});
+  QTRY_COMPARE_WITH_TIMEOUT(read(log), QByteArray("--user stop omakade-sessiond.service\n"
+                                                  "--user start omakade-sessiond.service\n"),
+                            5000);
+
+  QVERIFY(QFile::remove(log));
+  QVERIFY(recovery.stage(historyPayload("Again", true), BackupDatabase::Mode::Replace, &error));
+  BackupStartup plain(p);
+  QSignalSpy plainResolved(&plain, &BackupStartup::resolved);
+  plain.retry();
+  QTRY_VERIFY_WITH_TIMEOUT(!plain.busy(), 5000);
+  QCOMPARE(plainResolved.count(), 1);
+  QCOMPARE(collections(p.database), QStringList{"Again"});
+  QTest::qWait(200);
+  QVERIFY(read(log).isEmpty());
 }
 
 void BackupRecoveryTests::hotRollbackJournalIsNotDamage() {

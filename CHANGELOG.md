@@ -65,7 +65,8 @@
   unchanged. Non-Steam shortcuts are not recorded, an emulator started from Steam is
   recorded once as the emulator, and Pause When Unfocused follows the game's window.
   Recording starts about ten seconds after launch and only while the Steam source is on.
-  Discord Status now shows Steam games too, by their Steam title.
+  Discord Status now shows Steam games too, by their Steam title. The recording text in
+  Settings and a game's Play History now mention Steam.
 - A favorite now looks like one: the game details and Game Mode favorite button shows a
   filled accent heart with the selected fill and says FAVORITED, and screen readers hear it
   as checked. Library and Game Mode cards mark favorites with a filled heart on an accent
@@ -122,12 +123,17 @@
   Omakade keeps an exact copy of the damaged file in the recovery folder, and Undo puts
   it back.
 - When the play-session recorder blocks a restore, the startup screen offers **Stop
-  Recorder and Restore** instead of asking you to run systemctl.
+  Recorder and Restore** instead of asking you to run systemctl. Omakade starts the
+  recorder again when the restore finishes.
 - The package no longer starts `omakade-sessiond` for every account on the computer.
   Omakade enables it for your account the first time it opens, on Omarchy or not, so
   after updating, open Omakade once to keep the recorder and guide starting at login.
-  Disabling it with `systemctl --user disable omakade-sessiond` now works too, though
-  the guide button service still starts it while that service is enabled.
+  The package says so when it updates from an earlier version. Opening Omakade also
+  starts the recorder right away, on Omarchy always and elsewhere while Record Playtime
+  or Highlights is on, so play is recorded before the next login. Disabling it with
+  `systemctl --user disable omakade-sessiond` keeps it from starting at login, though
+  opening Omakade still starts it, and so does the guide button service while that
+  service is enabled.
 - The bundled in-game guide plugin is licensed GPL-3.0-or-later like the rest of Omakade,
   and its manifest carries the Omakade version instead of 0.1.0.
 - Omakade's single-instance socket now lives in your owner-only runtime directory

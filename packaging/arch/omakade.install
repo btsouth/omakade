@@ -1,0 +1,8 @@
+post_upgrade() {
+  # Since 1.19.0 the package no longer starts the recorder for every account at login.
+  if [ "$(vercmp "$2" 1.19.0)" -lt 0 ]; then
+    echo ">>> omakade-sessiond no longer starts at login for every account."
+    echo ">>> If you record playtime or Highlights, open Omakade once, or run:"
+    echo ">>>   systemctl --user enable --now omakade-sessiond.service"
+  fi
+}

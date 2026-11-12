@@ -14,6 +14,7 @@ public:
   static QString socketPath();
   static void ensureResident(QObject* owner);
   static void enableResidentOnce(QObject* owner, std::function<void()> done = {});
+  static void setUpRecorder(QObject* owner, bool recording, std::function<void()> done = {});
   static void request(const QJsonObject& command, QObject* owner,
                       std::function<void(const QString&, const QJsonObject&)> done = {});
   static void requestShortcut(const QString& node, QObject* owner,

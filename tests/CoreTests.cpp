@@ -14673,6 +14673,7 @@ void CoreTests::sessionDaemonRejectsDuplicateOwner() {
   QVERIFY(status.attributionSummary().contains(QStringLiteral("Dolphin")));
   QVERIFY(status.attributionSummary().contains(QStringLiteral("PCSX2")));
   QVERIFY(status.attributionSummary().contains(QStringLiteral("PPSSPP")));
+  QVERIFY(status.attributionSummary().contains(QStringLiteral("Steam")));
   QSignalSpy statusChanged(&status, &PlaySessionStore::recorderStatusChanged);
   first.kill();
   QVERIFY(first.waitForFinished());

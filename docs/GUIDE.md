@@ -386,12 +386,14 @@ is stopped. Closing Omakade or turning **Record Playtime** off does not stop it,
    ```
 
 3. Open Omakade. It applies the restore before the library opens.
-4. Start the recorder again. On Omarchy, Omakade does this when it opens; elsewhere,
-   run `systemctl --user start omakade-sessiond`.
+4. Start the recorder again. Omakade does this when it opens, on Omarchy always and
+   elsewhere while Record Playtime or Highlights is on; otherwise run
+   `systemctl --user start omakade-sessiond`.
 
 If the recorder is still running, the restore stops with "Stop the play-session
 recorder before restoring, then retry." Choose **Stop Recorder and Restore** to stop
-`omakade-sessiond` and apply the backup, or stop it yourself and retry.
+`omakade-sessiond` and apply the backup; Omakade starts it again when the restore
+finishes. You can also stop it yourself and retry.
 
 A backup can also repair a library database that is damaged and cannot be read.
 The preview compares against an empty library, and the restore keeps an exact copy
@@ -416,8 +418,9 @@ To turn recording on:
 1. Open **Settings → Library & launching** and set **Record Playtime** to On.
    It is off on new installations.
 2. Make sure the recorder, `omakade-sessiond`, is running. The first time Omakade opens
-   it sets the recorder to start at login, and on Omarchy it also starts it whenever it
-   opens. To start it yourself, or keep it running from login:
+   it sets the recorder to start at login. It also starts it whenever it opens, on
+   Omarchy always and elsewhere while Record Playtime or Highlights is on. To start it
+   yourself, or keep it running from login:
 
    ```bash
    systemctl --user enable --now omakade-sessiond
@@ -454,9 +457,9 @@ emulators or games. For Steam it reads the command line Steam starts each game w
 which names the game's app id. It keeps running after Omakade closes. Turning
 **Record Playtime** off keeps your history and shows the launchers' own time. The
 service itself stays running because the in-game guide and Highlights also use it.
-You can stop it with `systemctl --user disable --now omakade-sessiond`, but on
-Omarchy, Omakade starts it again each time it opens. Turning **Record Playtime** off
-is what stops recording.
+You can stop it with `systemctl --user disable --now omakade-sessiond`, but Omakade
+starts it again each time it opens, on Omarchy always and elsewhere while Record
+Playtime or Highlights is on. Turning **Record Playtime** off is what stops recording.
 
 A game's details page shows the launcher's time and Omakade's recorded total
 separately. **Play History** pages through sessions, and **Delete All Recorded

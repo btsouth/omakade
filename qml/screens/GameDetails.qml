@@ -2203,7 +2203,7 @@ Item {
                    ? "Sessions recorded locally by Omakade. "
                    : "Recording is off. Existing local history is retained. ")
                   + "Deleting a session forgets recorded time only; playtime your emulator "
-                  + "reports is kept."
+                  + "or Steam reports is kept."
         }
         Text {
             Layout.fillWidth: true
@@ -2215,9 +2215,9 @@ Item {
             visible: playHistoryMenu.confirming
             text: playHistoryMenu.pendingClearAll
                   ? "Delete every recorded session for this game? This cannot be undone. "
-                    + "Playtime your emulator reports is not changed."
+                    + "Playtime your emulator or Steam reports is not changed."
                   : "Delete this recorded session? This cannot be undone. Playtime your "
-                    + "emulator reports is not changed."
+                    + "emulator or Steam reports is not changed."
         }
         Text {
             objectName: "playHistoryMessage"

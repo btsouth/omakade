@@ -147,6 +147,7 @@ QVariantList PlaySessionStore::historyForPaths(const QStringList& gamePaths, int
 
 QString PlaySessionStore::attributionSummary() const {
   return QStringLiteral(
+      "Installed Steam games are recognized by the app id Steam starts them with. "
       "Verified live-game evidence: Dolphin and PCSX2. Command-line and window-title evidence: "
       "RetroArch, RPCS3, PPSSPP, melonDS, Cemu, shadPS4, Ryujinx and Xenia. PPSSPP, melonDS and "
       "RetroArch cannot prove which game their own file picker loaded; those loads need a "
