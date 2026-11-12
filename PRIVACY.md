@@ -48,8 +48,8 @@ Omakade retains:
   only by you. Above 2 MiB a log is cut to its newest part while Omakade follows the
   game, at the game's next launch and when Omakade starts. A game that keeps running after
   Omakade is closed, or something a game leaves running after it exits, can keep writing
-  to the log until then. No log is kept with Auto-close on outside Game Mode, or for a
-  game `omakade --play` starts while Omakade is closed.
+  to the log until then. No log is kept for a launch Auto-close closes Omakade after, or
+  for a game `omakade --play` starts while Omakade is closed.
 - Downloaded covers and achievement icons in `$XDG_CACHE_HOME/omakade/`
 - SteamGridDB portraits in `$XDG_DATA_HOME/omakade/portrait-covers/`
 - Copies of covers, heroes, and logos selected by the user in

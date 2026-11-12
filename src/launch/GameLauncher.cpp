@@ -392,8 +392,9 @@ bool sessionHasProcesses(qint64 session) {
 }
 
 // A manual game, Kyty game or port runs whatever its entry names. A program given no link
-// is the game itself. A script, or a program given a link such as steam://, may only hand
-// the game to a launcher that is already open and exit, so its exit says nothing.
+// is the game itself. A script, a wrapper that starts another program such as env or
+// flatpak, or a program given a link such as steam://, may only hand the game to a
+// launcher that is already open and exit, so its exit says nothing.
 bool runsTheGameItself(const LaunchCommand& command) {
   const QString program = QDir::isAbsolutePath(command.program)
                               ? command.program
@@ -402,6 +403,11 @@ bool runsTheGameItself(const LaunchCommand& command) {
   if (program.isEmpty() || !file.open(QIODevice::ReadOnly) ||
       file.read(4) != QByteArrayLiteral("\x7f" "ELF"))
     return false;
+  static const QRegularExpression wrapper(QStringLiteral(
+      "^(env|flatpak|flatpak-spawn|gamemoderun|mangohud|prime-run|steam-run|systemd-run|nice|"
+      "ionice|chrt|taskset|setsid|nohup|stdbuf|busybox|toybox|xterm|uxterm|"
+      "alacritty|kitty|foot|ghostty|wezterm|konsole|gnome-terminal|xfce4-terminal|urxvt)$"));
+  if (wrapper.match(QFileInfo(program).fileName()).hasMatch()) return false;
   static const QRegularExpression link(QStringLiteral("^[A-Za-z][A-Za-z0-9+.-]*:"));
   for (const QString& argument : command.arguments) {
     if (link.match(argument).hasMatch()) return false;

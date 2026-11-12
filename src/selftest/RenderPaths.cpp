@@ -809,6 +809,11 @@ std::optional<int> renderWindow(Harness& harness, AppContext& app) {
             qCritical() << "Owned Heroic action launched, tracked, or recorded play instead of management";
             application.exit(EXIT_FAILURE); return;
           }
+          // Auto-close is on but Omakade stays open, so later launches keep their logs.
+          if (!launcher.keepLaunchLogs()) {
+            qCritical() << "Launch logs stayed off after a launch Omakade did not close for";
+            application.exit(EXIT_FAILURE); return;
+          }
           heroicOwnedDispatchComplete = true;
         });
         probe->start(25);

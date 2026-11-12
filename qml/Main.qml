@@ -40,7 +40,11 @@ ApplicationWindow {
     property string pendingSaveWarning: ""
     Connections {
         target: SaveBackups
-        function onWarning(message) { root.pendingSaveWarning = message }
+        function onWarning(message) {
+            root.pendingSaveWarning = message
+            // A save warning keeps Omakade open after the launch, so its log is kept.
+            Launcher.setKeepLaunchLogs(true)
+        }
     }
 
     Connections {
@@ -1841,6 +1845,8 @@ ApplicationWindow {
                 : openingHeroic ? Launcher.manage(choice.source, choice.appId, choice.flatpak || false, choice.runner || "", "")
                 : Launcher.launch(choice.source, choice.appId, choice.flatpak || false,
                                   choice.runner || "", choice.installPath || "", choice.launchTarget || "", choice.system || "")
+            // Only this launch went without a log; later ones, such as a --play request, keep it.
+            Launcher.setKeepLaunchLogs(true)
         }
         if (holding && okay) LaunchHold.launched(Launcher.lastLaunchedPid())
         else if (holding) LaunchHold.cancel()

@@ -4074,6 +4074,17 @@ void CoreTests::launcherReportsGamesThatCloseRightAway() {
   QTest::qWait(100);
   QCOMPARE(closed.count(), 2);
 
+  // Nor is a wrapper such as env or flatpak, which may start a launcher that hands off.
+  const QString envProgram = QStandardPaths::findExecutable(QStringLiteral("env"));
+  QVERIFY(!envProgram.isEmpty());
+  QVERIFY(launcher.launch(QStringLiteral("Manual"), QStringLiteral("env-wrapper"), false, {}, {},
+                          manualLaunchTarget(QStringLiteral("env-wrapper"), envProgram,
+                                             directory.path(),
+                                             {QStringLiteral("OMAKADE_TEST=1"), falseProgram})));
+  QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(), 5000);
+  QTest::qWait(100);
+  QCOMPARE(closed.count(), 2);
+
   // A wrapper that starts the game and exits is not reported while the game runs, and the
   // game keeps its MangoHud settings.
   const QString shell = QStandardPaths::findExecutable(QStringLiteral("sh"));
