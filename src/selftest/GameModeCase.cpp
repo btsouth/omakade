@@ -809,6 +809,37 @@ void driveGameMode(Harness& harness, AppContext& app) {
       process.exePath = process.arguments.first();
       return QVector<ProcessSnapshot>{process};
     });
+    // A game Omakade did not launch, with another window on the workspace and Omakade
+    // focused: switching modes still asks for the overlay in front.
+    {
+      rootWindow->requestActivate();
+      gameStop.refreshLiveGames();
+      if (!settled([rootWindow, &gameStop] {
+            return rootWindow->isActive() && !gameStop.scanning() && !gameStop.runningGames().isEmpty();
+          })) {
+        fail(QStringLiteral("Running game fixture was not found before the overlay check"));
+        return;
+      }
+      auto* overlaySpy = new GameModeOverlaySpy(&application);
+      QObject* realOverlay = engine->rootContext()->contextProperty(QStringLiteral("GameModeOverlay")).value<QObject*>();
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), overlaySpy);
+      gameModeTestCompositor.otherWindows = 1;
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      auto* runningBack = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeBackButton"));
+      const bool opened = runningBack != nullptr && settled([runningBack] { return runningBack->hasActiveFocus(); });
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), realOverlay);
+      if (!opened || overlaySpy->requests != 1 || !gameMode.active()) {
+        fail(QStringLiteral("Game Mode controls with a running game and another window on the workspace "
+                            "did not ask for the overlay in front (%1 requests)").arg(overlaySpy->requests));
+        return;
+      }
+      QMetaObject::invokeMethod(runningBack, "clicked");
+      auto* runningPanel = rootWindow->findChild<QObject*>(QStringLiteral("gameModeControls"));
+      if (!runningPanel || !settled([runningPanel] { return !runningPanel->property("visible").toBool(); })) {
+        fail(QStringLiteral("Game Mode controls did not close after the running game overlay check"));
+        return;
+      }
+    }
     QMetaObject::invokeMethod(rootWindow, "openGameModeControls");
     auto* stop = rootWindow->findChild<QQuickItem*>("gameModeStopAndLeaveButton");
     auto* cancel = rootWindow->findChild<QQuickItem*>("gameModecancelStop");

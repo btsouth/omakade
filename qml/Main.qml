@@ -1141,7 +1141,10 @@ ApplicationWindow {
         GameMode.exit()
     }
     function leaveGameModeOrOpenControls() {
-        if (!GameMode.active || GameMode.busy || root.gameModeGameRunning()) {
+        // A game only GameStop knows about, with this window focused, can still sit under a
+        // floating window, so that case checks the workspace too and never ends Game Mode.
+        if (!GameMode.active || GameMode.busy || Launcher.gameRunning
+                || (root.gameModeGameRunning() && !root.active)) {
             root.openGameModeControls()
             return
         }
