@@ -67,6 +67,7 @@ bool captureDatabase(QSqlDatabase& database, const QJsonObject& settings, Backup
       {"dolphin_games", "'Dolphin'", "game_id", "COALESCE(flatpak_app_id, '')"},
       {"cemu_games", "'Cemu'", "game_id", "''"},
       {"xenia_games", "'Xenia'", "game_id", "''"},
+      {"lichii_games", "'Lichii'", "game_id", "''"},
       {"shadps4_games", "'shadPS4'", "game_id", "COALESCE(flatpak_app_id, '')"},
       {"kyty_games", "'Kyty'", "game_id", "''"},
       {"native_port_games", "'Ports'", "game_id", "''"},

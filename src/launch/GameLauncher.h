@@ -137,6 +137,12 @@ public:
   [[nodiscard]] static QProcessEnvironment xeniaLaunchEnvironment(const QProcessEnvironment& base,
                                                                   bool waylandSession);
   [[nodiscard]] static QString xeniaExecutable();
+  // Starts the game fullscreen: "-g" names the game file and "-f" is Lichii's fullscreen switch.
+  [[nodiscard]] static LaunchCommand lichiiCommand(const QString& path);
+  // How Lichii itself is started, before any game arguments. It ships as an AppImage that
+  // is rarely on PATH, so the desktop entry it installs is the fallback: its Exec line is
+  // what the user actually runs, including a wrapper such as "env NAME=value" in front.
+  [[nodiscard]] static LaunchCommand lichiiLauncher();
   [[nodiscard]] static LaunchCommand dolphinCommand(const QString& path, const QString& nativeExecutable,
                                                     bool flatpak);
   [[nodiscard]] static LaunchCommand battleNetCommand(const QString& id, const QString& prefix,
@@ -196,6 +202,7 @@ private:
   bool launchCemu(const QString& path, bool flatpak, bool manageOnly);
   bool launchMelonds(const QString& path, bool flatpak, bool manageOnly);
   bool launchXenia(const QString& path, bool manageOnly);
+  bool launchLichii(const QString& path, bool manageOnly);
   bool launchDolphin(const QString& path, bool flatpak, bool manageOnly);
   bool launchBattleNet(const QString& id, const QString& prefix, const QString& runner,
                        bool flatpak, bool manageOnly);

@@ -145,7 +145,7 @@ void runEmptyFilterFocusTest(QQuickWindow* window, QGuiApplication* application)
            {"steamEnabled", "battleNetEnabled", "xodusEnabled", "lutrisEnabled", "heroicEnabled",
             "gogEnabled", "faugusEnabled", "retroArchEnabled", "pcsx2Enabled", "rpcs3Enabled",
             "ppssppEnabled", "ryujinxEnabled", "shadps4Enabled", "cemuEnabled", "melondsEnabled",
-            "xeniaEnabled", "kytyEnabled", "nativePortsEnabled", "dolphinEnabled", "rommEnabled"})
+            "xeniaEnabled", "lichiiEnabled", "kytyEnabled", "nativePortsEnabled", "dolphinEnabled", "rommEnabled"})
         preferences->setProperty(source, false);
       QMetaObject::invokeMethod(window, "openSourceSettings");
       if (!window->property("diagnosticsOpen").toBool() ||

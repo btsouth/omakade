@@ -8,6 +8,7 @@
 #include "library/ConsoleCatalog.h"
 #include "sources/FlatpakInstall.h"
 #include "sources/battlenet/BattleNetScanner.h"
+#include "sources/desktop/DesktopEntry.h"
 #include "sources/heroic/HeroicScanner.h"
 
 #include <QCryptographicHash>
@@ -121,6 +122,14 @@ bool validXeniaPath(const QString& id) {
   const QString path = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
   return validLaunchPath(path,
                          {QStringLiteral("iso"), QStringLiteral("xex"), QStringLiteral("zar")},
+                         false);
+}
+
+bool validLichiiPath(const QString& id) {
+  const QString path = id.startsWith(QStringLiteral("path:")) ? id.mid(5) : id;
+  return validLaunchPath(path,
+                         {QStringLiteral("nup"), QStringLiteral("nsp"), QStringLiteral("xci"),
+                          QStringLiteral("nsz"), QStringLiteral("xcz"), QStringLiteral("nro")},
                          false);
 }
 
@@ -419,7 +428,8 @@ bool runsTheGameItself(const LaunchCommand& command) {
 
 bool GameLauncher::watchesEarlyExit(const QString& source) {
   return isDirectSourceName(source) || isEmulatorSourceName(source) ||
-         source == QLatin1String("Xenia") || source == QLatin1String("GOG");
+         source == QLatin1String("Xenia") || source == QLatin1String("Lichii") ||
+         source == QLatin1String("GOG");
 }
 
 QString GameLauncher::launchLogDirectory() {
@@ -949,6 +959,19 @@ LaunchCommand GameLauncher::xeniaCommand(const QString& path) {
   return LaunchCommand{executable, {target}};
 }
 
+LaunchCommand GameLauncher::lichiiCommand(const QString& path) {
+  if (!validLichiiPath(path)) {
+    return {};
+  }
+  const QString target = path.startsWith(QStringLiteral("path:")) ? path.mid(5) : path;
+  LaunchCommand command = lichiiLauncher();
+  if (!command.isValid()) {
+    return {};
+  }
+  command.arguments.append({QStringLiteral("-f"), QStringLiteral("-g"), target});
+  return command;
+}
+
 LaunchCommand GameLauncher::battleNetCommand(const QString& id, const QString& prefix,
                                              const QString& runner, bool flatpak) {
   if (!validBattleNetId(id) || !validBattleNetPrefix(prefix) ||
@@ -1153,6 +1176,13 @@ bool GameLauncher::launch(const QString& source, const QString& id, bool flatpak
                                                   : launchTarget;
     return launchXenia(target, false);
   }
+  if (source.compare(QStringLiteral("Lichii"), Qt::CaseInsensitive) == 0) {
+    const QString target = launchTarget.isEmpty() ? (id.startsWith(QStringLiteral("path:"))
+                                                         ? id.mid(5)
+                                                         : installPath)
+                                                  : launchTarget;
+    return launchLichii(target, false);
+  }
   if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
     return launchBattleNet(id, launchTarget, runner, flatpak, false);
   }
@@ -1215,6 +1245,9 @@ bool GameLauncher::manage(const QString& source, const QString& id, bool flatpak
   }
   if (source.compare(QStringLiteral("Xenia"), Qt::CaseInsensitive) == 0) {
     return launchXenia(launchTarget.isEmpty() ? id : launchTarget, true);
+  }
+  if (source.compare(QStringLiteral("Lichii"), Qt::CaseInsensitive) == 0) {
+    return launchLichii(launchTarget.isEmpty() ? id : launchTarget, true);
   }
   if (source.compare(QStringLiteral("Battle.net"), Qt::CaseInsensitive) == 0) {
     return launchBattleNet(id, launchTarget, runner, flatpak, true);
@@ -1779,6 +1812,48 @@ QProcessEnvironment GameLauncher::xeniaLaunchEnvironment(const QProcessEnvironme
     environment.insert(QStringLiteral("SDL_VIDEODRIVER"), QStringLiteral("x11"));
   }
   return environment;
+}
+
+LaunchCommand GameLauncher::lichiiLauncher() {
+  for (const QString& candidate :
+       {QStringLiteral("lichii"), QStringLiteral("Lichii"), QStringLiteral("lichii.AppImage"),
+        QStringLiteral("Lichii.AppImage")}) {
+    const QString found = QStandardPaths::findExecutable(candidate);
+    if (!found.isEmpty()) {
+      return LaunchCommand{found, {}};
+    }
+  }
+  for (const QString& directory : DesktopEntry::applicationDirectories()) {
+    const QString entryPath = directory + QStringLiteral("/io.github.zortos293.lichii.desktop");
+    if (!QFileInfo(entryPath).isFile()) {
+      continue;
+    }
+    // The first entry of a file name wins, as it does for a desktop session. Reading it
+    // fails when the program it names is gone, which leaves Lichii not installed.
+    const std::optional<DesktopEntry> entry = DesktopEntry::read(entryPath);
+    return entry.has_value() ? LaunchCommand{entry->executable, entry->arguments}
+                             : LaunchCommand{};
+  }
+  return {};
+}
+
+bool GameLauncher::launchLichii(const QString& path, bool manageOnly) {
+  const LaunchCommand launcher = lichiiLauncher();
+  if (!launcher.isValid()) {
+    setError(QStringLiteral("Lichii is not installed."));
+    return false;
+  }
+  const LaunchCommand command = manageOnly ? launcher : lichiiCommand(path);
+  if (!command.isValid()) {
+    setError(QStringLiteral("This game has an invalid Lichii target."));
+    return false;
+  }
+  if (!startCommand(command, !manageOnly)) {
+    setError(QStringLiteral("Lichii could not be started. Open Lichii and try again."));
+    return false;
+  }
+  setError({});
+  return true;
 }
 
 bool GameLauncher::launchDolphin(const QString& path, bool flatpak, bool manageOnly) {

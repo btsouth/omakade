@@ -47,6 +47,7 @@
 #include "library/Shadps4GameModel.h"
 #include "library/SteamGameModel.h"
 #include "library/UnifiedGameModel.h"
+#include "library/LichiiGameModel.h"
 #include "library/XeniaGameModel.h"
 #include "library/LauncherGameModel.h"
 #include "library/NativePortAdvisor.h"
@@ -366,6 +367,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   std::unique_ptr<MelondsGameModel> melondsGames;
   std::unique_ptr<RommGameModel> rommGames;
   std::unique_ptr<XeniaGameModel> xeniaGames;
+  std::unique_ptr<LichiiGameModel> lichiiGames;
   std::unique_ptr<LauncherGameModel> kytyGames;
   std::unique_ptr<LauncherGameModel> nativePortGames;
   std::unique_ptr<DolphinGameModel> dolphinGames;
@@ -386,6 +388,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   CemuGameModel* cemuLibrary = nullptr;
   MelondsGameModel* melondsLibrary = nullptr;
   XeniaGameModel* xeniaLibrary = nullptr;
+  LichiiGameModel* lichiiLibrary = nullptr;
   LauncherGameModel* kytyLibrary = nullptr;
   LauncherGameModel* nativePortLibrary = nullptr;
   DolphinGameModel* dolphinLibrary = nullptr;
@@ -456,6 +459,9 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     xeniaGames =
         std::make_unique<XeniaGameModel>(steamLibrary->databasePath(), playSessionStore.get());
     xeniaLibrary = xeniaGames.get();
+    lichiiGames =
+        std::make_unique<LichiiGameModel>(steamLibrary->databasePath(), playSessionStore.get());
+    lichiiLibrary = lichiiGames.get();
     kytyGames = std::make_unique<LauncherGameModel>(
         LauncherGameModel::Definition{
             .source = QStringLiteral("Kyty"),
@@ -492,6 +498,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     consolePortals->addRomModel(melondsGames.get());
     consolePortals->addRomModel(rommGames.get());
     consolePortals->addRomModel(xeniaGames.get());
+    consolePortals->addRomModel(lichiiGames.get());
     consolePortals->addRomModel(pcsx2Games.get());
     consolePortals->addRomModel(rpcs3Games.get());
     consolePortals->addRomModel(ppssppGames.get());
@@ -556,6 +563,9 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   if (xeniaGames != nullptr) {
     unifiedGames.addSourceModel(xeniaGames.get());
   }
+  if (lichiiGames != nullptr) {
+    unifiedGames.addSourceModel(lichiiGames.get());
+  }
   if (kytyGames != nullptr) {
     unifiedGames.addSourceModel(kytyGames.get());
   }
@@ -590,6 +600,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     unifiedGames.setSourceEnabled(QStringLiteral("melonDS"), preferences.melondsEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("RomM"), preferences.rommEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Xenia"), preferences.xeniaEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Lichii"), preferences.lichiiEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Kyty"), preferences.kytyEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Ports"), preferences.nativePortsEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), preferences.dolphinEnabled());
@@ -639,6 +650,9 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     } else if (key.source.compare(QStringLiteral("Xenia"), Qt::CaseInsensitive) == 0 &&
                preferences.xeniaAutoEnabled()) {
       unifiedGames.setSourceEnabled(QStringLiteral("Xenia"), true);
+    } else if (key.source.compare(QStringLiteral("Lichii"), Qt::CaseInsensitive) == 0 &&
+               preferences.lichiiAutoEnabled()) {
+      unifiedGames.setSourceEnabled(QStringLiteral("Lichii"), true);
     } else if (key.source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0 &&
                preferences.dolphinAutoEnabled()) {
       unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), true);
@@ -714,6 +728,11 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                  xeniaLibrary != nullptr &&
                  (preferences.xeniaEnabled() || preferences.xeniaAutoEnabled())) {
         xeniaLibrary->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("Lichii"), Qt::CaseInsensitive) == 0 &&
+                 lichiiLibrary != nullptr &&
+                 (preferences.lichiiEnabled() || preferences.lichiiAutoEnabled())) {
+        lichiiLibrary->refresh();
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0 &&
                  dolphinLibrary != nullptr &&
@@ -1189,6 +1208,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   engine.rootContext()->setContextProperty(QStringLiteral("MelondsLibrary"), melondsLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("RommLibrary"), rommGames.get());
   engine.rootContext()->setContextProperty(QStringLiteral("XeniaLibrary"), xeniaLibrary);
+  engine.rootContext()->setContextProperty(QStringLiteral("LichiiLibrary"), lichiiLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("KytyLibrary"), kytyLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("NativePortLibrary"), nativePortLibrary);
   NativePortAdvisor nativePortAdvisor(PortCatalog::bundled(), nativePortLibrary);
@@ -1770,6 +1790,17 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                        if (xeniaLibrary->xeniaDetected() && preferences.xeniaAutoEnabled()) {
                          preferences.setXeniaAutoEnabled(false);
                          preferences.setXeniaEnabled(true);
+                       }
+                     });
+  }
+  if (lichiiLibrary != nullptr &&
+      (preferences.lichiiEnabled() || preferences.lichiiAutoEnabled())) {
+    scheduleStartupScan(748, lichiiLibrary, &LichiiGameModel::refresh);
+    QObject::connect(lichiiLibrary, &LichiiGameModel::statusChanged, lichiiLibrary,
+                     [&preferences, lichiiLibrary] {
+                       if (lichiiLibrary->lichiiDetected() && preferences.lichiiAutoEnabled()) {
+                         preferences.setLichiiAutoEnabled(false);
+                         preferences.setLichiiEnabled(true);
                        }
                      });
   }

@@ -20,6 +20,7 @@ x86_64 and ARM64.
 | RPCS3 | Native; Flatpak found but not accepted | RPCS3 | The game's icon | Recorder | Yes |
 | PPSSPP | Native; Flatpak only for games in its own storage | PPSSPP | Connections only | Recorder | Yes |
 | Ryujinx | Native, Flatpak | Ryujinx | Icon inside the dump with `prod.keys`, or local images | Ryujinx's own and recorder | Yes |
+| Lichii | Native: on your PATH or the AppImage its desktop entry names | Lichii | Icon inside a Switch dump with `prod.keys`, or an image beside the game | Lichii's own and recorder | No |
 | Cemu | Native, Flatpak | Cemu | Icon inside `.wua` archives, Cemu's cache, or an image beside the game | Recorder | Yes |
 | Dolphin | Native, Flatpak | Dolphin's batch mode | Dolphin's cover cache, then GameTDB | Recorder | Yes |
 | shadPS4 | Native, Flatpak | shadPS4 | Icon inside the dump | Recorder | Yes |

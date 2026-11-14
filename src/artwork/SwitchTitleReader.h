@@ -32,7 +32,9 @@ public:
   // Cached icon for a dump: extracts on first use into <cacheRoot>/<key>.jpg.
   // Returns the cache path, or an empty string when the dump has no icon.
   [[nodiscard]] static QString cachedIcon(const QString& romPath, const QString& cacheKey,
-                                          const QString& cacheRoot, SwitchTitleInfo* info = nullptr);
+                                          const QString& cacheRoot, SwitchTitleInfo* info = nullptr,
+                                          const QStringList& keyFiles = defaultKeyFiles(),
+                                          const QStringList& titleKeyFiles = defaultTitleKeyFiles());
   [[nodiscard]] static QString defaultCacheRoot();
 };
 

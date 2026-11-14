@@ -434,7 +434,8 @@ QStringList LibraryFilterModel::emulatorSources() {
   return {QStringLiteral("RomM"), QStringLiteral("RetroArch"), QStringLiteral("Dolphin"),
           QStringLiteral("Ryujinx"), QStringLiteral("Cemu"), QStringLiteral("Xenia"),
           QStringLiteral("PCSX2"), QStringLiteral("RPCS3"), QStringLiteral("PPSSPP"),
-          QStringLiteral("shadPS4"), QStringLiteral("melonDS"), QStringLiteral("Kyty")};
+          QStringLiteral("shadPS4"), QStringLiteral("melonDS"), QStringLiteral("Kyty"),
+          QStringLiteral("Lichii")};
 }
 
 QString LibraryFilterModel::sourceFilter() const {

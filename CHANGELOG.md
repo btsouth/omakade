@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Lichii is a library source. Nintendo Switch and Switch 2 games in the folders Lichii
+  lists, and games it opened with Load File, show in the library and start fullscreen in
+  Lichii. Omakade finds Lichii on your PATH or through the desktop entry its AppImage
+  installs, shows the play time and last played date Lichii keeps, and records dated
+  sessions while a game runs. A Switch 2 package in a portable Lichii folder is named
+  after that folder. Switch 2 games sit with Nintendo Switch games for now.
+
 ## 1.19.0
 
 Steam play recording, a Text size setting and an easier first run.

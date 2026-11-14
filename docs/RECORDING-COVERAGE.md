@@ -98,7 +98,7 @@ it last confirmed instead of ending the session. Paused emulator time counts whi
 process remains matched, so a game left on Dolphin's own menu keeps billing, which is
 existing behavior rather than a property of the record. No other supported emulator
 writes a comparable record, so PPSSPP, melonDS, RetroArch, Cemu, shadPS4, Ryujinx,
-Eden and Xenia keep the command-line and window-title paths. Three limits of the
+Eden, Lichii and Xenia keep the command-line and window-title paths. Three limits of the
 record path are known and unexercised: a game is attributed from the emulator's first
 write, so a picker session shorter than that write and with no resolving title is not
 recorded at all; only one record is watched, so two Dolphin trees running at the same

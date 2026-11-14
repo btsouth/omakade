@@ -49,6 +49,7 @@ class AppSettings final : public QObject {
   Q_PROPERTY(
       bool melondsEnabled READ melondsEnabled WRITE setMelondsEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool xeniaEnabled READ xeniaEnabled WRITE setXeniaEnabled NOTIFY sourcesChanged)
+  Q_PROPERTY(bool lichiiEnabled READ lichiiEnabled WRITE setLichiiEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool kytyEnabled READ kytyEnabled WRITE setKytyEnabled NOTIFY sourcesChanged)
   Q_PROPERTY(bool nativePortsEnabled READ nativePortsEnabled WRITE setNativePortsEnabled NOTIFY
                  sourcesChanged)
@@ -191,6 +192,8 @@ public:
   [[nodiscard]] bool xeniaEnabled() const;
   void setMelondsEnabled(bool value);
   void setXeniaEnabled(bool value);
+  [[nodiscard]] bool lichiiEnabled() const { return m_lichiiEnabled; }
+  void setLichiiEnabled(bool value);
   [[nodiscard]] bool kytyEnabled() const { return m_kytyEnabled; }
   void setKytyEnabled(bool value);
   [[nodiscard]] bool nativePortsEnabled() const { return m_nativePortsEnabled; }
@@ -212,6 +215,8 @@ public:
   [[nodiscard]] bool xeniaAutoEnabled() const;
   void setMelondsAutoEnabled(bool value);
   void setXeniaAutoEnabled(bool value);
+  [[nodiscard]] bool lichiiAutoEnabled() const { return m_lichiiAuto; }
+  void setLichiiAutoEnabled(bool value) { m_lichiiAuto = value; }
   [[nodiscard]] bool kytyAutoEnabled() const { return m_kytyAuto; }
   void setKytyAutoEnabled(bool value) { m_kytyAuto = value; }
   [[nodiscard]] bool nativePortsAutoEnabled() const { return m_nativePortsAuto; }
@@ -390,6 +395,8 @@ private:
   bool m_cemuAuto = true;
   bool m_melondsAuto = true;
   bool m_xeniaAuto = true;
+  bool m_lichiiEnabled = false;
+  bool m_lichiiAuto = true;
   bool m_kytyEnabled = false;
   bool m_kytyAuto = true;
   bool m_nativePortsEnabled = false;

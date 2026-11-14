@@ -35,6 +35,7 @@ FocusScope {
         { label: "SHADPS4", value: "shadPS4", enabled: Preferences.shadps4Enabled, scanner: Shadps4Library },
         { label: "CEMU", value: "Cemu", enabled: Preferences.cemuEnabled, scanner: CemuLibrary },
         { label: "XENIA", value: "Xenia", enabled: Preferences.xeniaEnabled, scanner: XeniaLibrary },
+        { label: "LICHII", value: "Lichii", enabled: Preferences.lichiiEnabled, scanner: LichiiLibrary },
         { label: "KYTY", value: "Kyty", enabled: Preferences.kytyEnabled, scanner: KytyLibrary },
         { label: "PORTS", value: "Ports", enabled: Preferences.nativePortsEnabled, scanner: NativePortLibrary },
         { label: "DOLPHIN", value: "Dolphin", enabled: Preferences.dolphinEnabled, scanner: DolphinLibrary },

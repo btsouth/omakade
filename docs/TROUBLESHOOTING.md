@@ -94,6 +94,7 @@ installed.
 | RPCS3 | `~/.config/rpcs3` | `~/.var/app/net.rpcs3.RPCS3/config/rpcs3` |
 | PPSSPP | `~/.config/ppsspp` | `~/.var/app/org.ppsspp.PPSSPP/config/ppsspp` |
 | Ryujinx | `~/.config/Ryujinx` | `io.github.ryubing.Ryujinx` or `org.ryujinx.Ryujinx` under `~/.var/app` |
+| Lichii | `~/.config/lichii/qt-config.ini` | |
 | shadPS4 | `~/.config/shadps4` or `~/.local/share/shadPS4` | `~/.var/app/net.shadps4.shadPS4` |
 | Cemu | `~/.config/Cemu` or `~/.local/share/Cemu` | `~/.var/app/info.cemu.Cemu` |
 | melonDS | `~/.config/melonDS` | `~/.var/app/net.kuribo64.melonDS/config/melonDS` |
