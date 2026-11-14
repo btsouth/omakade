@@ -829,15 +829,58 @@ bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) 
         item(status)->setVisible(true);
       settle(40);
     };
+    // Highlights hides its length and shortcut rows while highlights are off or Hyprland is
+    // missing, and Streaming turns its rows off without Sunshine. Shown, they are walked too.
+    const auto showHighlightRows = [&] {
+      for (auto* control : window->findChildren<QQuickItem*>())
+        if (control->objectName().startsWith(QStringLiteral("highlightLength")))
+          control->parentItem()->setVisible(true);
+      item("highlightAchievementsToggle")->setVisible(true);
+      auto* shortcut = item("clipShortcutButton");
+      shortcut->setVisible(true);
+      shortcut->setEnabled(true);
+      shortcut->parentItem()->setVisible(true);
+      item("clipShortcutStatus")->setVisible(true);
+      settle(40);
+    };
+    const auto showStreamingRows = [&] {
+      for (const char* button : {"sunshineOmakadeButton", "sunshineGamesButton"})
+        item(button)->parentItem()->setEnabled(true);
+      auto* update = item("sunshineUpdateButton");
+      update->setEnabled(true);
+      update->parentItem()->setVisible(true);
+      settle(40);
+    };
+    const auto openSubpage = [&](const char* property, const QVariant& value) {
+      settings->setProperty(property, value);
+      QMetaObject::invokeMethod(settings, "pageChanged");
+      settle(80);
+    };
     const QVariantList sections = settings->property("sections").toList();
     for (const QVariant& entry : sections) {
       const auto page = entry.toMap();
       const QString name = QStringLiteral("Settings > %1").arg(page.value("label").toString());
       QMetaObject::invokeMethod(settings, "chooseSection", Q_ARG(QVariant, page.value("section")));
       settle(80);
-      if (page.value("section").toInt() == 3) showGameModeRows();
+      const int section = page.value("section").toInt();
+      if (section == 3) showGameModeRows();
+      if (section == 8) showHighlightRows();
+      if (section == 6) showStreamingRows();
       sweep.surface(name, settings);
       sweep.rows(name, settings, settingsContent);
+      // A source's details and each connection open as a page of their own.
+      if (section == 0) {
+        openSubpage("sourceDetail", QStringLiteral("STEAM"));
+        sweep.rows(name + QStringLiteral(" > STEAM"), settings, settingsContent);
+        openSubpage("sourceDetail", QString());
+      }
+      if (section == 2) {
+        for (int connection = 0; connection < 4; ++connection) {
+          openSubpage("connection", connection);
+          sweep.rows(name + QStringLiteral(" > connection %1").arg(connection), settings, settingsContent);
+        }
+        openSubpage("connection", -1);
+      }
     }
     open("diagnosticsOpen", false);
 

@@ -2155,6 +2155,7 @@ import "Counts.js" as Counts
                     Layout.fillWidth: true
                     visible: Sunshine !== null && Sunshine.detected
                     GlassButton {
+                        objectName: "sunshineUpdateButton"
                         compact: true
                         text: "UPDATE APP LIST"
                         enabled: Sunshine && !Sunshine.busy
