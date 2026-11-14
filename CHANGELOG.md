@@ -72,6 +72,8 @@ Steam play recording, a Text size setting and an easier first run.
   Mode's own.
 - Game Mode reports an interrupted session it could not fully undo and tries again later.
   A damaged recovery record is set aside so Game Mode can start again.
+- With Hold launcher windows on, a game started through Sunshine, such as from Moonlight,
+  gets the same Starting screen as Play, and its launcher's windows stay out of sight.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.
 - The favorite button no longer favorites the game behind an open editor or dialog.
 - Opening a Settings category focuses its first control, and removing a filter chip moves

@@ -38,6 +38,7 @@ class QWindow;
 class RetroArchGameModel;
 class SaveBackups;
 class SaveProtection;
+class SingleInstance;
 class UnifiedGameModel;
 
 // What the harness asks of the app for this run. The shipped binary has no harness, so every
@@ -87,6 +88,7 @@ struct AppContext {
   QGuiApplication* application = nullptr;
   OmarchyTheme* theme = nullptr;
   QElapsedTimer* startupTimer = nullptr;
+  SingleInstance* singleInstance = nullptr;
   const bool* isolatedTest = nullptr;
   const QString* settingsPath = nullptr;
   AppSettings* preferences = nullptr;
