@@ -832,9 +832,14 @@ bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) 
     // Highlights hides its length and shortcut rows while highlights are off or Hyprland is
     // missing, and Streaming turns its rows off without Sunshine. Shown, they are walked too.
     const auto showHighlightRows = [&] {
-      for (auto* control : window->findChildren<QQuickItem*>())
+      // The length buttons come from a Repeater, so they are found in the item tree.
+      QList<QQuickItem*> pending{item("highlightSettings")};
+      while (!pending.isEmpty()) {
+        auto* control = pending.takeLast();
         if (control->objectName().startsWith(QStringLiteral("highlightLength")))
           control->parentItem()->setVisible(true);
+        pending.append(control->childItems());
+      }
       item("highlightAchievementsToggle")->setVisible(true);
       auto* shortcut = item("clipShortcutButton");
       shortcut->setVisible(true);
