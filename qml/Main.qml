@@ -1154,7 +1154,7 @@ ApplicationWindow {
             if (!root.gameModeLeaveChecking) return
             root.gameModeLeaveChecking = false
             if (!GameMode.active || GameMode.busy) return
-            if (otherWindows > 0 || root.gameModeGameRunning()) root.openGameModeControls()
+            if (otherWindows > 0 || root.gameModeGameRunning()) root.openGameModeControlsOver(otherWindows > 0)
             else root.endGameModeByChoice()
         }
         function onFullscreenFallback() { root.fallBackToFullscreen() }
@@ -1376,9 +1376,14 @@ ApplicationWindow {
     }
 
     function openGameModeControls() {
+        root.openGameModeControlsOver(false)
+    }
+    // windowsOnWorkspace: other windows share the Game Mode workspace and may be drawn over
+    // this one, so the controls go on the overlay surface.
+    function openGameModeControlsOver(windowsOnWorkspace) {
         root.gameModeLeaveChecking = false
         root.diagnosticsOpen = false
-        if (root.showGameModeOverlay())
+        if (root.showGameModeOverlay(windowsOnWorkspace === true))
             return
         if (gameModeControlsLoader.item) gameModeControlsLoader.item.openControls()
     }
@@ -1386,13 +1391,15 @@ ApplicationWindow {
     // The Game Mode controls can only live in the Omakade window when it is the active
     // window: a fullscreen game keeps focus with the compositor and the popup would open
     // behind it. A game running, or the main window simply not focused, means the layer
-    // surface has to take over. It returns false when the surface is unavailable, which
-    // leaves the in-window popup as the fallback.
+    // surface has to take over. So do other windows on the Game Mode workspace: a floating
+    // one, such as a Steam window left after a launch, stays drawn over this window even
+    // once it has focus. It returns false when the surface is unavailable, which leaves the
+    // in-window popup as the fallback.
     readonly property string gameModeOutputName: GameMode.sessionOutputName || ""
-    function showGameModeOverlay() {
+    function showGameModeOverlay(windowsOnWorkspace) {
         if (!root.gameModeActive)
             return false
-        if (root.active && !Launcher.gameRunning)
+        if (root.active && !Launcher.gameRunning && windowsOnWorkspace !== true)
             return false
         if (!GameModeOverlay.prepare(gameModeOverlay, root.gameModeOutputName))
             return false

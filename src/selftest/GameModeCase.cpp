@@ -15,6 +15,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -32,12 +33,13 @@ void driveGameMode(Harness& harness, AppContext& app) {
   GameModeSession& gameMode = *app.gameMode;
   QWindow*& rootWindow = *app.rootWindow;
   LibraryGameModeTestCompositor& gameModeTestCompositor = harness.fixtures.gameModeTestCompositor;
+  QQmlApplicationEngine* engine = app.engine;
   // Game Mode holds Couch Mode for its session. Every way of switching modes opens its
   // controls instead of leaving, and leaving returns the window to the mode it had.
   SingleInstance* singleInstance = app.singleInstance;
   UnifiedGameModel* unifiedGames = app.unifiedGames;
   QTimer::singleShot(200, &application, [&application, rootWindow, &gameMode, &gameStop, &controller,
-                                       &gameModeTestCompositor, singleInstance, unifiedGames] {
+                                       &gameModeTestCompositor, singleInstance, unifiedGames, engine] {
     const auto fail = [&application](const QString& message) {
       qCritical().noquote() << message;
       application.exit(EXIT_FAILURE);
@@ -291,6 +293,17 @@ void driveGameMode(Harness& harness, AppContext& app) {
       }
     }
     // A game on the Game Mode workspace: every way of leaving opens the controls instead.
+    // Another window there can be drawn over this one even while this one has focus, as a
+    // floating Steam window is, so the controls ask for the overlay surface, which is always
+    // in front. The spy declines, as offscreen has no layer shell, and they open in the window.
+    rootWindow->requestActivate();
+    if (!settled([rootWindow] { return rootWindow->isActive(); })) {
+      fail(QStringLiteral("Main window did not gain focus before the Game Mode controls check"));
+      return;
+    }
+    auto* overlaySpy = new GameModeOverlaySpy(&application);
+    QObject* realOverlay = engine->rootContext()->contextProperty(QStringLiteral("GameModeOverlay")).value<QObject*>();
+    engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), overlaySpy);
     gameModeTestCompositor.otherWindows = 1;
     rootWindow->setProperty("homeOpen", false);
     QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
@@ -300,6 +313,20 @@ void driveGameMode(Harness& harness, AppContext& app) {
       fail(QStringLiteral("Switching modes in Game Mode did not focus Back to Library"));
       return;
     }
+    if (overlaySpy->requests != 1) {
+      fail(QStringLiteral("Game Mode controls with another window on the workspace did not ask "
+                          "for the overlay in front (%1 requests)").arg(overlaySpy->requests));
+      return;
+    }
+    // Opened from the focused window with nothing else on the workspace, as Settings does,
+    // they stay in the window.
+    QMetaObject::invokeMethod(rootWindow, "openGameModeControls");
+    QCoreApplication::processEvents();
+    if (overlaySpy->requests != 1) {
+      fail(QStringLiteral("Game Mode controls in the focused window asked for the overlay"));
+      return;
+    }
+    engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), realOverlay);
     QMetaObject::invokeMethod(rootWindow, "setCouchMode", Q_ARG(QVariant, QVariant(false)));
     if (!settled([rootWindow] { return !rootWindow->property("gameModeLeaveChecking").toBool(); }) ||
         !rootWindow->property("couchMode").toBool() || !gameMode.active()) {

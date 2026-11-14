@@ -3,6 +3,8 @@
 #include "gamemode/GameModePorts.h"
 #include "tracking/GameStopper.h"
 
+#include <QObject>
+#include <QQuickWindow>
 #include <QString>
 #include <QVector>
 
@@ -84,6 +86,20 @@ public:
   }
   GameStop::LeverResult stopFlatpakApp(const QString&) override {
     return GameStop::LeverResult::Done;
+  }
+};
+
+// Stands in for Game Mode's layer-shell overlay, which an offscreen run cannot create. It
+// counts the times the controls ask for it and declines, so they open in the window.
+class GameModeOverlaySpy final : public QObject {
+  Q_OBJECT
+
+public:
+  using QObject::QObject;
+  int requests = 0;
+  Q_INVOKABLE bool prepare(QQuickWindow*, const QString&) {
+    ++requests;
+    return false;
   }
 };
 

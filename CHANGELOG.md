@@ -76,6 +76,8 @@ Steam play recording, a Text size setting and an easier first run.
   gets the same Starting screen as Play, and its launcher's windows stay out of sight.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.
 - The favorite button no longer favorites the game behind an open editor or dialog.
+- Home in Game Mode opens the Game Mode controls in front of any other window on the
+  screen, such as a Steam window left open after a launch.
 - Opening a Settings category focuses its first control, and removing a filter chip moves
   focus to Filters.
 - Up and Down in Settings move one row at a time. Up from Game Mode in Settings > Controls
