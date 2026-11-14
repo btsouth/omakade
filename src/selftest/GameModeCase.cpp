@@ -177,9 +177,11 @@ void driveGameMode(Harness& harness, AppContext& app) {
       QCoreApplication::processEvents();
     }
     // `omakade --play`, which Sunshine sends, reaching this window. In Game Mode with
-    // launcher windows held it goes out the way Play does, so the launch hold starts;
-    // otherwise it launches directly, as before. The demo game cannot launch either way,
-    // and each way says so in its own words.
+    // launcher windows held it goes out through Play's launch feedback and dispatch, the
+    // path that starts the launch hold for a real game. Otherwise, and for a game not in
+    // the library or while another launch is still going out, it launches directly, as
+    // before. Demo games cannot launch, so this checks the path and not the hold itself;
+    // each way says so in its own words.
     auto* launchFeedback = rootWindow->findChild<QObject*>(QStringLiteral("launchFeedback"));
     auto* playToast = rootWindow->findChild<QObject*>(QStringLiteral("toast"));
     const LaunchKey playKey = LaunchKey::parse(QStringLiteral("Demo::demo-1"));
@@ -191,16 +193,26 @@ void driveGameMode(Harness& harness, AppContext& app) {
       return;
     }
     const auto playDirectly = [&] {
+      const bool pendingBefore = launchFeedback->property("pending").toBool();
       playToast->setProperty("message", QString{});
       emit singleInstance->playRequested(playKey.toString());
-      return !launchFeedback->property("pending").toBool() &&
+      return launchFeedback->property("pending").toBool() == pendingBefore &&
              playToast->property("message").toString() == QStringLiteral("Demo games cannot be launched yet.");
+    };
+    const auto playMissing = [&] {
+      playToast->setProperty("message", QString{});
+      emit singleInstance->playRequested(QStringLiteral("Demo::not-a-game"));
+      return !launchFeedback->property("pending").toBool() &&
+             playToast->property("message").toString() ==
+                 QStringLiteral("Demo::not-a-game is not in the Omakade library");
     };
     const auto playLikePlay = [&] {
       emit singleInstance->playRequested(playKey.toString());
+      const QString opening = QStringLiteral("Opening ") + playTitle + QStringLiteral("...");
+      // A second --play while the first is still going out launches directly.
       return launchFeedback->property("pending").toBool() &&
-             launchFeedback->property("message").toString() ==
-                 QStringLiteral("Opening ") + playTitle + QStringLiteral("...") &&
+             launchFeedback->property("message").toString() == opening && playDirectly() &&
+             launchFeedback->property("message").toString() == opening &&
              settled([launchFeedback] { return !launchFeedback->property("pending").toBool(); }) &&
              launchFeedback->property("message").toString() ==
                  QStringLiteral("Demo games cannot be launched");
@@ -227,8 +239,13 @@ void driveGameMode(Harness& harness, AppContext& app) {
       return;
     }
     gameMode.setHoldLaunchers(true);
-    const bool heldPlay = playLikePlay();
+    const bool missingPlay = playMissing();
+    const bool heldPlay = missingPlay && playLikePlay();
     gameMode.setHoldLaunchers(false);
+    if (!missingPlay) {
+      fail(QStringLiteral("--play of a game not in the library did not launch directly"));
+      return;
+    }
     if (!heldPlay) {
       fail(QStringLiteral("--play in Game Mode with the launch hold did not go out the way Play does"));
       return;
