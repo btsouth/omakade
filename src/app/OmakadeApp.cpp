@@ -121,6 +121,36 @@
 int runOmakade(int argc, char* argv[], AppHarness* harness) {
   QStringList rawArguments;
   for (int index = 0; index < argc; ++index) rawArguments.append(QString::fromLocal8Bit(argv[index]));
+  // --help and --version only print, so they need no display and open no window.
+  if (!harness && (rawArguments.contains("--help") || rawArguments.contains("-h"))) {
+    fputs("Usage: omakade [option]\n"
+          "\n"
+          "Commands that open Omakade reuse the running window when there is one.\n"
+          "\n"
+          "  --demo                Open a fictional library to try Omakade\n"
+          "  --couch               Open fullscreen in Game Mode on the current display\n"
+          "  --reduced-motion      Open with reduced motion turned on and saved\n"
+          "  --play <key>          Launch one game, for example --play Steam::620\n"
+          "  --quit                Close the running Omakade window\n"
+          "  --game-mode           Start Game Mode on the display and sound chosen in Settings\n"
+          "  --game-mode-toggle    Open the in-game guide over a game; otherwise start Game\n"
+          "                        Mode, return to the desktop, or resume\n"
+          "  --game-mode-desktop   Return to the desktop and keep Game Mode ready to resume\n"
+          "  --game-mode-return    Resume Game Mode after returning to the desktop\n"
+          "  --game-mode-exit      End Game Mode, or undo what an interrupted session left\n"
+          "                        changed\n"
+          "  --clip                Save a highlight of the running game\n"
+          "  -h, --help            Show this help\n"
+          "  --version             Show the version\n"
+          "\n"
+          "A --play key is Source:runner:id, for example Heroic:legendary:Sugar.\n",
+          stdout);
+    return EXIT_SUCCESS;
+  }
+  if (!harness && rawArguments.contains("--version")) {
+    fputs("omakade " OMAKADE_VERSION "\n", stdout);
+    return EXIT_SUCCESS;
+  }
   const bool guideShortcut = rawArguments.contains("--game-mode-toggle") || rawArguments.contains("--guide-toggle");
   bool guideFallback = rawArguments.contains("--game-mode-fallback");
   // A controller's Home with no game running does what Start does in Omakade.
