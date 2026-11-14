@@ -39,6 +39,51 @@ import "Counts.js" as Counts
                 return false
             return settingsOverlay.focusCurrentSection()
         }
+        // Up and Down on a page go to the next row, whichever side its control sits on. The
+        // window's search prefers a control in line, so Up from a button at the left passed
+        // every row whose button sits at the right and landed on a full-width dropdown.
+        function navigate(current, key) {
+            if ((key !== Qt.Key_Up && key !== Qt.Key_Down) || !host.isWithin(current, settingsScroll))
+                return false
+            const content = settingsScroll.contentItem
+            const from = current.mapToItem(content, 0, 0)
+            const fromTop = from.y, fromBottom = from.y + current.height
+            const fromLeft = from.x, fromRight = from.x + current.width
+            const found = []
+            let candidate = current.nextItemInFocusChain(true)
+            for (let attempts = 0; candidate && candidate !== current && attempts < 300; ++attempts) {
+                if (host.isWithin(candidate, settingsScroll) && candidate.visible && candidate.enabled
+                        && candidate.activeFocusOnTab && candidate.width > 0 && candidate.height > 0
+                        && !host.isWithin(current, candidate) && !host.isWithin(candidate, current)
+                        && (candidate["controllerNavigation"] !== false
+                            || candidate["spatialFocusDestination"] === true
+                            || candidate["controllerVerticalNavigation"] === true)) {
+                    const at = candidate.mapToItem(content, 0, 0)
+                    const top = at.y, bottom = at.y + candidate.height
+                    const gap = key === Qt.Key_Up ? fromTop - bottom : top - fromBottom
+                    if (gap >= -1)
+                        found.push({ item: candidate, top: top, bottom: bottom, gap: gap,
+                                     left: at.x, right: at.x + candidate.width })
+                }
+                candidate = candidate.nextItemInFocusChain(true)
+            }
+            if (found.length === 0) return false
+            let nearest = found[0]
+            for (const entry of found) if (entry.gap < nearest.gap) nearest = entry
+            // In that row, the control most in line with this one.
+            let chosen = null
+            let chosenScore = Number.MAX_VALUE
+            for (const entry of found) {
+                if (Math.min(entry.bottom, nearest.bottom) - Math.max(entry.top, nearest.top) <= 0) continue
+                const crossGap = Math.max(0, Math.max(fromLeft, entry.left) - Math.min(fromRight, entry.right))
+                const cross = Math.abs(entry.left + entry.right - fromLeft - fromRight) / 2
+                const score = crossGap * 100000 + cross
+                if (score < chosenScore) { chosen = entry.item; chosenScore = score }
+            }
+            chosen.forceActiveFocus(Qt.TabFocusReason)
+            settingsOverlay.reveal(chosen)
+            return true
+        }
         function reveal(item) {
             if (host.isWithin(item, settingsScroll)) host.revealInScrollView(settingsScroll, item)
             else if (host.isWithin(item, categoryList)) host.revealInScrollView(categoryList, item)
@@ -2110,6 +2155,7 @@ import "Counts.js" as Counts
                     Layout.fillWidth: true
                     visible: Sunshine !== null && Sunshine.detected
                     GlassButton {
+                        objectName: "sunshineUpdateButton"
                         compact: true
                         text: "UPDATE APP LIST"
                         enabled: Sunshine && !Sunshine.busy

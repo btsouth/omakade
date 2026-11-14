@@ -525,6 +525,7 @@ ApplicationWindow {
         if (container === bulkOrganizationEditor && bulkOrganizationEditor.navigate(current, key)) return true
         if (container === homeScreen && homeScreen.navigate(current, key)) return true
         if (container === savedFiltersEditor && savedFiltersEditor.navigate(current, key)) return true
+        if (settingsOverlay && container === settingsOverlay && settingsOverlay.navigate(current, key)) return true
         if (!root.isWithin(current, container)) {
             root.focusWithin(container, true)
             return true
