@@ -293,6 +293,12 @@ set_tests_properties(
     TIMEOUT 5
 )
 
+add_test(NAME omakade_cli_prints_without_display
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/CommandLineTests.py
+          $<TARGET_FILE:omakade> ${PROJECT_VERSION}
+)
+set_tests_properties(omakade_cli_prints_without_display PROPERTIES TIMEOUT 30)
+
 add_test(NAME omakade_couch_thousand_game_navigation
   COMMAND omakade-uitest --couch --stress-test --couch-navigation-test --render-size=1920x1080
 )

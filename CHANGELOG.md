@@ -108,6 +108,8 @@ Steam play recording, a Text size setting and an easier first run.
 
 - The UI test harness moved out of the installed `omakade`. `omakade --smoke-test` still
   checks the installed app.
+- `omakade --help` and `omakade --version` print and exit, even over SSH with no display,
+  instead of failing to start or opening the window.
 - The user services start the binaries from the install prefix, so a `/usr/local` build
   works.
 - The package installs Troubleshooting, the in-game guide page, Architecture and the
