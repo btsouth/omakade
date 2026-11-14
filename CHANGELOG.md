@@ -76,6 +76,8 @@ Steam play recording, a Text size setting and an easier first run.
 - The favorite button no longer favorites the game behind an open editor or dialog.
 - Opening a Settings category focuses its first control, and removing a filter chip moves
   focus to Filters.
+- Up and Down in Settings move one row at a time. Up from Game Mode in Settings > Controls
+  no longer skips to Sound, and Sources and Appearance no longer skip rows either.
 - OmaStore installs can use the controller Home button. Turn it on in Settings > Controls;
   it usually needs turning off and on again after each login.
 

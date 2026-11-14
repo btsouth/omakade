@@ -706,6 +706,66 @@ struct Sweep {
         failures << QStringLiteral("%1: %2 cannot be reached with the d-pad").arg(name, describe(item));
     qInfo().noquote() << QStringLiteral("Sweep %1: %2 controls").arg(name).arg(items.size());
   }
+
+  // Down from the first row and Up from the last go one row at a time through every row of
+  // the page. The checks above only see a skip when the skipped control sits in line, and Up
+  // from a button at the left passed every row whose button sits at the right.
+  void rows(const QString& name, QQuickItem* container, QQuickItem* content) {
+    settle(60);
+    QList<QQuickItem*> items;
+    for (auto* item : focusables(container))
+      if (within(item, content)) items.append(item);
+    if (items.isEmpty()) return;
+    const auto rect = [content](QQuickItem* item) { return item->mapRectToItem(content, item->boundingRect()); };
+    std::stable_sort(items.begin(), items.end(), [&rect](QQuickItem* a, QQuickItem* b) {
+      const QRectF first = rect(a), second = rect(b);
+      return first.top() != second.top() ? first.top() < second.top() : first.left() < second.left();
+    });
+    // A row is every control level with another in it.
+    QList<QList<QQuickItem*>> lines;
+    qreal bottom = 0;
+    for (auto* item : items) {
+      const QRectF at = rect(item);
+      if (lines.isEmpty() || at.top() >= bottom - 4) {
+        lines.append(QList<QQuickItem*>{});
+        bottom = at.bottom();
+      } else {
+        bottom = std::max(bottom, at.bottom());
+      }
+      lines.last().append(item);
+    }
+    const auto lineOf = [&lines](QQuickItem* focus) {
+      for (int line = 0; line < lines.size(); ++line)
+        for (auto* item : lines[line])
+          if (within(focus, item)) return line;
+      return -1;
+    };
+    const auto focusOn = [&](QQuickItem* item) {
+      item->forceActiveFocus(Qt::TabFocusReason);
+      QMetaObject::invokeMethod(window, "revealNavigationItem",
+                                Q_ARG(QVariant, QVariant::fromValue<QObject*>(container)),
+                                Q_ARG(QVariant, QVariant::fromValue<QObject*>(item)));
+      settle(5);
+    };
+    for (int key : {Qt::Key_Down, Qt::Key_Up}) {
+      const int step = key == Qt::Key_Down ? 1 : -1;
+      int line = key == Qt::Key_Down ? 0 : int(lines.size()) - 1;
+      focusOn(lines[line].first());
+      for (; line + step >= 0 && line + step < lines.size(); line += step) {
+        auto* source = window->activeFocusItem();
+        press(key);
+        ++presses;
+        auto* focus = window->activeFocusItem();
+        if (lineOf(focus) != line + step) {
+          failures << QStringLiteral("%1: %2 from %3 went to %4, not the next row (%5)")
+                          .arg(name, keyName(key), describe(source), describe(focus),
+                               describe(lines[line + step].first()));
+          focusOn(lines[line + step].first());
+        }
+      }
+    }
+    qInfo().noquote() << QStringLiteral("Rows %1: %2 rows").arg(name).arg(lines.size());
+  }
 };
 }  // namespace
 
@@ -753,12 +813,31 @@ bool runCouchNavigationSweep(QQuickWindow* window, ControllerInput& controller) 
     // Every Settings page.
     open("diagnosticsOpen", true);
     auto* settings = item("settingsOverlay");
+    auto* settingsContent = item("settingsContent");
+    // A test run has no Hyprland, notification, Steam or Home button service, so Controls
+    // hides the rows for them. Shown, they are the rows Up from Game Mode skipped.
+    const auto showGameModeRows = [&] {
+      for (const char* button : {"gameModeNotificationsButton", "gameModeWarmSteamButton",
+                                 "gameModeHoldLaunchersButton", "gameModeShortcutButton",
+                                 "gameModeGuideButton", "homeButtonOpensGuide"}) {
+        auto* control = item(button);
+        control->setVisible(true);
+        control->parentItem()->setVisible(true);
+      }
+      for (const char* status : {"gameModeShortcutStatus", "gameModeGuideButtonStatus",
+                                 "homeButtonOpensGuideStatus"})
+        item(status)->setVisible(true);
+      settle(40);
+    };
     const QVariantList sections = settings->property("sections").toList();
     for (const QVariant& entry : sections) {
       const auto page = entry.toMap();
+      const QString name = QStringLiteral("Settings > %1").arg(page.value("label").toString());
       QMetaObject::invokeMethod(settings, "chooseSection", Q_ARG(QVariant, page.value("section")));
       settle(80);
-      sweep.surface(QStringLiteral("Settings > %1").arg(page.value("label").toString()), settings);
+      if (page.value("section").toInt() == 3) showGameModeRows();
+      sweep.surface(name, settings);
+      sweep.rows(name, settings, settingsContent);
     }
     open("diagnosticsOpen", false);
 
