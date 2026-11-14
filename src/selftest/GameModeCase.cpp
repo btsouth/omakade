@@ -1,12 +1,15 @@
 #include "selftest/SelfTest.h"
 
 #include "app/AppSettings.h"
+#include "app/SingleInstance.h"
 #include "selftest/SelfTestSupport.h"
 #include "gamemode/GameModeSession.h"
 #include "input/ControllerInput.h"
+#include "launch/PlayRequest.h"
 #include "library/GameStopService.h"
 #include "library/HomeModel.h"
 #include "library/LibraryFilterModel.h"
+#include "library/UnifiedGameModel.h"
 
 #include <QDebug>
 #include <QElapsedTimer>
@@ -31,8 +34,10 @@ void driveGameMode(Harness& harness, AppContext& app) {
   LibraryGameModeTestCompositor& gameModeTestCompositor = harness.fixtures.gameModeTestCompositor;
   // Game Mode holds Couch Mode for its session. Every way of switching modes opens its
   // controls instead of leaving, and leaving returns the window to the mode it had.
+  SingleInstance* singleInstance = app.singleInstance;
+  UnifiedGameModel* unifiedGames = app.unifiedGames;
   QTimer::singleShot(200, &application, [&application, rootWindow, &gameMode, &gameStop, &controller,
-                                       &gameModeTestCompositor] {
+                                       &gameModeTestCompositor, singleInstance, unifiedGames] {
     const auto fail = [&application](const QString& message) {
       qCritical().noquote() << message;
       application.exit(EXIT_FAILURE);
@@ -171,6 +176,41 @@ void driveGameMode(Harness& harness, AppContext& app) {
       rootWindow->requestActivate();
       QCoreApplication::processEvents();
     }
+    // `omakade --play`, which Sunshine sends, reaching this window. In Game Mode with
+    // launcher windows held it goes out the way Play does, so the launch hold starts;
+    // otherwise it launches directly, as before. The demo game cannot launch either way,
+    // and each way says so in its own words.
+    auto* launchFeedback = rootWindow->findChild<QObject*>(QStringLiteral("launchFeedback"));
+    auto* playToast = rootWindow->findChild<QObject*>(QStringLiteral("toast"));
+    const LaunchKey playKey = LaunchKey::parse(QStringLiteral("Demo::demo-1"));
+    const QString playTitle =
+        PlayRequest::findInstallation(*unifiedGames, playKey, nullptr).value("title").toString();
+    if (singleInstance == nullptr || launchFeedback == nullptr || playToast == nullptr ||
+        playTitle.isEmpty()) {
+      fail(QStringLiteral("The --play fixture is missing"));
+      return;
+    }
+    const auto playDirectly = [&] {
+      playToast->setProperty("message", QString{});
+      emit singleInstance->playRequested(playKey.toString());
+      return !launchFeedback->property("pending").toBool() &&
+             playToast->property("message").toString() == QStringLiteral("Demo games cannot be launched yet.");
+    };
+    const auto playLikePlay = [&] {
+      emit singleInstance->playRequested(playKey.toString());
+      return launchFeedback->property("pending").toBool() &&
+             launchFeedback->property("message").toString() ==
+                 QStringLiteral("Opening ") + playTitle + QStringLiteral("...") &&
+             settled([launchFeedback] { return !launchFeedback->property("pending").toBool(); }) &&
+             launchFeedback->property("message").toString() ==
+                 QStringLiteral("Demo games cannot be launched");
+    };
+    gameMode.setHoldLaunchers(true);
+    if (!playDirectly()) {
+      fail(QStringLiteral("--play outside Game Mode did not launch directly"));
+      return;
+    }
+    gameMode.setHoldLaunchers(false);
     const Qt::WindowState warmState = rootWindow->windowState();
     gameMode.enter();
     if (!rootWindow->property("couchMode").toBool() || !rootWindow->isVisible() ||
@@ -180,6 +220,17 @@ void driveGameMode(Harness& harness, AppContext& app) {
     }
     if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); })) {
       fail(QStringLiteral("Game Mode did not start"));
+      return;
+    }
+    if (!playDirectly()) {
+      fail(QStringLiteral("--play in Game Mode without the launch hold did not launch directly"));
+      return;
+    }
+    gameMode.setHoldLaunchers(true);
+    const bool heldPlay = playLikePlay();
+    gameMode.setHoldLaunchers(false);
+    if (!heldPlay) {
+      fail(QStringLiteral("--play in Game Mode with the launch hold did not go out the way Play does"));
       return;
     }
     if (!rootWindow->property("couchMode").toBool() ||

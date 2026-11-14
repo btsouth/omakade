@@ -1812,6 +1812,23 @@ ApplicationWindow {
             title: selectedGame.title, installation: selectedInstallation, art: launchArt(selectedGame)})
     }
 
+    // A --play request, such as Sunshine's, while Game Mode holds launcher windows. It goes
+    // out the way Play does, with the launch hold and the Starting screen. False leaves it
+    // to the direct launch.
+    function playFromRequest(installation) {
+        const gameKey = launchIdentity(installation)
+        if (!GameMode.active || GameMode.parked || GameMode.busy || !GameMode.holdLaunchers
+                || launchBlocked(gameKey)) return false
+        return launchFeedback.begin({gameKey: gameKey, title: installation.title || "",
+            installation: installation, art: {
+                coverPath: String(installation.coverPath || ""),
+                heroPath: String(installation.heroPath || ""),
+                accentStart: installation.accentStart ? String(installation.accentStart) : "",
+                accentEnd: installation.accentEnd ? String(installation.accentEnd) : "",
+                coverMark: installation.coverMark || ""
+            }})
+    }
+
     // What the Starting screen shows of a game: the details page's cover, backdrop and
     // colours, kept with the launch request as selection can change before dispatch.
     function launchArt(game) {

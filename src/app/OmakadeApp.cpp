@@ -278,6 +278,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     return result.ok ? EXIT_SUCCESS : EXIT_FAILURE;
   }
   SingleInstance singleInstance;
+  app.singleInstance = &singleInstance;
   const QByteArray instanceCommand =
       !playKey.isEmpty()                 ? QByteArray("play ") + playKey.toUtf8()
       : gameModeRequest                  ? QByteArray("game-mode enter")
@@ -1550,10 +1551,25 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                                               "Settings for the recorder status.")));
                    });
   QObject::connect(&singleInstance, &SingleInstance::playRequested, &application,
-                   [&unifiedGames, &launcher, rootObject](const QString& key) {
+                   [&unifiedGames, &launcher, &gameMode, rootObject](const QString& key) {
+                     const LaunchKey request = LaunchKey::parse(key);
+                     // With launcher windows held in Game Mode, a Sunshine launch goes out
+                     // the way Play does, so the launch hold keeps its launcher out of sight.
+                     if (gameMode.active() && gameMode.holdLaunchers()) {
+                       const QVariantMap installation =
+                           PlayRequest::findInstallation(unifiedGames, request, nullptr);
+                       QVariant taken = false;
+                       if (!installation.isEmpty() &&
+                           installation.value(QStringLiteral("installed"), true).toBool() &&
+                           QMetaObject::invokeMethod(rootObject, "playFromRequest",
+                                                     Q_RETURN_ARG(QVariant, taken),
+                                                     Q_ARG(QVariant, installation)) &&
+                           taken.toBool()) {
+                         return;
+                       }
+                     }
                      QString error;
-                     const bool okay = PlayRequest::perform(unifiedGames, launcher,
-                                                            LaunchKey::parse(key), &error);
+                     const bool okay = PlayRequest::perform(unifiedGames, launcher, request, &error);
                      QMetaObject::invokeMethod(
                          rootObject, "showToast",
                          Q_ARG(QVariant, okay ? QStringLiteral("Launching from Sunshine") : error));

@@ -264,7 +264,8 @@ what was missing.
 Omakade knows the game's window by its Steam app, by its install folder for Heroic,
 Lutris, GOG, Faugus and Battle.net games, or as the process it started for emulators and
 games you added yourself. Everything else that opens on the Game Mode display while the
-game starts is held.
+game starts is held. A game started with `omakade --play`, as Sunshine does, while Game
+Mode is open is held the same way as one started with Play.
 
 Under Proton, every window a Steam game opens carries its Steam app name, including a
 publisher launcher such as Rockstar's or EA's. Omakade tells them apart by the program
