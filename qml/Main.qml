@@ -1403,6 +1403,7 @@ ApplicationWindow {
             return false
         if (!GameModeOverlay.prepare(gameModeOverlay, root.gameModeOutputName))
             return false
+        root.gameModeOverlayFromLibrary = root.active && !Launcher.gameRunning
         gameModeOverlay.visible = true
         gameModeOverlay.requestActivate()
         Qt.callLater(function() {
@@ -1416,11 +1417,20 @@ ApplicationWindow {
         if (gameModeOverlay.visible && !overlayHost.activeActionMenu)
             root.hideGameModeOverlay()
     }
+    // True while the overlay is open over the library only because of another window on the
+    // workspace. Omakade had focus then, so closing the overlay gives it back.
+    property bool gameModeOverlayFromLibrary: false
     function hideGameModeOverlay() {
         if (!gameModeOverlay.visible)
             return
+        const fromLibrary = root.gameModeOverlayFromLibrary
+        root.gameModeOverlayFromLibrary = false
         overlayGameModePanel.closeAll()
         gameModeOverlay.visible = false
+        if (fromLibrary && GameMode.active && !GameMode.busy) {
+            root.requestActivate()
+            GameMode.focusWindow()
+        }
     }
 
     // The shortcut always returns to the desktop or resumes the same session.
@@ -1568,6 +1578,7 @@ ApplicationWindow {
             host: overlayHost
             anchorItem: overlayHost
             overlayMode: true
+            fromLibrary: root.gameModeOverlayFromLibrary
         }
     }
 

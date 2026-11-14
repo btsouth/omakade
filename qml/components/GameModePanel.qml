@@ -11,6 +11,8 @@ ActionMenu {
     // to the game rather than the library, and the stop dialog opens without the gap that
     // would otherwise hide the overlay between the two menus.
     property bool overlayMode: false
+    // The overlay opened over the library, not a game, so its first entry goes back there.
+    property bool fromLibrary: false
     objectName: namePrefix + "gameModeControls"
     title: "GAME MODE"
     fixedHeader: true
@@ -103,7 +105,7 @@ ActionMenu {
     MenuAction {
         id: backButton
         objectName: panel.namePrefix + "gameModeBackButton"
-        text: panel.overlayMode ? "BACK TO GAME" : "BACK TO LIBRARY"
+        text: panel.overlayMode && !panel.fromLibrary ? "BACK TO GAME" : "BACK TO LIBRARY"
         enabled: !GameMode.busy
         onClicked: panel.close()
     }

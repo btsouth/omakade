@@ -326,6 +326,40 @@ void driveGameMode(Harness& harness, AppContext& app) {
       fail(QStringLiteral("Game Mode controls in the focused window asked for the overlay"));
       return;
     }
+    // On the overlay over the library, Back says so and hands focus back to the library, so
+    // the pad keeps working there.
+    {
+      auto* windowPanel = rootWindow->findChild<QObject*>(QStringLiteral("gameModeControls"));
+      QMetaObject::invokeMethod(safeBack, "clicked");
+      if (!windowPanel || !settled([windowPanel] { return !windowPanel->property("visible").toBool(); })) {
+        fail(QStringLiteral("Game Mode controls did not close before the overlay check"));
+        return;
+      }
+      overlaySpy->accept = true;
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      auto* overlayWindow = rootWindow->findChild<QQuickWindow*>(QStringLiteral("gameModeOverlay"));
+      auto* overlayBackButton = rootWindow->findChild<QQuickItem*>(QStringLiteral("overlaygameModeBackButton"));
+      if (!overlayWindow || !overlayBackButton || !settled([overlayWindow, overlayBackButton] {
+            return overlayWindow->isActive() && overlayBackButton->hasActiveFocus();
+          })) {
+        fail(QStringLiteral("Game Mode controls over the library did not open on the overlay"));
+        return;
+      }
+      if (overlayBackButton->property("text").toString() != QStringLiteral("BACK TO LIBRARY")) {
+        fail(QStringLiteral("Game Mode overlay over the library offers %1")
+                 .arg(overlayBackButton->property("text").toString()));
+        return;
+      }
+      controller.backRequested();
+      if (!settled([overlayWindow, rootWindow] {
+            return !overlayWindow->isVisible() && QGuiApplication::focusWindow() == rootWindow;
+          }) ||
+          !gameMode.active()) {
+        fail(QStringLiteral("Back on the overlay over the library did not return focus to the library"));
+        return;
+      }
+      overlaySpy->accept = false;
+    }
     engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), realOverlay);
     QMetaObject::invokeMethod(rootWindow, "setCouchMode", Q_ARG(QVariant, QVariant(false)));
     if (!settled([rootWindow] { return !rootWindow->property("gameModeLeaveChecking").toBool(); }) ||
@@ -443,6 +477,10 @@ void driveGameMode(Harness& harness, AppContext& app) {
     if (overlayActions.size() < 2 || overlayActions.first() != overlayBack ||
         !overlayActions.contains(overlayLeave)) {
       fail(QStringLiteral("Game Mode overlay actions are not Back to Game first, then Leave"));
+      return;
+    }
+    if (overlayBack->property("text").toString() != QStringLiteral("BACK TO GAME")) {
+      fail(QStringLiteral("Game Mode overlay over a game offers %1").arg(overlayBack->property("text").toString()));
       return;
     }
     for (int step = 1; step < overlayActions.size(); ++step) {

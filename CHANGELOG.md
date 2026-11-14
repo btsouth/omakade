@@ -77,7 +77,8 @@ Steam play recording, a Text size setting and an easier first run.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.
 - The favorite button no longer favorites the game behind an open editor or dialog.
 - Home in Game Mode opens the Game Mode controls in front of any other window on the
-  screen, such as a Steam window left open after a launch.
+  screen, such as a Steam window left open after a launch, and Back to Library from there
+  returns the controller to the library.
 - Opening a Settings category focuses its first control, and removing a filter chip moves
   focus to Filters.
 - Up and Down in Settings move one row at a time. Up from Game Mode in Settings > Controls
