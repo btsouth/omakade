@@ -476,8 +476,10 @@ public:
   bool openWindows(QVector<GameModeHeldWindow>* windows, QString*) override {
     QMutexLocker lock(&mutex);
     *windows = held + shown;
+    ++openWindowsLooks;
     return true;
   }
+  std::atomic<int> openWindowsLooks = 0;
   bool releaseWindow(const QString& address, const QString& workspace, QString* = nullptr) override {
     QMutexLocker lock(&mutex);
     held.removeIf([&](const auto& window) { return window.address == address; });
@@ -3644,9 +3646,11 @@ private slots:
     QSignalSpy found(&signIn, &SteamSignIn::found);
     signIn.setWatching(true);
     QTRY_COMPARE(listeners.size(), 1);
+    // The first look, as watching starts, is over before the window opens.
+    QTRY_COMPARE(compositor.openWindowsLooks.load(), 1);
     compositor.open({QStringLiteral("0x71"), 70, QStringLiteral("steam"), QStringLiteral("Refresh Sign In"), 705, 470});
     QTimer retitles;
-    retitles.setInterval(100);
+    retitles.setInterval(30);
     connect(&retitles, &QTimer::timeout, &events, [&listeners] {
       for (QLocalSocket* listener : std::as_const(listeners)) {
         listener->write("windowtitlev2>>0x99,Emulator 59 FPS\n");
