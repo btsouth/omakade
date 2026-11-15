@@ -13,6 +13,7 @@
 #include "tracking/ProcFs.h"
 
 #include <QFile>
+#include <QUuid>
 #include <QJSEngine>
 #include <QJsonDocument>
 #include <QProcess>
@@ -72,6 +73,7 @@ private slots:
   void provisioningFailureIsBounded();
   void provisioningRechecksGame();
   void guardAcquirePrecedesFallbackRelease();
+  void steamChordHint();
 };
 
 void InGameGuideTests::changedPayloadKeepsStaticData() {
@@ -1153,6 +1155,98 @@ void InGameGuideTests::guardAcquirePrecedesFallbackRelease() {
   QTest::qWait(100); QVERIFY(!calls().contains("release"));
   QTRY_VERIFY(calls().contains("release"));
   QVERIFY(calls().indexOf("acquire-end") < calls().indexOf("release"));
+}
+
+void InGameGuideTests::steamChordHint() {
+  QTemporaryDir root; QVERIFY(root.isValid());
+  const auto write = [&root](const QString& relative, const QByteArray& contents) {
+    QVERIFY(QDir(root.path()).mkpath(QFileInfo(relative).path()));
+    QFile file(root.filePath(relative)); QVERIFY(file.open(QIODevice::WriteOnly)); file.write(contents);
+  };
+  const QStringList roots{root.path()};
+  // Steam account 76561198000000001 keeps its settings under userdata/39734273.
+  const QString local = "userdata/39734273/config/localconfig.vdf";
+  write("config/loginusers.vdf", "\"users\"\n{\n\t\"76561198000000001\"\n\t{\n\t\t\"AccountName\"\t\"a\"\n\t}\n}\n");
+  QVERIFY(!InGameGuide::steamGuideChords({}));
+  QVERIFY(!InGameGuide::steamGuideChords(roots)); // No settings for the account: say nothing.
+  // Steam leaves the setting out until it is changed, and it starts on.
+  write(local, "\"UserLocalConfigStore\"\n{\n\t\"ControllerTypesUsed\"\t\"controller_xbox360,\"\n}\n");
+  QVERIFY(InGameGuide::steamGuideChords(roots));
+  write(local, "\"UserLocalConfigStore\"\n{\n\t\"SteamController_Enable_Chord\"\t\"0\"\n}\n");
+  QVERIFY(!InGameGuide::steamGuideChords(roots));
+  write(local, "\"UserLocalConfigStore\"\n{\n\t\"SteamController_Enable_Chord\"\t\"1\"\n}\n");
+  QVERIFY(InGameGuide::steamGuideChords(roots));
+  // With several accounts, the one signed in last decides.
+  write("config/loginusers.vdf", "\"users\"\n{\n\t\"76561198000000001\"\n\t{\n\t\t\"MostRecent\"\t\"0\"\n\t}\n"
+                                 "\t\"76561198000000002\"\n\t{\n\t\t\"MostRecent\"\t\"1\"\n\t}\n}\n");
+  write("userdata/39734274/config/localconfig.vdf", "\"UserLocalConfigStore\"\n{\n\t\"SteamController_Enable_Chord\"\t\"0\"\n}\n");
+  QVERIFY(!InGameGuide::steamGuideChords(roots));
+  write(local, "\"UserLocalConfigStore\"\n{\n\t\"SteamController_Enable_Chord\"\t\"0\"\n}\n");
+  write("userdata/39734274/config/localconfig.vdf", "\"UserLocalConfigStore\"\n{\n}\n");
+  QVERIFY(InGameGuide::steamGuideChords(roots));
+  // Newer Steam has no MostRecent; the newest timestamp decides then.
+  write("config/loginusers.vdf", "\"users\"\n{\n\t\"76561198000000001\"\n\t{\n\t\t\"timestamp\"\t\"200\"\n\t}\n"
+                                 "\t\"76561198000000002\"\n\t{\n\t\t\"timestamp\"\t\"100\"\n\t}\n}\n");
+  QVERIFY(!InGameGuide::steamGuideChords(roots));
+  write("config/loginusers.vdf", "\"users\"\n{\n\t\"76561198000000001\"\n\t{\n\t\t\"timestamp\"\t\"100\"\n\t}\n"
+                                 "\t\"76561198000000002\"\n\t{\n\t\t\"timestamp\"\t\"200\"\n\t}\n}\n");
+  QVERIFY(InGameGuide::steamGuideChords(roots));
+
+  // The guide says so once per game, when a controller opened it over a Steam game. Notices
+  // show under the guide, so it comes on resume, next to Steam's overlay.
+  const auto sent = root.filePath("notifications");
+  write("bin/omarchy-notification-send", "#!/bin/sh\nprintf '%s|%s\\n' \"$1\" \"$2\" >> \"" + sent.toUtf8() + "\"\n");
+  write("bin/omarchy-shell", "#!/bin/sh\nexit 0\n"); // Hiding the guide reaches no real shell.
+  for (const auto* tool : {"bin/omarchy-notification-send", "bin/omarchy-shell"})
+    QVERIFY(QFile::setPermissions(root.filePath(tool), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  const auto oldPath = qgetenv("PATH");
+  qputenv("PATH", root.filePath("bin").toUtf8() + ':' + oldPath);
+  const auto restorePath = qScopeGuard([oldPath] { qputenv("PATH", oldPath); });
+  const auto notices = [&sent] {
+    QFile file(sent);
+    return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList{};
+  };
+  InGameGuide guide(nullptr, nullptr, nullptr, nullptr, nullptr, false);
+  guide.m_steamRoots = roots;
+  const auto open = [&guide](const QVariantMap& session, const QString& family) {
+    guide.m_session = session; guide.m_family = family; guide.m_restoreFocus = true;
+    guide.m_token = QUuid::createUuid().toString(); guide.m_opening = true; guide.m_opened = false;
+    guide.message({{"action", "opened"}});
+  };
+  const QVariantMap steamGame{{"source", "Steam"}, {"name", "Game"}, {"pid", 4242}, {"procStart", 7}};
+  open(steamGame, "keyboard"); // A keyboard shortcut never reaches Steam.
+  guide.close();
+  open(QVariantMap{{"source", "Heroic"}, {"name", "Game"}, {"pid", 4243}, {"procStart", 7}}, "xbox");
+  guide.close();
+  guide.m_grabWarning = "Controller busy"; // The warning takes the place of the hint.
+  open(steamGame, "xbox");
+  guide.close();
+  guide.m_grabWarning.clear();
+  QTest::qWait(300); QCOMPARE(guide.m_chordReads, 0); QVERIFY(notices().isEmpty());
+  // Leaving for the desktop drops the hint, and the game has not been told yet.
+  guide.m_context = QJsonObject{{"gameModeActive", true}};
+  open(steamGame, "xbox");
+  QTRY_COMPARE(guide.m_chordReads, 1); QVERIFY(guide.m_chordHintPending);
+  guide.message({{"action", "desktop"}});
+  QVERIFY(!guide.m_chordHintPending);
+  guide.m_context = {};
+  open(steamGame, "xbox");
+  QTRY_COMPARE(guide.m_chordReads, 2); QVERIFY(guide.m_chordHintPending); QVERIFY(notices().isEmpty());
+  guide.close();
+  QTRY_COMPARE(notices().size(), 1);
+  QVERIFY(notices().first().startsWith("Steam also opens its overlay on Home|"));
+  QVERIFY(notices().first().contains("Enable Guide Button Chords"));
+  open(steamGame, "xbox"); // Told already, so nothing is read.
+  QCOMPARE(guide.m_chordReads, 2); QVERIFY(!guide.m_chordHintPending);
+  guide.close();
+  QTest::qWait(300); QCOMPARE(guide.m_chordReads, 2); QCOMPARE(notices().size(), 1);
+  // A new game asks again; with the chords off, nothing is said.
+  write(local, "\"UserLocalConfigStore\"\n{\n\t\"SteamController_Enable_Chord\"\t\"0\"\n}\n");
+  write("userdata/39734274/config/localconfig.vdf", "\"UserLocalConfigStore\"\n{\n\t\"SteamController_Enable_Chord\"\t\"0\"\n}\n");
+  open(QVariantMap{{"source", "Steam"}, {"name", "Game"}, {"pid", 4244}, {"procStart", 7}}, "xbox");
+  QTRY_COMPARE(guide.m_chordReads, 3); QVERIFY(!guide.m_chordHintPending);
+  guide.close();
+  QTest::qWait(300); QCOMPARE(notices().size(), 1);
 }
 
 QTEST_GUILESS_MAIN(InGameGuideTests)

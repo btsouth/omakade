@@ -88,6 +88,10 @@ Steam play recording, a Text size setting and an easier first run.
   no longer skips to Sound, and Sources and Appearance no longer skip rows either.
 - OmaStore installs can use the controller Home button. Turn it on in Settings > Controls;
   it usually needs turning off and on again after each login.
+- Steam reads the controller too, and with its Guide Button Chords on, the Home press that
+  opens the guide also opens Steam's overlay, which shows when you resume. The first time
+  Home opens the guide over a Steam game with them on, a notification on resume says how to
+  turn them off, and Settings > Controls says where to find them.
 
 ### Saves and backups
 
