@@ -10,7 +10,9 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <atomic>
 #include <functional>
+#include <memory>
 
 // When the Steam account is used on another computer, Steam signs out here and opens its
 // Refresh Sign In window, which asks for a password or a QR code. A controller cannot get
@@ -24,7 +26,8 @@ class SteamSignIn final : public QObject {
 
 public:
   enum class Restart { SignedIn, NotSignedIn, StillRunning };
-  using Restarter = std::function<Restart()>;
+  // `cancelled` turns true when Omakade quits during a restart, so the restart stops waiting.
+  using Restarter = std::function<Restart(const std::atomic<bool>& cancelled)>;
 
   // A null compositor never finds the window.
   explicit SteamSignIn(GameModeCompositor* compositor, QObject* parent = nullptr);
@@ -94,4 +97,5 @@ private:
   QFutureWatcher<Scan> m_scanWatcher;
   QFutureWatcher<Restart> m_restartWatcher;
   QFuture<void> m_action;
+  std::shared_ptr<std::atomic<bool>> m_cancelled = std::make_shared<std::atomic<bool>>(false);
 };

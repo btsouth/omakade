@@ -12,12 +12,17 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QJsonDocument>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QMetaMethod>
 #include <QMutex>
+#include <QScopeGuard>
 #include <QSemaphore>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
+#include <QTimer>
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -3573,7 +3578,7 @@ private slots:
         QStringLiteral("present 0x71 %1 705x470").arg(GameModeController::workspace())));
 
     std::atomic<int> restarts = 0;
-    signIn.setRestarter([&restarts] {
+    signIn.setRestarter([&restarts](const std::atomic<bool>&) {
       ++restarts;
       return SteamSignIn::Restart::StillRunning;
     });
@@ -3590,7 +3595,7 @@ private slots:
     // Steam quit: its window is gone, and a new one is found again.
     compositor.close(QStringLiteral("0x71"));
     QTRY_VERIFY(!signIn.open());
-    signIn.setRestarter([] { return SteamSignIn::Restart::SignedIn; });
+    signIn.setRestarter([](const std::atomic<bool>&) { return SteamSignIn::Restart::SignedIn; });
     signIn.restartSteam();
     QTRY_COMPARE(restarted.size(), 2);
     QCOMPARE(restarted.last().first().toBool(), true);
@@ -3604,6 +3609,80 @@ private slots:
     compositor.open({QStringLiteral("0x73"), 73, QStringLiteral("steam"), QStringLiteral("Refresh Sign In")});
     QTest::qWait(100);
     QCOMPARE(found.size(), 2);
+  }
+
+  // Hyprland's events start each look, and a window retitled over and over, as one showing
+  // its frame rate is, does not keep putting the look off.
+  void steamSignInLooksDespiteConstantRetitles() {
+    QTemporaryDir runtime(QDir::tempPath() + QStringLiteral("/omakade-signin-XXXXXX"));
+    QVERIFY(runtime.isValid());
+    QVERIFY(QDir(runtime.path()).mkpath(QStringLiteral("hypr/fixture")));
+    const QByteArray oldRuntime = qgetenv("XDG_RUNTIME_DIR");
+    const QByteArray oldInstance = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    const bool hadRuntime = qEnvironmentVariableIsSet("XDG_RUNTIME_DIR");
+    const bool hadInstance = qEnvironmentVariableIsSet("HYPRLAND_INSTANCE_SIGNATURE");
+    const auto restoreEnvironment = qScopeGuard([&] {
+      if (hadRuntime) qputenv("XDG_RUNTIME_DIR", oldRuntime);
+      else qunsetenv("XDG_RUNTIME_DIR");
+      if (hadInstance) qputenv("HYPRLAND_INSTANCE_SIGNATURE", oldInstance);
+      else qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    });
+    qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
+    qputenv("HYPRLAND_INSTANCE_SIGNATURE", "fixture");
+    QLocalServer events;
+    QVERIFY(events.listen(runtime.path() + QStringLiteral("/hypr/fixture/.socket2.sock")));
+    QList<QLocalSocket*> listeners;
+    connect(&events, &QLocalServer::newConnection, &events, [&] {
+      while (QLocalSocket* listener = events.nextPendingConnection()) listeners.append(listener);
+    });
+
+    HoldCompositor compositor;
+    SteamSignIn signIn(&compositor);
+    // Polling would find the window on its own; only the events may here.
+    signIn.setPollInterval(60 * 60 * 1000);
+    signIn.setTitles({QStringLiteral("Refresh Sign In")});
+    QSignalSpy found(&signIn, &SteamSignIn::found);
+    signIn.setWatching(true);
+    QTRY_COMPARE(listeners.size(), 1);
+    compositor.open({QStringLiteral("0x71"), 70, QStringLiteral("steam"), QStringLiteral("Refresh Sign In"), 705, 470});
+    QTimer retitles;
+    retitles.setInterval(100);
+    connect(&retitles, &QTimer::timeout, &events, [&listeners] {
+      for (QLocalSocket* listener : std::as_const(listeners)) {
+        listener->write("windowtitlev2>>0x99,Emulator 59 FPS\n");
+        listener->flush();
+      }
+    });
+    retitles.start();
+    QTRY_COMPARE_WITH_TIMEOUT(found.size(), 1, 3000);
+    QVERIFY(signIn.open());
+    retitles.stop();
+    signIn.setWatching(false);
+  }
+
+  // Quitting Omakade during a restart stops waiting on Steam rather than holding up the quit.
+  void steamSignInQuitsDuringRestart() {
+    HoldCompositor compositor;
+    std::atomic<bool> sawCancel = false;
+    QElapsedTimer clock;
+    {
+      SteamSignIn signIn(&compositor);
+      signIn.setHyprlandEvents(false);
+      std::atomic<bool> started = false;
+      signIn.setRestarter([&started, &sawCancel](const std::atomic<bool>& cancelled) {
+        started = true;
+        QElapsedTimer waited;
+        waited.start();
+        while (!cancelled.load() && waited.elapsed() < 30 * 1000) QThread::msleep(10);
+        sawCancel = cancelled.load();
+        return SteamSignIn::Restart::NotSignedIn;
+      });
+      signIn.restartSteam();
+      QTRY_VERIFY(started.load());
+      clock.start();
+    }
+    QVERIFY(sawCancel.load());
+    QVERIFY(clock.elapsed() < 5000);
   }
 
   void launchHoldGivesUpOnlyWithNothingListed() {

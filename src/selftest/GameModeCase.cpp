@@ -932,6 +932,30 @@ void driveGameMode(Harness& harness, AppContext& app) {
         fail(QStringLiteral("Game Mode controls did not close after the running game overlay check"));
         return;
       }
+      // With a game running, Steam's Refresh Sign In window neither opens the controls on its
+      // own nor takes A from Back: a restart would close the game.
+      auto* signInSpy = new GameModeOverlaySpy(&application);
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), signInSpy);
+      gameModeTestCompositor.steamSignIn = true;
+      const bool signInFound = settled([steamSignIn] { return steamSignIn->open(); });
+      QCoreApplication::processEvents(QEventLoop::AllEvents, 300);
+      const bool openedAlone = runningPanel->property("visible").toBool();
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      auto* signInRestart = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeRestartSteamButton"));
+      const bool backFocused = settled([runningBack] { return runningBack->hasActiveFocus(); }) &&
+                               signInRestart && signInRestart->isVisible() && !signInRestart->hasActiveFocus();
+      QMetaObject::invokeMethod(runningBack, "clicked");
+      const bool signInClosed = settled([runningPanel] { return !runningPanel->property("visible").toBool(); });
+      gameModeTestCompositor.steamSignIn = false;
+      const bool signInGone = settled([steamSignIn] { return !steamSignIn->open(); });
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), realOverlay);
+      if (!signInFound || openedAlone || !backFocused || !signInClosed || !signInGone ||
+          !gameMode.active() || gameModeTestCompositor.presented.load() != 0) {
+        fail(QStringLiteral("With a game running, Steam's Refresh Sign In window took the controls' "
+                            "focus from Back (found=%1, alone=%2, back=%3)")
+                 .arg(signInFound).arg(openedAlone).arg(backFocused));
+        return;
+      }
     }
     QMetaObject::invokeMethod(rootWindow, "openGameModeControls");
     auto* stop = rootWindow->findChild<QQuickItem*>("gameModeStopAndLeaveButton");

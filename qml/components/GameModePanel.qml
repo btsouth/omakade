@@ -20,7 +20,7 @@ ActionMenu {
     showHeaderCloseButton: false
     preferredWidth: 520
     headerTextScale: textScale
-    initialFocus: steamSignIn && !steamRestarting ? restartSteamButton : backButton
+    initialFocus: restartSteamFirst ? restartSteamButton : backButton
     readonly property var liveGames: typeof GameStop !== "undefined" && GameStop ? GameStop.runningGames : []
     readonly property bool scanning: typeof GameStop !== "undefined" && GameStop && GameStop.scanning
     property int workspaceGames: 0
@@ -35,6 +35,15 @@ ActionMenu {
     readonly property bool steamSignIn: steamRestarting
                                         || (typeof SteamSignIn !== "undefined" && SteamSignIn !== null
                                             && SteamSignIn.open)
+    // With a game running, A still means Back to Game, as it always did: a restart would
+    // close the game. A game found after the controls opened takes focus back to it.
+    readonly property bool restartSteamFirst: steamSignIn && !steamRestarting
+                                              && (!overlayMode || fromLibrary)
+                                              && liveGames.length === 0 && !untrackedGame
+    onRestartSteamFirstChanged: {
+        if (opened && !restartSteamFirst && restartSteamButton.activeFocus)
+            host.focusWithin(contentItem, true, backButton)
+    }
     signal restartSteamRequested()
 
     function refreshGames() {

@@ -49,11 +49,12 @@ QString newestRoot(const QString& relative) {
   return root;
 }
 
-bool waitFor(const std::function<bool()>& done, int milliseconds, int step) {
+bool waitFor(const std::function<bool()>& done, int milliseconds, int step,
+             const std::atomic<bool>& cancelled) {
   QElapsedTimer timer;
   timer.start();
   while (!done()) {
-    if (timer.elapsed() >= milliseconds) return false;
+    if (cancelled.load() || timer.elapsed() >= milliseconds) return false;
     QThread::msleep(step);
   }
   return true;
@@ -61,7 +62,7 @@ bool waitFor(const std::function<bool()>& done, int milliseconds, int step) {
 
 // Asks the running Steam to quit, waits for it to be gone and starts it again minimized.
 // A Steam that cannot sign in on its own then shows its window, where someone can.
-SteamSignIn::Restart restartClient() {
+SteamSignIn::Restart restartClient(const std::atomic<bool>& cancelled) {
   const QDateTime since = QDateTime::currentDateTime().addSecs(-1);
   const QString steam = QStandardPaths::findExecutable(QStringLiteral("steam"));
   QList<LaunchCommand> commands;
@@ -73,7 +74,7 @@ SteamSignIn::Restart restartClient() {
   if (SteamLauncher::clientRunning()) {
     for (const LaunchCommand& command : std::as_const(commands))
       if (QProcess::startDetached(command.program, command.arguments)) break;
-    if (!waitFor([] { return !SteamLauncher::clientRunning(); }, 60 * 1000, 500))
+    if (!waitFor([] { return !SteamLauncher::clientRunning(); }, 60 * 1000, 500, cancelled))
       return SteamSignIn::Restart::StillRunning;
   }
   const bool started = SteamLauncher::startInBackground();
@@ -84,8 +85,9 @@ SteamSignIn::Restart restartClient() {
                SteamSignIn::signedInSince(
                    readFile(root + QStringLiteral("/logs/connection_log.txt"), 64 * 1024), since);
       },
-      90 * 1000, 1000);
+      90 * 1000, 1000, cancelled);
   if (signedIn) return SteamSignIn::Restart::SignedIn;
+  if (cancelled.load()) return SteamSignIn::Restart::NotSignedIn;
   SteamLauncher::openUrl(QUrl(QStringLiteral("steam://open/main")));
   return SteamSignIn::Restart::NotSignedIn;
 }
@@ -113,7 +115,9 @@ SteamSignIn::SteamSignIn(GameModeCompositor* compositor, QObject* parent)
       relevant = relevant || line.startsWith("openwindow>>") || line.startsWith("closewindow>>") ||
                  line.startsWith("windowtitle>>") || line.startsWith("windowtitlev2>>");
     }
-    if (relevant && m_watching) m_soon.start();
+    // A window retitled over and over, such as one showing its frame rate, must not keep
+    // putting the look off.
+    if (relevant && m_watching && !m_soon.isActive()) m_soon.start();
   });
   // Without Hyprland's events, looking every poll interval still finds the window.
   connect(&m_events, &QLocalSocket::disconnected, this, [this] {
@@ -125,6 +129,8 @@ SteamSignIn::SteamSignIn(GameModeCompositor* compositor, QObject* parent)
 }
 
 SteamSignIn::~SteamSignIn() {
+  // Quitting during a restart does not wait out Steam's quit or sign-in.
+  m_cancelled->store(true);
   m_scanWatcher.waitForFinished();
   m_restartWatcher.waitForFinished();
   m_action.waitForFinished();
@@ -205,7 +211,8 @@ void SteamSignIn::restartSteam() {
   if (m_restarting || !m_restarter) return;
   m_restarting = true;
   emit changed();
-  m_restartWatcher.setFuture(QtConcurrent::run([restarter = m_restarter] { return restarter(); }));
+  m_restartWatcher.setFuture(QtConcurrent::run(
+      [restarter = m_restarter, cancelled = m_cancelled] { return restarter(*cancelled); }));
 }
 
 void SteamSignIn::finishRestart() {

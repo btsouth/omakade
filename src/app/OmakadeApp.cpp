@@ -1120,7 +1120,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
     steamSignIn.setHyprlandEvents(false);
     steamSignIn.setPollInterval(100);
     steamSignIn.setTitles({QStringLiteral("Refresh Sign In")});
-    steamSignIn.setRestarter([] { return SteamSignIn::Restart::SignedIn; });
+    steamSignIn.setRestarter([](const std::atomic<bool>&) { return SteamSignIn::Restart::SignedIn; });
   }
   QObject::connect(&gameMode, &GameModeSession::stateChanged, &steamSignIn,
                    [&] { steamSignIn.setWatching(gameMode.active() && !gameMode.parked()); });

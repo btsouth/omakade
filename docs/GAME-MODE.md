@@ -302,7 +302,9 @@ back. **Back to Library** leaves Steam's window as it is, such as to scan its QR
 the Steam app.
 
 The controls open on their own once each time Steam asks. While Steam's window is still
-open, leaving Game Mode with Start or Home opens them again instead of leaving.
+open, leaving Game Mode with Start or Home opens them again instead of leaving. With a
+game running, they still offer Restart Steam, but Back to Game stays first, so A goes back
+to the game as before.
 
 ## Limits
 
