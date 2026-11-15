@@ -294,12 +294,13 @@ another reason, Steam signs out here and opens **Refresh Sign In**, which asks f
 password or a QR code. While Game Mode is on and no game is running, the Game Mode
 controls open in front of it with **Restart Steam**.
 
-Restart Steam quits Steam and starts it again in the background. Steam usually signs back
-in from its saved login, and Omakade says when it has. Steam games that are running
-close. If Steam does not sign in within about a minute and a half, Steam's window opens so
-you can sign in there. A launch waiting on Steam ends; start the game again once Steam is
-back. **Back to Library** leaves Steam's window as it is, such as to scan its QR code with
-the Steam app.
+Restart Steam quits Steam and starts it again in the background. Steam's windows wait out
+of sight first, so the one it brings forward as it quits cannot take the display from Game
+Mode, even from another workspace. Steam usually signs back in from its saved login, and
+Omakade says when it has. Steam games that are running close. If Steam does not sign in
+within about a minute and a half, Steam's window opens so you can sign in there. A launch
+waiting on Steam ends; start the game again once Steam is back. **Back to Library** leaves
+Steam's window as it is, such as to scan its QR code with the Steam app.
 
 The controls open on their own once each time Steam asks. While Steam's window is still
 open, leaving Game Mode with Start or Home opens them again instead of leaving. With a

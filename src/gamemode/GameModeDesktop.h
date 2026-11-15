@@ -96,6 +96,8 @@ public:
   [[nodiscard]] static QString launchHoldWorkspace();
   [[nodiscard]] static QString launchHoldScript(const QString& workspace);
   [[nodiscard]] static QString steamHoldScript(const QString& workspace);
+  // Moves a window out of sight with the held ones, where it cannot take focus.
+  [[nodiscard]] static QString holdWindowScript(const QString& address);
   [[nodiscard]] static QVector<GameModeHeldWindow> parseHeldWindows(const QByteArray& clientsJson);
   // Every mapped window, wherever it is.
   [[nodiscard]] static QVector<GameModeHeldWindow> parseOpenWindows(const QByteArray& clientsJson);
