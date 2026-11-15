@@ -46,6 +46,21 @@ public:
     return {otherWindows.load() + steamWindows.load(), otherWindows.load()};
   }
   QStringList otherWindowAddressesOn(const QString&, qint64) override { return {}; }
+  // Steam's Refresh Sign In window, open on the Game Mode workspace, and how many times it
+  // was brought in front.
+  std::atomic<bool> steamSignIn{false};
+  std::atomic<int> presented{0};
+  bool openWindows(QVector<GameModeHeldWindow>* windows, QString*) override {
+    windows->clear();
+    if (steamSignIn.load())
+      windows->append({QStringLiteral("0xee"), 4242, QStringLiteral("steam"),
+                       QStringLiteral("Refresh Sign In"), 705, 470});
+    return true;
+  }
+  bool presentWindow(const QString& address, const QString&, int, int, QString*) override {
+    if (address == QStringLiteral("0xee")) ++presented;
+    return true;
+  }
   bool gameWindows(const QString&, qint64, QVector<GameModeGameWindow>* games, QString*) override {
     games->clear();
     return true;

@@ -4,6 +4,7 @@
 #include "app/SingleInstance.h"
 #include "selftest/SelfTestSupport.h"
 #include "gamemode/GameModeSession.h"
+#include "gamemode/SteamSignIn.h"
 #include "input/ControllerInput.h"
 #include "launch/PlayRequest.h"
 #include "library/GameStopService.h"
@@ -34,12 +35,13 @@ void driveGameMode(Harness& harness, AppContext& app) {
   QWindow*& rootWindow = *app.rootWindow;
   LibraryGameModeTestCompositor& gameModeTestCompositor = harness.fixtures.gameModeTestCompositor;
   QQmlApplicationEngine* engine = app.engine;
+  SteamSignIn* steamSignIn = app.steamSignIn;
   // Game Mode holds Couch Mode for its session. Every way of switching modes opens its
   // controls instead of leaving, and leaving returns the window to the mode it had.
   SingleInstance* singleInstance = app.singleInstance;
   UnifiedGameModel* unifiedGames = app.unifiedGames;
   QTimer::singleShot(200, &application, [&application, rootWindow, &gameMode, &gameStop, &controller,
-                                       &gameModeTestCompositor, singleInstance, unifiedGames, engine] {
+                                       &gameModeTestCompositor, singleInstance, unifiedGames, engine, steamSignIn] {
     const auto fail = [&application](const QString& message) {
       qCritical().noquote() << message;
       application.exit(EXIT_FAILURE);
@@ -307,6 +309,81 @@ void driveGameMode(Harness& harness, AppContext& app) {
         !rootWindow->property("homeOpen").toBool()) {
       fail(QStringLiteral("Game Mode did not start again on Home after leaving past Steam"));
       return;
+    }
+    // Steam signed out and opened its Refresh Sign In window, which a controller cannot get
+    // through. The controls open in front of it on their own, with Restart Steam focused.
+    {
+      auto* overlaySpy = new GameModeOverlaySpy(&application);
+      QObject* realOverlay = engine->rootContext()->contextProperty(QStringLiteral("GameModeOverlay")).value<QObject*>();
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), overlaySpy);
+      int restarts = 0;
+      const auto counter = QObject::connect(steamSignIn, &SteamSignIn::restarted, &application,
+                                            [&restarts](bool signedIn) { if (signedIn) ++restarts; });
+      const auto done = [&] {
+        QObject::disconnect(counter);
+        engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), realOverlay);
+        gameModeTestCompositor.steamSignIn = false;
+      };
+      gameModeTestCompositor.steamSignIn = true;
+      auto* restart = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeRestartSteamButton"));
+      if (!restart || !settled([restart] { return restart->hasActiveFocus(); }) || overlaySpy->requests != 1) {
+        done();
+        fail(QStringLiteral("Steam's Refresh Sign In window did not open the Game Mode controls in front "
+                            "with Restart Steam focused (%1 overlay requests)").arg(overlaySpy->requests));
+        return;
+      }
+      // Back to Library leaves Steam's window as it is.
+      auto* panel = rootWindow->findChild<QObject*>(QStringLiteral("gameModeControls"));
+      auto* firstBack = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeBackButton"));
+      if (firstBack) QMetaObject::invokeMethod(firstBack, "clicked");
+      if (!firstBack || !panel || !settled([panel] { return !panel->property("visible").toBool(); }) ||
+          !gameMode.active() || gameModeTestCompositor.presented.load() != 0 || restarts != 0) {
+        done();
+        fail(QStringLiteral("Back to Library over Steam's Refresh Sign In window did not just close the controls"));
+        return;
+      }
+      // The same window does not open the controls again, but they still offer the restart.
+      QCoreApplication::processEvents(QEventLoop::AllEvents, 300);
+      if (panel->property("visible").toBool()) {
+        done();
+        fail(QStringLiteral("The same Refresh Sign In window opened the Game Mode controls twice"));
+        return;
+      }
+      // Leaving while it is open opens them with the same choices, rather than leaving
+      // Steam's window on the desktop with no way through it.
+      QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+      if (!settled([restart] { return restart->hasActiveFocus(); }) || !gameMode.active() ||
+          overlaySpy->requests != 2) {
+        done();
+        fail(QStringLiteral("Leaving with Steam signed out did not open the controls in front with "
+                            "Restart Steam focused (%1 overlay requests)").arg(overlaySpy->requests));
+        return;
+      }
+      QMetaObject::invokeMethod(restart, "clicked");
+      if (!settled([&restarts, panel, steamSignIn] {
+            return restarts == 1 && !steamSignIn->restarting() && !panel->property("visible").toBool();
+          }) || !gameMode.active()) {
+        done();
+        fail(QStringLiteral("Restart Steam did not restart Steam and close the controls"));
+        return;
+      }
+      gameModeTestCompositor.steamSignIn = false;
+      if (!settled([steamSignIn] { return !steamSignIn->open(); })) {
+        done();
+        fail(QStringLiteral("A closed Refresh Sign In window was still reported open"));
+        return;
+      }
+      // With Steam signed in, the controls are as before: Back to Library first.
+      QMetaObject::invokeMethod(rootWindow, "openGameModeControls");
+      auto* back = rootWindow->findChild<QQuickItem*>(QStringLiteral("gameModeBackButton"));
+      const bool backFirst = back && settled([back] { return back->hasActiveFocus(); }) && !restart->isVisible();
+      if (back) QMetaObject::invokeMethod(back, "clicked");
+      const bool closed = settled([panel] { return !panel->property("visible").toBool(); });
+      done();
+      if (!backFirst || !closed) {
+        fail(QStringLiteral("Game Mode controls with Steam signed in still offered Restart Steam"));
+        return;
+      }
     }
     // A game on the Game Mode workspace: every way of leaving opens the controls instead.
     // Another window there can be drawn over this one even while this one has focus, as a

@@ -4,6 +4,7 @@
 #include "gamemode/GameModeShortcut.h"
 #include "gamemode/LaunchHold.h"
 #include "gamemode/LaunchWatch.h"
+#include "gamemode/SteamSignIn.h"
 #include "tracking/ProcFs.h"
 
 #include <QCoreApplication>
@@ -3489,6 +3490,120 @@ private slots:
     clock.restart();
     QTRY_COMPARE(released.size(), 1);
     QVERIFY(clock.elapsed() >= 800);
+  }
+
+  // Steam's Refresh Sign In window, by the strings in Steam's own files.
+  void steamSignInKnowsSteamsWindow() {
+    // Steam's localization files keep their strings in a JavaScript template literal, so
+    // text outside ASCII is written as \xNN or \uNNNN, or as UTF-8.
+    QCOMPARE(SteamSignIn::titleIn("{\"Login_RefreshCaptcha\":\"Refresh\",\"Login_RefreshSignIn\":\"Refresh Sign In\",\"Login_RefreshReason_LoggedInElsewhere\":\"x\"}"),
+             QStringLiteral("Refresh Sign In"));
+    QCOMPARE(SteamSignIn::titleIn("\"Login_RefreshSignIn\":\"Anmeldung aktualisieren\""),
+             QStringLiteral("Anmeldung aktualisieren"));
+    QCOMPARE(SteamSignIn::titleIn("\"Login_RefreshSignIn\":\"Connectez-vous \\xE0 nouveau\""),
+             QString::fromUtf8("Connectez-vous \xc3\xa0 nouveau"));
+    QCOMPARE(SteamSignIn::titleIn("\"Login_RefreshSignIn\":\"\\u30B5\\u30A4\\u30F3\\u30A4\\u30F3\\u3092\\u66F4\\u65B0\""),
+             QString::fromUtf8("\xe3\x82\xb5\xe3\x82\xa4\xe3\x83\xb3\xe3\x82\xa4\xe3\x83\xb3\xe3\x82\x92\xe6\x9b\xb4\xe6\x96\xb0"));
+    QCOMPARE(SteamSignIn::titleIn("\"Login_RefreshSignIn\":\"Iniciar sesi\xc3\xb3n\""),
+             QString::fromUtf8("Iniciar sesi\xc3\xb3n"));
+    QVERIFY(SteamSignIn::titleIn("\"Login_SignIn\":\"Sign in\"").isEmpty());
+    QVERIFY(SteamSignIn::titleIn("\"Login_RefreshSignIn\":\"cut off").isEmpty());
+
+    const QByteArray registry = "\"Registry\"\n{\n\t\"HKCU\"\n\t{\n\t\t\"Software\"\n\t\t{\n\t\t\t\"Valve\"\n"
+                                "\t\t\t{\n\t\t\t\t\"Steam\"\n\t\t\t\t{\n\t\t\t\t\t\"StartupModeTmpIsValid\"\t\t\"0\"\n"
+                                "\t\t\t\t\t\"language\"\t\t\"german\"\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n";
+    QCOMPARE(SteamSignIn::languageIn(registry), QStringLiteral("german"));
+    QVERIFY(SteamSignIn::languageIn("\"Registry\"\n{\n}\n").isEmpty());
+
+    const QStringList titles{QStringLiteral("Refresh Sign In"), QStringLiteral("Anmeldung aktualisieren")};
+    QVERIFY(SteamSignIn::isRefreshSignIn({QStringLiteral("0x1"), 1, QStringLiteral("steam"), QStringLiteral("Refresh Sign In")}, titles));
+    QVERIFY(SteamSignIn::isRefreshSignIn({QStringLiteral("0x1"), 1, QStringLiteral("Steam"), QStringLiteral("Anmeldung aktualisieren")}, titles));
+    // Steam's other windows, and other apps' windows with the same title, are not it.
+    QVERIFY(!SteamSignIn::isRefreshSignIn({QStringLiteral("0x1"), 1, QStringLiteral("steam"), QStringLiteral("Sign in to Steam")}, titles));
+    QVERIFY(!SteamSignIn::isRefreshSignIn({QStringLiteral("0x1"), 1, QStringLiteral("steam"), QStringLiteral("Steam")}, titles));
+    QVERIFY(!SteamSignIn::isRefreshSignIn({QStringLiteral("0x1"), 1, QStringLiteral("firefox"), QStringLiteral("Refresh Sign In")}, titles));
+    QVERIFY(!SteamSignIn::isRefreshSignIn({QStringLiteral("0x1"), 1, QStringLiteral("steam_app_367520"), QStringLiteral("Refresh Sign In")}, titles));
+  }
+
+  // A restart counts as signed in once Steam's connection log records a sign-in after it.
+  void steamSignInReadsSteamsConnectionLog() {
+    const QByteArray log =
+        "[2026-11-02 13:17:14] [Logging On, 4, 7] [U:1:1] RecvMsgClientLogOnResponse() : [U:1:1] 'OK'\n"
+        "[2026-11-02 13:17:14] [Logged On, 4, 7] [U:1:1] RecvMsgClientLogOnResponse() : processing complete\n"
+        "[2026-11-02 16:18:26] [Logged On, 4, 7] [U:1:1] RecvMsgClientLoggedOff('Logged In Elsewhere')\n"
+        "[2026-11-02 16:18:26] [Logged Off, 4, 0] [U:1:1] ConnectionDisconnected() not auto reconnecting due to Logged In Elsewhere\n";
+    const auto at = [](const char* text) {
+      return QDateTime::fromString(QString::fromLatin1(text), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    };
+    QVERIFY(SteamSignIn::signedInSince(log, at("2026-11-02 13:17:00")));
+    QVERIFY(!SteamSignIn::signedInSince(log, at("2026-11-02 16:20:00")));
+    const QByteArray restarted =
+        log + "[2026-11-02 16:21:03] [Logged Off, 4, 0] [U:1:1] LogOn() called; not connected yet\n"
+              "[2026-11-02 16:21:04] [Logged On, 4, 7] [U:1:1] RecvMsgClientLogOnResponse() : processing complete\n";
+    QVERIFY(SteamSignIn::signedInSince(restarted, at("2026-11-02 16:20:00")));
+    QVERIFY(!SteamSignIn::signedInSince(restarted, at("2026-11-02 16:22:00")));
+    QVERIFY(!SteamSignIn::signedInSince({}, at("2026-11-02 16:20:00")));
+  }
+
+  // While watching, a Refresh Sign In window is found once, wherever it is, and a restart
+  // that cannot close Steam brings the window in front instead.
+  void steamSignInWatchesAndRestarts() {
+    HoldCompositor compositor;
+    SteamSignIn signIn(&compositor);
+    signIn.setHyprlandEvents(false);
+    signIn.setPollInterval(10);
+    signIn.setTitles({QStringLiteral("Refresh Sign In")});
+    QSignalSpy found(&signIn, &SteamSignIn::found);
+    QSignalSpy restarted(&signIn, &SteamSignIn::restarted);
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("steam"), QStringLiteral("Steam")});
+    compositor.open({QStringLiteral("0x71"), 70, QStringLiteral("steam"), QStringLiteral("Refresh Sign In"), 705, 470});
+    // Not while Game Mode is off.
+    QTest::qWait(100);
+    QVERIFY(found.isEmpty());
+    QVERIFY(!signIn.open());
+
+    signIn.setWatching(true);
+    QTRY_COMPARE(found.size(), 1);
+    QVERIFY(signIn.open());
+    QTest::qWait(100);
+    QCOMPARE(found.size(), 1);
+
+    signIn.showWindow();
+    QTRY_VERIFY(compositor.entries().contains(
+        QStringLiteral("present 0x71 %1 705x470").arg(GameModeController::workspace())));
+
+    std::atomic<int> restarts = 0;
+    signIn.setRestarter([&restarts] {
+      ++restarts;
+      return SteamSignIn::Restart::StillRunning;
+    });
+    signIn.restartSteam();
+    QVERIFY(signIn.restarting());
+    QTRY_COMPARE(restarted.size(), 1);
+    QCOMPARE(restarted.first().first().toBool(), false);
+    QCOMPARE(restarts.load(), 1);
+    QVERIFY(!signIn.restarting());
+    QTRY_COMPARE(compositor.entries().count(
+                 QStringLiteral("present 0x71 %1 705x470").arg(GameModeController::workspace())),
+             2);
+
+    // Steam quit: its window is gone, and a new one is found again.
+    compositor.close(QStringLiteral("0x71"));
+    QTRY_VERIFY(!signIn.open());
+    signIn.setRestarter([] { return SteamSignIn::Restart::SignedIn; });
+    signIn.restartSteam();
+    QTRY_COMPARE(restarted.size(), 2);
+    QCOMPARE(restarted.last().first().toBool(), true);
+    compositor.open({QStringLiteral("0x72"), 72, QStringLiteral("steam"), QStringLiteral("Refresh Sign In")});
+    QTRY_COMPARE(found.size(), 2);
+
+    // Leaving Game Mode stops watching and forgets the window.
+    signIn.setWatching(false);
+    QVERIFY(!signIn.open());
+    compositor.close(QStringLiteral("0x72"));
+    compositor.open({QStringLiteral("0x73"), 73, QStringLiteral("steam"), QStringLiteral("Refresh Sign In")});
+    QTest::qWait(100);
+    QCOMPARE(found.size(), 2);
   }
 
   void launchHoldGivesUpOnlyWithNothingListed() {

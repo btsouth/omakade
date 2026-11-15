@@ -20,13 +20,22 @@ ActionMenu {
     showHeaderCloseButton: false
     preferredWidth: 520
     headerTextScale: textScale
-    initialFocus: backButton
+    initialFocus: steamSignIn && !steamRestarting ? restartSteamButton : backButton
     readonly property var liveGames: typeof GameStop !== "undefined" && GameStop ? GameStop.runningGames : []
     readonly property bool scanning: typeof GameStop !== "undefined" && GameStop && GameStop.scanning
     property int workspaceGames: 0
     readonly property bool untrackedGame: (Launcher.gameRunning || workspaceGames > 0)
                                          && liveGames.length === 0
     readonly property real textScale: host.couchMode ? Math.max(1, Math.min(2, host.height / 900)) : 1
+    // Steam signed out, such as when the account signed in on another computer, and its
+    // Refresh Sign In window wants a password or QR code. A restart usually signs it back in
+    // from the saved login, with nothing to type.
+    readonly property bool steamRestarting: typeof SteamSignIn !== "undefined" && SteamSignIn !== null
+                                            && SteamSignIn.restarting
+    readonly property bool steamSignIn: steamRestarting
+                                        || (typeof SteamSignIn !== "undefined" && SteamSignIn !== null
+                                            && SteamSignIn.open)
+    signal restartSteamRequested()
 
     function refreshGames() {
         if (typeof GameStop !== "undefined" && GameStop) GameStop.refreshLiveGames()
@@ -101,6 +110,31 @@ ActionMenu {
         font.family: Theme.fontFamily
         font.pixelSize: 12 * panel.textScale
         color: Theme.foreground
+    }
+    Text {
+        objectName: panel.namePrefix + "gameModeSteamSignInText"
+        visible: panel.steamSignIn
+        Layout.fillWidth: true
+        text: panel.steamRestarting
+              ? "Restarting Steam…"
+              : "Steam signed out and is asking you to sign in again. Restarting Steam usually "
+                + "signs it back in on its own. Steam games that are running close."
+        wrapMode: Text.Wrap
+        font.family: Theme.fontFamily
+        font.pixelSize: 14 * panel.textScale
+        font.weight: Font.DemiBold
+        color: Theme.foreground
+    }
+    MenuAction {
+        id: restartSteamButton
+        objectName: panel.namePrefix + "gameModeRestartSteamButton"
+        text: "RESTART STEAM"
+        visible: panel.steamSignIn
+        enabled: !panel.steamRestarting
+        onClicked: {
+            panel.close()
+            panel.restartSteamRequested()
+        }
     }
     MenuAction {
         id: backButton
