@@ -130,4 +130,5 @@ private:
   QElapsedTimer m_pointerMade;
   bool m_clickWaiting = false;
   bool m_releaseWaiting = false;
+  int m_clickButton = -1;
 };

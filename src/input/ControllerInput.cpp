@@ -442,22 +442,31 @@ void ControllerInput::resetPointer() {
   m_scrollRest = 0;
   m_clickWaiting = false;
   m_releaseWaiting = false;
+  m_clickButton = -1;
   m_pointerClock.invalidate();
 }
 
 void ControllerInput::handlePointerButton(int button, bool pressed) {
   const bool nintendo = nintendoFaceButtons();
-  if (button == (nintendo ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH)) {
+  // A click is let go by the button that began it, even if another pad's layout is in use
+  // by then.
+  const int click = !pressed && m_clickButton >= 0
+                        ? m_clickButton
+                        : (nintendo ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH);
+  if (button == click) {
     if (pressed) {
       if (!ensurePointer()) return;
+      m_clickButton = button;
       // A press on a device just made, such as A pressed first, waits until it is read.
       // A new press replaces a click still waiting, so A held stays held.
       m_releaseWaiting = false;
       if (pointerSettling()) m_clickWaiting = true;
       else m_pointer.setPressed(true);
     } else if (m_clickWaiting) {
+      m_clickButton = -1;
       m_releaseWaiting = true;
     } else {
+      m_clickButton = -1;
       m_pointer.setPressed(false);
     }
   } else if (button == (nintendo ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST)) {
