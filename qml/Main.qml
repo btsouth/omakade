@@ -1153,11 +1153,13 @@ ApplicationWindow {
     }
     Connections {
         target: GameMode
-        function onWorkspaceChecked(otherWindows) {
+        // An open Steam window is no game, so it alone does not stop leaving, but it can
+        // still be drawn over this window when the controls do open.
+        function onWorkspaceChecked(otherWindows, possibleGames) {
             if (!root.gameModeLeaveChecking) return
             root.gameModeLeaveChecking = false
             if (!GameMode.active || GameMode.busy) return
-            if (otherWindows > 0 || root.gameModeGameRunning()) root.openGameModeControlsOver(otherWindows > 0)
+            if (possibleGames > 0 || root.gameModeGameRunning()) root.openGameModeControlsOver(otherWindows > 0)
             else root.endGameModeByChoice()
         }
         function onFullscreenFallback() { root.fallBackToFullscreen() }

@@ -337,6 +337,30 @@ int HyprlandGameModeCompositor::countOtherWindows(const QByteArray& clientsJson,
   return otherWindowAddresses(clientsJson, workspace, pid).size();
 }
 
+GameModeWorkspaceWindows HyprlandGameModeCompositor::workspaceWindows(const QString& workspace,
+                                                                      qint64 pid) {
+  QByteArray clients;
+  if (!run(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")},
+           &clients)) {
+    return {};
+  }
+  return parseWorkspaceWindows(clients, workspace, pid);
+}
+
+GameModeWorkspaceWindows HyprlandGameModeCompositor::parseWorkspaceWindows(
+    const QByteArray& clientsJson, const QString& workspace, qint64 pid) {
+  const QStringList addresses = otherWindowAddresses(clientsJson, workspace, pid);
+  GameModeWorkspaceWindows result{int(addresses.size()), int(addresses.size())};
+  for (const QJsonValue& value : QJsonDocument::fromJson(clientsJson).array()) {
+    const QJsonObject client = value.toObject();
+    if (addresses.contains(client.value(QLatin1String("address")).toString()) &&
+        client.value(QLatin1String("class")).toString().compare(
+            QLatin1String("steam"), Qt::CaseInsensitive) == 0)
+      --result.possibleGames;
+  }
+  return result;
+}
+
 GameModeWindow HyprlandGameModeCompositor::placeholderForPid(qint64 pid) {
   QByteArray clients;
   if (!run(QStringLiteral("hyprctl"), {QStringLiteral("-j"), QStringLiteral("clients")},

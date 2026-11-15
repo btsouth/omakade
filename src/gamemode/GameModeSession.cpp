@@ -37,8 +37,10 @@ GameModeSession::GameModeSession(GameModeCompositor* compositor, GameModeAudio* 
   m_steamHoldTimer.setSingleShot(true);
   connect(&m_steamHoldTimer, &QTimer::timeout, this, [this] { endSteamHold(true); });
   connect(&m_parkTimer, &QTimer::timeout, this, &GameModeSession::refreshParked);
-  connect(&m_workspaceWatcher, &QFutureWatcher<int>::finished, this,
-          [this] { emit workspaceChecked(m_workspaceWatcher.result()); });
+  connect(&m_workspaceWatcher, &QFutureWatcher<GameModeWorkspaceWindows>::finished, this, [this] {
+    const GameModeWorkspaceWindows windows = m_workspaceWatcher.result();
+    emit workspaceChecked(windows.windows, windows.possibleGames);
+  });
   if (auto* application = qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
     connect(application, &QGuiApplication::screenRemoved, this, &GameModeSession::screenRemoved);
   }
@@ -476,7 +478,7 @@ void GameModeSession::startChange() {
   const Change change = m_change;
   // Snapshot on the GUI thread; the worker must not read its mutable futures or watcher.
   QFuture<void> focusFuture = m_focusFuture;
-  QFuture<int> workspaceFuture = m_workspaceWatcher.future();
+  QFuture<GameModeWorkspaceWindows> workspaceFuture = m_workspaceWatcher.future();
   m_changeWatcher.setFuture(QtConcurrent::run([this, settings, pid, change, focusFuture,
                                               workspaceFuture]() mutable {
     // No late focus request may undo a return to the desktop.
@@ -552,9 +554,9 @@ void GameModeSession::checkWorkspace() {
   const qint64 pid = QCoreApplication::applicationPid();
   m_workspaceWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, pid] {
     if (compositor == nullptr || !compositor->available()) {
-      return 0;
+      return GameModeWorkspaceWindows{};
     }
-    return compositor->otherWindowsOn(GameModeController::workspace(), pid);
+    return compositor->workspaceWindows(GameModeController::workspace(), pid);
   }));
 }
 

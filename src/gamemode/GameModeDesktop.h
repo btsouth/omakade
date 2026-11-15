@@ -20,6 +20,8 @@ public:
   [[nodiscard]] GameModeWindow windowForPid(qint64 pid) override;
   [[nodiscard]] int otherWindowsOn(const QString& workspace, qint64 pid) override;
   [[nodiscard]] QStringList otherWindowAddressesOn(const QString& workspace, qint64 pid) override;
+  [[nodiscard]] GameModeWorkspaceWindows workspaceWindows(const QString& workspace,
+                                                          qint64 pid) override;
   bool gameWindows(const QString& workspace, qint64 owner, QVector<GameModeGameWindow>* windows,
                    QString* error) override;
   bool processAlive(const GameModeProcess& process) override;
@@ -71,6 +73,10 @@ public:
   // Counts what otherWindowsOn reports, from `hyprctl -j clients`.
   [[nodiscard]] static int countOtherWindows(const QByteArray& clientsJson,
                                              const QString& workspace, qint64 pid);
+  // Counts what workspaceWindows reports, from `hyprctl -j clients`. Steam's client
+  // windows carry the class "steam"; its games carry their own.
+  [[nodiscard]] static GameModeWorkspaceWindows parseWorkspaceWindows(
+      const QByteArray& clientsJson, const QString& workspace, qint64 pid);
   // A double-quoted Lua string literal. Names come from EDID and user configuration, so
   // they are never pasted into a script unescaped.
   [[nodiscard]] static QString luaString(const QString& value);

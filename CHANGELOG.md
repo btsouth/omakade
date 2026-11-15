@@ -79,6 +79,9 @@ Steam play recording, a Text size setting and an easier first run.
 - Home in Game Mode opens the Game Mode controls in front of any other window on the
   screen, such as a Steam window left open after a launch, and Back to Library from there
   returns the controller to the library.
+- A Steam window with no game running no longer keeps Home from leaving Game Mode or
+  shows "Game activity is detected" in the Game Mode controls. A running game still opens
+  the controls.
 - Opening a Settings category focuses its first control, and removing a filter chip moves
   focus to Filters.
 - Up and Down in Settings move one row at a time. Up from Game Mode in Settings > Controls

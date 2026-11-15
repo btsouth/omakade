@@ -131,7 +131,8 @@ public:
   // keeps it otherwise, and the Game Mode controls would open behind it.
   Q_INVOKABLE void focusWindow();
   // Counts the other windows on the Game Mode workspace and reports them through
-  // workspaceChecked, so the Game Mode key can tell whether leaving strands a game.
+  // workspaceChecked, so the Game Mode key can tell whether leaving strands a game. The
+  // Steam client's own windows are reported apart: an open Steam is no game.
   Q_INVOKABLE void checkWorkspace();
   // Leaves Game Mode before the process ends. Blocks until the desktop is put back.
   Q_INVOKABLE void shutdown();
@@ -165,7 +166,7 @@ signals:
   // The placeholder window that keeps Omakade's place in the desktop layout should be
   // shown or hidden. Emitted from the worker thread.
   void placeholderRequested(bool visible);
-  void workspaceChecked(int otherWindows);
+  void workspaceChecked(int otherWindows, int possibleGames);
   void failed(const QString& message);
   // An in-place start failed: the window shows the plain fullscreen layout instead.
   // Sent after preparationCancelled and before failed.
@@ -217,7 +218,7 @@ private:
   QFutureWatcher<Devices> m_refreshWatcher;
   QFutureWatcher<GameModeController::Result> m_changeWatcher;
   QFuture<void> m_focusFuture;
-  QFutureWatcher<int> m_workspaceWatcher;
+  QFutureWatcher<GameModeWorkspaceWindows> m_workspaceWatcher;
   QString m_statusText;
   QString m_output;
   QString m_defaultSink;

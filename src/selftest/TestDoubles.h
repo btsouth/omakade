@@ -40,6 +40,11 @@ public:
   // pretends is running there.
   std::atomic<int> otherWindows{0};
   int otherWindowsOn(const QString&, qint64) override { return otherWindows.load(); }
+  // The Steam client's own windows there, as its library left open: counted, but no game.
+  std::atomic<int> steamWindows{0};
+  GameModeWorkspaceWindows workspaceWindows(const QString&, qint64) override {
+    return {otherWindows.load() + steamWindows.load(), otherWindows.load()};
+  }
   QStringList otherWindowAddressesOn(const QString&, qint64) override { return {}; }
   bool gameWindows(const QString&, qint64, QVector<GameModeGameWindow>* games, QString*) override {
     games->clear();

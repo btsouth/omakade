@@ -292,6 +292,22 @@ void driveGameMode(Harness& harness, AppContext& app) {
         return;
       }
     }
+    // Steam's own window on the workspace, as its library left open with no game, is no
+    // game either: leaving still ends Game Mode at once.
+    gameModeTestCompositor.steamWindows = 1;
+    QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
+    if (!settled([&gameMode] { return !gameMode.hasSession() && !gameMode.busy(); }) ||
+        rootWindow->property("couchMode").toBool() != couchBefore) {
+      fail(QStringLiteral("Leaving with only Steam's window on the workspace did not end Game Mode"));
+      return;
+    }
+    gameModeTestCompositor.steamWindows = 0;
+    gameMode.enter();
+    if (!settled([&gameMode] { return gameMode.active() && !gameMode.busy(); }) ||
+        !rootWindow->property("homeOpen").toBool()) {
+      fail(QStringLiteral("Game Mode did not start again on Home after leaving past Steam"));
+      return;
+    }
     // A game on the Game Mode workspace: every way of leaving opens the controls instead.
     // Another window there can be drawn over this one even while this one has focus, as a
     // floating Steam window is, so the controls ask for the overlay surface, which is always

@@ -67,6 +67,13 @@ struct GameModeHeldWindow {
   QString windowClass;
   QString title;
 };
+// The other windows on the Game Mode workspace, and how many of them could be a game.
+// The Steam client's own windows (its library, Big Picture, sign-in and updater) are
+// not one, however long Steam stays open.
+struct GameModeWorkspaceWindows {
+  int windows = 0;
+  int possibleGames = 0;
+};
 struct GameModeDesktopFocus {
   QString output;
   QString workspace;
@@ -101,6 +108,12 @@ public:
   // home instead of leaving them on the workspace that is going away.
   [[nodiscard]] virtual QStringList otherWindowAddressesOn(const QString& workspace,
                                                            qint64 pid) = 0;
+  // The windows otherWindowsOn counts, with the ones that could be a game counted apart.
+  [[nodiscard]] virtual GameModeWorkspaceWindows workspaceWindows(const QString& workspace,
+                                                                  qint64 pid) {
+    const int windows = otherWindowsOn(workspace, pid);
+    return {windows, windows};
+  }
   // False means unknown, not an empty workspace. Only mapped game processes,
   // excluding launcher windows, may witness a retained game.
   virtual bool gameWindows(const QString&, qint64, QVector<GameModeGameWindow>*, QString* error) {

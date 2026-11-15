@@ -2887,6 +2887,39 @@ private slots:
                 .isEmpty());
   }
 
+  // Steam's client windows, its library and Big Picture among them, are counted but are
+  // no game, so an idle Steam left on the workspace does not keep Game Mode from leaving.
+  // Its games carry their own class and still count.
+  void steamClientWindowsAreNoGame() {
+    const QByteArray clients = R"([
+      {"address":"0xa1","mapped":true,"pid":100,"class":"io.github.tsouth89.Omakade","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa2","mapped":true,"pid":200,"class":"steam","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa3","mapped":true,"pid":200,"class":"Steam","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa4","mapped":false,"pid":300,"class":"steam_app_367520","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa5","mapped":true,"pid":400,"class":"steam","workspace":{"id":1,"name":"1"}}])";
+    const auto steamOnly = HyprlandGameModeCompositor::parseWorkspaceWindows(
+        clients, GameModeController::workspace(), 100);
+    QCOMPARE(steamOnly.windows, 2);
+    QCOMPARE(steamOnly.possibleGames, 0);
+
+    const QByteArray withGame = R"([
+      {"address":"0xa2","mapped":true,"pid":200,"class":"steam","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa4","mapped":true,"pid":300,"class":"steam_app_367520","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa6","mapped":true,"pid":500,"class":"hollow_knight.x86_64","workspace":{"id":-1337,"name":"omakade"}},
+      {"address":"0xa7","mapped":true,"pid":600,"workspace":{"id":-1337,"name":"omakade"}}])";
+    const auto games = HyprlandGameModeCompositor::parseWorkspaceWindows(
+        withGame, GameModeController::workspace(), 100);
+    QCOMPARE(games.windows, 4);
+    QCOMPARE(games.possibleGames, 3);
+    QCOMPARE(games.windows, HyprlandGameModeCompositor::countOtherWindows(
+                                withGame, GameModeController::workspace(), 100));
+
+    const auto none =
+        HyprlandGameModeCompositor::parseWorkspaceWindows("nope", GameModeController::workspace(), 100);
+    QCOMPARE(none.windows, 0);
+    QCOMPARE(none.possibleGames, 0);
+  }
+
   // A game left running when Game Mode is left must come home with Omakade instead of
   // being stranded on the workspace that goes away.
   void leavingGameModeBringsLeftBehindWindowsToTheDesktop() {
