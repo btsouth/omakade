@@ -2,152 +2,89 @@
 
 ## 1.19.0
 
-Steam play recording, a Text size setting and an easier first run.
+Steam play recording, a Lichii source, Text size, and a Game Mode that handles Steam's
+prompts with a controller.
 
 ### Upgrading
 
-- The package no longer starts `omakade-sessiond` for every account at login. If you
-  record playtime or Highlights, open Omakade once after updating, or run
-  `systemctl --user enable --now omakade-sessiond.service`, so the recorder starts again.
-  The package prints this when it updates from an earlier version.
-- Opening Omakade enables the recorder for your account and starts it right away, on
-  Omarchy always and elsewhere while Record Playtime or Highlights is on.
-  `systemctl --user disable omakade-sessiond` keeps it from starting at login.
+- The package no longer starts `omakade-sessiond` for every account. If you record
+  playtime or Highlights, open Omakade once after updating, or run
+  `systemctl --user enable --now omakade-sessiond.service`. The package reminds you when
+  it updates.
 
 ### Play recording and Stats
 
-- Steam games installed in your library are recorded while they run, whether started from
-  Omakade or from Steam, and show in Stats, Year in Review and Play History. Recording
-  starts about ten seconds after launch while the Steam source is on. Steam's own total
-  is unchanged. Discord Status shows Steam games too.
+- Steam games are recorded while they run, whether started from Omakade or from Steam,
+  and show in Stats, Year in Review, Play History and Discord Status.
+- Stats charts leave out paused time, and Stats and Home load in the background.
 - An empty Stats says when recording is off and offers Turn On Recording.
-- Stats no longer counts paused time in its hour, weekday and day charts. Stats and Home
-  do their work in the background.
-- If its storage is unavailable at login, the recorder keeps retrying for about an hour
-  instead of stopping for the session.
-
-### Look and feel
-
-- Settings > Appearance has a Text size choice from 90% to 150%, which follows the
-  desktop's text scaling by default. Small labels are easier to read, and Settings and
-  library cards widen to fit larger text.
-- Reduced motion follows the desktop by default, with System, Reduced and Full in
-  Settings > Appearance.
-- Keyboard and controller focus has its own thicker ring that stands out on every theme.
-  Selected tabs, choices and switches have an accent fill and marker.
-- Button labels are centered. The main action on a screen is a solid accent button, and
-  confirmations that cannot be undone are solid red.
-- Favorites show a filled heart on the favorite button and on library, Home and Game Mode
-  cards.
-- Status pills on library cards are larger and readable on light themes too.
-- Counts read correctly for one item, such as "1 GAME".
-- Settings > Backup & Storage uses the same text sizes as the other Settings pages, and
-  the Year in Review preview no longer draws over the header.
-- Screen readers hear a card's favorite, completion and install state, and hidden
-  achievements no longer reveal their names.
-- The app is about 80 MB smaller, and the Nintendo DS card shows its console art.
-
-### Library and launching
-
-- Lichii is a new source for Nintendo Switch and Switch 2 games. Games in the folders
-  Lichii lists, and games it opened with Load File, show in the library and start
-  fullscreen in Lichii, with the play time and last played date Lichii keeps. Omakade
-  finds Lichii on your PATH, through its desktop entry or in `~/Applications`. With
-  Record Playtime on, Lichii sessions are recorded too, and the recorder now also
-  recognizes `.nsz` and `.xcz` files in Ryujinx and Eden. Switch 2 games sit with
-  Nintendo Switch games for now. Thanks to @Auxxed.
-- An empty Library or Home has **Set Up Sources**, which opens Settings > Sources, and a
-  link to the guide. When filters hide everything, the
-  message names them.
-- The Sources picker lists only sources that have games, with one Emulated chip.
-  Settings > Sources lists a source as In use only once it is found.
-- Games on an unplugged Steam library drive stay in the library, marked as on a
-  disconnected drive. Settings > Sources offers Forget for a drive that is gone for good.
-- When an emulator, manual game, native port or GOG game closes within a few seconds of
-  starting, Omakade says so and offers Open Log. Launches that hand the game to a
-  launcher, script or wrapper are not reported.
-- Big libraries stay responsive while covers and metadata load.
-- Settings > Connections explains that IGDB and SteamGridDB look up the whole library in
-  the background, and Identify Library Automatically turns that off.
 
 ### Game Mode and controllers
 
-- The large game above the Game Mode library cards always matches the focused card, and
-  it shrinks to fit on small displays.
-- If Omakade is closed by force during Game Mode, it opens in Game Mode again next time,
-  and leaving Game Mode returns you to the workspace you were on before instead of Game
-  Mode's own.
-- Game Mode reports an interrupted session it could not fully undo and tries again later.
-  A damaged recovery record is set aside so Game Mode can start again.
-- With Hold launcher windows on, a game started through Sunshine, such as from Moonlight,
-  gets the same Starting screen as Play, and its launcher's windows stay out of sight.
-- The Starting screen says what Steam is waiting for, such as a EULA to accept or Vulkan
-  shaders to process. A window opened from there keeps its own size, and the controller
-  is a pointer in it: the left stick or D-pad moves it, A clicks, the right stick scrolls
-  and B comes back.
-- When Steam does not start the game after its EULA is accepted, Omakade starts it again,
-  and the Starting screen no longer ends with Steam's question still out of sight.
-- When Steam signs out during Game Mode with no game running, such as after the account
-  signs in on another computer, the Game Mode controls open in front of its Refresh Sign In
-  window with Restart Steam, which usually signs Steam back in from its saved login. If it
-  does not, Steam's window comes in front to sign in there. With a game running, Back to
-  Game stays first in the controls.
+- The Starting screen says what Steam is waiting for, such as a EULA or Vulkan shaders,
+  and the controller becomes a pointer so you can answer it. If Steam does not start the
+  game after you accept, Omakade starts it again.
+- When Steam signs out during Game Mode, such as after the account signs in on another
+  computer, Game Mode offers Restart Steam, which usually signs it back in.
+- Home opens the Game Mode controls in front of any other window, and a Steam window
+  with no game running no longer keeps Home from leaving Game Mode.
+- Games started through Sunshine, such as from Moonlight, get the same Starting screen as
+  Play, with launcher windows kept out of sight.
+- If Steam's Guide Button Chords would also open its overlay on Home, Omakade tells you
+  once how to turn them off.
+- The large game above the library cards always matches the focused card and fits small
+  displays.
+- If Omakade is closed by force during Game Mode, it opens in Game Mode again, and
+  leaving returns you to your own workspace.
+- Up and Down in Settings move one row at a time, and each category opens on its first
+  control.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.
-- The favorite button no longer favorites the game behind an open editor or dialog.
-- Home in Game Mode opens the Game Mode controls in front of any other window on the
-  screen, such as a Steam window left open after a launch, and Back to Library from there
-  returns the controller to the library.
-- A Steam window with no game running no longer keeps Home from leaving Game Mode or
-  shows "Game activity is detected" in the Game Mode controls. A running game still opens
-  the controls.
-- Opening a Settings category focuses its first control, and removing a filter chip moves
-  focus to Filters.
-- Up and Down in Settings move one row at a time. Up from Game Mode in Settings > Controls
-  no longer skips to Sound, and Sources and Appearance no longer skip rows either.
-- OmaStore installs can use the controller Home button. Turn it on in Settings > Controls;
-  it usually needs turning off and on again after each login.
-- Steam reads the controller too, and with its Guide Button Chords on, the Home press that
-  opens the guide also opens Steam's overlay, which shows when you resume. The first time
-  Home opens the guide over a Steam game with them on, a notification on resume says how to
-  turn them off, and Settings > Controls says where to find them.
+- OmaStore installs can use the controller Home button.
+
+### Library and launching
+
+- **Lichii** is a new source for Nintendo Switch and Switch 2 games, with their play
+  time, last played date and recorded sessions. Thanks to @Auxxed.
+- An empty Library or Home offers **Set Up Sources**, and the Sources picker only lists
+  sources that have games.
+- Games on an unplugged Steam drive stay in the library, marked as disconnected.
+- When an emulator, manual game, native port or GOG game closes within a few seconds of
+  starting, Omakade says so and offers Open Log.
+- Big libraries stay responsive while covers and metadata load.
+- Settings > Connections explains IGDB and SteamGridDB lookups and lets you turn them off.
+
+### Look and feel
+
+- **Text size** in Settings > Appearance, from 90% to 150%, follows the desktop by
+  default. Small labels are easier to read.
+- Reduced motion follows the desktop by default.
+- Keyboard and controller focus has its own ring that stands out on every theme, and
+  selected tabs, choices and switches are clearer.
+- Favorites show a filled heart on the button and on cards everywhere.
+- Button labels are centered, and status pills are readable on light themes.
+- Screen readers hear a card's favorite, completion and install state.
+- The app is about 80 MB smaller.
 
 ### Saves and backups
 
-- An unfinished save restore only holds back its own game, and Save Backups offers Keep
-  Current Saves.
-- A backup can be restored over a damaged library database. Omakade keeps a copy, and
-  Undo puts it back.
-- When the recorder blocks a restore, the startup screen offers **Stop Recorder and
-  Restore** and starts the recorder again afterwards.
-- Restoring is refused while PPSSPP runs as PPSSPPSDL or PPSSPPQt.
-- The restore preview lists every launch command a backup adds or changes and warns about
-  ones that run code from their arguments.
+- A backup can be restored over a damaged library database, with Undo.
+- An unfinished save restore only holds back its own game.
+- Restoring is refused while PPSSPP runs, and the restore preview lists every launch
+  command a backup adds or changes.
 
 ### Security and privacy
 
-- Library database, settings and cache folders are private to your user, including ones
-  an earlier version created.
-- The single-instance socket lives in your private runtime folder instead of the shared
-  temp folder.
-- RomM settings show whether the connection is encrypted, and Omakade asks before
-  sending the token over plain HTTP to a server outside your network.
-- Game titles and other library text show as typed and can no longer make Omakade fetch
-  an image.
-- A damaged or crafted Wii U `.wua` archive can no longer make a Cemu scan use gigabytes
-  of memory or stall a scan or launch.
+- Omakade's data and settings folders are private to your user, and its single-instance
+  socket moved out of the shared temp folder.
+- Omakade asks before sending a RomM token over plain HTTP outside your network.
+- Game titles show as plain text and can no longer make Omakade fetch an image.
+- A crafted Wii U archive can no longer stall a Cemu scan or use gigabytes of memory.
 
 ### Packaging
 
-- The UI test harness moved out of the installed `omakade`. `omakade --smoke-test` still
-  checks the installed app.
-- `omakade --help` and `omakade --version` print and exit, even over SSH with no display,
-  instead of failing to start or opening the window.
-- The user services start the binaries from the install prefix, so a `/usr/local` build
-  works.
-- The package installs Troubleshooting, the in-game guide page, Architecture and the
-  README screenshots, so every link in the installed docs opens.
-- The in-game guide plugin is GPL-3.0-or-later like the rest of Omakade, and its manifest
-  carries the Omakade version.
+- `omakade --help` and `--version` print and exit, even with no display.
+- The UI test harness is no longer part of the installed app.
+- User services follow the install prefix, and every link in the installed docs opens.
 
 ## 1.18.0
 
