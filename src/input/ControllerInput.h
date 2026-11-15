@@ -58,6 +58,9 @@ public:
   // pointer in it: the left stick or D-pad moves it, A clicks, the right stick scrolls and
   // B asks for the library back. Steam's dialogs, such as a EULA, take nothing else.
   void setPointerMode(bool enabled);
+  // Makes the pointer device now rather than on first use, while pointer mode is on and a
+  // controller is connected.
+  void preparePointer();
 
 signals:
   void controllerChanged();

@@ -400,9 +400,14 @@ void ControllerInput::setPointerMode(bool enabled) {
   if (!enabled) m_pointer.close();
 }
 
+void ControllerInput::preparePointer() {
+  // With a controller in hand, the device is made as the window opens, so it is read by
+  // the time the player first clicks. A window answered with a mouse adds none.
+  if (m_pointerMode && !m_controllers.isEmpty()) ensurePointer();
+}
+
 bool ControllerInput::ensurePointer() {
-  // Made on first use, so a window answered with a mouse adds no device. One that cannot
-  // be made is not tried again on every poll.
+  // One that cannot be made is not tried again on every poll.
   if (m_pointer.isOpen()) return true;
   if (m_pointerFailed) return false;
   m_pointerFailed = !m_pointer.open();
@@ -411,9 +416,9 @@ bool ControllerInput::ensurePointer() {
 }
 
 bool ControllerInput::pointerSettling() const {
-  // The compositor takes a moment to start reading a new device, and a click sent before
-  // then is lost.
-  constexpr qint64 settleMs = 300;
+  // The compositor takes a moment to start reading a new device, about two seconds on a
+  // ROG Ally, and a click sent before then is lost.
+  constexpr qint64 settleMs = 2500;
   return m_pointerMade.isValid() && m_pointerMade.elapsed() < settleMs;
 }
 

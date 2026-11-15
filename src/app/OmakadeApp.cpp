@@ -1082,8 +1082,10 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   // dialogs answer nothing else, and B brings the Starting screen back. Never in a test
   // run: the pointer is a real input device.
   if (!gameModeTest && !isolatedTest) {
-    QObject::connect(&launchHold, &LaunchHold::changed, &controller,
-                     [&] { controller.setPointerMode(!launchHold.presented().isEmpty()); });
+    QObject::connect(&launchHold, &LaunchHold::changed, &controller, [&] {
+      controller.setPointerMode(!launchHold.presented().isEmpty());
+      controller.preparePointer();
+    });
     QObject::connect(&controller, &ControllerInput::pointerBackRequested, &launchHold,
                      &LaunchHold::returnToLibrary);
   }
