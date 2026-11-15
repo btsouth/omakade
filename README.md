@@ -5,40 +5,38 @@
 
 **Your games, beautifully together.**
 
-Omakade brings your Linux games into one library that follows your Omarchy theme.
-Browse, organize, and launch games from Steam, Heroic, Lutris, Faugus, Battle.net,
-GOG, Microsoft Store and PC Game Pass (through Xodus Nexus), and supported emulators
-with a keyboard, mouse, or controller.
+Every game on your Linux machine in one library that follows your Omarchy theme.
+Steam, Heroic, Lutris, Faugus, Battle.net, GOG, Game Pass (through Xodus Nexus) and a
+dozen emulators, played with a keyboard, mouse or controller.
 
 [![Omakade library](docs/assets/library-preview.webp)](https://btsouth.github.io/omakade/assets/omakade-demo.mp4)
 
 [Watch the demo](https://btsouth.github.io/omakade/assets/omakade-demo.mp4) ·
 [Homepage](https://btsouth.github.io/omakade/) · [Guide](docs/GUIDE.md) ·
-[Compatibility](docs/COMPATIBILITY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) ·
-[Support](SUPPORT.md)
+[Troubleshooting](docs/TROUBLESHOOTING.md) · [Support](SUPPORT.md)
 
 ## Features
 
-- One library for installed games, with optional Steam and Heroic owned-library views
-- Console libraries for RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Lichii, Cemu, melonDS,
-  shadPS4, Dolphin, Xenia, and Kyty (PS5)
-- Automatic discovery of known native ports, with links to available ports for your console dumps
-- Controller-first fullscreen [Game Mode](docs/GAME-MODE.md), on the display you are
-  using or on a chosen display and sound output, with desktop restoration when you leave
-- Favorites, collections, tags, saved filters, custom artwork, and a random pick
-- Optional playtime recording, session history, stats, and a Year in Review image
-- [Highlights](docs/HIGHLIGHTS.md): save the last moments of a game from the in-game guide, a key or a
-  controller's capture button, and clip Steam achievements as they unlock
-- Steam and Xbox achievements and optional RetroAchievements, IGDB, SteamGridDB, and ProtonDB details
-- Emulator save backups, personal library backup and restore, and Sunshine/Moonlight export
+- **One library** for installed games, plus your owned Steam and Heroic libraries
+- **Consoles:** RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Lichii, Cemu, melonDS, shadPS4,
+  Dolphin, Xenia and Kyty, with [native PC ports](docs/NATIVE-PORTS.md) found for you
+- **[Game Mode](docs/GAME-MODE.md):** a controller-first fullscreen mode for the couch,
+  on any display and sound output, that puts your desktop back when you leave
+- **[In-game guide](docs/GAME-GUIDE.md)** over any game, and
+  **[Highlights](docs/HIGHLIGHTS.md)** that save the last 30 seconds or clip Steam
+  achievements as they unlock
+- **Stats:** play time, session history and a Year in Review card
+- **Organize:** favorites, collections, tags, saved filters and custom artwork
+- **Details:** Steam and Xbox achievements, plus optional RetroAchievements, IGDB,
+  SteamGridDB and ProtonDB
+- **Safe saves:** emulator save backups, library backup and restore, and Sunshine and
+  Moonlight export
 
 ![Game details, playtime, and achievements](docs/assets/game-details.webp)
 
-Installed-game discovery and core browsing work offline without an account or API
-key. Play uses the owning launcher or emulator; accounts, downloads, updates,
-DRM, cloud saves, and compatibility settings stay with those applications.
-
-Omakade is an independent community project, not an official Omarchy application.
+Works offline with no account. Games launch through their own launcher or emulator,
+which keeps your downloads, updates and cloud saves. Omakade is a community project,
+not an official Omarchy app.
 
 ## Install
 
@@ -80,50 +78,35 @@ installs it into your home directory along with its services.
 
 ## Getting started
 
-Open Omakade from the application launcher or run `omakade`. Installed games
-appear automatically. Use `omakade --demo` to try a fictional library.
+Open Omakade from the app launcher or run `omakade`. Installed games show up on their
+own. `omakade --demo` opens a sample library.
 
-| Control | Action |
+| Key or button | Action |
 | --- | --- |
 | `Ctrl+F` | Search |
-| Arrow keys / Enter | Navigate / open details |
-| Escape | Go back |
-| F11 / controller Start | Start or leave Game Mode on this display |
-| `Super+Ctrl+G` | Game Mode on your chosen display, or the in-game guide over a game (add it in **Settings → Controls**) |
-| Controller Home button | In-game guide over a game, otherwise same as Start (turn it on in **Settings → Controls**) |
-| `Ctrl+D` | Settings and source diagnostics |
-| `Ctrl+M` | Toggle reduced motion |
+| F11 or controller Start | Game Mode on this display |
+| `Super+Ctrl+G` | Game Mode on your gaming display, or the in-game guide over a game |
+| Controller Home | The in-game guide over a game |
+| `Ctrl+D` | Settings |
 
-Fullscreen is always Game Mode. F11, Start and `omakade --couch` start it on the display
-you are using and leave sound and notifications alone. Use **Settings → Controls → Start
-Game Mode**, `Super+Ctrl+G` or `omakade --game-mode` for a dedicated gaming display and
-sound output.
+Set up `Super+Ctrl+G`, the Home button and your gaming display in **Settings → Controls**.
 
-## User guides
+## Docs
 
-- [Guide](docs/GUIDE.md): sources and everyday features
-- [Game Mode](docs/GAME-MODE.md): fullscreen play, a dedicated gaming display, and recovery
-- [In-game guide](docs/GAME-GUIDE.md): the overlay that opens over a running game
-- [Highlights](docs/HIGHLIGHTS.md): save clips of the last moments of a game
-- [Emulator save protection](docs/SAVE-SETS.md): automatic save copies and restores
-- [Native ports](docs/NATIVE-PORTS.md): native PC ports of console games
-- [Compatibility](docs/COMPATIBILITY.md): what each source supports, and test reports
-- [Troubleshooting](docs/TROUBLESHOOTING.md): missing games, sources that are not
-  found, launch errors, covers, and logs
+[Guide](docs/GUIDE.md) · [Game Mode](docs/GAME-MODE.md) ·
+[In-game guide](docs/GAME-GUIDE.md) · [Highlights](docs/HIGHLIGHTS.md) ·
+[Save protection](docs/SAVE-SETS.md) · [Native ports](docs/NATIVE-PORTS.md) ·
+[Compatibility](docs/COMPATIBILITY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) ·
+[Changelog](CHANGELOG.md)
 
-## Local data
-
-Your library and custom artwork live in `~/.local/share/omakade/`, settings in
-`~/.config/omakade/config.toml`, and downloaded artwork in `~/.cache/omakade/`.
-Optional Steam, RetroAchievements, IGDB, SteamGridDB, and RomM credentials are
-stored in Secret Service, never in the settings file.
+Your library lives in `~/.local/share/omakade/` and settings in
+`~/.config/omakade/config.toml`. Passwords and API keys stay in Secret Service.
+See [Privacy](PRIVACY.md) and [Security](SECURITY.md).
 
 ## Contributing
 
-See [Contributing](CONTRIBUTING.md) for dependencies and build and test commands, and
-[Architecture](docs/ARCHITECTURE.md) for a map of the source tree.
-
-[Privacy](PRIVACY.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+[Contributing](CONTRIBUTING.md) has the build and test commands, and
+[Architecture](docs/ARCHITECTURE.md) maps the source tree.
 
 ## Also by me
 
