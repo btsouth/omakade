@@ -95,6 +95,7 @@ private:
   void hintSteamChords();
   void notifySteamChords();
   QString m_chordHintGame;
+  int m_chordReads = 0; // Finished reads, for the tests.
   bool m_chordHintPending = false;
   // Empty means the usual Steam folders.
   QStringList m_steamRoots;

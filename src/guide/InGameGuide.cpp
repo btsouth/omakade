@@ -650,6 +650,7 @@ bool InGameGuide::steamGuideChords(const QStringList& steamRoots) {
     const auto* users = login.object("users");
     if (!users) continue;
     QStringList accounts, recent;
+    QString latest; qint64 latestTime = -1;
     for (auto it = users->objects.cbegin(); it != users->objects.cend(); ++it) {
       bool numeric = false;
       const auto id = it.key().toULongLong(&numeric);
@@ -657,7 +658,12 @@ bool InGameGuide::steamGuideChords(const QStringList& steamRoots) {
       const auto account = QString::number(id & 0xffffffffULL);
       accounts.append(account);
       if (it.value().value("MostRecent") == "1") recent.append(account);
+      bool stamped = false;
+      const auto time = it.value().value("Timestamp").toLongLong(&stamped);
+      if (stamped && time > latestTime) { latestTime = time; latest = account; }
     }
+    // Newer Steam leaves MostRecent out; the account signed in last has the newest timestamp.
+    if (recent.isEmpty() && !latest.isEmpty()) recent.append(latest);
     for (const auto& account : recent.isEmpty() ? accounts : recent) {
       ValveKeyValues local;
       if (!ValveKeyValuesParser::parseFile(root + "/userdata/" + account + "/config/localconfig.vdf", &local)) continue;
@@ -669,15 +675,19 @@ bool InGameGuide::steamGuideChords(const QStringList& steamRoots) {
   return false;
 }
 
+static QString chordHintKey(const QVariantMap& session) {
+  return session.value("pid").toString() + ':' + session.value("procStart").toString();
+}
+
 void InGameGuide::hintSteamChords() {
   // Only a controller's Home reaches Steam, and only a game Steam runs has its overlay.
   if (m_family == "keyboard" || m_session.value("source").toString() != "Steam") return;
-  const auto game = m_session.value("pid").toString() + ':' + m_session.value("procStart").toString();
-  if (game == m_chordHintGame) return;
-  m_chordHintGame = game;
+  // A game counts as told only once the notice is sent, so a guide left another way asks again.
+  if (chordHintKey(m_session) == m_chordHintGame) return;
   auto* watcher = new QFutureWatcher<bool>(this);
   connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
     const bool on = watcher->result(); watcher->deleteLater();
+    ++m_chordReads;
     if (!on) return;
     // Notifications show under the guide, so it is said on resume, next to Steam's overlay.
     if (showing()) m_chordHintPending = true;
@@ -690,6 +700,7 @@ void InGameGuide::hintSteamChords() {
 
 void InGameGuide::notifySteamChords() {
   m_chordHintPending = false;
+  m_chordHintGame = chordHintKey(m_session);
   const auto sender = QStandardPaths::findExecutable("omarchy-notification-send");
   if (sender.isEmpty()) return;
   QProcess::startDetached(sender, {"Steam also opens its overlay on Home",
