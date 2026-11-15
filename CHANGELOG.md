@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Achievement icons show for recent Steam games again. Steam stopped serving them from the
+  address its achievement list still gives.
+
 ## 1.19.0
 
 Steam play recording, a Lichii source, Text size, and a Game Mode that handles Steam's
