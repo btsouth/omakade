@@ -69,6 +69,8 @@ struct GameModeHeldWindow {
   // The window's own size, when the compositor gives it.
   int width = 0;
   int height = 0;
+  // Where the window is, when the compositor gives it.
+  QString workspace;
 };
 // The other windows on the Game Mode workspace, and how many of them could be a game.
 // The Steam client's own windows (its library, Big Picture, sign-in and updater) are

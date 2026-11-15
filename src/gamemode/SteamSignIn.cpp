@@ -218,13 +218,21 @@ void SteamSignIn::restartSteam() {
         // takes the display from Game Mode, so Steam's windows wait out of sight with the
         // ones a launch holds, where they cannot take focus. They close as Steam quits.
         QVector<GameModeHeldWindow> windows;
+        QVector<GameModeHeldWindow> held;
         if (compositor && compositor->openWindows(&windows, nullptr)) {
           for (const auto& window : std::as_const(windows))
             if (window.windowClass.compare(QStringLiteral("steam"), Qt::CaseInsensitive) == 0 &&
-                window.address != signIn)
-              compositor->holdWindow(window.address);
+                window.address != signIn && compositor->holdWindow(window.address))
+              held.append(window);
         }
-        return restarter(*cancelled);
+        const Restart result = restarter(*cancelled);
+        // A Steam that would not quit keeps its windows, so they go back where they were.
+        if (result == Restart::StillRunning) {
+          for (const auto& window : std::as_const(held))
+            if (!window.workspace.isEmpty())
+              compositor->releaseWindow(window.address, window.workspace);
+        }
+        return result;
       }));
 }
 

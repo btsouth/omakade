@@ -519,7 +519,8 @@ QVector<GameModeHeldWindow> parseClients(const QByteArray& clientsJson, const QS
     windows.append({address, client.value(QLatin1String("pid")).toVariant().toLongLong(),
                     client.value(QLatin1String("class")).toString(),
                     client.value(QLatin1String("title")).toString(), size.at(0).toInt(),
-                    size.at(1).toInt()});
+                    size.at(1).toInt(),
+                    Compositor::workspaceSelector(client.value(QLatin1String("workspace")).toObject())});
   }
   return windows;
 }

@@ -489,8 +489,11 @@ public:
   bool presentWindow(const QString& address, const QString& workspace, int width, int height,
                      QString* = nullptr) override {
     QMutexLocker lock(&mutex);
-    for (const auto& window : std::as_const(held))
-      if (window.address == address) shown.append(window);
+    for (auto window : std::as_const(held)) {
+      if (window.address != address) continue;
+      window.workspace = workspace;
+      shown.append(window);
+    }
     held.removeIf([&](const auto& window) { return window.address == address; });
     log.append(QStringLiteral("present %1 %2 %3x%4").arg(address, workspace).arg(width).arg(height));
     return true;
@@ -3109,6 +3112,8 @@ private slots:
     QCOMPARE(open.size(), 2);
     QCOMPARE(open.at(1).address, QStringLiteral("0x11"));
     QCOMPARE(open.at(1).pid, 42);
+    QCOMPARE(open.at(0).workspace, QStringLiteral("special:omakade-launch"));
+    QCOMPARE(open.at(1).workspace, QStringLiteral("3"));
   }
 
   void launchHoldKnowsTheGameWindow() {
@@ -3647,6 +3652,41 @@ private slots:
     // are left alone.
     QVERIFY(!compositor.entries().contains(QStringLiteral("hold-window 0x81")));
     QVERIFY(!compositor.entries().contains(QStringLiteral("hold-window 0x82")));
+    // Signed back in, nothing is put back.
+    for (const QString& entry : compositor.entries())
+      QVERIFY2(!entry.startsWith(QStringLiteral("release ")), qPrintable(entry));
+    signIn.setWatching(false);
+  }
+
+  // A Steam that would not quit keeps its windows, so the ones held for the restart go back
+  // to their workspaces rather than staying out of sight.
+  void steamSignInReturnsSteamsWindowsWhenSteamStaysOpen() {
+    HoldCompositor compositor;
+    SteamSignIn signIn(&compositor);
+    signIn.setHyprlandEvents(false);
+    signIn.setPollInterval(10);
+    signIn.setTitles({QStringLiteral("Refresh Sign In")});
+    QSignalSpy restarted(&signIn, &SteamSignIn::restarted);
+    compositor.open({QStringLiteral("0x80"), 80, QStringLiteral("steam"), QStringLiteral("Steam"), 1100, 700});
+    compositor.open({QStringLiteral("0x81"), 80, QStringLiteral("steam"), QStringLiteral("Refresh Sign In"), 705, 470});
+    QVERIFY(compositor.presentWindow(QStringLiteral("0x80"), QStringLiteral("11"), 1100, 700));
+    QVERIFY(compositor.presentWindow(QStringLiteral("0x81"), GameModeController::workspace(), 705, 470));
+    signIn.setWatching(true);
+    QTRY_VERIFY(signIn.open());
+
+    signIn.setRestarter([](const std::atomic<bool>&) { return SteamSignIn::Restart::StillRunning; });
+    signIn.restartSteam();
+    QTRY_COMPARE(restarted.size(), 1);
+    QCOMPARE(restarted.at(0).at(0).toBool(), false);
+    const QStringList entries = compositor.entries();
+    const qsizetype heldAt = entries.indexOf(QStringLiteral("hold-window 0x80"));
+    QVERIFY(heldAt >= 0);
+    QVERIFY(entries.indexOf(QStringLiteral("release 0x80 11")) > heldAt);
+    // The Refresh Sign In window was never held, and comes in front as before.
+    QVERIFY(!entries.contains(QStringLiteral("hold-window 0x81")));
+    QVERIFY(!entries.contains(QStringLiteral("release 0x81 ") + GameModeController::workspace()));
+    QTRY_VERIFY(compositor.entries().contains(
+        QStringLiteral("present 0x81 %1 705x470").arg(GameModeController::workspace())));
     signIn.setWatching(false);
   }
 
