@@ -15,6 +15,8 @@
 #include <QThread>
 #include <QUrl>
 #include <QtConcurrent>
+#include <algorithm>
+#include <utility>
 
 namespace {
 // Steam's name for the window in English, from #Login_RefreshSignIn.
@@ -145,6 +147,7 @@ void SteamSignIn::setWatching(bool watching) {
     m_soon.stop();
     m_events.abort();
     m_eventBuffer.clear();
+    releaseHeld();
     if (!m_window.address.isEmpty()) {
       m_window = {};
       emit changed();
@@ -211,28 +214,21 @@ void SteamSignIn::restartSteam() {
   if (m_restarting || !m_restarter) return;
   m_restarting = true;
   emit changed();
+  m_restartHeld = std::make_shared<QVector<GameModeHeldWindow>>();
   m_restartWatcher.setFuture(QtConcurrent::run(
       [restarter = m_restarter, cancelled = m_cancelled, compositor = m_compositor,
-       signIn = m_window.address] {
+       signIn = m_window.address, held = m_restartHeld] {
         // Steam brings its main window forward as it quits. On a desktop workspace that
         // takes the display from Game Mode, so Steam's windows wait out of sight with the
         // ones a launch holds, where they cannot take focus. They close as Steam quits.
         QVector<GameModeHeldWindow> windows;
-        QVector<GameModeHeldWindow> held;
         if (compositor && compositor->openWindows(&windows, nullptr)) {
           for (const auto& window : std::as_const(windows))
             if (window.windowClass.compare(QStringLiteral("steam"), Qt::CaseInsensitive) == 0 &&
                 window.address != signIn && compositor->holdWindow(window.address))
-              held.append(window);
+              held->append(window);
         }
-        const Restart result = restarter(*cancelled);
-        // A Steam that would not quit keeps its windows, so they go back where they were.
-        if (result == Restart::StillRunning) {
-          for (const auto& window : std::as_const(held))
-            if (!window.workspace.isEmpty())
-              compositor->releaseWindow(window.address, window.workspace);
-        }
-        return result;
+        return restarter(*cancelled);
       }));
 }
 
@@ -242,7 +238,30 @@ void SteamSignIn::finishRestart() {
   emit changed();
   // Steam would not quit, so its window is still the way in.
   if (result == Restart::StillRunning) showWindow();
+  // Its other windows stay out of sight while Game Mode is on, as Steam may still quit and
+  // bring its main window forward, and go back where they were when it ends.
+  if (result == Restart::StillRunning && m_restartHeld) m_stillHeld += *m_restartHeld;
+  m_restartHeld.reset();
+  if (!m_watching) releaseHeld();
   emit restarted(result == Restart::SignedIn);
+}
+
+void SteamSignIn::releaseHeld() {
+  if (!m_compositor || m_stillHeld.isEmpty()) return;
+  m_action.waitForFinished();
+  m_action = QtConcurrent::run([compositor = m_compositor, held = std::exchange(m_stillHeld, {})] {
+    // Only a window still open as the same Steam window, as Hyprland may reuse an address.
+    QVector<GameModeHeldWindow> windows;
+    if (!compositor->openWindows(&windows, nullptr)) return;
+    for (const auto& window : held) {
+      const bool open = std::any_of(windows.cbegin(), windows.cend(), [&](const auto& now) {
+        return now.address == window.address && now.pid == window.pid &&
+               now.windowClass == window.windowClass;
+      });
+      if (open && !window.workspace.isEmpty())
+        compositor->releaseWindow(window.address, window.workspace);
+    }
+  });
 }
 
 void SteamSignIn::showWindow() {
