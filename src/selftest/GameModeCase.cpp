@@ -310,6 +310,28 @@ void driveGameMode(Harness& harness, AppContext& app) {
       fail(QStringLiteral("Game Mode did not start again on Home after leaving past Steam"));
       return;
     }
+    // A Steam game is not Omakade's own process, so only its window on the workspace shows it
+    // is running. Steam's Refresh Sign In window then leaves the game in front.
+    {
+      auto* overlaySpy = new GameModeOverlaySpy(&application);
+      QObject* realOverlay = engine->rootContext()->contextProperty(QStringLiteral("GameModeOverlay")).value<QObject*>();
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), overlaySpy);
+      gameModeTestCompositor.otherWindows = 1;
+      gameModeTestCompositor.steamSignIn = true;
+      const bool found = settled([steamSignIn] { return steamSignIn->open(); });
+      QCoreApplication::processEvents(QEventLoop::AllEvents, 500);
+      auto* panel = rootWindow->findChild<QObject*>(QStringLiteral("gameModeControls"));
+      const bool openedAlone = overlaySpy->requests != 0 || (panel && panel->property("visible").toBool());
+      gameModeTestCompositor.steamSignIn = false;
+      const bool gone = settled([steamSignIn] { return !steamSignIn->open(); });
+      gameModeTestCompositor.otherWindows = 0;
+      engine->rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), realOverlay);
+      if (!found || openedAlone || !gone || !gameMode.active()) {
+        fail(QStringLiteral("Steam's Refresh Sign In window opened the Game Mode controls over a Steam game "
+                            "(found=%1, opened=%2)").arg(found).arg(openedAlone));
+        return;
+      }
+    }
     // Steam signed out and opened its Refresh Sign In window, which a controller cannot get
     // through. The controls open in front of it on their own, with Restart Steam focused.
     {
