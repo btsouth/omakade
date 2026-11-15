@@ -487,6 +487,17 @@ public:
     log.append(QStringLiteral("present %1 %2 %3x%4").arg(address, workspace).arg(width).arg(height));
     return true;
   }
+  bool setFollowMouse(const QString& address, bool follow, QString* = nullptr) override {
+    if (followFailures.load() > 0) {
+      --followFailures;
+      record(QStringLiteral("follow-failed %1").arg(address));
+      return false;
+    }
+    record(QStringLiteral("follow %1 %2").arg(address).arg(follow ? 1 : 0));
+    return true;
+  }
+  // How many of the next follow-mouse requests fail, as a busy compositor's can.
+  std::atomic<int> followFailures = 0;
   bool holdWindow(const QString& address, QString* = nullptr) override {
     QMutexLocker lock(&mutex);
     for (const auto& window : std::as_const(shown))
@@ -498,6 +509,14 @@ public:
   void open(const GameModeHeldWindow& window) {
     QMutexLocker lock(&mutex);
     held.append(window);
+  }
+  void resize(const QString& address, int width, int height) {
+    QMutexLocker lock(&mutex);
+    for (auto& window : held) {
+      if (window.address != address) continue;
+      window.width = width;
+      window.height = height;
+    }
   }
   void close(const QString& address) {
     QMutexLocker lock(&mutex);
@@ -3043,9 +3062,16 @@ private slots:
     QVERIFY(Compositor::presentScript(kAddress, {}, 1, 1).isEmpty());
     QVERIFY(Compositor::presentScript(kAddress, QStringLiteral("1"), 0, 1).isEmpty());
 
+    const QString follow = Compositor::followMouseScript(kAddress, false);
+    QCOMPARE(follow, QStringLiteral("hl.dispatch(hl.dsp.window.set_prop({ prop = \"no_follow_mouse\", "
+                                    "value = \"1\", window = \"address:%1\" }))")
+                         .arg(kAddress));
+    QVERIFY(Compositor::followMouseScript(kAddress, true).contains(QStringLiteral("value = \"0\"")));
+    QVERIFY(Compositor::followMouseScript(QStringLiteral("nope"), true).isEmpty());
+
     const auto held = Compositor::parseHeldWindows(R"([
         {"address":"0x10","mapped":true,"pid":41,"class":"steam","title":"Steam",
-         "workspace":{"id":-98,"name":"special:omakade-launch"}},
+         "size":[972,674],"workspace":{"id":-98,"name":"special:omakade-launch"}},
         {"address":"0x11","mapped":true,"pid":42,"class":"game","title":"Game",
          "workspace":{"id":-1337,"name":"omakade"}},
         {"address":"0x12","mapped":false,"pid":43,"class":"hidden","title":"",
@@ -3057,6 +3083,8 @@ private slots:
     QCOMPARE(held.at(0).pid, 41);
     QCOMPARE(held.at(0).windowClass, QStringLiteral("steam"));
     QCOMPARE(held.at(0).title, QStringLiteral("Steam"));
+    QCOMPARE(held.at(0).width, 972);
+    QCOMPARE(held.at(0).height, 674);
     QVERIFY(Compositor::parseHeldWindows("[").isEmpty());
 
     const auto open = Compositor::parseOpenWindows(R"([
@@ -3740,6 +3768,253 @@ private slots:
     QTest::qWait(50);
     QVERIFY(hold.windows().isEmpty());
     hold.cancel();
+  }
+
+  void launchHoldReadsWhatSteamWaitsFor() {
+    const QDateTime since = QDateTime::fromString(QStringLiteral("2026-11-14 20:38:00"),
+                                                  QStringLiteral("yyyy-MM-dd hh:mm:ss"));
+    const QByteArray eula =
+        "[2026-11-14 20:38:03] ExecuteSteamURL: \"steam://rungameid/632360\"\n"
+        "[2026-11-14 20:38:03] GameAction [AppID 632360, ActionID 1] : LaunchApp changed task to ShowEula with \"\"\n"
+        "[2026-11-14 20:38:03] GameAction [AppID 632360, ActionID 1] : LaunchApp waiting for user response to ShowEula \"\"\n";
+    QCOMPARE(LaunchHold::steamPromptIn(eula, QStringLiteral("632360"), since), QStringLiteral("eula"));
+    // Another game's launch, or this one from before the hold, says nothing.
+    QVERIFY(LaunchHold::steamPromptIn(eula, QStringLiteral("367520"), since).isEmpty());
+    QVERIFY(LaunchHold::steamPromptIn(eula, QStringLiteral("632360"), since.addSecs(60)).isEmpty());
+    QVERIFY(LaunchHold::steamPromptIn(eula, {}, since).isEmpty());
+    // Answered, Steam carries on.
+    QVERIFY(LaunchHold::steamPromptIn(
+                eula + "[2026-11-14 20:39:00] GameAction [AppID 632360, ActionID 1] : LaunchApp continues with user response \"ShowEula\"\n",
+                QStringLiteral("632360"), since)
+                .isEmpty());
+    // A launch left waiting is replaced by the next one, which waits on shaders.
+    const QByteArray shaders =
+        eula + "[2026-11-14 20:40:00] GameAction [AppID 632360, ActionID 2] : LaunchApp changed task to ProcessingShaderCache with \"\"\n"
+               "[2026-11-14 20:40:00] GameAction [AppID 632360, ActionID 2] : LaunchApp waiting for user response to ProcessingShaderCache \"\"\n";
+    QCOMPARE(LaunchHold::steamPromptIn(shaders, QStringLiteral("632360"), since), QStringLiteral("shaders"));
+    QVERIFY(LaunchHold::steamPromptIn(
+                shaders + "[2026-11-14 20:41:00] GameAction [AppID 632360, ActionID 2] : LaunchApp changed task to SiteLicenseSeatCheckout with \"\"\n",
+                QStringLiteral("632360"), since)
+                .isEmpty());
+    // Steam answers its own steps; anything else is a question for the player.
+    QVERIFY(LaunchHold::steamPromptIn(
+                "[2026-11-14 20:40:00] GameAction [AppID 10, ActionID 3] : LaunchApp waiting for user response to CreatingProcess \"\"\n",
+                QStringLiteral("10"), since)
+                .isEmpty());
+    QCOMPARE(LaunchHold::steamPromptIn(
+                 "[2026-11-14 20:40:00] GameAction [AppID 10, ActionID 3] : LaunchApp waiting for user response to KickingOtherSession \"Game\"\n",
+                 QStringLiteral("10"), since),
+             QStringLiteral("answer"));
+
+    const QByteArray config = "\t\t\t\t\t\"632360\"\n\t\t\t\t\t{\n\t\t\t\t\t\t\"632360_eula_0\"\t\t\"1\"\n"
+                              "\t\t\t\t\t\t\"6323600_eula_0\"\t\t\"1\"\n\t\t\t\t\t}\n";
+    QCOMPARE(LaunchHold::eulaRecordIn(config, QStringLiteral("632360")), QStringLiteral("\"632360_eula_0\" \"1\""));
+    QVERIFY(LaunchHold::eulaRecordIn(config, QStringLiteral("10")).isEmpty());
+  }
+
+  void launchHoldSaysWhatSteamWaitsForAndStartsTheGameOnceAccepted() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    hold.setClosedGrace(200);
+    hold.setRelaunchDelay(200);
+    QMutex mutex;
+    SteamPromptState steam{QStringLiteral("eula"), {}};
+    QDateTime asked;
+    const auto set = [&](const QString& prompt, const QString& record) {
+      QMutexLocker lock(&mutex);
+      steam = {prompt, record};
+    };
+    hold.setSteamPromptCheck([&](const QString& appId, const QDateTime& since) {
+      QMutexLocker lock(&mutex);
+      asked = since;
+      return appId == QStringLiteral("632360") ? steam : SteamPromptState{};
+    });
+    std::atomic<bool> running = false;
+    hold.setSteamLaunchCheck([&](const QString&) { return running.load(); });
+    QStringList relaunched;
+    hold.setSteamRelaunch([&](const QString& appId) { relaunched.append(appId); });
+    QSignalSpy closed(&hold, &LaunchHold::gameClosed);
+    const QDateTime before = QDateTime::currentDateTime();
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "632360"}, {"title", "Risk of Rain 2"}}));
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("steam"), QStringLiteral("Steam Dialog"), 972, 674});
+    QTRY_COMPARE(hold.steamPrompt(), QStringLiteral("eula"));
+    {
+      // Only launches from this hold on count.
+      QMutexLocker lock(&mutex);
+      QVERIFY(asked <= before && asked > before.addSecs(-10));
+    }
+
+    // A dialog keeps its own size, within the screen.
+    hold.present(QStringLiteral("0x60"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x60 name:omakade 1920x1080")));
+    hold.returnToLibrary();
+    QTRY_COMPARE(hold.windows().size(), 1);
+
+    // Steam waiting on its EULA is not a launch that ended, though its game ran before.
+    running = true;
+    QTest::qWait(50);
+    running = false;
+    QTest::qWait(400);
+    QVERIFY(closed.isEmpty());
+    QVERIFY(hold.active());
+    QVERIFY(relaunched.isEmpty());
+
+    // Accepted, and Steam does not carry on: the game is started again, once.
+    compositor.close(QStringLiteral("0x60"));
+    set(QStringLiteral("eula"), QStringLiteral("\"632360_eula_0\" \"1\""));
+    QTRY_COMPARE(relaunched, QStringList{QStringLiteral("632360")});
+    QTest::qWait(400);
+    QCOMPARE(relaunched.size(), 1);
+
+    // Steam's next step is said too, and once it carries on nothing is.
+    set(QStringLiteral("shaders"), {});
+    QTRY_COMPARE(hold.steamPrompt(), QStringLiteral("shaders"));
+    set({}, {});
+    QTRY_VERIFY(hold.steamPrompt().isEmpty());
+    hold.cancel();
+    QVERIFY(hold.steamPrompt().isEmpty());
+
+    // An EULA that stays as it was, such as one still being read, starts nothing.
+    set(QStringLiteral("eula"), QStringLiteral("\"632360_eula_0\" \"1\""));
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "632360"}, {"title", "Risk of Rain 2"}}));
+    QTRY_COMPARE(hold.steamPrompt(), QStringLiteral("eula"));
+    QTest::qWait(500);
+    QCOMPARE(relaunched.size(), 1);
+    hold.cancel();
+  }
+
+  void launchHoldEndsALaunchWaitingOnAStepOfSteamsOwn() {
+    // Steam waits "for user response" on steps it takes itself too. One that is neither
+    // its EULA nor its shaders does not keep a launch whose game closed from ending.
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    hold.setClosedGrace(200);
+    hold.setSteamPromptCheck([](const QString&, const QDateTime&) {
+      return SteamPromptState{QStringLiteral("answer"), {}};
+    });
+    std::atomic<bool> running = false;
+    hold.setSteamLaunchCheck([&](const QString&) { return running.load(); });
+    QSignalSpy closed(&hold, &LaunchHold::gameClosed);
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "250900"}, {"title", "Isaac"}}));
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("steam"), QStringLiteral("Steam")});
+    QTRY_COMPARE(hold.steamPrompt(), QStringLiteral("answer"));
+    running = true;
+    QTest::qWait(50);
+    running = false;
+    QTRY_COMPARE(closed.size(), 1);
+    QVERIFY(!hold.active());
+  }
+
+  void launchHoldShowsAWindowAtTheSizeItGrewTo() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    // A dialog that maps small, then grows to its own size while it is listed.
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("heroic"), QStringLiteral("Dialog"), 200, 100});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    QSignalSpy changed(&hold, &LaunchHold::changed);
+    compositor.resize(QStringLiteral("0x60"), 2200, 1200);
+    QTest::qWait(200);
+    // Its size is not listed, so the list is not redrawn for it.
+    QVERIFY(changed.isEmpty());
+    hold.present(QStringLiteral("0x60"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x60 name:omakade 2200x1200")));
+    hold.cancel();
+  }
+
+  void launchHoldGivesFocusFollowsMouseBackWhenTheCompositorMissesIt() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    const QString on = QStringLiteral("follow %1 1").arg(kAddress);
+    const QString failed = QStringLiteral("follow-failed %1").arg(kAddress);
+
+    // Coming back to the list.
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x70 name:omakade 1920x1080")));
+    compositor.followFailures = 1;
+    hold.returnToLibrary();
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("focus ") + kAddress));
+    QStringList log = compositor.entries();
+    QCOMPARE(log.count(failed), 1);
+    QVERIFY(log.lastIndexOf(on) > log.lastIndexOf(failed));
+
+    // The hold ending.
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x70 name:omakade 1920x1080")));
+    compositor.followFailures = 1;
+    hold.cancel();
+    QTRY_COMPARE(compositor.entries().count(failed), 2);
+    QTRY_VERIFY(compositor.entries().lastIndexOf(on) > compositor.entries().lastIndexOf(failed));
+
+    // Game Mode leaving.
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x71"), 71, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x71"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x71 name:omakade 1920x1080")));
+    compositor.followFailures = 1;
+    hold.abandon();
+    QTRY_VERIFY(compositor.entries().endsWith(on));
+    QCOMPARE(compositor.entries().count(failed), 3);
+  }
+
+  void launchHoldLetsThePointerLeaveAShownWindow() {
+    HoldCompositor compositor;
+    compositor.outputWidth = 1920;
+    compositor.outputHeight = 1080;
+    compositor.outputScale = 1.333333;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    // Steam's EULA on a 1440x810 screen, and a window bigger than the screen.
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("steam"), QStringLiteral("Steam Dialog"), 972, 674});
+    compositor.open({QStringLiteral("0x71"), 71, QStringLiteral("heroic"), QStringLiteral("Heroic"), 2560, 1440});
+    QTRY_COMPARE(hold.windows().size(), 2);
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x70 name:omakade 1080x674")));
+    QStringList log = compositor.entries();
+    // Pointing at the library while the window is answered leaves the window in front.
+    QVERIFY(log.indexOf(QStringLiteral("follow %1 0").arg(kAddress)) >= 0);
+    QVERIFY(log.indexOf(QStringLiteral("follow %1 0").arg(kAddress)) <
+            log.indexOf(QStringLiteral("present 0x70 name:omakade 1080x674")));
+    hold.present(QStringLiteral("0x71"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x71 name:omakade 1296x729")));
+    hold.returnToLibrary();
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("focus ") + kAddress));
+    log = compositor.entries();
+    QVERIFY(log.lastIndexOf(QStringLiteral("follow %1 1").arg(kAddress)) >
+            log.lastIndexOf(QStringLiteral("follow %1 0").arg(kAddress)));
+
+    // The hold ending and Game Mode leaving give it back too.
+    QTRY_COMPARE(hold.windows().size(), 2);
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x70 name:omakade 1080x674")));
+    hold.cancel();
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("release 0x71 name:omakade")));
+    log = compositor.entries();
+    QVERIFY(log.lastIndexOf(QStringLiteral("follow %1 1").arg(kAddress)) >
+            log.lastIndexOf(QStringLiteral("follow %1 0").arg(kAddress)));
+
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x72"), 72, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x72"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x72 name:omakade 1080x607")));
+    hold.abandon();
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("follow %1 1").arg(kAddress)));
   }
 
   void launchHoldNeedsACompositorThatCanHold() {

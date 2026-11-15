@@ -81,6 +81,12 @@ Steam play recording, a Text size setting and an easier first run.
   A damaged recovery record is set aside so Game Mode can start again.
 - With Hold launcher windows on, a game started through Sunshine, such as from Moonlight,
   gets the same Starting screen as Play, and its launcher's windows stay out of sight.
+- The Starting screen says what Steam is waiting for, such as a EULA to accept or Vulkan
+  shaders to process. A window opened from there keeps its own size, and the controller
+  is a pointer in it: the left stick or D-pad moves it, A clicks, the right stick scrolls
+  and B comes back.
+- When Steam does not start the game after its EULA is accepted, Omakade starts it again,
+  and the Starting screen no longer ends with Steam's question still out of sight.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.
 - The favorite button no longer favorites the game behind an open editor or dialog.
 - Home in Game Mode opens the Game Mode controls in front of any other window on the

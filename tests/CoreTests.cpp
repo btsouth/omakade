@@ -8004,6 +8004,43 @@ void CoreTests::virtualControllerConnectsAndMapsPrimaryButton() {
   QVERIFY(SDL_PushEvent(&favorite));
   QTRY_COMPARE_WITH_TIMEOUT(favorites.size(), 1, 1000);
 
+  // A launcher's window shown over Game Mode takes the controller as a pointer: B asks for
+  // the Starting screen back, and nothing reaches Omakade's own controls.
+  QSignalSpy pointerBacks(&controller, &ControllerInput::pointerBackRequested);
+  controller.setPointerMode(true);
+  controller.setInputEnabled(false);
+  favorites.clear();
+  SDL_Event pointerBack{};
+  pointerBack.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+  pointerBack.gbutton.which = id;
+  pointerBack.gbutton.button = SDL_GAMEPAD_BUTTON_EAST;
+  QVERIFY(SDL_PushEvent(&pointerBack));
+  QTRY_COMPARE_WITH_TIMEOUT(pointerBacks.size(), 1, 1000);
+  QVERIFY(SDL_PushEvent(&favorite));
+  QTest::qWait(100);
+  QVERIFY(accepts.isEmpty());
+  QVERIFY(backs.isEmpty());
+  QVERIFY(favorites.isEmpty());
+  // Back in Omakade, B is its own again; with no window shown, the pointer is gone.
+  controller.setInputEnabled(true);
+  QVERIFY(SDL_PushEvent(&pointerBack));
+  QTRY_COMPARE_WITH_TIMEOUT(backs.size(), 1, 1000);
+  controller.setPointerMode(false);
+  controller.setInputEnabled(false);
+  QVERIFY(SDL_PushEvent(&pointerBack));
+  QTest::qWait(100);
+  QCOMPARE(pointerBacks.size(), 1);
+  QCOMPARE(backs.size(), 1);
+  controller.setInputEnabled(true);
+  // The stick is fine near its dead zone and quick at its edge.
+  QCOMPARE(VirtualPointer::step(0, 8), 0.0);
+  QCOMPARE(VirtualPointer::step(6000, 8), 0.0);
+  QVERIFY(VirtualPointer::step(12000, 8) > 0.0);
+  QVERIFY(VirtualPointer::step(12000, 8) < VirtualPointer::step(32767, 8));
+  QCOMPARE(VirtualPointer::step(32767, 1000), 1500.0);
+  QCOMPARE(VirtualPointer::step(-32768, 1000), -1500.0);
+  QCOMPARE(VirtualPointer::step(32767, 0), 0.0);
+
   SDL_CloseJoystick(joystick);
   SDL_Event removed{};
   removed.type = SDL_EVENT_GAMEPAD_REMOVED;

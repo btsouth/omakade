@@ -51,6 +51,7 @@ public:
   bool holdWindow(const QString& address, QString* error = nullptr) override;
   bool presentWindow(const QString& address, const QString& workspace, int width, int height,
                      QString* error = nullptr) override;
+  bool setFollowMouse(const QString& address, bool follow, QString* error = nullptr) override;
 
   // Parses `hyprctl -j monitors all`.
   [[nodiscard]] static QVector<GameModeOutput> parseOutputs(const QByteArray& json,
@@ -100,6 +101,7 @@ public:
   [[nodiscard]] static QVector<GameModeHeldWindow> parseOpenWindows(const QByteArray& clientsJson);
   [[nodiscard]] static QString presentScript(const QString& address, const QString& workspace,
                                              int width, int height);
+  [[nodiscard]] static QString followMouseScript(const QString& address, bool follow);
 
 private:
   bool eval(const QString& script, QString* error);

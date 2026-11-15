@@ -1,11 +1,14 @@
 #include "gamemode/LaunchHold.h"
 
 #include "launch/GameLauncher.h"
+#include "launch/SteamLauncher.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QThread>
 #include <QtConcurrent>
 #include <algorithm>
 #include <unistd.h>
@@ -112,13 +115,42 @@ Place placeOf(const LaunchHoldProcess& process, const QString& installPath, bool
   }
   return Place::Unknown;
 }
+
+// Where Steam keeps its logs and settings: native, then Flatpak.
+QStringList steamRoots() {
+  const QString home = QDir::homePath();
+  return {home + QStringLiteral("/.local/share/Steam"), home + QStringLiteral("/.steam/steam"),
+          home + QStringLiteral("/.var/app/com.valvesoftware.Steam/.local/share/Steam"),
+          home + QStringLiteral("/.var/app/com.valvesoftware.Steam/data/Steam")};
+}
+
+// The end of a file, where Steam's latest launches are.
+QByteArray tail(const QString& path, qint64 size) {
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly)) return {};
+  if (file.size() > size) file.seek(file.size() - size);
+  return file.read(size);
+}
+
+// Pointing at the library focuses it again. A busy compositor can miss one request, and
+// a library left without it would keep its window in front on the desktop, so a second
+// try follows a moment later.
+void followMouseAgain(GameModeCompositor* compositor, qint64 owner) {
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (attempt > 0) QThread::msleep(100);
+    const GameModeWindow root = compositor->windowForPid(owner);
+    if (root.valid() && compositor->setFollowMouse(root.address, true)) return;
+  }
+}
 } // namespace
 
 LaunchHold::LaunchHold(GameModeCompositor* compositor, QString workspace, ProcessLookup lookup,
                        QObject* parent)
     : QObject(parent), m_compositor(compositor), m_workspace(std::move(workspace)),
       m_lookup(lookup ? std::move(lookup) : ProcessLookup(&LaunchHold::readProcess)),
-      m_steamLaunchCheck(&LaunchHold::steamLaunchRunning) {
+      m_steamLaunchCheck(&LaunchHold::steamLaunchRunning),
+      m_steamPromptCheck(&LaunchHold::readSteamPrompt),
+      m_steamRelaunch([](const QString& appId) { SteamLauncher::openUrl(SteamLauncher::launchUrl(appId)); }) {
   m_poll.setInterval(400);
   connect(&m_poll, &QTimer::timeout, this, &LaunchHold::scan);
   // Gives up only when nothing is listed or shown, counted from the last window that
@@ -229,6 +261,74 @@ bool LaunchHold::steamLaunchRunning(const QString& appId) {
   return false;
 }
 
+QString LaunchHold::steamPromptIn(const QByteArray& log, const QString& appId,
+                                  const QDateTime& since) {
+  if (appId.isEmpty()) return {};
+  // [2026-11-14 20:38:03] GameAction [AppID 632360, ActionID 1] : LaunchApp waiting for user
+  // response to ShowEula ""
+  static const QRegularExpression line(
+      QStringLiteral(R"(^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\] GameAction \[AppID (\d+), ActionID (\d+)\] : (.*)$)"));
+  static const QRegularExpression waiting(QStringLiteral(R"(waiting for user response to (\w+))"));
+  QString action;
+  QDateTime began;
+  QString task;
+  for (const QByteArray& raw : log.split('\n')) {
+    if (!raw.contains("GameAction")) continue;
+    const QRegularExpressionMatch match = line.match(QString::fromUtf8(raw).trimmed());
+    if (!match.hasMatch() || match.captured(2) != appId) continue;
+    // Each launch is a new action; a launch left waiting never says it was given up.
+    if (match.captured(3) != action) {
+      action = match.captured(3);
+      began = QDateTime::fromString(match.captured(1), QStringLiteral("yyyy-MM-dd hh:mm:ss"));
+      task.clear();
+    }
+    const QString event = match.captured(4);
+    if (const QRegularExpressionMatch wait = waiting.match(event); wait.hasMatch())
+      task = wait.captured(1);
+    else
+      task.clear();
+  }
+  if (task.isEmpty() || !began.isValid() || began < since) return {};
+  if (task == QStringLiteral("ShowEula")) return QStringLiteral("eula");
+  if (task == QStringLiteral("ProcessingShaderCache")) return QStringLiteral("shaders");
+  // Steam answers these itself as it goes.
+  if (task == QStringLiteral("CreatingProcess") || task == QStringLiteral("ShowInterstitials")) return {};
+  return QStringLiteral("answer");
+}
+
+QString LaunchHold::eulaRecordIn(const QByteArray& localConfig, const QString& appId) {
+  if (appId.isEmpty()) return {};
+  const QByteArray key = '"' + appId.toUtf8() + "_eula_";
+  QStringList lines;
+  for (const QByteArray& raw : localConfig.split('\n'))
+    if (raw.contains(key)) lines.append(QString::fromUtf8(raw.simplified()));
+  return lines.join(QLatin1Char('\n'));
+}
+
+SteamPromptState LaunchHold::readSteamPrompt(const QString& appId, const QDateTime& since) {
+  SteamPromptState state;
+  QString root;
+  QDateTime newest;
+  for (const QString& candidate : steamRoots()) {
+    const QFileInfo log(candidate + QStringLiteral("/logs/console_log.txt"));
+    if (log.exists() && (root.isEmpty() || log.lastModified() > newest)) {
+      root = candidate;
+      newest = log.lastModified();
+    }
+  }
+  if (root.isEmpty()) return state;
+  state.prompt = steamPromptIn(tail(root + QStringLiteral("/logs/console_log.txt"), 256 * 1024), appId, since);
+  if (state.prompt != QStringLiteral("eula")) return state;
+  QStringList records;
+  const QDir users(root + QStringLiteral("/userdata"));
+  for (const QString& user : users.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+    QFile config(users.filePath(user + QStringLiteral("/config/localconfig.vdf")));
+    if (config.open(QIODevice::ReadOnly)) records.append(eulaRecordIn(config.readAll(), appId));
+  }
+  state.eulaRecord = records.join(QLatin1Char('\n'));
+  return state;
+}
+
 bool LaunchHold::isGameWindow(const GameModeHeldWindow& window, const LaunchHoldTarget& target,
                               const ProcessLookup& lookup) {
   const bool steam = !target.steamAppId.isEmpty() && target.steamAppId != QStringLiteral("0");
@@ -297,6 +397,13 @@ bool LaunchHold::begin(const QVariantMap& game) {
   m_order.clear();
   m_steamLaunchSeen = false;
   m_presented.clear();
+  m_steamPrompt.clear();
+  // Steam's log counts whole seconds.
+  m_begun = QDateTime::currentDateTime().addSecs(-2);
+  m_eulaBaseline.clear();
+  m_eulaAsked = false;
+  m_eulaAccepted.invalidate();
+  m_relaunched = false;
   m_active = true;
   m_poll.start();
   m_timeout.start();
@@ -304,10 +411,12 @@ bool LaunchHold::begin(const QVariantMap& game) {
   return true;
 }
 
-void LaunchHold::preview(const QString& title, const QVector<GameModeHeldWindow>& windows) {
+void LaunchHold::preview(const QString& title, const QVector<GameModeHeldWindow>& windows,
+                         const QString& steamPrompt) {
   m_target = {};
   m_target.title = title;
   m_windows = windows;
+  m_steamPrompt = steamPrompt;
   m_active = true;
   emit changed();
 }
@@ -333,7 +442,15 @@ void LaunchHold::stop() {
   m_active = false;
   m_kept.clear();
   m_windows.clear();
+  // Pointing at the library focuses it again, wherever Game Mode puts it.
+  if (!m_presented.isEmpty() && m_compositor) {
+    m_actionWatcher.waitForFinished();
+    const qint64 owner = QCoreApplication::applicationPid();
+    m_actionWatcher.setFuture(
+        QtConcurrent::run([compositor = m_compositor, owner] { followMouseAgain(compositor, owner); }));
+  }
   m_presented.clear();
+  m_steamPrompt.clear();
   ++m_generation;
   emit changed();
   emit released();
@@ -343,11 +460,14 @@ void LaunchHold::scan() {
   if (!m_active || m_scanWatcher.isRunning() || m_actionWatcher.isRunning()) return;
   m_scanWatcher.setFuture(QtConcurrent::run(
       [compositor = m_compositor, target = m_target, lookup = m_lookup, ignored = m_ignored,
-       generation = m_generation, steamLaunch = m_steamLaunchCheck] {
+       generation = m_generation, steamLaunch = m_steamLaunchCheck,
+       steamPrompt = m_steamPromptCheck, begun = m_begun] {
         Scan scan;
         scan.generation = generation;
         if (!target.steamAppId.isEmpty() && steamLaunch)
           scan.steamLaunchRunning = steamLaunch(target.steamAppId);
+        if (!target.steamAppId.isEmpty() && steamPrompt)
+          scan.steam = steamPrompt(target.steamAppId, begun);
         scan.ok = compositor->heldWindows(&scan.windows, nullptr);
         scan.windows.removeIf([&](const auto& window) { return ignored.contains(window.address); });
         for (const auto& window : std::as_const(scan.windows)) {
@@ -371,14 +491,52 @@ void LaunchHold::finishScan() {
     return;
   }
   setWindows(scan.windows);
+  followSteamPrompt(scan.steam);
   // A game that dies before it opens a window would otherwise leave Steam's window listed
-  // and this screen waiting for good.
+  // and this screen waiting for good. While Steam waits on its EULA or shaders, its launch
+  // is not over, and its window must not be left out of sight. Any other wait may be a
+  // step of Steam's own that never says it ended, so the grace still runs for it.
   if (scan.steamLaunchRunning) {
     m_steamLaunchSeen = true;
+    m_closedGrace.stop();
+  } else if (scan.steam.prompt == QStringLiteral("eula") ||
+             scan.steam.prompt == QStringLiteral("shaders")) {
     m_closedGrace.stop();
   } else if (m_steamLaunchSeen && !m_closedGrace.isActive()) {
     m_closedGrace.start();
   }
+}
+
+void LaunchHold::followSteamPrompt(const SteamPromptState& steam) {
+  if (steam.prompt != m_steamPrompt) {
+    m_steamPrompt = steam.prompt;
+    emit changed();
+  }
+  if (steam.prompt != QStringLiteral("eula")) {
+    m_eulaAsked = false;
+    m_eulaAccepted.invalidate();
+    return;
+  }
+  if (!m_eulaAsked) {
+    m_eulaAsked = true;
+    m_eulaBaseline = steam.eulaRecord;
+    return;
+  }
+  // Accepted, and Steam still waits: once its own time to carry on has passed, start the
+  // game again. Steam asks no more once the EULA is accepted.
+  if (m_relaunched || steam.eulaRecord == m_eulaBaseline) {
+    m_eulaAccepted.invalidate();
+    return;
+  }
+  if (!m_eulaAccepted.isValid()) {
+    m_eulaAccepted.start();
+    return;
+  }
+  if (m_eulaAccepted.elapsed() < m_relaunchDelay) return;
+  m_relaunched = true;
+  m_eulaAccepted.invalidate();
+  m_timeout.start();
+  if (m_steamRelaunch) m_steamRelaunch(m_target.steamAppId);
 }
 
 void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
@@ -395,7 +553,12 @@ void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
                                [](const auto& a, const auto& b) {
                                  return a.address == b.address && a.title == b.title;
                                });
-  if (same) return;
+  if (same) {
+    // A window can grow after it maps, as Steam's dialogs do. Its size is not listed, so
+    // only a shown window needs it, and nothing is redrawn.
+    m_windows = ordered;
+    return;
+  }
   // A new window means the launcher is still working: give it the full time again. So
   // does the last one closing, as the time only runs out with nothing listed.
   if (ordered.isEmpty() || std::any_of(ordered.cbegin(), ordered.cend(), [&](const auto& window) {
@@ -415,6 +578,7 @@ void LaunchHold::release(const QString& game, Ending ending) {
   // A window still shown when the game opens goes back with the others, or it would sit
   // over Game Mode when the game ends.
   const QString presented = ending == Ending::GameShown && m_presented != game ? m_presented : QString{};
+  const bool wasPresented = !m_presented.isEmpty();
   if (ending != Ending::Cancelled) {
     for (const auto& window : std::as_const(m_windows))
       if (window.address != game && !m_kept.contains(window.address)) m_kept.append(window.address);
@@ -422,6 +586,7 @@ void LaunchHold::release(const QString& game, Ending ending) {
   }
   m_windows.clear();
   m_presented.clear();
+  m_steamPrompt.clear();
   ++m_generation;
   emit changed();
   m_scanWatcher.waitForFinished();
@@ -434,8 +599,9 @@ void LaunchHold::release(const QString& game, Ending ending) {
   // Stop holding first, so nothing opens out of sight after.
   m_actionWatcher.setFuture(QtConcurrent::run(
       [compositor = m_compositor, workspace = m_workspace, game, owner, ignored = m_ignored,
-       ending, presented] {
+       ending, presented, wasPresented] {
         compositor->setLaunchHold({});
+        if (wasPresented) followMouseAgain(compositor, owner);
         // The game is gone, so the library is what's left in front. Its launcher's windows
         // stay out of sight, as they would have after it played.
         if (ending == Ending::GameClosed) return;
@@ -472,13 +638,20 @@ void LaunchHold::present(const QString& address) {
     return;
   // One window at a time: one already shown goes back with the others first.
   const QString previous = m_presented == address ? QString{} : m_presented;
+  // A window is never made smaller than it is, so a dialog such as Steam's EULA keeps its
+  // buttons in sight.
+  const auto shown = std::find_if(m_windows.cbegin(), m_windows.cend(),
+                                  [&](const auto& window) { return window.address == address; });
+  const int ownWidth = shown->width;
+  const int ownHeight = shown->height;
   m_presented = address;
   emit changed();
   // A preview only records the choice.
   if (!m_compositor) return;
   const qint64 owner = QCoreApplication::applicationPid();
   m_actionWatcher.setFuture(QtConcurrent::run(
-      [compositor = m_compositor, workspace = m_workspace, address, owner, previous] {
+      [compositor = m_compositor, workspace = m_workspace, address, owner, previous, ownWidth,
+       ownHeight] {
         if (!previous.isEmpty()) compositor->holdWindow(previous);
         const GameModeWindow root = compositor->windowForPid(owner);
         int width = 1440;
@@ -486,12 +659,18 @@ void LaunchHold::present(const QString& address) {
         for (const auto& output : compositor->outputs()) {
           if (output.name == root.output && output.width > 0 && output.height > 0) {
             const double scale = output.scale > 0 ? output.scale : 1.0;
-            width = qRound(output.width / scale) * 3 / 4;
-            height = qRound(output.height / scale) * 3 / 4;
+            const int screenWidth = qRound(output.width / scale);
+            const int screenHeight = qRound(output.height / scale);
+            width = qBound(screenWidth * 3 / 4, ownWidth, screenWidth * 9 / 10);
+            height = qBound(screenHeight * 3 / 4, ownHeight, screenHeight * 9 / 10);
           }
         }
-        // A floating window is covered by a fullscreen library on the same workspace.
-        if (root.valid()) compositor->setWindowMode(root.address, 0, 0);
+        // A floating window is covered by a fullscreen library on the same workspace. A
+        // pointer that leaves the window for the library leaves it in front.
+        if (root.valid()) {
+          compositor->setWindowMode(root.address, 0, 0);
+          compositor->setFollowMouse(root.address, false);
+        }
         compositor->presentWindow(address, workspace, width, height);
       }));
 }
@@ -510,6 +689,7 @@ void LaunchHold::returnToLibrary() {
   m_actionWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, owner, presented] {
     // A sign-in left half done can be opened again from the list. A closed window is gone.
     compositor->holdWindow(presented);
+    followMouseAgain(compositor, owner);
     const GameModeWindow root = compositor->windowForPid(owner);
     if (!root.valid()) return;
     compositor->setWindowMode(root.address, 2, 2);

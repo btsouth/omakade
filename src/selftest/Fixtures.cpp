@@ -695,7 +695,7 @@ std::optional<int> prepareBeforeLoad(Harness& harness, AppContext& app) {
   if (renderMode && renderOverlay == QStringLiteral("launching")) {
     launchHold.preview(launchingPreview.value(QStringLiteral("title"),
                                               QStringLiteral("Assassin's Creed Valhalla")).toString(),
-                       launchingWindows);
+                       launchingWindows, launchingPreview.value(QStringLiteral("steamPrompt")).toString());
   }
   engine.rootContext()->setContextProperty("GogSettingsFixture", gogSettingsFixture);
   if (heroicOwnedFixture || renderOverlay == "game-info-native-port") {

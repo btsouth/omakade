@@ -1097,6 +1097,17 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                                        : &gameModeCompositor,
                         GameModeController::workspace());
   app.launchHold = &launchHold;
+  // A held window shown over Game Mode takes the controller as a pointer, since Steam's
+  // dialogs answer nothing else, and B brings the Starting screen back. Never in a test
+  // run: the pointer is a real input device.
+  if (!gameModeTest && !isolatedTest) {
+    QObject::connect(&launchHold, &LaunchHold::changed, &controller, [&] {
+      controller.setPointerMode(!launchHold.presented().isEmpty());
+      controller.preparePointer();
+    });
+    QObject::connect(&controller, &ControllerInput::pointerBackRequested, &launchHold,
+                     &LaunchHold::returnToLibrary);
+  }
   LaunchWatch launchWatch(gameModeTest || isolatedTest ? nullptr : &gameModeCompositor);
   // Omarchy keeps personal key bindings in this file and provides the `o.bind` helper the
   // Game Mode binding is written with.
