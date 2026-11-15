@@ -158,6 +158,11 @@ void ControllerInput::pollEvents() {
         }
         handleButtonPressed(event.gbutton.button);
       } else if (pointerActive() && !mirrorsAnotherController(event.gbutton.which)) {
+        // The pad pressed decides which face button clicks, as it does in Omakade.
+        if (m_activeController != event.gbutton.which) {
+          m_activeController = event.gbutton.which;
+          emit controllerChanged();
+        }
         handlePointerButton(event.gbutton.button, true);
       }
       break;
@@ -232,6 +237,9 @@ void ControllerInput::closeController(SDL_JoystickID id) {
     m_repeatKey = 0;
     m_repeatTimer.stop();
     m_repeatTimer.setInterval(kInitialRepeatDelayMs);
+    // A pad pulled with its stick pushed or A held must not leave the pointer moving or
+    // holding a click.
+    resetPointer();
     emit controllerChanged();
   }
 }
@@ -443,6 +451,8 @@ void ControllerInput::handlePointerButton(int button, bool pressed) {
     if (pressed) {
       if (!ensurePointer()) return;
       // A press on a device just made, such as A pressed first, waits until it is read.
+      // A new press replaces a click still waiting, so A held stays held.
+      m_releaseWaiting = false;
       if (pointerSettling()) m_clickWaiting = true;
       else m_pointer.setPressed(true);
     } else if (m_clickWaiting) {
