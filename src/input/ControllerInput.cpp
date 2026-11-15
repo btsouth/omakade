@@ -122,6 +122,7 @@ void ControllerInput::setInputEnabled(bool enabled) {
   }
   m_inputEnabled = enabled;
   emit inputEnabledChanged();
+  resetPointer();
   m_repeatTimer.stop();
   m_repeatTimer.setInterval(kInitialRepeatDelayMs);
   m_axisX = 0;
@@ -156,14 +157,24 @@ void ControllerInput::pollEvents() {
           emit controllerChanged();
         }
         handleButtonPressed(event.gbutton.button);
+      } else if (pointerActive() && !mirrorsAnotherController(event.gbutton.which)) {
+        handlePointerButton(event.gbutton.button, true);
       }
       break;
     case SDL_EVENT_GAMEPAD_BUTTON_UP:
       if (m_inputEnabled && !mirrorsAnotherController(event.gbutton.which)) {
         handleButtonReleased(event.gbutton.button);
+      } else if (pointerActive() && !mirrorsAnotherController(event.gbutton.which)) {
+        handlePointerButton(event.gbutton.button, false);
       }
       break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      if (pointerActive() && !mirrorsAnotherController(event.gaxis.which)) {
+        if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX) m_pointerX = event.gaxis.value;
+        else if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY) m_pointerY = event.gaxis.value;
+        else if (event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHTY) m_scrollAxis = event.gaxis.value;
+        break;
+      }
       if (!m_inputEnabled || mirrorsAnotherController(event.gaxis.which)) {
         break;
       }
@@ -185,6 +196,7 @@ void ControllerInput::pollEvents() {
       closeController(id);
     }
   }
+  if (pointerActive()) drivePointer();
   // With no pad connected only hot-plug events matter, so stop waking up 125 times a second.
   const int interval = m_controllers.isEmpty() ? 250 : 8;
   if (m_pollTimer.interval() != interval) {
@@ -378,6 +390,75 @@ QString ControllerInput::buttonLabel(SDL_GamepadButton button, const QString& fa
 
 void ControllerInput::setWindowFocused(bool focused) {
   setInputEnabled(focused);
+}
+
+void ControllerInput::setPointerMode(bool enabled) {
+  if (m_pointerMode == enabled) return;
+  m_pointerMode = enabled;
+  resetPointer();
+  m_pointerFailed = false;
+  if (!enabled) m_pointer.close();
+}
+
+bool ControllerInput::ensurePointer() {
+  // Made on first use, so a window answered with a mouse adds no device. One that cannot
+  // be made is not tried again on every poll.
+  if (m_pointer.isOpen()) return true;
+  if (m_pointerFailed) return false;
+  m_pointerFailed = !m_pointer.open();
+  return !m_pointerFailed;
+}
+
+void ControllerInput::resetPointer() {
+  m_pointer.setPressed(false);
+  m_pointerX = 0;
+  m_pointerY = 0;
+  m_pointerDpadX = 0;
+  m_pointerDpadY = 0;
+  m_scrollAxis = 0;
+  m_pointerRestX = 0;
+  m_pointerRestY = 0;
+  m_scrollRest = 0;
+  m_pointerClock.invalidate();
+}
+
+void ControllerInput::handlePointerButton(int button, bool pressed) {
+  const bool nintendo = nintendoFaceButtons();
+  if (button == (nintendo ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH)) {
+    if (!pressed || ensurePointer()) m_pointer.setPressed(pressed);
+  } else if (button == (nintendo ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST)) {
+    if (pressed) emit pointerBackRequested();
+  } else if (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT || button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) {
+    m_pointerDpadX = pressed ? (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ? -1 : 1) : 0;
+  } else if (button == SDL_GAMEPAD_BUTTON_DPAD_UP || button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) {
+    m_pointerDpadY = pressed ? (button == SDL_GAMEPAD_BUTTON_DPAD_UP ? -1 : 1) : 0;
+  }
+}
+
+void ControllerInput::drivePointer() {
+  if (!m_pointerClock.isValid()) {
+    m_pointerClock.start();
+    return;
+  }
+  // A stall, such as a busy main thread, must not throw the pointer across the screen.
+  const int elapsed = static_cast<int>(qMin<qint64>(m_pointerClock.restart(), 50));
+  // The D-pad moves it at a steady, careful pace.
+  constexpr int dpadAxis = 24000;
+  const int x = m_pointerDpadX != 0 ? m_pointerDpadX * dpadAxis : m_pointerX;
+  const int y = m_pointerDpadY != 0 ? m_pointerDpadY * dpadAxis : m_pointerY;
+  m_pointerRestX += VirtualPointer::step(x, elapsed);
+  m_pointerRestY += VirtualPointer::step(y, elapsed);
+  const int dx = static_cast<int>(m_pointerRestX);
+  const int dy = static_cast<int>(m_pointerRestY);
+  m_pointerRestX -= dx;
+  m_pointerRestY -= dy;
+  // Up to a dozen notches a second; pushing the stick down scrolls down.
+  m_scrollRest -= VirtualPointer::step(m_scrollAxis, elapsed) / 125.0;
+  const int notches = static_cast<int>(m_scrollRest);
+  m_scrollRest -= notches;
+  if ((dx == 0 && dy == 0 && notches == 0) || !ensurePointer()) return;
+  m_pointer.move(dx, dy);
+  m_pointer.scroll(notches);
 }
 
 void ControllerInput::setDriving(bool driving) {

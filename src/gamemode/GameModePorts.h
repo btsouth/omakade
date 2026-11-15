@@ -66,6 +66,9 @@ struct GameModeHeldWindow {
   qint64 pid = 0;
   QString windowClass;
   QString title;
+  // The window's own size, when the compositor gives it.
+  int width = 0;
+  int height = 0;
 };
 // The other windows on the Game Mode workspace, and how many of them could be a game.
 // The Steam client's own windows (its library, Big Picture, sign-in and updater) are
@@ -206,6 +209,12 @@ public:
   // focuses it, so a sign-in or prompt can be answered.
   virtual bool presentWindow(const QString&, const QString&, int, int, QString* error = nullptr) {
     if (error) *error = QStringLiteral("Held windows cannot be shown.");
+    return false;
+  }
+  // Whether pointing at the window focuses it. Off while a shown window is answered, so a
+  // pointer that wanders off it onto the library does not send it away.
+  virtual bool setFollowMouse(const QString&, bool, QString* error = nullptr) {
+    if (error) *error = QStringLiteral("Focus cannot follow the pointer here.");
     return false;
   }
 };

@@ -364,6 +364,32 @@ void driveLaunchingNavigation(Harness&, AppContext& app) {
     controller.acceptRequested(); settle();
     if (!failed && launchHold.active()) fail(QStringLiteral("Show All Windows did not end the hold"));
 
+    // What Steam waits for is said in words, with its window listed to open.
+    const auto status = [&] {
+      auto* text = item(QStringLiteral("launchingStatus"));
+      return text ? text->property("text").toString() : QString{};
+    };
+    launchHold.preview(QStringLiteral("Risk of Rain 2"),
+                       {{QStringLiteral("0x4"), 0, QStringLiteral("steam"), QStringLiteral("Steam Dialog")}},
+                       QStringLiteral("eula"));
+    settle();
+    if (!failed && !status().contains(QStringLiteral("EULA")))
+      fail(QStringLiteral("Starting screen did not say Steam waits for a EULA: ") + status());
+    expectFocus(item(QStringLiteral("launchingWindow_0x4")), QStringLiteral("the EULA's window was not focused"));
+    launchHold.preview(QStringLiteral("Sekiro"),
+                       {{QStringLiteral("0x5"), 0, QStringLiteral("steam"), QStringLiteral("Launching...")}},
+                       QStringLiteral("shaders"));
+    settle();
+    if (!failed && !status().contains(QStringLiteral("shaders")))
+      fail(QStringLiteral("Starting screen did not say Steam is processing shaders: ") + status());
+    launchHold.preview(QStringLiteral("Sekiro"),
+                       {{QStringLiteral("0x5"), 0, QStringLiteral("steam"), QStringLiteral("Launching...")}});
+    settle();
+    if (!failed && !status().startsWith(QStringLiteral("Waiting for the game")))
+      fail(QStringLiteral("Starting screen kept a Steam question that is gone: ") + status());
+    launchHold.cancel();
+    settle();
+
     // The keyboard's Escape lets go too.
     launchHold.preview(QStringLiteral("Hollow Knight"), {});
     settle();

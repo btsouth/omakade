@@ -19,6 +19,15 @@ Rectangle {
     readonly property bool wide: width >= 1180 * uiScale
     // Windows without a title, such as Wine's own, are held but give nothing to pick.
     readonly property var listedWindows: (LaunchHold.windows || []).filter(window => (window.title || "").length > 0)
+    // What Steam is waiting for before it starts the game, such as a EULA.
+    readonly property string steamPromptText: {
+        switch (LaunchHold.steamPrompt || "") {
+        case "eula": return "Steam needs you to accept this game's EULA. Open Steam's window to read it and choose Accept."
+        case "shaders": return "Steam is processing Vulkan shaders. The game starts when it is done."
+        case "answer": return "Steam is waiting for an answer. Open Steam's window to answer it."
+        }
+        return ""
+    }
 
     color: Theme.darkerBackground
     visible: LaunchHold.active
@@ -313,9 +322,11 @@ Rectangle {
                 }
 
                 Text {
+                    objectName: "launchingStatus"
                     textFormat: Text.PlainText
                     Layout.fillWidth: true
-                    text: screen.listedWindows.length > 0
+                    text: screen.steamPromptText.length > 0 ? screen.steamPromptText
+                          : screen.listedWindows.length > 0
                           ? "Waiting for the game. Open a window here if it needs you, such as a sign-in."
                           : "Waiting for the game to open."
                     color: screen.alpha(Theme.foreground, 0.78)
@@ -408,8 +419,14 @@ Rectangle {
         visible: screen.couchMode
 
         Repeater {
-            model: (windowRepeater.count > 0 ? [{ glyph: Controller.primaryGlyph, label: "OPEN" }] : [])
-                   .concat([{ glyph: Controller.backGlyph, label: "SHOW ALL WINDOWS" }])
+            objectName: "launchingHints"
+            // While a window is shown, the controller is a pointer in it.
+            model: LaunchHold.presented
+                   ? (Controller.pointerAvailable
+                      ? [{ glyph: "L", label: "MOVE POINTER" }, { glyph: Controller.primaryGlyph, label: "CLICK" }]
+                      : []).concat([{ glyph: Controller.backGlyph, label: "BACK" }])
+                   : (windowRepeater.count > 0 ? [{ glyph: Controller.primaryGlyph, label: "OPEN" }] : [])
+                     .concat([{ glyph: Controller.backGlyph, label: "SHOW ALL WINDOWS" }])
 
             Row {
                 required property var modelData

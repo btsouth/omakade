@@ -1,5 +1,8 @@
 #pragma once
 
+#include "input/VirtualPointer.h"
+
+#include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QHash>
 #include <QList>
@@ -27,6 +30,8 @@ class ControllerInput final : public QObject {
   // rather than couch mode, so a pad plugged in for gaming does not make it appear on a mouse
   // click, and reaching a field with the pad on a desktop still gets a way to type.
   Q_PROPERTY(bool driving READ driving NOTIFY drivingChanged)
+  // Whether the controller can be a pointer in a launcher's window, see setPointerMode.
+  Q_PROPERTY(bool pointerAvailable READ pointerAvailable CONSTANT)
 
 public:
   explicit ControllerInput(QObject* parent = nullptr);
@@ -48,6 +53,11 @@ public:
   bool inputEnabled() const { return m_inputEnabled; }
   void setWindowFocused(bool focused);
   void start();
+  [[nodiscard]] bool pointerAvailable() const { return VirtualPointer::available(); }
+  // While a launcher's window is shown over Game Mode and has focus, the controller is a
+  // pointer in it: the left stick or D-pad moves it, A clicks, the right stick scrolls and
+  // B asks for the library back. Steam's dialogs, such as a EULA, take nothing else.
+  void setPointerMode(bool enabled);
 
 signals:
   void controllerChanged();
@@ -60,6 +70,7 @@ signals:
   void focusDirectionRequested(int key);
   void acceptRequested();
   void backRequested();
+  void pointerBackRequested();
 
 private:
   struct InitResult {
@@ -79,6 +90,11 @@ private:
   void updateAxisKey();
   void updateRepeatKey();
   [[nodiscard]] QString buttonLabel(SDL_GamepadButton button, const QString& fallback) const;
+  [[nodiscard]] bool pointerActive() const { return m_pointerMode && !m_inputEnabled; }
+  void handlePointerButton(int button, bool pressed);
+  void drivePointer();
+  void resetPointer();
+  bool ensurePointer();
 
   QHash<SDL_JoystickID, SDL_Gamepad*> m_controllers;
   SDL_JoystickID m_activeController = 0;
@@ -95,4 +111,16 @@ private:
   bool m_driving = false;
   void setDriving(bool driving);
   bool m_inputEnabled = true;
+  VirtualPointer m_pointer;
+  bool m_pointerMode = false;
+  bool m_pointerFailed = false;
+  int m_pointerX = 0;
+  int m_pointerY = 0;
+  int m_pointerDpadX = 0;
+  int m_pointerDpadY = 0;
+  int m_scrollAxis = 0;
+  double m_pointerRestX = 0;
+  double m_pointerRestY = 0;
+  double m_scrollRest = 0;
+  QElapsedTimer m_pointerClock;
 };

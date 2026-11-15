@@ -515,9 +515,11 @@ QVector<GameModeHeldWindow> parseClients(const QByteArray& clientsJson, const QS
              workspace)) {
       continue;
     }
+    const QJsonArray size = client.value(QLatin1String("size")).toArray();
     windows.append({address, client.value(QLatin1String("pid")).toVariant().toLongLong(),
                     client.value(QLatin1String("class")).toString(),
-                    client.value(QLatin1String("title")).toString()});
+                    client.value(QLatin1String("title")).toString(), size.at(0).toInt(),
+                    size.at(1).toInt()});
   }
   return windows;
 }
@@ -546,6 +548,14 @@ QString HyprlandGameModeCompositor::presentScript(const QString& address, const 
       .arg(window, luaString(workspace))
       .arg(width)
       .arg(height);
+}
+
+QString HyprlandGameModeCompositor::followMouseScript(const QString& address, bool follow) {
+  if (!validAddress(address)) return {};
+  return QStringLiteral("hl.dispatch(hl.dsp.window.set_prop({ prop = \"no_follow_mouse\", value = %1, "
+                        "window = %2 }))")
+      .arg(luaString(follow ? QStringLiteral("0") : QStringLiteral("1")),
+           luaString(QStringLiteral("address:") + address));
 }
 
 bool HyprlandGameModeCompositor::setLaunchHold(const QString& workspace, QString* error) {
@@ -591,6 +601,12 @@ bool HyprlandGameModeCompositor::holdWindow(const QString& address, QString* err
 bool HyprlandGameModeCompositor::presentWindow(const QString& address, const QString& workspace,
                                                int width, int height, QString* error) {
   const QString script = presentScript(address, workspace, width, height);
+  return !script.isEmpty() && eval(script, error);
+}
+
+bool HyprlandGameModeCompositor::setFollowMouse(const QString& address, bool follow,
+                                                QString* error) {
+  const QString script = followMouseScript(address, follow);
   return !script.isEmpty() && eval(script, error);
 }
 

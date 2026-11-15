@@ -2,6 +2,8 @@
 
 #include "gamemode/GameModePorts.h"
 
+#include <QDateTime>
+#include <QElapsedTimer>
 #include <QFutureWatcher>
 #include <QObject>
 #include <QString>
@@ -27,6 +29,14 @@ struct LaunchHoldTarget {
   QString winePrefix;
 };
 
+// What Steam's launch of the game is waiting on, from Steam's own log.
+struct SteamPromptState {
+  // "eula", "shaders", "answer" for any other question, or empty.
+  QString prompt;
+  // The game's EULA entries in Steam's local settings, which change once it is accepted.
+  QString eulaRecord;
+};
+
 struct LaunchHoldProcess {
   qint64 parent = 0;
   QString exePath;
@@ -48,11 +58,17 @@ class LaunchHold final : public QObject {
   // {address, windowClass, title} for each held window, oldest first.
   Q_PROPERTY(QVariantList windows READ windows NOTIFY changed)
   Q_PROPERTY(QString presented READ presented NOTIFY changed)
+  // What Steam is waiting for before it starts the game, as SteamPromptState names it.
+  Q_PROPERTY(QString steamPrompt READ steamPrompt NOTIFY changed)
 
 public:
   using ProcessLookup = std::function<std::optional<LaunchHoldProcess>(qint64)>;
   // Whether Steam is running this app's launch right now.
   using SteamLaunchCheck = std::function<bool(const QString&)>;
+  // What Steam's launch of this app, begun no earlier than the time given, waits on.
+  using SteamPromptCheck = std::function<SteamPromptState(const QString&, const QDateTime&)>;
+  // Asks Steam to launch this app again.
+  using SteamRelaunch = std::function<void(const QString&)>;
 
   // `workspace` is the Game Mode workspace. A null lookup reads procfs.
   LaunchHold(GameModeCompositor* compositor, QString workspace, ProcessLookup lookup = {},
@@ -63,11 +79,15 @@ public:
   [[nodiscard]] QString title() const { return m_target.title; }
   [[nodiscard]] QVariantList windows() const;
   [[nodiscard]] QString presented() const { return m_presented; }
+  [[nodiscard]] QString steamPrompt() const { return m_steamPrompt; }
 
   void setPollInterval(int milliseconds) { m_poll.setInterval(milliseconds); }
   void setTimeout(int milliseconds) { m_timeout.setInterval(milliseconds); }
   void setSteamLaunchCheck(SteamLaunchCheck check) { m_steamLaunchCheck = std::move(check); }
   void setClosedGrace(int milliseconds) { m_closedGrace.setInterval(milliseconds); }
+  void setSteamPromptCheck(SteamPromptCheck check) { m_steamPromptCheck = std::move(check); }
+  void setSteamRelaunch(SteamRelaunch relaunch) { m_steamRelaunch = std::move(relaunch); }
+  void setRelaunchDelay(int milliseconds) { m_relaunchDelay = milliseconds; }
 
   // Starts holding before the game is launched. `game` carries title, source, appId,
   // installPath and launchTarget from the library. False when the compositor cannot hold windows.
@@ -86,7 +106,8 @@ public:
   Q_INVOKABLE void returnToLibrary();
 
   // Shows the Launching screen with these windows and holds nothing, for renders.
-  void preview(const QString& title, const QVector<GameModeHeldWindow>& windows);
+  void preview(const QString& title, const QVector<GameModeHeldWindow>& windows,
+               const QString& steamPrompt = {});
 
   [[nodiscard]] static bool isGameWindow(const GameModeHeldWindow& window,
                                          const LaunchHoldTarget& target,
@@ -97,6 +118,13 @@ public:
   // for the game first has the same shape with Install=1, and does not count.
   [[nodiscard]] static bool isSteamLaunch(const QStringList& arguments, const QString& appId);
   [[nodiscard]] static bool steamLaunchRunning(const QString& appId);
+  // What the latest launch of `appId` in Steam's console log waits on, if it began no
+  // earlier than `since`: "eula", "shaders", "answer" or empty.
+  [[nodiscard]] static QString steamPromptIn(const QByteArray& log, const QString& appId,
+                                             const QDateTime& since);
+  // The lines of Steam's localconfig.vdf that record the app's accepted EULAs.
+  [[nodiscard]] static QString eulaRecordIn(const QByteArray& localConfig, const QString& appId);
+  [[nodiscard]] static SteamPromptState readSteamPrompt(const QString& appId, const QDateTime& since);
 
 signals:
   void changed();
@@ -114,6 +142,7 @@ private:
     QVector<GameModeHeldWindow> windows;
     QString game;
     bool steamLaunchRunning = false;
+    SteamPromptState steam;
   };
   enum class Ending { Cancelled, GameShown, GameClosed };
   void stop();
@@ -121,12 +150,26 @@ private:
   void finishScan();
   void release(const QString& game, Ending ending);
   void setWindows(const QVector<GameModeHeldWindow>& windows);
+  void followSteamPrompt(const SteamPromptState& steam);
 
   GameModeCompositor* m_compositor = nullptr;
   QString m_workspace;
   ProcessLookup m_lookup;
   LaunchHoldTarget m_target;
   SteamLaunchCheck m_steamLaunchCheck;
+  SteamPromptCheck m_steamPromptCheck;
+  SteamRelaunch m_steamRelaunch;
+  QString m_steamPrompt;
+  // When this hold began; Steam's log names launches by when they began.
+  QDateTime m_begun;
+  // The EULA record when Steam asked for it, and how long it has read as accepted while
+  // Steam still waits. Steam may not carry on once its EULA is accepted, so the hold
+  // asks it to launch the game once more.
+  QString m_eulaBaseline;
+  bool m_eulaAsked = false;
+  QElapsedTimer m_eulaAccepted;
+  bool m_relaunched = false;
+  int m_relaunchDelay = 2000;
   QVector<GameModeHeldWindow> m_windows;
   // Every window this hold has listed, in the order they first arrived.
   QStringList m_order;
