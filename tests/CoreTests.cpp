@@ -2346,6 +2346,21 @@ void CoreTests::achievementModelLoadsLocalSteamCache() {
       QUrl(QStringLiteral("https://media.retroachievements.org/Badge/012345.png"))));
   QVERIFY(!AchievementModel::acceptsIconUrl(
       QUrl(QStringLiteral("https://media.retroachievements.org.example.com/Badge/x.png"))));
+  // Steam's schema names the old CDN, which has no icons for recent games.
+  QCOMPARE(AchievementModel::downloadUrl(QUrl(QStringLiteral(
+               "https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/4115450/"
+               "1dbb0e112a7bd93e1bb156336cf4d09f4c89a2e4.jpg"))),
+           QUrl(QStringLiteral("https://shared.fastly.steamstatic.com/community_assets/images/"
+                               "apps/4115450/1dbb0e112a7bd93e1bb156336cf4d09f4c89a2e4.jpg")));
+  QCOMPARE(AchievementModel::downloadUrl(QUrl(QStringLiteral(
+               "https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/10/a.jpg"))),
+           QUrl(QStringLiteral(
+               "https://shared.fastly.steamstatic.com/community_assets/images/apps/10/a.jpg")));
+  const QUrl shared(
+      QStringLiteral("https://shared.steamstatic.com/community_assets/images/apps/10/a.jpg"));
+  QCOMPARE(AchievementModel::downloadUrl(shared), shared);
+  const QUrl badge(QStringLiteral("https://media.retroachievements.org/Badge/012345.png"));
+  QCOMPARE(AchievementModel::downloadUrl(badge), badge);
 
   // Xbox art is a 16:9 picture: a framed icon on a backdrop that darkens toward the corners.
   QImage art(480, 270, QImage::Format_RGB32);
