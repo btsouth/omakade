@@ -135,6 +135,23 @@ bool AchievementModel::acceptsIconUrl(const QUrl& url) {
           host == QStringLiteral("images-eds.xboxlive.com"));
 }
 
+QUrl AchievementModel::downloadUrl(const QUrl& url) {
+  static const QString steamApps = QStringLiteral("/steamcommunity/public/images/apps/");
+  const QString host = url.host().toLower();
+  const bool steamHost = host == QStringLiteral("steamcdn-a.akamaihd.net") ||
+                         host == QStringLiteral("steamstatic.com") ||
+                         host.endsWith(QStringLiteral(".steamstatic.com"));
+  if (!steamHost || !url.path().startsWith(steamApps)) {
+    return url;
+  }
+  QUrl moved;
+  moved.setScheme(QStringLiteral("https"));
+  moved.setHost(QStringLiteral("shared.fastly.steamstatic.com"));
+  moved.setPath(QStringLiteral("/community_assets/images/apps/") +
+                url.path().mid(steamApps.size()));
+  return moved;
+}
+
 QImage AchievementModel::squareIcon(const QImage& source) {
   if (source.isNull() || source.width() <= source.height()) {
     return source;
@@ -361,7 +378,7 @@ void AchievementModel::requestIcon(int row) {
   if (!acceptsIconUrl(url)) {
     return;
   }
-  QNetworkRequest request(url);
+  QNetworkRequest request(downloadUrl(url));
   request.setTransferTimeout(10000);
   request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                        QNetworkRequest::ManualRedirectPolicy);

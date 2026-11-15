@@ -57,6 +57,10 @@ public:
   void setSortMode(int sortMode);
 
   [[nodiscard]] static bool acceptsIconUrl(const QUrl& url);
+  // Where to fetch an icon from. Steam's achievement schema still names the old
+  // steamcdn-a.akamaihd.net host, which no longer has icons for recent games, so Steam
+  // icons are fetched from the community assets host that serves every game.
+  [[nodiscard]] static QUrl downloadUrl(const QUrl& url);
   // Wide achievement art, such as Xbox's 16:9 pictures of an icon on a plain backdrop, cut
   // to the square icon a tile shows: the icon without its backdrop, or the middle of a
   // picture that fills the frame. Square art is returned as it is.
