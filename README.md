@@ -56,7 +56,7 @@ curl -fsSL https://pkgs.btso.dev/install.sh | bash
 sudo pacman -S btsouth/omakade
 ```
 
-Normal system updates prefer OPR's copy. To take a newer release early, run
+On Omarchy, normal system updates prefer OPR's copy. To take a newer release early, run
 `omarchy update` and then `sudo pacman -S btsouth/omakade`.
 
 Or install a release package directly:
@@ -103,7 +103,7 @@ Your library lives in `~/.local/share/omakade/` and settings in
 `~/.config/omakade/config.toml`. Passwords and API keys stay in Secret Service.
 See [Privacy](PRIVACY.md) and [Security](SECURITY.md).
 
-## Contributing
+## Build
 
 [Contributing](CONTRIBUTING.md) has the build and test commands, and
 [Architecture](docs/ARCHITECTURE.md) maps the source tree.
