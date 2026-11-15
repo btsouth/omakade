@@ -37,6 +37,7 @@ constexpr CacheSpec kCaches[] = {
     {"melonds_games", "name", "path", "melonDS", "game_id"},
     {"shadps4_games", "name", "path", "shadPS4", "game_id"},
     {"xenia_games", "name", "path", "Xenia", "game_id"},
+    {"lichii_games", "name", "path", "Lichii", "game_id"},
 };
 
 // Emulator profile names whose titles live in another source's cache. A profile

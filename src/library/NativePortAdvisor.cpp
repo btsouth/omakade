@@ -23,7 +23,7 @@ NativePortAdvisor::NativePortAdvisor(const PortCatalog& catalog, LauncherGameMod
 namespace {
 bool isDumpSource(const QString& source) {
   return GameLauncher::isEmulatorSourceName(source) || source == QLatin1String("Xenia") ||
-         source == QLatin1String("Kyty");
+         source == QLatin1String("Lichii") || source == QLatin1String("Kyty");
 }
 } // namespace
 

@@ -110,6 +110,7 @@ ApplicationWindow {
                                             || (MelondsLibrary ? MelondsLibrary.scanning : false)
                                             || (DolphinLibrary ? DolphinLibrary.scanning : false)
                                             || (XeniaLibrary ? XeniaLibrary.scanning : false)
+                                            || (LichiiLibrary ? LichiiLibrary.scanning : false)
                                             || (KytyLibrary ? KytyLibrary.scanning : false)
                                             || (NativePortLibrary ? NativePortLibrary.scanning : false)
                                             || (BattleNetLibrary ? BattleNetLibrary.scanning : false)
@@ -682,6 +683,7 @@ ApplicationWindow {
         if (Shadps4Library && Preferences.shadps4Enabled) Shadps4Library.refresh()
         if (CemuLibrary && Preferences.cemuEnabled) CemuLibrary.refresh()
         if (MelondsLibrary && Preferences.melondsEnabled) MelondsLibrary.refresh()
+        if (LichiiLibrary && Preferences.lichiiEnabled) LichiiLibrary.refresh()
         if (KytyLibrary && Preferences.kytyEnabled) KytyLibrary.refresh()
         if (NativePortLibrary && Preferences.nativePortsEnabled) NativePortLibrary.refresh()
         if (DolphinLibrary && Preferences.dolphinEnabled) DolphinLibrary.refresh()
@@ -1660,7 +1662,8 @@ ApplicationWindow {
             "PPSSPP": [PpssppLibrary, "ppssppDetected"], "Ryujinx": [RyujinxLibrary, "ryujinxDetected"],
             "shadPS4": [Shadps4Library, "shadps4Detected"], "Cemu": [CemuLibrary, "cemuDetected"],
             "melonDS": [MelondsLibrary, "melondsDetected"], "Dolphin": [DolphinLibrary, "dolphinDetected"],
-            "Xenia": [XeniaLibrary, "xeniaDetected"], "Kyty": [KytyLibrary, "detected"],
+            "Xenia": [XeniaLibrary, "xeniaDetected"], "Lichii": [LichiiLibrary, "lichiiDetected"],
+            "Kyty": [KytyLibrary, "detected"],
             "Ports": [NativePortLibrary, "detected"], "Battle.net": [BattleNetLibrary, "battleNetDetected"],
             "Xodus Nexus": [XodusLibrary, "xodusDetected"]
         }
@@ -2750,6 +2753,8 @@ ApplicationWindow {
                             ? "melonDS was not found"
                             : root.emptySourceFilter === "Xenia" && XeniaLibrary && !XeniaLibrary.xeniaDetected
                             ? "Xenia was not found"
+                            : root.emptySourceFilter === "Lichii" && LichiiLibrary && !LichiiLibrary.lichiiDetected
+                            ? "Lichii was not found"
                             : root.emptySourceFilter === "Kyty" && KytyLibrary && !KytyLibrary.detected
                             ? "Kyty was not found"
                             : root.emptySourceFilter === "Ports" && NativePortLibrary && !NativePortLibrary.detected
@@ -2799,6 +2804,8 @@ ApplicationWindow {
                               ? MelondsLibrary.errorText
                               : root.emptySourceFilter === "Xenia" && XeniaLibrary && XeniaLibrary.errorText.length > 0
                               ? XeniaLibrary.errorText
+                              : root.emptySourceFilter === "Lichii" && LichiiLibrary && LichiiLibrary.errorText.length > 0
+                              ? LichiiLibrary.errorText
                               : root.emptySourceFilter === "Kyty" && KytyLibrary && KytyLibrary.errorText.length > 0
                               ? KytyLibrary.errorText
                               : root.emptySourceFilter === "Ports" && NativePortLibrary && NativePortLibrary.errorText.length > 0
@@ -3822,6 +3829,24 @@ ApplicationWindow {
                 }
                 onSecondaryClicked: {
                     Library.toggleSource("Xenia")
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+            }
+            GlassButton {
+                id: lichiiSourceButton
+                objectName: "lichiiSourceButton"
+                text: "LICHII"
+                compact: true
+                visible: root.sourceListed("Lichii", Preferences.lichiiEnabled, LichiiLibrary)
+                property string sourceName: "Lichii"
+                selectable: true
+                selected: Library.sourceFilters.indexOf("Lichii") >= 0
+                onClicked: {
+                    Library.sourceFilters = ["Lichii"]
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+                onSecondaryClicked: {
+                    Library.toggleSource("Lichii")
                     libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                 }
             }

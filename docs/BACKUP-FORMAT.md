@@ -118,6 +118,7 @@ the identities actually exposed by each source model:
 | dolphin_games | Dolphin | game_id | flatpak_app_id |
 | cemu_games | Cemu | game_id | empty |
 | xenia_games | Xenia | game_id | empty |
+| lichii_games | Lichii | game_id | empty |
 | shadps4_games | shadPS4 | game_id | flatpak_app_id |
 | manual_games | Manual | id | empty |
 

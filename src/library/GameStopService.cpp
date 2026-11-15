@@ -39,6 +39,7 @@ bool isEmulatorSource(const QString& source) {
       QStringLiteral("retroarch"), QStringLiteral("pcsx2"),   QStringLiteral("ryujinx"),
       QStringLiteral("shadps4"),   QStringLiteral("cemu"),    QStringLiteral("xenia"),
       QStringLiteral("dolphin"),   QStringLiteral("retro"),   QStringLiteral("romm"),
+      QStringLiteral("lichii"),
   };
   return sources.contains(source.trimmed().toLower());
 }

@@ -576,7 +576,9 @@ QString SwitchTitleReader::defaultCacheRoot() {
 }
 
 QString SwitchTitleReader::cachedIcon(const QString& romPath, const QString& cacheKey,
-                                      const QString& cacheRoot, SwitchTitleInfo* info) {
+                                      const QString& cacheRoot, SwitchTitleInfo* info,
+                                      const QStringList& keyFiles,
+                                      const QStringList& titleKeyFiles) {
   static const QRegularExpression unsafe(QStringLiteral("[^A-Za-z0-9._-]"));
   const QString safeKey = QString(cacheKey).replace(unsafe, QStringLiteral("_"));
   if (safeKey.isEmpty()) {
@@ -586,7 +588,7 @@ QString SwitchTitleReader::cachedIcon(const QString& romPath, const QString& cac
   if (info == nullptr && QFileInfo::exists(path)) {
     return path;
   }
-  const SwitchTitleInfo read = SwitchTitleReader::read(romPath);
+  const SwitchTitleInfo read = SwitchTitleReader::read(romPath, keyFiles, titleKeyFiles);
   if (info != nullptr) {
     *info = read;
   }

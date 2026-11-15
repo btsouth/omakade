@@ -735,6 +735,17 @@ void AppSettings::setXeniaEnabled(bool value) {
   emit sourcesChanged();
 }
 
+void AppSettings::setLichiiEnabled(bool value) {
+  const bool wasAuto = m_lichiiAuto;
+  m_lichiiAuto = false;
+  if (m_lichiiEnabled == value && !wasAuto) {
+    return;
+  }
+  m_lichiiEnabled = value;
+  save();
+  emit sourcesChanged();
+}
+
 void AppSettings::setKytyEnabled(bool value) {
   const bool wasAuto = m_kytyAuto;
   m_kytyAuto = false;
@@ -1217,6 +1228,10 @@ void AppSettings::load() {
       QStringLiteral("(?m)^xenia_enabled\\s*=\\s*(true|false)\\s*$"));
   m_xeniaAuto = !xeniaKey.match(contents).hasMatch();
   m_xeniaEnabled = readEnabled(QStringLiteral("xenia_enabled"), false);
+  const QRegularExpression lichiiKey(
+      QStringLiteral("(?m)^lichii_enabled\\s*=\\s*(true|false)\\s*$"));
+  m_lichiiAuto = !lichiiKey.match(contents).hasMatch();
+  m_lichiiEnabled = readEnabled(QStringLiteral("lichii_enabled"), false);
   const QRegularExpression kytyKey(QStringLiteral("(?m)^kyty_enabled\\s*=\\s*(true|false)\\s*$"));
   m_kytyAuto = !kytyKey.match(contents).hasMatch();
   m_kytyEnabled = readEnabled(QStringLiteral("kyty_enabled"), false);
@@ -1386,6 +1401,10 @@ bool AppSettings::save() {
   if (!m_xeniaAuto) {
     contents += QStringLiteral("xenia_enabled = %1\n")
                     .arg(m_xeniaEnabled ? QStringLiteral("true") : QStringLiteral("false"));
+  }
+  if (!m_lichiiAuto) {
+    contents += QStringLiteral("lichii_enabled = %1\n")
+                    .arg(m_lichiiEnabled ? QStringLiteral("true") : QStringLiteral("false"));
   }
   if (!m_kytyAuto) {
     contents += QStringLiteral("kyty_enabled = %1\n")

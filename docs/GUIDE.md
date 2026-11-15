@@ -103,6 +103,19 @@ Omakade reads `DISC_ID`, `DISC_VERSION` and the title from PARAM.SFO inside ISO 
 supports homebrew ELF entries with a stable path identity, and protects matching folders in the
 shared `PSP/SAVEDATA` container without including save states.
 
+Nintendo Switch and Switch 2 games also come from Lichii. Omakade reads the game folders
+listed in Lichii's `qt-config.ini`, looking below a folder only when Lichii's deep scan is
+on for it, and adds games from Lichii's recent files that were opened with Load File. It
+lists `.nup`, `.nsp`, `.xci`, `.nsz`, `.xcz` and `.nro` files and leaves out updates and
+add-on content. A Switch dump is named from its own data when Lichii's `prod.keys` or
+another supported key file is present. A Switch 2 `.nup` package does not carry a name
+Omakade can read, so it is named from its file, or from its folder when the file sits in a
+portable Lichii folder (`games` beside `user`) or is named after its title id alone.
+Omakade starts each game with `lichii -f -g <file>`, using `lichii` on your PATH, the
+AppImage named by a Lichii desktop entry, or a Lichii AppImage in `~/Applications` or
+`~/AppImages`. Switch 2 games share the Nintendo Switch
+console card.
+
 Xbox 360 games come from Xenia Canary. Omakade reads Xenia's recent-games list and
 scans its storage root for `default.xex` dumps and ISO, XEX, or ZAR images, then
 launches each title through the `xenia_canary` binary on your PATH.
@@ -430,7 +443,7 @@ The same page shows whether the recorder is running, separately from whether
 recording is on.
 
 **What is recorded.** While a game runs in RetroArch, Dolphin, PCSX2, RPCS3, PPSSPP,
-Ryujinx, Eden, Cemu, shadPS4, melonDS, mGBA, xemu or Xenia, from Xodus Nexus, or from
+Ryujinx, Eden, Lichii, Cemu, shadPS4, melonDS, mGBA, xemu or Xenia, from Xodus Nexus, or from
 Steam, the recorder saves when it started, when it ended and how long it ran. It knows
 which game is running from the file the emulator was started with, so games started
 from Omakade, another launcher or a terminal all count. On Hyprland it also recognizes a

@@ -20,7 +20,7 @@ with a keyboard, mouse, or controller.
 ## Features
 
 - One library for installed games, with optional Steam and Heroic owned-library views
-- Console libraries for RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Cemu, melonDS,
+- Console libraries for RetroArch, PCSX2, RPCS3, PPSSPP, Ryujinx, Lichii, Cemu, melonDS,
   shadPS4, Dolphin, Xenia, and Kyty (PS5)
 - Automatic discovery of known native ports, with links to available ports for your console dumps
 - Controller-first fullscreen [Game Mode](docs/GAME-MODE.md), on the display you are

@@ -186,6 +186,22 @@ QStringList savedSources(const QVariantMap& state) {
   }
   return value.metaType().id() == QMetaType::QStringList ? value.toStringList() : sources;
 }
+
+// A filter saved as Emulated before Lichii joined the group still means Emulated.
+QVariantMap withCurrentEmulatorGroup(QVariantMap state) {
+  QStringList sources = savedSources(state);
+  QStringList before = LibraryFilterModel::emulatorSources();
+  before.removeAll(QStringLiteral("Lichii"));
+  const bool emulated =
+      std::all_of(before.cbegin(), before.cend(), [&sources](const QString& source) {
+        return sources.contains(source, Qt::CaseInsensitive);
+      });
+  if (emulated && !sources.contains(QStringLiteral("Lichii"), Qt::CaseInsensitive)) {
+    sources.append(QStringLiteral("Lichii"));
+    state.insert(QStringLiteral("source"), sources);
+  }
+  return state;
+}
 }  // namespace
 
 void LibraryFilterModel::setSavedFilterMessage(const QString& value) {
@@ -290,7 +306,7 @@ bool LibraryFilterModel::applySavedFilter(const QString& id) {
     if (saved.value("id").toString() != id) continue;
     const auto state = saved.value("state").toMap();
     if (!validFilterState(state)) break;
-    applyFilterState(state);
+    applyFilterState(withCurrentEmulatorGroup(state));
     setSavedFilterMessage(saved.value("warning").toString());
     return true;
   }
@@ -434,7 +450,8 @@ QStringList LibraryFilterModel::emulatorSources() {
   return {QStringLiteral("RomM"), QStringLiteral("RetroArch"), QStringLiteral("Dolphin"),
           QStringLiteral("Ryujinx"), QStringLiteral("Cemu"), QStringLiteral("Xenia"),
           QStringLiteral("PCSX2"), QStringLiteral("RPCS3"), QStringLiteral("PPSSPP"),
-          QStringLiteral("shadPS4"), QStringLiteral("melonDS"), QStringLiteral("Kyty")};
+          QStringLiteral("shadPS4"), QStringLiteral("melonDS"), QStringLiteral("Kyty"),
+          QStringLiteral("Lichii")};
 }
 
 QString LibraryFilterModel::sourceFilter() const {

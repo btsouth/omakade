@@ -496,6 +496,11 @@ import "Counts.js" as Counts
                           error: XeniaLibrary ? XeniaLibrary.errorText : "",
                           paths: XeniaLibrary ? XeniaLibrary.detectedPaths : [],
                           lastScan: XeniaLibrary ? XeniaLibrary.lastScan : 0 },
+                        { name: "LICHII", enabled: Preferences.lichiiEnabled,
+                          status: LichiiLibrary ? LichiiLibrary.statusText : "Unavailable",
+                          error: LichiiLibrary ? LichiiLibrary.errorText : "",
+                          paths: LichiiLibrary ? LichiiLibrary.detectedPaths : [],
+                          lastScan: LichiiLibrary ? LichiiLibrary.lastScan : 0 },
                         { name: "KYTY", enabled: Preferences.kytyEnabled,
                           status: KytyLibrary ? KytyLibrary.statusText : "Unavailable",
                           error: KytyLibrary ? KytyLibrary.errorText : "",
@@ -619,6 +624,10 @@ import "Counts.js" as Counts
                                         Preferences.xeniaEnabled = !Preferences.xeniaEnabled
                                         nowEnabled = Preferences.xeniaEnabled
                                         if (Preferences.xeniaEnabled) XeniaLibrary.refresh()
+                                    } else if (modelData.name === "LICHII") {
+                                        Preferences.lichiiEnabled = !Preferences.lichiiEnabled
+                                        nowEnabled = Preferences.lichiiEnabled
+                                        if (Preferences.lichiiEnabled) LichiiLibrary.refresh()
                                     } else if (modelData.name === "KYTY") {
                                         Preferences.kytyEnabled = !Preferences.kytyEnabled
                                         nowEnabled = Preferences.kytyEnabled
@@ -669,6 +678,7 @@ import "Counts.js" as Counts
                                     else if (modelData.name === "CEMU") CemuLibrary.refresh()
                                     else if (modelData.name === "MELONDS") MelondsLibrary.refresh()
                                     else if (modelData.name === "XENIA") XeniaLibrary.refresh()
+                                    else if (modelData.name === "LICHII") LichiiLibrary.refresh()
                                     else if (modelData.name === "KYTY") KytyLibrary.refresh()
                                     else if (modelData.name === "NATIVE PORTS") NativePortLibrary.refresh()
                                     else if (modelData.name === "DOLPHIN") DolphinLibrary.refresh()
