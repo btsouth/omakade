@@ -36,8 +36,10 @@ ActionMenu {
                                         || (typeof SteamSignIn !== "undefined" && SteamSignIn !== null
                                             && SteamSignIn.open)
     // With a game running, A still means Back to Game, as it always did: a restart would
-    // close the game. A game found after the controls opened takes focus back to it.
-    readonly property bool restartSteamFirst: steamSignIn && !steamRestarting
+    // close the game. Restart Steam comes first only once Omakade found no game, and a game
+    // found after the controls opened takes focus back to Back.
+    property bool steamSignInNoGame: false
+    readonly property bool restartSteamFirst: steamSignInNoGame && steamSignIn && !steamRestarting
                                               && (!overlayMode || fromLibrary)
                                               && liveGames.length === 0 && !untrackedGame
     onRestartSteamFirstChanged: {

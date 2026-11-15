@@ -1160,8 +1160,8 @@ ApplicationWindow {
         function onWorkspaceChecked(otherWindows, possibleGames) {
             if (root.steamSignInChecking) {
                 root.steamSignInChecking = false
-                if (GameMode.active && !GameMode.busy && possibleGames === 0 && SteamSignIn.open
-                        && !root.gameModeGameRunning())
+                if (!GameMode.active || GameMode.busy) root.steamSignInPending = true
+                else if (possibleGames === 0 && SteamSignIn.open && !root.gameModeGameRunning())
                     root.openSteamSignInControls()
             }
             if (!root.gameModeLeaveChecking) return
@@ -1474,7 +1474,10 @@ ApplicationWindow {
         }
     }
     // In front of Steam's window, over the library even when that window took focus from it.
+    // Only these controls, opened once no game was found, put Restart Steam first.
+    property bool steamSignInNoGame: false
     function openSteamSignInControls() {
+        root.steamSignInNoGame = true
         root.openGameModeControlsOver(true)
         if (gameModeOverlay.visible) root.gameModeOverlayFromLibrary = true
     }
@@ -1634,7 +1637,9 @@ ApplicationWindow {
             anchorItem: overlayHost
             overlayMode: true
             fromLibrary: root.gameModeOverlayFromLibrary
+            steamSignInNoGame: root.steamSignInNoGame
             onRestartSteamRequested: root.restartSteamToSignIn()
+            onClosed: root.steamSignInNoGame = false
         }
     }
 
@@ -4282,7 +4287,9 @@ ApplicationWindow {
         sourceComponent: GameModePanel {
             host: root
             anchorItem: couchLibraryView
+            steamSignInNoGame: root.steamSignInNoGame
             onRestartSteamRequested: root.restartSteamToSignIn()
+            onClosed: root.steamSignInNoGame = false
         }
     }
 

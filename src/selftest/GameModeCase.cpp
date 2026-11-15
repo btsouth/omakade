@@ -371,6 +371,20 @@ void driveGameMode(Harness& harness, AppContext& app) {
         fail(QStringLiteral("The same Refresh Sign In window opened the Game Mode controls twice"));
         return;
       }
+      // Opened without first checking that no game runs, they still offer the restart, but
+      // keep Back first.
+      rootWindow->requestActivate();
+      settled([rootWindow] { return rootWindow->isActive(); });
+      const int requestsBefore = overlaySpy->requests;
+      QMetaObject::invokeMethod(rootWindow, "openGameModeControls");
+      const bool uncheckedBack = settled([firstBack] { return firstBack->hasActiveFocus(); }) &&
+                                 restart->isVisible() && overlaySpy->requests == requestsBefore;
+      QMetaObject::invokeMethod(firstBack, "clicked");
+      if (!uncheckedBack || !settled([panel] { return !panel->property("visible").toBool(); })) {
+        done();
+        fail(QStringLiteral("Game Mode controls opened without a game check put Restart Steam first"));
+        return;
+      }
       // Leaving while it is open opens them with the same choices, rather than leaving
       // Steam's window on the desktop with no way through it.
       QMetaObject::invokeMethod(rootWindow, "toggleCouchMode");
