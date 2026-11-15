@@ -68,7 +68,7 @@ ActionMenu {
     }
     Connections {
         target: GameMode
-        function onWorkspaceChecked(otherWindows) { panel.workspaceGames = otherWindows }
+        function onWorkspaceChecked(otherWindows, possibleGames) { panel.workspaceGames = possibleGames }
     }
 
     Text {
