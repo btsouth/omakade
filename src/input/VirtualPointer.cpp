@@ -87,6 +87,13 @@ void VirtualPointer::scroll(int notches) {
 void VirtualPointer::setPressed(bool pressed) {
   if (pressed == m_pressed || m_fd < 0) return;
   m_pressed = pressed;
+  // Steam's windows take a click where the pointer last moved in them, which is not where
+  // it is when the window moved or changed under a still pointer. A step there and back
+  // first puts the click under the pointer.
+  if (pressed) {
+    move(1, 0);
+    move(-1, 0);
+  }
   emitEvent(EV_KEY, BTN_LEFT, pressed ? 1 : 0);
   emitEvent(EV_SYN, SYN_REPORT, 0);
 }

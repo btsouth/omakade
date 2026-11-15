@@ -80,6 +80,8 @@ private:
   void finishScan();
   void finishRestart();
   void listen();
+  // Puts Steam's windows held for a restart that Steam did not quit for back where they were.
+  void releaseHeld();
 
   GameModeCompositor* m_compositor = nullptr;
   Restarter m_restarter;
@@ -97,5 +99,9 @@ private:
   QFutureWatcher<Scan> m_scanWatcher;
   QFutureWatcher<Restart> m_restartWatcher;
   QFuture<void> m_action;
+  // Steam's windows held for the restart under way, and those still held because Steam did
+  // not quit. They go back to their workspaces once Game Mode ends.
+  std::shared_ptr<QVector<GameModeHeldWindow>> m_restartHeld;
+  QVector<GameModeHeldWindow> m_stillHeld;
   std::shared_ptr<std::atomic<bool>> m_cancelled = std::make_shared<std::atomic<bool>>(false);
 };

@@ -519,7 +519,8 @@ QVector<GameModeHeldWindow> parseClients(const QByteArray& clientsJson, const QS
     windows.append({address, client.value(QLatin1String("pid")).toVariant().toLongLong(),
                     client.value(QLatin1String("class")).toString(),
                     client.value(QLatin1String("title")).toString(), size.at(0).toInt(),
-                    size.at(1).toInt()});
+                    size.at(1).toInt(),
+                    Compositor::workspaceSelector(client.value(QLatin1String("workspace")).toObject())});
   }
   return windows;
 }
@@ -594,8 +595,14 @@ bool HyprlandGameModeCompositor::releaseWindow(const QString& address, const QSt
          eval(returnScript(address, workspace), error);
 }
 
+QString HyprlandGameModeCompositor::holdWindowScript(const QString& address) {
+  // The focus guard comes along, as no hold may have been set yet, such as while Steam
+  // restarts with no game starting.
+  return heldFocusScript() + returnScript(address, launchHoldWorkspace());
+}
+
 bool HyprlandGameModeCompositor::holdWindow(const QString& address, QString* error) {
-  return validAddress(address) && eval(returnScript(address, launchHoldWorkspace()), error);
+  return validAddress(address) && eval(holdWindowScript(address), error);
 }
 
 bool HyprlandGameModeCompositor::presentWindow(const QString& address, const QString& workspace,

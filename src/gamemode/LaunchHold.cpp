@@ -276,10 +276,13 @@ QString LaunchHold::steamPromptIn(const QByteArray& log, const QString& appId,
     if (!raw.contains("GameAction")) continue;
     const QRegularExpressionMatch match = line.match(QString::fromUtf8(raw).trimmed());
     if (!match.hasMatch() || match.captured(2) != appId) continue;
+    const QDateTime at = QDateTime::fromString(match.captured(1), QStringLiteral("yyyy-MM-dd hh:mm:ss"));
     // Each launch is a new action; a launch left waiting never says it was given up.
-    if (match.captured(3) != action) {
+    // Steam counts actions from 1 again when it restarts, so a line from this launch on
+    // starts a new one even under the number of a launch from before.
+    if (match.captured(3) != action || (began < since && at >= since)) {
       action = match.captured(3);
-      began = QDateTime::fromString(match.captured(1), QStringLiteral("yyyy-MM-dd hh:mm:ss"));
+      began = at;
       task.clear();
     }
     const QString event = match.captured(4);
