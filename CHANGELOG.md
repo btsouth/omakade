@@ -87,6 +87,11 @@ Steam play recording, a Text size setting and an easier first run.
   and B comes back.
 - When Steam does not start the game after its EULA is accepted, Omakade starts it again,
   and the Starting screen no longer ends with Steam's question still out of sight.
+- When Steam signs out during Game Mode with no game running, such as after the account
+  signs in on another computer, the Game Mode controls open in front of its Refresh Sign In
+  window with Restart Steam, which usually signs Steam back in from its saved login. If it
+  does not, Steam's window comes in front to sign in there. With a game running, Back to
+  Game stays first in the controls.
 - On a Nintendo controller, the in-game guide selects with A and goes back with B.
 - The favorite button no longer favorites the game behind an open editor or dialog.
 - Home in Game Mode opens the Game Mode controls in front of any other window on the

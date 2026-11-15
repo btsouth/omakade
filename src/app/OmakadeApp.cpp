@@ -66,6 +66,7 @@
 #include "gamemode/GameModeSession.h"
 #include "gamemode/LaunchHold.h"
 #include "gamemode/LaunchWatch.h"
+#include "gamemode/SteamSignIn.h"
 #include "gamemode/GameModeGuideButton.h"
 #include "gamemode/GameModeShortcut.h"
 #include "highlights/HighlightClips.h"
@@ -1109,6 +1110,20 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                      &LaunchHold::returnToLibrary);
   }
   LaunchWatch launchWatch(gameModeTest || isolatedTest ? nullptr : &gameModeCompositor);
+  // Steam's Refresh Sign In window is watched for while Game Mode is on. Test runs never
+  // restart the real Steam.
+  SteamSignIn steamSignIn(gameModeTest   ? modes.gameModeCompositor
+                          : isolatedTest ? nullptr
+                                         : &gameModeCompositor);
+  app.steamSignIn = &steamSignIn;
+  if (gameModeTest || isolatedTest) {
+    steamSignIn.setHyprlandEvents(false);
+    steamSignIn.setPollInterval(100);
+    steamSignIn.setTitles({QStringLiteral("Refresh Sign In")});
+    steamSignIn.setRestarter([](const std::atomic<bool>&) { return SteamSignIn::Restart::SignedIn; });
+  }
+  QObject::connect(&gameMode, &GameModeSession::stateChanged, &steamSignIn,
+                   [&] { steamSignIn.setWatching(gameMode.active() && !gameMode.parked()); });
   // Omarchy keeps personal key bindings in this file and provides the `o.bind` helper the
   // Game Mode binding is written with.
   const QString omarchyPath = qEnvironmentVariable("OMARCHY_PATH");
@@ -1273,6 +1288,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   engine.rootContext()->setContextProperty(QStringLiteral("GameMode"), &gameMode);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchHold"), &launchHold);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchWatch"), &launchWatch);
+  engine.rootContext()->setContextProperty(QStringLiteral("SteamSignIn"), &steamSignIn);
   engine.rootContext()->setContextProperty(QStringLiteral("LaunchingPreview"), QVariantMap{});
   engine.rootContext()->setContextProperty(QStringLiteral("GameModeOverlay"), &gameModeOverlay);
   engine.rootContext()->setContextProperty(QStringLiteral("InGameGuide"), &inGameGuide);

@@ -22,6 +22,7 @@ class HeroicGameModel;
 class HighlightClips;
 class HomeModel;
 class LaunchHold;
+class SteamSignIn;
 class LauncherGameModel;
 class LibraryFilterModel;
 class LibraryRepair;
@@ -123,6 +124,7 @@ struct AppContext {
   CardExport* cardExport = nullptr;
   GameModeSession* gameMode = nullptr;
   LaunchHold* launchHold = nullptr;
+  SteamSignIn* steamSignIn = nullptr;
   QQmlApplicationEngine* engine = nullptr;
   HighlightClips* highlightClips = nullptr;
   QWindow** rootWindow = nullptr;

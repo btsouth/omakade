@@ -287,6 +287,25 @@ library 10 seconds later, in case the game is restarting itself. Steam's windows
 sight, as they do after a game has played. Other launchers don't report this, so a launch
 through them waits as described above.
 
+## If Steam signs out
+
+When your Steam account signs in on another computer, or Steam ends its session for
+another reason, Steam signs out here and opens **Refresh Sign In**, which asks for a
+password or a QR code. While Game Mode is on and no game is running, the Game Mode
+controls open in front of it with **Restart Steam**.
+
+Restart Steam quits Steam and starts it again in the background. Steam usually signs back
+in from its saved login, and Omakade says when it has. Steam games that are running
+close. If Steam does not sign in within about a minute and a half, Steam's window opens so
+you can sign in there. A launch waiting on Steam ends; start the game again once Steam is
+back. **Back to Library** leaves Steam's window as it is, such as to scan its QR code with
+the Steam app.
+
+The controls open on their own once each time Steam asks. While Steam's window is still
+open, leaving Game Mode with Start or Home opens them again instead of leaving. With a
+game running, they still offer Restart Steam, but Back to Game stays first, so A goes back
+to the game as before.
+
 ## Limits
 
 - Choosing a display and the dedicated workspace need Hyprland with a Lua configuration,

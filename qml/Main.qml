@@ -1158,10 +1158,19 @@ ApplicationWindow {
         // An open Steam window is no game, so it alone does not stop leaving, but it can
         // still be drawn over this window when the controls do open.
         function onWorkspaceChecked(otherWindows, possibleGames) {
+            if (root.steamSignInChecking) {
+                root.steamSignInChecking = false
+                if (!GameMode.active || GameMode.busy) root.steamSignInPending = true
+                else if (possibleGames === 0 && SteamSignIn.open && !root.gameModeGameRunning())
+                    root.openSteamSignInControls()
+            }
             if (!root.gameModeLeaveChecking) return
             root.gameModeLeaveChecking = false
             if (!GameMode.active || GameMode.busy) return
+            // Steam's Refresh Sign In window keeps the controls' Restart Steam on offer.
+            const steamSignIn = typeof SteamSignIn !== "undefined" && SteamSignIn !== null && SteamSignIn.open
             if (possibleGames > 0 || root.gameModeGameRunning()) root.openGameModeControlsOver(otherWindows > 0)
+            else if (steamSignIn) root.openSteamSignInControls()
             else root.endGameModeByChoice()
         }
         function onFullscreenFallback() { root.fallBackToFullscreen() }
@@ -1440,6 +1449,45 @@ ApplicationWindow {
         }
     }
 
+    // Steam signed out and opened its Refresh Sign In window, which a controller cannot
+    // get through. With no game running, the Game Mode controls open in front of it with
+    // Restart Steam, which usually signs Steam back in from its saved login.
+    // Found while Game Mode was still starting, they open once it has. A Steam game is not
+    // Omakade's own process, so the workspace is checked for one first.
+    property bool steamSignInPending: false
+    property bool steamSignInChecking: false
+    function checkSteamSignInControls() {
+        root.steamSignInChecking = true
+        GameMode.checkWorkspace()
+    }
+    Connections {
+        target: typeof SteamSignIn !== "undefined" ? SteamSignIn : null
+        function onFound() {
+            root.steamSignInPending = false
+            if (root.gameModeGameRunning()) return
+            if (!GameMode.active || GameMode.busy) root.steamSignInPending = true
+            else root.checkSteamSignInControls()
+        }
+        function onRestarted(signedIn) {
+            root.showToast(signedIn ? "Steam is signed in again."
+                                    : "Steam did not sign in again. Sign in on Steam's window.")
+        }
+    }
+    // In front of Steam's window, over the library even when that window took focus from it.
+    // Only these controls, opened once no game was found, put Restart Steam first.
+    property bool steamSignInNoGame: false
+    function openSteamSignInControls() {
+        root.steamSignInNoGame = true
+        root.openGameModeControlsOver(true)
+        if (gameModeOverlay.visible) root.gameModeOverlayFromLibrary = true
+    }
+    // A restart ends a launch waiting on Steam: start the game again once Steam is back.
+    function restartSteamToSignIn() {
+        if (LaunchHold.active) LaunchHold.cancel()
+        SteamSignIn.restartSteam()
+        root.showToast("Restarting Steam…")
+    }
+
     // The shortcut always returns to the desktop or resumes the same session.
     // The controller validates game identity and audio before any park effects.
     function toggleGameMode() {
@@ -1449,6 +1497,9 @@ ApplicationWindow {
         target: GameMode
         function onStateChanged() {
             if (!GameMode.active) root.hideGameModeOverlay()
+            if (!root.steamSignInPending || !GameMode.active || GameMode.busy) return
+            root.steamSignInPending = false
+            if (SteamSignIn.open && !root.gameModeGameRunning()) root.checkSteamSignInControls()
         }
     }
 
@@ -1586,6 +1637,9 @@ ApplicationWindow {
             anchorItem: overlayHost
             overlayMode: true
             fromLibrary: root.gameModeOverlayFromLibrary
+            steamSignInNoGame: root.steamSignInNoGame
+            onRestartSteamRequested: root.restartSteamToSignIn()
+            onClosed: root.steamSignInNoGame = false
         }
     }
 
@@ -4233,6 +4287,9 @@ ApplicationWindow {
         sourceComponent: GameModePanel {
             host: root
             anchorItem: couchLibraryView
+            steamSignInNoGame: root.steamSignInNoGame
+            onRestartSteamRequested: root.restartSteamToSignIn()
+            onClosed: root.steamSignInNoGame = false
         }
     }
 
