@@ -175,11 +175,16 @@ count once. Presses while the screen is locked are ignored, as the keyboard shor
 
 ### With Steam open
 
-Steam uses the same button. In Steam, open **Settings → Controller → Advanced
-Settings** and turn off:
+Steam reads the controller too, so it sees every Home press, including the one that opens
+the guide. With **Enable Guide Button Chords for controllers** on, as it is by default,
+that press also opens Steam's overlay in a Steam game, and the overlay shows when you
+resume. Omakade cannot take the press back from Steam, so the first time Home opens the
+guide over a Steam game with chords on, a notification on resume says how to turn them off.
 
-- **Guide button focuses Steam**
+In Steam, open **Settings → Controller**, choose **Show Advanced Settings** and turn off:
+
 - **Enable Guide Button Chords for controllers**
+- **Guide button focuses Steam**
 
 Steam Input can stay on. These are Steam's settings for every game: the button no longer
 brings up Steam, and Guide button chords stop working. Omakade does not change Steam's

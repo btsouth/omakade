@@ -1917,7 +1917,7 @@ import "Counts.js" as Counts
                           : GameModeGuideButton.enabled
                             ? "The Xbox, PlayStation or Home button on any controller starts and leaves Game Mode, even with Omakade closed."
                             : "Use the Xbox, PlayStation or Home button on any controller to start and leave Game Mode, even with Omakade closed. Omakade only reads that button.")
-                          + " With Steam open, turn off \"Guide button focuses Steam\" and \"Enable Guide Button Chords\" in Steam's controller settings."
+                          + " Steam reacts to Home too and opens its overlay in Steam games. In Steam, open Settings > Controller > Show Advanced Settings and turn off \"Enable Guide Button Chords for controllers\" and \"Guide button focuses Steam\"."
                     color: Theme.mutedText
                     font.family: Theme.fontFamily
                     font.pixelSize: UiMetrics.supporting * settingsPanel.uiScale

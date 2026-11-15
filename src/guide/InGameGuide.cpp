@@ -9,6 +9,8 @@
 #include "library/UnifiedGameModel.h"
 #include "launch/GameLauncher.h"
 #include "launch/RetroArchHome.h"
+#include "sources/steam/SteamScanner.h"
+#include "sources/steam/ValveKeyValues.h"
 #include "sources/xodus/XodusScanner.h"
 #include "tracking/PlaySessionStore.h"
 #include "tracking/ProcFs.h"
@@ -545,6 +547,8 @@ void InGameGuide::finishClose(bool hide) {
   emit changed();
   if (hadGuide) qInfo("Guide timing: closed elapsed_ms=%lld", closeClock.elapsed());
   if (hide && hadGuide) shell({"shell", "hide", "omakade.guide"});
+  if (m_chordHintPending && hadGuide && m_restoreFocus && !m_session.isEmpty()) notifySteamChords();
+  m_chordHintPending = false;
   if (hadGuide && m_restoreFocus && !m_session.isEmpty()) {
     const auto game = m_session;
     QTimer::singleShot(100, this, [this, game] {
@@ -567,6 +571,7 @@ void InGameGuide::message(const QJsonObject& data) {
   }
   if (action == "opened" && m_opening) { qInfo("Guide timing: opened elapsed_ms=%lld", m_summonClock.isValid() ? m_summonClock.elapsed() : 0); m_opening = false; m_opened = true; emit changed(); send({{"type", "update"}, {"payload", payload()}}); }
   if (action == "opened" && !m_grabWarning.isEmpty()) toast(m_grabWarning);
+  else if (action == "opened" && m_opened) hintSteamChords();
   else if (action == "input-family" && m_opened && data.value("value") == "keyboard") m_family = "keyboard";
   else if (action == "closed" || action == "surface-failed") finishClose(false);
   else if (action == "inject" && m_injectedInput && m_opened) {
@@ -637,6 +642,60 @@ void InGameGuide::send(const QJsonObject& data) {
   m_peer->write(QJsonDocument(outgoing).toJson(QJsonDocument::Compact) + '\n');
   m_peer->flush();
 }
+
+bool InGameGuide::steamGuideChords(const QStringList& steamRoots) {
+  for (const auto& root : steamRoots) {
+    ValveKeyValues login;
+    if (!ValveKeyValuesParser::parseFile(root + "/config/loginusers.vdf", &login)) continue;
+    const auto* users = login.object("users");
+    if (!users) continue;
+    QStringList accounts, recent;
+    for (auto it = users->objects.cbegin(); it != users->objects.cend(); ++it) {
+      bool numeric = false;
+      const auto id = it.key().toULongLong(&numeric);
+      if (!numeric || !(id & 0xffffffffULL)) continue;
+      const auto account = QString::number(id & 0xffffffffULL);
+      accounts.append(account);
+      if (it.value().value("MostRecent") == "1") recent.append(account);
+    }
+    for (const auto& account : recent.isEmpty() ? accounts : recent) {
+      ValveKeyValues local;
+      if (!ValveKeyValuesParser::parseFile(root + "/userdata/" + account + "/config/localconfig.vdf", &local)) continue;
+      const auto* store = local.object("UserLocalConfigStore");
+      // Steam writes the setting only once it is changed; it starts on.
+      if (store && store->value("SteamController_Enable_Chord") != "0") return true;
+    }
+  }
+  return false;
+}
+
+void InGameGuide::hintSteamChords() {
+  // Only a controller's Home reaches Steam, and only a game Steam runs has its overlay.
+  if (m_family == "keyboard" || m_session.value("source").toString() != "Steam") return;
+  const auto game = m_session.value("pid").toString() + ':' + m_session.value("procStart").toString();
+  if (game == m_chordHintGame) return;
+  m_chordHintGame = game;
+  auto* watcher = new QFutureWatcher<bool>(this);
+  connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher] {
+    const bool on = watcher->result(); watcher->deleteLater();
+    if (!on) return;
+    // Notifications show under the guide, so it is said on resume, next to Steam's overlay.
+    if (showing()) m_chordHintPending = true;
+    else notifySteamChords();
+  });
+  watcher->setFuture(QtConcurrent::run([roots = m_steamRoots] {
+    return steamGuideChords(roots.isEmpty() ? SteamScanner::discoverSteamRoots() : roots);
+  }));
+}
+
+void InGameGuide::notifySteamChords() {
+  m_chordHintPending = false;
+  const auto sender = QStandardPaths::findExecutable("omarchy-notification-send");
+  if (sender.isEmpty()) return;
+  QProcess::startDetached(sender, {"Steam also opens its overlay on Home",
+      "Turn off Enable Guide Button Chords in Steam's Settings > Controller > Show Advanced Settings."});
+}
+
 void InGameGuide::toast(const QString& title, const QString& detail) {
   send({{"type", "toast"}, {"title", title}, {"detail", detail}});
 }

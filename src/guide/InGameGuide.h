@@ -87,6 +87,17 @@ private:
   void toast(const QString& title, const QString& detail = {});
   void finishClose(bool hide);
   void restoreWindow(std::function<void(bool)> done);
+  // Steam reads the controllers itself, so it sees the Home press that opens the guide. With
+  // its Guide Button Chords on, the default, it opens its overlay in the paused game, which
+  // shows on resume. Omakade cannot take that press back, so it says once per game how to
+  // turn them off.
+  static bool steamGuideChords(const QStringList& steamRoots);
+  void hintSteamChords();
+  void notifySteamChords();
+  QString m_chordHintGame;
+  bool m_chordHintPending = false;
+  // Empty means the usual Steam folders.
+  QStringList m_steamRoots;
   QProcessEnvironment m_environment = QProcessEnvironment::systemEnvironment();
   // The combo that opens RetroArch's menu, when the game is a RetroArch Omakade started.
   QString m_retroArchCombo;
