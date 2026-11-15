@@ -95,6 +95,7 @@ private:
   void drivePointer();
   void resetPointer();
   bool ensurePointer();
+  [[nodiscard]] bool pointerSettling() const;
 
   QHash<SDL_JoystickID, SDL_Gamepad*> m_controllers;
   SDL_JoystickID m_activeController = 0;
@@ -123,4 +124,7 @@ private:
   double m_pointerRestY = 0;
   double m_scrollRest = 0;
   QElapsedTimer m_pointerClock;
+  QElapsedTimer m_pointerMade;
+  bool m_clickWaiting = false;
+  bool m_releaseWaiting = false;
 };

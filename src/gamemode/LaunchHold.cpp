@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QThread>
 #include <QtConcurrent>
 #include <algorithm>
 #include <unistd.h>
@@ -129,6 +130,17 @@ QByteArray tail(const QString& path, qint64 size) {
   if (!file.open(QIODevice::ReadOnly)) return {};
   if (file.size() > size) file.seek(file.size() - size);
   return file.read(size);
+}
+
+// Pointing at the library focuses it again. A busy compositor can miss one request, and
+// a library left without it would keep its window in front on the desktop, so a second
+// try follows a moment later.
+void followMouseAgain(GameModeCompositor* compositor, qint64 owner) {
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (attempt > 0) QThread::msleep(100);
+    const GameModeWindow root = compositor->windowForPid(owner);
+    if (root.valid() && compositor->setFollowMouse(root.address, true)) return;
+  }
 }
 } // namespace
 
@@ -434,10 +446,8 @@ void LaunchHold::stop() {
   if (!m_presented.isEmpty() && m_compositor) {
     m_actionWatcher.waitForFinished();
     const qint64 owner = QCoreApplication::applicationPid();
-    m_actionWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, owner] {
-      const GameModeWindow root = compositor->windowForPid(owner);
-      if (root.valid()) compositor->setFollowMouse(root.address, true);
-    }));
+    m_actionWatcher.setFuture(
+        QtConcurrent::run([compositor = m_compositor, owner] { followMouseAgain(compositor, owner); }));
   }
   m_presented.clear();
   m_steamPrompt.clear();
@@ -483,12 +493,14 @@ void LaunchHold::finishScan() {
   setWindows(scan.windows);
   followSteamPrompt(scan.steam);
   // A game that dies before it opens a window would otherwise leave Steam's window listed
-  // and this screen waiting for good. While Steam waits on a question, such as a EULA, its
-  // launch is not over, and its window must not be left out of sight.
+  // and this screen waiting for good. While Steam waits on its EULA or shaders, its launch
+  // is not over, and its window must not be left out of sight. Any other wait may be a
+  // step of Steam's own that never says it ended, so the grace still runs for it.
   if (scan.steamLaunchRunning) {
     m_steamLaunchSeen = true;
     m_closedGrace.stop();
-  } else if (!scan.steam.prompt.isEmpty()) {
+  } else if (scan.steam.prompt == QStringLiteral("eula") ||
+             scan.steam.prompt == QStringLiteral("shaders")) {
     m_closedGrace.stop();
   } else if (m_steamLaunchSeen && !m_closedGrace.isActive()) {
     m_closedGrace.start();
@@ -541,7 +553,12 @@ void LaunchHold::setWindows(const QVector<GameModeHeldWindow>& windows) {
                                [](const auto& a, const auto& b) {
                                  return a.address == b.address && a.title == b.title;
                                });
-  if (same) return;
+  if (same) {
+    // A window can grow after it maps, as Steam's dialogs do. Its size is not listed, so
+    // only a shown window needs it, and nothing is redrawn.
+    m_windows = ordered;
+    return;
+  }
   // A new window means the launcher is still working: give it the full time again. So
   // does the last one closing, as the time only runs out with nothing listed.
   if (ordered.isEmpty() || std::any_of(ordered.cbegin(), ordered.cend(), [&](const auto& window) {
@@ -584,10 +601,7 @@ void LaunchHold::release(const QString& game, Ending ending) {
       [compositor = m_compositor, workspace = m_workspace, game, owner, ignored = m_ignored,
        ending, presented, wasPresented] {
         compositor->setLaunchHold({});
-        if (wasPresented) {
-          const GameModeWindow root = compositor->windowForPid(owner);
-          if (root.valid()) compositor->setFollowMouse(root.address, true);
-        }
+        if (wasPresented) followMouseAgain(compositor, owner);
         // The game is gone, so the library is what's left in front. Its launcher's windows
         // stay out of sight, as they would have after it played.
         if (ending == Ending::GameClosed) return;
@@ -675,9 +689,9 @@ void LaunchHold::returnToLibrary() {
   m_actionWatcher.setFuture(QtConcurrent::run([compositor = m_compositor, owner, presented] {
     // A sign-in left half done can be opened again from the list. A closed window is gone.
     compositor->holdWindow(presented);
+    followMouseAgain(compositor, owner);
     const GameModeWindow root = compositor->windowForPid(owner);
     if (!root.valid()) return;
-    compositor->setFollowMouse(root.address, true);
     compositor->setWindowMode(root.address, 2, 2);
     compositor->focusWindow(root.address);
   }));

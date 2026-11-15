@@ -488,9 +488,16 @@ public:
     return true;
   }
   bool setFollowMouse(const QString& address, bool follow, QString* = nullptr) override {
+    if (followFailures.load() > 0) {
+      --followFailures;
+      record(QStringLiteral("follow-failed %1").arg(address));
+      return false;
+    }
     record(QStringLiteral("follow %1 %2").arg(address).arg(follow ? 1 : 0));
     return true;
   }
+  // How many of the next follow-mouse requests fail, as a busy compositor's can.
+  std::atomic<int> followFailures = 0;
   bool holdWindow(const QString& address, QString* = nullptr) override {
     QMutexLocker lock(&mutex);
     for (const auto& window : std::as_const(shown))
@@ -502,6 +509,14 @@ public:
   void open(const GameModeHeldWindow& window) {
     QMutexLocker lock(&mutex);
     held.append(window);
+  }
+  void resize(const QString& address, int width, int height) {
+    QMutexLocker lock(&mutex);
+    for (auto& window : held) {
+      if (window.address != address) continue;
+      window.width = width;
+      window.height = height;
+    }
   }
   void close(const QString& address) {
     QMutexLocker lock(&mutex);
@@ -3868,6 +3883,91 @@ private slots:
     QTest::qWait(500);
     QCOMPARE(relaunched.size(), 1);
     hold.cancel();
+  }
+
+  void launchHoldEndsALaunchWaitingOnAStepOfSteamsOwn() {
+    // Steam waits "for user response" on steps it takes itself too. One that is neither
+    // its EULA nor its shaders does not keep a launch whose game closed from ending.
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    hold.setClosedGrace(200);
+    hold.setSteamPromptCheck([](const QString&, const QDateTime&) {
+      return SteamPromptState{QStringLiteral("answer"), {}};
+    });
+    std::atomic<bool> running = false;
+    hold.setSteamLaunchCheck([&](const QString&) { return running.load(); });
+    QSignalSpy closed(&hold, &LaunchHold::gameClosed);
+    QVERIFY(hold.begin({{"source", "Steam"}, {"appId", "250900"}, {"title", "Isaac"}}));
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("steam"), QStringLiteral("Steam")});
+    QTRY_COMPARE(hold.steamPrompt(), QStringLiteral("answer"));
+    running = true;
+    QTest::qWait(50);
+    running = false;
+    QTRY_COMPARE(closed.size(), 1);
+    QVERIFY(!hold.active());
+  }
+
+  void launchHoldShowsAWindowAtTheSizeItGrewTo() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    // A dialog that maps small, then grows to its own size while it is listed.
+    compositor.open({QStringLiteral("0x60"), 60, QStringLiteral("heroic"), QStringLiteral("Dialog"), 200, 100});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    QSignalSpy changed(&hold, &LaunchHold::changed);
+    compositor.resize(QStringLiteral("0x60"), 2200, 1200);
+    QTest::qWait(200);
+    // Its size is not listed, so the list is not redrawn for it.
+    QVERIFY(changed.isEmpty());
+    hold.present(QStringLiteral("0x60"));
+    QTRY_VERIFY(compositor.entries().contains(QStringLiteral("present 0x60 name:omakade 2200x1200")));
+    hold.cancel();
+  }
+
+  void launchHoldGivesFocusFollowsMouseBackWhenTheCompositorMissesIt() {
+    HoldCompositor compositor;
+    LaunchHold hold(&compositor, GameModeController::workspace(),
+                    [](qint64) -> std::optional<LaunchHoldProcess> { return std::nullopt; });
+    hold.setPollInterval(10);
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x70"), 70, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    const QString on = QStringLiteral("follow %1 1").arg(kAddress);
+    const QString failed = QStringLiteral("follow-failed %1").arg(kAddress);
+
+    // Coming back to the list.
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x70 name:omakade 1920x1080")));
+    compositor.followFailures = 1;
+    hold.returnToLibrary();
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("focus ") + kAddress));
+    QStringList log = compositor.entries();
+    QCOMPARE(log.count(failed), 1);
+    QVERIFY(log.lastIndexOf(on) > log.lastIndexOf(failed));
+
+    // The hold ending.
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x70"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x70 name:omakade 1920x1080")));
+    compositor.followFailures = 1;
+    hold.cancel();
+    QTRY_COMPARE(compositor.entries().count(failed), 2);
+    QTRY_VERIFY(compositor.entries().lastIndexOf(on) > compositor.entries().lastIndexOf(failed));
+
+    // Game Mode leaving.
+    QVERIFY(hold.begin({{"source", "Heroic"}, {"appId", "Salt"}, {"title", "Celeste"}}));
+    compositor.open({QStringLiteral("0x71"), 71, QStringLiteral("heroic"), QStringLiteral("Sign in")});
+    QTRY_COMPARE(hold.windows().size(), 1);
+    hold.present(QStringLiteral("0x71"));
+    QTRY_VERIFY(compositor.entries().endsWith(QStringLiteral("present 0x71 name:omakade 1920x1080")));
+    compositor.followFailures = 1;
+    hold.abandon();
+    QTRY_VERIFY(compositor.entries().endsWith(on));
+    QCOMPARE(compositor.entries().count(failed), 3);
   }
 
   void launchHoldLetsThePointerLeaveAShownWindow() {

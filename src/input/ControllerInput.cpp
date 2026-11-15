@@ -406,7 +406,15 @@ bool ControllerInput::ensurePointer() {
   if (m_pointer.isOpen()) return true;
   if (m_pointerFailed) return false;
   m_pointerFailed = !m_pointer.open();
+  if (!m_pointerFailed) m_pointerMade.start();
   return !m_pointerFailed;
+}
+
+bool ControllerInput::pointerSettling() const {
+  // The compositor takes a moment to start reading a new device, and a click sent before
+  // then is lost.
+  constexpr qint64 settleMs = 300;
+  return m_pointerMade.isValid() && m_pointerMade.elapsed() < settleMs;
 }
 
 void ControllerInput::resetPointer() {
@@ -419,13 +427,24 @@ void ControllerInput::resetPointer() {
   m_pointerRestX = 0;
   m_pointerRestY = 0;
   m_scrollRest = 0;
+  m_clickWaiting = false;
+  m_releaseWaiting = false;
   m_pointerClock.invalidate();
 }
 
 void ControllerInput::handlePointerButton(int button, bool pressed) {
   const bool nintendo = nintendoFaceButtons();
   if (button == (nintendo ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH)) {
-    if (!pressed || ensurePointer()) m_pointer.setPressed(pressed);
+    if (pressed) {
+      if (!ensurePointer()) return;
+      // A press on a device just made, such as A pressed first, waits until it is read.
+      if (pointerSettling()) m_clickWaiting = true;
+      else m_pointer.setPressed(true);
+    } else if (m_clickWaiting) {
+      m_releaseWaiting = true;
+    } else {
+      m_pointer.setPressed(false);
+    }
   } else if (button == (nintendo ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST)) {
     if (pressed) emit pointerBackRequested();
   } else if (button == SDL_GAMEPAD_BUTTON_DPAD_LEFT || button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT) {
@@ -436,6 +455,15 @@ void ControllerInput::handlePointerButton(int button, bool pressed) {
 }
 
 void ControllerInput::drivePointer() {
+  // A click held back while the device settled: pressed once it has, and let go on the
+  // next poll if A was already released.
+  if (m_releaseWaiting && !m_clickWaiting) {
+    m_releaseWaiting = false;
+    m_pointer.setPressed(false);
+  } else if (m_clickWaiting && !pointerSettling()) {
+    m_clickWaiting = false;
+    m_pointer.setPressed(true);
+  }
   if (!m_pointerClock.isValid()) {
     m_pointerClock.start();
     return;
