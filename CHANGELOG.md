@@ -2,8 +2,8 @@
 
 ## 1.19.0
 
-Steam play recording, a Lichii source, Text size, and a Game Mode that a controller
-can get through on its own.
+Steam play recording, a Lichii source, Text size, and a Game Mode that handles Steam's
+prompts with a controller.
 
 ### Upgrading
 
@@ -48,8 +48,8 @@ can get through on its own.
 - An empty Library or Home offers **Set Up Sources**, and the Sources picker only lists
   sources that have games.
 - Games on an unplugged Steam drive stay in the library, marked as disconnected.
-- When a game closes within a few seconds of starting, Omakade says so and offers Open
-  Log.
+- When an emulator, manual game, native port or GOG game closes within a few seconds of
+  starting, Omakade says so and offers Open Log.
 - Big libraries stay responsive while covers and metadata load.
 - Settings > Connections explains IGDB and SteamGridDB lookups and lets you turn them off.
 
