@@ -1814,31 +1814,68 @@ QProcessEnvironment GameLauncher::xeniaLaunchEnvironment(const QProcessEnvironme
   return environment;
 }
 
-LaunchCommand GameLauncher::lichiiLauncher() {
+LaunchCommand GameLauncher::lichiiLauncher(QString* workingDirectory) {
+  // The release AppImages are named after their platform; a copy on PATH is often renamed.
   for (const QString& candidate :
        {QStringLiteral("lichii"), QStringLiteral("Lichii"), QStringLiteral("lichii.AppImage"),
-        QStringLiteral("Lichii.AppImage")}) {
+        QStringLiteral("Lichii.AppImage"), QStringLiteral("lichii-linux-x86_64.AppImage"),
+        QStringLiteral("lichii-linux-x86_64-pgo.AppImage"),
+        QStringLiteral("lichii-linux-aarch64.AppImage"),
+        QStringLiteral("lichii-linux-aarch64-pgo.AppImage")}) {
     const QString found = QStandardPaths::findExecutable(candidate);
     if (!found.isEmpty()) {
       return LaunchCommand{found, {}};
     }
   }
-  for (const QString& directory : DesktopEntry::applicationDirectories()) {
-    const QString entryPath = directory + QStringLiteral("/io.github.zortos293.lichii.desktop");
-    if (!QFileInfo(entryPath).isFile()) {
-      continue;
-    }
-    // The first entry of a file name wins, as it does for a desktop session. Reading it
-    // fails when the program it names is gone, which leaves Lichii not installed.
+  const auto fromEntry = [workingDirectory](const QString& entryPath) -> LaunchCommand {
+    // Reading an entry fails when the program it names is gone.
     const std::optional<DesktopEntry> entry = DesktopEntry::read(entryPath);
-    return entry.has_value() ? LaunchCommand{entry->executable, entry->arguments}
-                             : LaunchCommand{};
+    if (!entry.has_value()) {
+      return {};
+    }
+    if (workingDirectory != nullptr) {
+      *workingDirectory = entry->directory;
+    }
+    return LaunchCommand{entry->executable, entry->arguments};
+  };
+  const QStringList applications = DesktopEntry::applicationDirectories();
+  // Lichii's own entry first. The first entry of a file name wins, as it does for a desktop
+  // session.
+  for (const QString& directory : applications) {
+    const QString entryPath = directory + QStringLiteral("/io.github.zortos293.lichii.desktop");
+    if (QFileInfo(entryPath).isFile()) {
+      return fromEntry(entryPath);
+    }
+  }
+  // AppImage integration tools such as Gear Lever and AppImageLauncher write the entry
+  // under a name of their own that still contains "lichii".
+  for (const QString& directory : applications) {
+    const QFileInfoList entries = QDir(directory).entryInfoList(
+        {QStringLiteral("*lichii*.desktop")}, QDir::Files,
+        QDir::Name);
+    for (const QFileInfo& entry : entries) {
+      const LaunchCommand command = fromEntry(entry.absoluteFilePath());
+      if (command.isValid()) {
+        return command;
+      }
+    }
+  }
+  // An AppImage kept in the folders those tools use, without an entry or a PATH link.
+  for (const QString& folder : {QStringLiteral("/Applications"), QStringLiteral("/AppImages")}) {
+    const QFileInfoList images =
+        QDir(QDir::homePath() + folder)
+            .entryInfoList({QStringLiteral("lichii*.appimage")}, QDir::Files | QDir::Executable,
+                           QDir::Name | QDir::IgnoreCase);
+    if (!images.isEmpty()) {
+      return LaunchCommand{images.constFirst().absoluteFilePath(), {}};
+    }
   }
   return {};
 }
 
 bool GameLauncher::launchLichii(const QString& path, bool manageOnly) {
-  const LaunchCommand launcher = lichiiLauncher();
+  QString workingDirectory;
+  const LaunchCommand launcher = lichiiLauncher(&workingDirectory);
   if (!launcher.isValid()) {
     setError(QStringLiteral("Lichii is not installed."));
     return false;
@@ -1848,7 +1885,8 @@ bool GameLauncher::launchLichii(const QString& path, bool manageOnly) {
     setError(QStringLiteral("This game has an invalid Lichii target."));
     return false;
   }
-  if (!startCommand(command, !manageOnly)) {
+  // A desktop entry's Path, as the desktop would use it.
+  if (!startCommand(command, !manageOnly, workingDirectory)) {
     setError(QStringLiteral("Lichii could not be started. Open Lichii and try again."));
     return false;
   }

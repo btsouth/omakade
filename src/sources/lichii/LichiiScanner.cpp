@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QRegularExpression>
 #include <QSet>
 #include <QSettings>
@@ -137,7 +138,7 @@ bool usableTitle(const QString& title) {
 // A portable Lichii bundle keeps one game in "games" beside its own "user"
 // folder, and the file is often named after the title id or an abbreviation. The
 // bundle folder then carries the name the user knows the game by.
-QString bundleTitle(const QFileInfo& game) {
+QString bundleTitle(const QFileInfo& game, QHash<QString, int>* gameCounts) {
   const QDir games = game.dir();
   if (games.dirName().compare(QStringLiteral("games"), Qt::CaseInsensitive) != 0) {
     return {};
@@ -146,14 +147,19 @@ QString bundleTitle(const QFileInfo& game) {
   if (!bundle.cdUp() || !QFileInfo(bundle.filePath(QStringLiteral("user"))).isDir()) {
     return {};
   }
-  int count = 0;
-  const QFileInfoList files = games.entryInfoList(QDir::Files);
-  for (const QFileInfo& file : files) {
-    if (isGameFile(file.fileName())) {
-      ++count;
+  // Counted once per folder, so a large shared "games" folder is listed only once.
+  const QString key = games.absolutePath();
+  if (!gameCounts->contains(key)) {
+    int count = 0;
+    const QFileInfoList files = games.entryInfoList(QDir::Files);
+    for (const QFileInfo& file : files) {
+      if (isGameFile(file.fileName())) {
+        ++count;
+      }
     }
+    gameCounts->insert(key, count);
   }
-  return count == 1 ? cleanTitle(bundle.dirName()) : QString{};
+  return gameCounts->value(key) == 1 ? cleanTitle(bundle.dirName()) : QString{};
 }
 
 QString sidecarCover(const QString& gamePath) {
@@ -215,7 +221,8 @@ bool readConfig(const QString& path, Config* config) {
       config->recentFiles.append(QDir::cleanPath(file));
     }
   }
-  return true;
+  // QSettings may only find a malformed line while answering the reads above.
+  return settings.status() == QSettings::NoError;
 }
 
 // play_time/*.bin holds pairs of little-endian 64-bit values: title id, seconds.
@@ -254,10 +261,14 @@ QHash<QString, qint64> lastLaunches(const QString& cachePath) {
   const QJsonObject titles = QJsonDocument::fromJson(file.readAll()).object();
   for (auto title = titles.begin(); title != titles.end(); ++title) {
     const QString titleId = title.key().toUpper();
-    const qint64 timestamp =
-        static_cast<qint64>(title.value().toObject().value(QStringLiteral("timestamp")).toDouble());
-    if (validTitleId(titleId) && timestamp > 0) {
-      launches.insert(titleId, timestamp);
+    // Older Lichii builds stored the bare timestamp instead of an object.
+    const QJsonValue entry = title.value();
+    const double seconds = entry.isObject()
+                               ? entry.toObject().value(QStringLiteral("timestamp")).toDouble()
+                               : entry.toDouble();
+    // Unix seconds up to the year 9999; anything else is not a real launch time.
+    if (validTitleId(titleId) && seconds > 0 && seconds < 253402300800.0) {
+      launches.insert(titleId, static_cast<qint64>(seconds));
     }
   }
   return launches;
@@ -269,6 +280,7 @@ struct ScanState {
   QHash<QString, qint64> playtimes;
   QHash<QString, qint64> launches;
   QSet<QString> seenPaths;
+  QHash<QString, int> bundleGameCounts;
   LichiiScanResult* result = nullptr;
 };
 
@@ -318,7 +330,8 @@ void addGame(const QString& filePath, ScanState* state) {
     return; // an update or add-on file, not a game of its own
   }
 
-  QString title = usableTitle(embeddedTitle) ? embeddedTitle : bundleTitle(info);
+  QString title = usableTitle(embeddedTitle) ? embeddedTitle
+                                             : bundleTitle(info, &state->bundleGameCounts);
   if (title.isEmpty()) {
     title = cleanTitle(info.completeBaseName());
   }
@@ -347,6 +360,12 @@ void addGame(const QString& filePath, ScanState* state) {
 
 void collectGames(const QString& directory, int depth, bool deepScan, ScanState* state) {
   const QDir dir(directory);
+  if (!dir.isReadable()) {
+    // An unreadable folder lists as empty; its games must not look deleted.
+    state->result->incomplete = true;
+    state->result->warnings.append(QStringLiteral("Could not read %1").arg(directory));
+    return;
+  }
   const QFileInfoList children =
       dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
   for (const QFileInfo& child : children) {

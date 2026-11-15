@@ -111,8 +111,9 @@ add-on content. A Switch dump is named from its own data when Lichii's `prod.key
 another supported key file is present. A Switch 2 `.nup` package does not carry a name
 Omakade can read, so it is named from its file, or from its folder when the file sits in a
 portable Lichii folder (`games` beside `user`) or is named after its title id alone.
-Omakade starts each game with `lichii -f -g <file>`, using `lichii` on your PATH or the
-AppImage named by Lichii's desktop entry. Switch 2 games share the Nintendo Switch
+Omakade starts each game with `lichii -f -g <file>`, using `lichii` on your PATH, the
+AppImage named by a Lichii desktop entry, or a Lichii AppImage in `~/Applications` or
+`~/AppImages`. Switch 2 games share the Nintendo Switch
 console card.
 
 Xbox 360 games come from Xenia Canary. Omakade reads Xenia's recent-games list and

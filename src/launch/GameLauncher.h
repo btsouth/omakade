@@ -142,7 +142,8 @@ public:
   // How Lichii itself is started, before any game arguments. It ships as an AppImage that
   // is rarely on PATH, so the desktop entry it installs is the fallback: its Exec line is
   // what the user actually runs, including a wrapper such as "env NAME=value" in front.
-  [[nodiscard]] static LaunchCommand lichiiLauncher();
+  // When the desktop entry is used, its working folder is written to workingDirectory.
+  [[nodiscard]] static LaunchCommand lichiiLauncher(QString* workingDirectory = nullptr);
   [[nodiscard]] static LaunchCommand dolphinCommand(const QString& path, const QString& nativeExecutable,
                                                     bool flatpak);
   [[nodiscard]] static LaunchCommand battleNetCommand(const QString& id, const QString& prefix,

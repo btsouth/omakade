@@ -213,7 +213,8 @@ void LichiiGameModel::loadSourceState() {
 
 void LichiiGameModel::applyScan(const LichiiScanResult& result) {
   m_lichiiDetected = !result.roots.isEmpty();
-  if (result.incomplete || (result.roots.isEmpty() && !m_games.isEmpty())) {
+  if ((result.incomplete && result.games.isEmpty()) ||
+      (result.roots.isEmpty() && !m_games.isEmpty())) {
     setStatus(QStringLiteral("Lichii scan interrupted; kept the cached library"),
               result.warnings.join(QLatin1Char('\n')));
     return;
@@ -224,7 +225,10 @@ void LichiiGameModel::applyScan(const LichiiScanResult& result) {
   }
   const qint64 scanTimestamp = QDateTime::currentSecsSinceEpoch();
   QSqlQuery query(m_database);
-  bool okay = query.exec(QStringLiteral("UPDATE lichii_games SET observed_at = 0"));
+  // A scan that could not see every folder adds and updates what it found and keeps the
+  // rest, so one unmounted drive does not hold back or hide the games on the others.
+  bool okay = result.incomplete ||
+              query.exec(QStringLiteral("UPDATE lichii_games SET observed_at = 0"));
   for (const LichiiGameRecord& game : result.games) {
     query.prepare(QStringLiteral(
         "INSERT INTO lichii_games(game_id, name, path, title_id, cover_path, playtime_seconds, "
@@ -259,7 +263,11 @@ void LichiiGameModel::applyScan(const LichiiScanResult& result) {
   loadDatabase();
   m_detectedPaths = result.roots;
   m_lastScan = scanTimestamp;
-  setStatus(m_lichiiDetected ? QStringLiteral("Imported %1 Lichii game(s)").arg(result.games.size())
+  const QString imported = result.incomplete
+                               ? QStringLiteral("Imported %1 Lichii game(s); kept games in "
+                                                "folders that could not be read")
+                               : QStringLiteral("Imported %1 Lichii game(s)");
+  setStatus(m_lichiiDetected ? imported.arg(result.games.size())
                              : QStringLiteral("Lichii was not found"),
             result.warnings.join(QLatin1Char('\n')));
 }

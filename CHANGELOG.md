@@ -1,14 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- Lichii is a library source. Nintendo Switch and Switch 2 games in the folders Lichii
-  lists, and games it opened with Load File, show in the library and start fullscreen in
-  Lichii. Omakade finds Lichii on your PATH or through the desktop entry its AppImage
-  installs, shows the play time and last played date Lichii keeps, and records dated
-  sessions while a game runs. A Switch 2 package in a portable Lichii folder is named
-  after that folder. Switch 2 games sit with Nintendo Switch games for now.
-
 ## 1.19.0
 
 Steam play recording, a Text size setting and an easier first run.
@@ -58,6 +49,13 @@ Steam play recording, a Text size setting and an easier first run.
 
 ### Library and launching
 
+- Lichii is a new source for Nintendo Switch and Switch 2 games. Games in the folders
+  Lichii lists, and games it opened with Load File, show in the library and start
+  fullscreen in Lichii, with the play time and last played date Lichii keeps. Omakade
+  finds Lichii on your PATH, through its desktop entry or in `~/Applications`. With
+  Record Playtime on, Lichii sessions are recorded too, and the recorder now also
+  recognizes `.nsz` and `.xcz` files in Ryujinx and Eden. Switch 2 games sit with
+  Nintendo Switch games for now. Thanks to @Auxxed.
 - An empty Library or Home has **Set Up Sources**, which opens Settings > Sources, and a
   link to the guide. When filters hide everything, the
   message names them.

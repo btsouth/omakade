@@ -15,8 +15,8 @@ Proton, and Bottles prefixes, and the game list in Xodus Nexus's
 tokens). It also reads configured emulator paths and game metadata from PCSX2,
 Ryujinx, Lichii, Cemu, shadPS4, and Dolphin. From Lichii that is the game folders and
 recent files in `qt-config.ini`, its play time counters and its launch history. Switch
-title/icon extraction reads installed Ryujinx or Lichii keys locally; those keys and
-game files are not uploaded. It never writes
+title/icon extraction reads installed Ryujinx, Lichii, yuzu or `~/.switch` keys locally;
+those keys and game files are not uploaded. It never writes
 into source launcher directories during discovery or backup creation. A
 user-confirmed emulator save restore can replace, create, or remove files only
 within the save locations shown by Omakade.
@@ -291,8 +291,8 @@ the source-provided artwork. It does not change the original selected image.
 ## Console keys
 
 To show the icon and name stored inside a Switch dump, Omakade reads the
-`prod.keys` and `title.keys` files that Ryujinx, Lichii (or yuzu) already keeps in
-its own folder. The keys are used in memory to decrypt only the
+`prod.keys` and `title.keys` files that Ryujinx, Lichii or yuzu already keeps in
+its own folder, or that sit in `~/.switch`. The keys are used in memory to decrypt only the
 small control section of each dump. They are never copied, written to
 Omakade's config or database, logged, or sent anywhere. Without those files
 Switch artwork falls back to files next to the dump and to Ryujinx's own

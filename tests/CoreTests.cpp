@@ -3493,6 +3493,15 @@ void CoreTests::savedFiltersPersistAndPreserveQueries() {
     QVERIFY(filter.applySavedFilter(QStringLiteral("legacy")));
     QCOMPARE(filter.sourceFilters(), QStringList{QStringLiteral("Demo")});
     QVERIFY(filter.savedFilterMessage().isEmpty());
+    // An Emulated filter saved before Lichii joined the group still reads as Emulated.
+    QStringList olderEmulated = LibraryFilterModel::emulatorSources();
+    olderEmulated.removeAll(QStringLiteral("Lichii"));
+    QVariantMap emulated = expected;
+    emulated.insert(QStringLiteral("source"), olderEmulated);
+    QVERIFY(model.saveFilter(QStringLiteral("emulated"), QStringLiteral("Emulated"), emulated));
+    QVERIFY(filter.applySavedFilter(QStringLiteral("emulated")));
+    QCOMPARE(filter.sourceFilter(), QStringLiteral("Emulated"));
+    QVERIFY(filter.sourceFilters().contains(QStringLiteral("Lichii")));
     QVariantMap future = expected;
     future.insert("version", 999);
     QVERIFY(model.saveFilter("future", "Future format", future));
@@ -8958,7 +8967,8 @@ void CoreTests::lichiiScannerReadsGameFoldersRecentFilesAndPlaytime() {
   qToLittleEndian<quint64>(60, playtime.data() + 24);
   writeFile(fixture.install.dataPath + QStringLiteral("/play_time/playtime.bin"), playtime);
   writeFile(fixture.install.cachePath + QStringLiteral("/launched.json"),
-            R"({"0400C3F00006E000": {"launch_count": 5, "timestamp": 1794658519}})");
+            R"({"0400C3F00006E000": {"launch_count": 5, "timestamp": 1794658519},
+                "01006FE013472000": 1794600000, "0100AAAA00000000": 1e300})");
 
   const LichiiScanResult result = LichiiScanner::scan({fixture.install});
   QVERIFY2(!result.incomplete, qPrintable(result.warnings.join(QLatin1Char('\n'))));
@@ -8972,7 +8982,8 @@ void CoreTests::lichiiScannerReadsGameFoldersRecentFilesAndPlaytime() {
   QCOMPARE(switchGame->gameId, QStringLiteral("path:") + party);
   QVERIFY(switchGame->coverPath.endsWith(QStringLiteral("(eShop).png")));
   QCOMPARE(switchGame->playtimeSeconds, qint64(60));
-  QCOMPARE(switchGame->lastPlayed, qint64(0));
+  // Older Lichii builds wrote the bare timestamp.
+  QCOMPARE(switchGame->lastPlayed, qint64(1794600000));
   QVERIFY(!LichiiScanner::isSwitch2(*switchGame));
 
   const LichiiGameRecord* switch2Game = lichiiGame(result, kart);
@@ -9022,10 +9033,25 @@ void CoreTests::lichiiScannerFollowsDeepScanAndReportsMissingFolders() {
   const LichiiScanResult partial = LichiiScanner::scan({fixture.install});
   QVERIFY(partial.incomplete);
   QVERIFY(partial.warnings.join(QLatin1Char('\n')).contains(QStringLiteral("/unmounted")));
+  // Games in the folders that can be read still arrive while another one is missing.
+  writeFile(dumps + QStringLiteral("/New Fixture.nsp"), "nsp");
   model.refreshFromInstalls({fixture.install});
-  QCOMPARE(model.rowCount(), 2);
+  QCOMPARE(model.rowCount(), 3);
   QVERIFY(model.lichiiDetected());
   QVERIFY(model.errorText().contains(QStringLiteral("/unmounted")));
+
+  // A nested folder that cannot be listed hides nothing it held before.
+  const QString shelf = dumps + QStringLiteral("/shelf");
+  QVERIFY(QFile::setPermissions(shelf, QFileDevice::ExeOwner));
+  if (!QDir(shelf).isReadable()) {
+    fixture.write({{dumps, true}});
+    const LichiiScanResult locked = LichiiScanner::scan({fixture.install});
+    QVERIFY(locked.incomplete);
+    model.refreshFromInstalls({fixture.install});
+    QCOMPARE(model.rowCount(), 3);
+  }
+  QVERIFY(QFile::setPermissions(shelf, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                           QFileDevice::ExeOwner));
 
   // Settings that cannot be read as settings are reported, never treated as "no games".
   QVERIFY(QDir().mkpath(directory.path() + QStringLiteral("/broken/config/lichii/qt-config.ini")));
@@ -9168,6 +9194,7 @@ void CoreTests::lichiiLauncherFindsTheAppImageThroughItsDesktopEntry() {
       redirectVariable("XDG_DATA_HOME", (directory.path() + QStringLiteral("/share")).toUtf8());
   const auto restoreDataDirs =
       redirectVariable("XDG_DATA_DIRS", (directory.path() + QStringLiteral("/system")).toUtf8());
+  const auto restoreHome = redirectVariable("HOME", directory.path().toUtf8());
   // Neither on PATH nor registered: not installed.
   QVERIFY(!GameLauncher::lichiiLauncher().isValid());
   QVERIFY(!GameLauncher::lichiiCommand(QStringLiteral("/games/Game.nup")).isValid());
@@ -9206,6 +9233,31 @@ void CoreTests::lichiiLauncherFindsTheAppImageThroughItsDesktopEntry() {
   QCOMPARE(wrapped.arguments,
            QStringList({QStringLiteral("SDL_JOYSTICK_HIDAPI_STEAM=0"), appImage, QStringLiteral("-f"),
                         QStringLiteral("-g"), QStringLiteral("/games/Game.nup")}));
+  QString workingDirectory;
+  QVERIFY(GameLauncher::lichiiLauncher(&workingDirectory).isValid());
+  QCOMPARE(workingDirectory, directory.path() + QStringLiteral("/bin"));
+
+  // AppImage tools register the entry under a name of their own, with a working folder.
+  QVERIFY(QFile::remove(entry));
+  const QString gearLever =
+      directory.path() + QStringLiteral("/share/applications/gearlever_lichii_a1b2c3.desktop");
+  writeFile(gearLever,
+            QStringLiteral("[Desktop Entry]\nType=Application\nName=Lichii\nPath=/srv/lichii\n"
+                           "Exec=\"%1\" %U\n")
+                .arg(appImage)
+                .toUtf8());
+  workingDirectory.clear();
+  QCOMPARE(GameLauncher::lichiiLauncher(&workingDirectory).program, appImage);
+  QCOMPARE(workingDirectory, QStringLiteral("/srv/lichii"));
+
+  // A release AppImage left in ~/Applications, with no entry and not on PATH.
+  QVERIFY(QFile::remove(gearLever));
+  QVERIFY(!GameLauncher::lichiiLauncher().isValid());
+  const QString release =
+      directory.path() + QStringLiteral("/Applications/lichii-linux-x86_64.AppImage");
+  writeFile(release, "#!/bin/sh\n");
+  QVERIFY(QFile::setPermissions(release, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+  QCOMPARE(GameLauncher::lichiiLauncher().program, release);
 }
 
 void CoreTests::lichiiSettingStaysAutomaticUntilChosen() {

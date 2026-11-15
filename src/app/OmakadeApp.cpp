@@ -1627,7 +1627,7 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
   QObject::connect(&singleInstance, &SingleInstance::rescanRequested, &application,
                    [&retroArchLibrary, &pcsx2Library, &rpcs3Library, &ppssppLibrary, &ryujinxLibrary,
                     &dolphinLibrary,
-                    &melondsLibrary,
+                    &melondsLibrary, &lichiiLibrary,
                     &preferences](const QString& source) {
                      // omakade-sessiond reports an emulator exit; some emulators only
                      // write their own playtime and last-played records on exit, so the
@@ -1653,6 +1653,9 @@ int runOmakade(int argc, char* argv[], AppHarness* harness) {
                      } else if (source == QStringLiteral("melonDS") &&
                                 melondsLibrary != nullptr && preferences.melondsEnabled()) {
                        melondsLibrary->refresh();
+                     } else if (source == QStringLiteral("Lichii") && lichiiLibrary != nullptr &&
+                                preferences.lichiiEnabled()) {
+                       lichiiLibrary->refresh();
                      }
                    });
   // Quitting closes every window before aboutToQuit, and a session cannot put back a window
